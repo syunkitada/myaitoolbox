@@ -1,0 +1,38 @@
+name: agentsandbox
+services:
+  # envoy:
+  #   hostname: envoy
+  #   container_name: envoy
+  #   image: envoyproxy/envoy:v1.35-latest
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+  nginx:
+    image: nginx:latest
+    network_mode: host
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - /etc/labo/tls-assets/localhost.test/server-key.pem:/etc/nginx/ssl/server-key.pem
+      - /etc/labo/tls-assets/localhost.test/server.pem:/etc/nginx/ssl/server.pem
+  oauth2-proxy:
+    hostname: oauth2-proxy
+    network_mode: host
+    container_name: oauth2-proxy
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.12.0
+    command:
+      - --config=/etc/oauth2-proxy.cfg
+    volumes:
+      - ./oauth2-proxy/oauth2-proxy.cfg:/etc/oauth2-proxy.cfg:ro
+  agent:
+    hostname: agent01
+    container_name: agent01
+    build:
+      context: ./
+      dockerfile: ./dockerfiles/Dockerfile
+    privileged: true
+    network_mode: host
+    volumes:
+      - "./agents:/root/agents:rw"
+      - "./workspace:/root/workspace:rw"
