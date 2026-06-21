@@ -1,13 +1,5 @@
 name: agentsandbox
 services:
-  # envoy:
-  #   hostname: envoy
-  #   container_name: envoy
-  #   image: envoyproxy/envoy:v1.35-latest
-  #   ports:
-  #     - "8080:8080"
-  #   volumes:
-  #     - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
   nginx:
     image: nginx:latest
     network_mode: host
@@ -36,3 +28,4 @@ services:
     volumes:
       - "./agents:/root/agents:rw"
       - "./workspace:/root/workspace:rw"
+    entrypoint: ["/bin/bash", "-c", "opencode web --port 3000 --hostname 0.0.0.0"]

@@ -4,6 +4,13 @@ WORKDIR /root
 
 ENV HOME=/root
 
+ENV PATH=/root/.nvm/versions/node/v24.17.0/bin:/root/.local/bin:/root/bin:/root/.local/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ENV NVM_INC=/root/.nvm/versions/node/v24.17.0/include/node
+ENV NVM_DIR=/root/.nvm
+ENV NVM_CD_FLAGS=
+ENV NVM_BIN=/root/.nvm/versions/node/v24.17.0/bin
+
 RUN dnf install -y epel-release && \
     dnf install -y \
       systemd sudo man vim findutils procps-ng \
@@ -26,7 +33,5 @@ RUN dnf clean all && rm -rf /var/cache/dnf/*
 
 # Remove unused systemd services
 RUN ls /lib/systemd/system/*.wants/* | grep -v journald | xargs rm -rf
-
-ENV PATH=$HOME/.local/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 CMD ["/usr/sbin/init"]
