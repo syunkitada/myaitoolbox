@@ -11,12 +11,16 @@ ENV NVM_DIR=/root/.nvm
 ENV NVM_CD_FLAGS=
 ENV NVM_BIN=/root/.nvm/versions/node/v24.17.0/bin
 
+COPY dockerfiles/git-askpass.sh /usr/local/bin/git-askpass.sh
+
 RUN dnf install -y epel-release && \
     dnf install -y \
       systemd sudo man vim findutils procps-ng \
       git wget make diffutils \
       traceroute iproute \
       python3.12 python3.12-devel python3.12-pip
+
+RUN dnf install -y https://github.com/cli/cli/releases/download/v2.95.0/gh_2.95.0_linux_amd64.rpm
 
 # Install Node
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash && \

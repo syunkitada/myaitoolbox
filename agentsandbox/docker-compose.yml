@@ -25,7 +25,9 @@ services:
       dockerfile: ./dockerfiles/Dockerfile
     privileged: true
     network_mode: host
+    env_file:
+    - .env
     volumes:
       - "./agents:/root/agents:rw"
       - "./workspace:/root/workspace:rw"
-    entrypoint: ["/bin/bash", "-c", "opencode web --port 3000 --hostname 0.0.0.0"]
+    # entrypoint: ["/bin/bash", "-c", "opencode web --port 3000 --hostname 0.0.0.0"]
