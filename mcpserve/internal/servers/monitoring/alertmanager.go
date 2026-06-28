@@ -6,20 +6,29 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
 
-const amURL = "http://127.0.0.1:9093"
+const defaultAMURL = "http://127.0.0.1:9093"
 
 type AlertmanagerClient struct {
-	client *http.Client
+	client  *http.Client
+	baseURL string
 }
 
 func NewAlertmanagerClient() *AlertmanagerClient {
+	url := os.Getenv("ALERTMANAGER_URL")
+	if url == "" {
+		url = defaultAMURL
+	}
 	return &AlertmanagerClient{
-		client: &http.Client{Timeout: 10 * time.Second},
+		client:  &http.Client{Timeout: 10 * time.Second},
+		baseURL: url,
 	}
 }
 
@@ -53,8 +62,18 @@ type Matcher struct {
 	IsEqual bool   `json:"isEqual"`
 }
 
-func (c *AlertmanagerClient) GetAlerts() ([]AMAlert, error) {
-	resp, err := c.client.Get(fmt.Sprintf("%s/api/v2/alerts", amURL))
+func (c *AlertmanagerClient) GetAlerts(filters ...string) ([]AMAlert, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/api/v2/alerts", c.baseURL))
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	for _, f := range filters {
+		q.Add("filter", f)
+	}
+	u.RawQuery = q.Encode()
+
+	resp, err := c.client.Get(u.String())
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +90,18 @@ func (c *AlertmanagerClient) GetAlerts() ([]AMAlert, error) {
 	return alerts, nil
 }
 
-func (c *AlertmanagerClient) GetSilences() ([]Silence, error) {
-	resp, err := c.client.Get(fmt.Sprintf("%s/api/v2/silences", amURL))
+func (c *AlertmanagerClient) GetSilences(filters ...string) ([]Silence, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/api/v2/silences", c.baseURL))
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	for _, f := range filters {
+		q.Add("filter", f)
+	}
+	u.RawQuery = q.Encode()
+
+	resp, err := c.client.Get(u.String())
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +124,7 @@ func (c *AlertmanagerClient) CreateSilence(silence Silence) (string, error) {
 		return "", err
 	}
 
-	resp, err := c.client.Post(fmt.Sprintf("%s/api/v2/silences", amURL), "application/json", bytes.NewBuffer(body))
+	resp, err := c.client.Post(fmt.Sprintf("%s/api/v2/silences", c.baseURL), "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return "", err
 	}
@@ -116,7 +145,7 @@ func (c *AlertmanagerClient) CreateSilence(silence Silence) (string, error) {
 }
 
 func (c *AlertmanagerClient) DeleteSilence(id string) error {
-	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/api/v2/silence/%s", amURL, id), nil)
+	req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/api/v2/silence/%s", c.baseURL, id), nil)
 	if err != nil {
 		return err
 	}
@@ -150,7 +179,7 @@ func ParseTime(timeStr string, baseTime time.Time) (time.Time, error) {
 
 func ParseMatchers(matchersStr string) ([]Matcher, error) {
 	var matchers []Matcher
-	re := regexp.MustCompile(`([a-zA-Z_][a-zA-Z0-9_]*)=("[^"]*"|[^,]+)`)
+	re := regexp.MustCompile(`([a-zA-Z_][a-zA-Z0-9_]*)(!=|!~|=~|=)("[^"]*"|[^,]+)`)
 	matches := re.FindAllStringSubmatch(matchersStr, -1)
 
 	if len(matches) == 0 {
@@ -159,15 +188,16 @@ func ParseMatchers(matchersStr string) ([]Matcher, error) {
 
 	for _, m := range matches {
 		name := m[1]
-		val := m[2]
+		op := m[2]
+		val := m[3]
 		if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
 			val = val[1 : len(val)-1]
 		}
 		matchers = append(matchers, Matcher{
 			Name:    name,
 			Value:   val,
-			IsRegex: false,
-			IsEqual: true,
+			IsRegex: op == "=~" || op == "!~",
+			IsEqual: op == "=" || op == "=~",
 		})
 	}
 
@@ -175,9 +205,17 @@ func ParseMatchers(matchersStr string) ([]Matcher, error) {
 }
 
 func FormatLabels(labels map[string]string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	var parts []string
-	for k, v := range labels {
-		parts = append(parts, fmt.Sprintf(`%s="%s"`, k, v))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf(`%s="%s"`, k, labels[k]))
 	}
 	return strings.Join(parts, ",")
 }

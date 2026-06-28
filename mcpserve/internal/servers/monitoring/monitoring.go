@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -63,7 +64,15 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		host, _ := args["host"].(string)
 		verbose, _ := args["verbose"].(bool)
 
-		alerts, err := client.GetAlerts()
+		var amFilters []string
+		if alertname != "" {
+			amFilters = append(amFilters, fmt.Sprintf(`alertname="%s"`, alertname))
+		}
+		if host != "" {
+			amFilters = append(amFilters, fmt.Sprintf(`host="%s"`, host))
+		}
+
+		alerts, err := client.GetAlerts(amFilters...)
 		if err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get alerts: %v", err)}}}, nil
 		}
@@ -71,12 +80,6 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		var filtered []map[string]interface{}
 		for _, a := range alerts {
 			if status != "" && a.Status.State != status {
-				continue
-			}
-			if alertname != "" && a.Labels["alertname"] != alertname {
-				continue
-			}
-			if host != "" && a.Labels["host"] != host {
 				continue
 			}
 
@@ -160,6 +163,10 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid endat: %v", err)}}}, nil
 		}
 
+		if !endTime.After(startTime) {
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "endat must be after startat"}}}, nil
+		}
+
 		matchers, err := ParseMatchers(matchersStr)
 		if err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Invalid matchers: %v", err)}}}, nil
@@ -178,6 +185,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to create silence: %v", err)}}}, nil
 		}
 
+		log.Printf("silence created: id=%s matchers=%v start=%s end=%s by=%s", id, matchers, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), createdBy)
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Created silence with ID: %s", id)}}}, nil
 	})
 
@@ -207,7 +215,15 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		host, _ := args["host"].(string)
 		verbose, _ := args["verbose"].(bool)
 
-		silences, err := client.GetSilences()
+		var amFilters []string
+		if alertname != "" {
+			amFilters = append(amFilters, fmt.Sprintf(`alertname="%s"`, alertname))
+		}
+		if host != "" {
+			amFilters = append(amFilters, fmt.Sprintf(`host="%s"`, host))
+		}
+
+		silences, err := client.GetSilences(amFilters...)
 		if err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get silences: %v", err)}}}, nil
 		}
@@ -217,13 +233,6 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			labelsMap := make(map[string]string)
 			for _, m := range s.Matchers {
 				labelsMap[m.Name] = m.Value
-			}
-
-			if alertname != "" && labelsMap["alertname"] != alertname {
-				continue
-			}
-			if host != "" && labelsMap["host"] != host {
-				continue
 			}
 
 			item := map[string]interface{}{
@@ -269,12 +278,16 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Invalid arguments format"}}}, nil
 		}
 		id, _ := args["id"].(string)
+		if id == "" {
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "id is required"}}}, nil
+		}
 
 		err := client.DeleteSilence(id)
 		if err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to delete silence: %v", err)}}}, nil
 		}
 
+		log.Printf("silence deleted: id=%s", id)
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted silence %s", id)}}}, nil
 	})
 

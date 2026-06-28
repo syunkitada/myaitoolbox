@@ -59,11 +59,26 @@ go install github.com/syunkitada/myaitoolbox/mcpctl/cmd/mcpctl@latest
 
 ```bash
 # サーバ一覧
-mcpctl call -l
+mcpctl call -h
 
 # サーバ内のツール一覧
-mcpctl call github -l
+mcpctl call github -h
 
 # ツール情報表示
-mcpctl call github/create_issue -l
+mcpctl call github/create_issue -h
+```
+
+## シェル補完 (zsh)
+
+```bash
+# 現在のシェルに読み込む場合
+source <(mcpctl completion zsh)
+
+# 永続的に設定する場合
+mcpctl completion zsh > ~/.zsh/completions/_mcpctl
+echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
+echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
+```
+
+`call` コマンドでは、ツール名の補完に続けて `--パラメータ名` の補完が効きます。`list` ではサーバ名の補完が可能です。
 ```

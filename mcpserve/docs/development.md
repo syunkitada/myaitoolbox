@@ -72,9 +72,7 @@ import (
 	// ...既存のインポート...
 	
 	// Register providers
-	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/aws"
-	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/github"
-	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/jira"
+	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/monitoring"
 	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/example" // <--- 追加
 )
 // ...

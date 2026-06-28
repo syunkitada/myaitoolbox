@@ -3,7 +3,7 @@
 ## 概要
 
 `mcpserve` の主な責務は、MCP Server 実装の「ホスティング」と「起動」に特化したシンプルなランタイムを提供することです。
-複雑な管理機能は持たせず、単一バイナリで様々なプロバイダ（GitHub, AWS, Jiraなど）の MCP Server を起動できることを目的としています。
+複雑な管理機能は持たせず、単一バイナリで様々なプロバイダ（Monitoringなど）の MCP Server を起動できることを目的としています。
 
 ## アーキテクチャ
 
@@ -51,9 +51,7 @@ mcpserve/
 │   ├── provider/
 │   │   └── provider.go       # Provider インターフェースの定義
 │   └── servers/
-│       ├── github/           # GitHub プロバイダ実装
-│       ├── aws/              # AWS プロバイダ実装
-│       └── jira/             # Jira プロバイダ実装
+│       ├── monitoring/       # Monitoring プロバイダ実装
 ├── docs/                     # ドキュメントディレクトリ
 ├── go.mod                    # 依存関係定義
 └── README.md                 # メイン README

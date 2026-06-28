@@ -26,16 +26,21 @@ var callCmd = &cobra.Command{
 		}
 
 		// Handle Human Shortcut: `mcpctl call -l` or `mcpctl call server -l` or `mcpctl call server/tool -l`
-		if len(args) == 1 && args[0] == "-l" {
-			listCmd.Run(listCmd, []string{})
-			return
+		humanFlag := ""
+		if len(args) >= 1 && (args[len(args)-1] == "-l" || args[len(args)-1] == "-h") {
+			humanFlag = args[len(args)-1]
 		}
-
-		if len(args) == 2 && args[1] == "-l" {
-			if strings.Contains(args[0], "/") {
-				infoCmd.Run(infoCmd, []string{args[0]})
+		if humanFlag != "" {
+			target := ""
+			if len(args) >= 2 {
+				target = args[0]
+			}
+			if target == "" {
+				listCmd.Run(listCmd, []string{})
+			} else if strings.Contains(target, "/") {
+				printParamList(target)
 			} else {
-				listCmd.Run(listCmd, []string{args[0]})
+				listCmd.Run(listCmd, []string{target})
 			}
 			return
 		}
@@ -100,7 +105,7 @@ var callCmd = &cobra.Command{
 
 		// extract global flags (profile and output format)
 		profName := ""
-		outputFormat := "raw"
+		outputFormat := "tsv"
 		for i := 1; i < len(args); i++ {
 			if args[i] == "--profile" || args[i] == "-p" {
 				if i+1 < len(args) {
@@ -154,6 +159,59 @@ var callCmd = &cobra.Command{
 			}
 		}
 	},
+}
+
+// printParamList prints parameter names with type and required info.
+func printParamList(toolPath string) {
+	serverName, toolName, err := discovery.ParseToolName(toolPath)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	p, err := profile.ResolveProfile(profileFlag, "")
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	entry, err := discovery.GetToolInfo(context.Background(), p, serverName, toolName)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	schema, ok := entry.Tool.InputSchema.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	props, _ := schema["properties"].(map[string]interface{})
+	if len(props) == 0 {
+		fmt.Println("(no parameters)")
+		return
+	}
+
+	requiredRaw, _ := schema["required"].([]interface{})
+	requiredSet := make(map[string]bool)
+	for _, r := range requiredRaw {
+		if s, ok := r.(string); ok {
+			requiredSet[s] = true
+		}
+	}
+
+	for name, propRaw := range props {
+		prop, _ := propRaw.(map[string]interface{})
+		typ, _ := prop["type"].(string)
+		if typ == "" {
+			typ = "any"
+		}
+		req := ""
+		if requiredSet[name] {
+			req = " (required)"
+		}
+		fmt.Printf("  %s: %s%s\n", name, typ, req)
+	}
 }
 
 // printText prints the text in the specified output format.
