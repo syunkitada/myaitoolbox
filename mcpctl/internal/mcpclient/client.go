@@ -3,26 +3,25 @@ package mcpclient
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
-	"os"
 
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/syunkitada/myaitoolbox/mcpctl/internal/profile"
 )
 
 // NewClient creates a new MCP client for the given server configuration.
-func NewClient(ctx context.Context, srvConfig profile.ServerConfig) (*client.Client, error) {
-	var mcpClient *client.Client
+func NewClient(ctx context.Context, srvConfig profile.ServerConfig) (*mcp.ClientSession, error) {
+	var transport mcp.Transport
 	var err error
 
 	switch srvConfig.Transport {
 	case "stdio":
-		mcpClient, err = newStdioClient(ctx, srvConfig)
+		transport, err = newStdioTransport(srvConfig)
 	case "streamable-http":
-		mcpClient, err = newStreamableHTTPClient(ctx, srvConfig)
+		transport = &mcp.StreamableClientTransport{Endpoint: srvConfig.URL}
 	case "sse":
-		mcpClient, err = newSSEClient(ctx, srvConfig)
+		transport = &mcp.SSEClientTransport{Endpoint: srvConfig.URL}
 	default:
 		return nil, fmt.Errorf("unsupported transport: %s", srvConfig.Transport)
 	}
@@ -31,23 +30,21 @@ func NewClient(ctx context.Context, srvConfig profile.ServerConfig) (*client.Cli
 		return nil, err
 	}
 
-	initReq := mcp.InitializeRequest{}
-	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initReq.Params.ClientInfo = mcp.Implementation{
+	impl := mcp.Implementation{
 		Name:    "mcpctl",
 		Version: "1.0.0",
 	}
 
-	_, err = mcpClient.Initialize(ctx, initReq)
+	client := mcp.NewClient(&impl, nil)
+	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
-		mcpClient.Close()
-		return nil, fmt.Errorf("failed to initialize client: %w", err)
+		return nil, fmt.Errorf("failed to connect client: %w", err)
 	}
 
-	return mcpClient, nil
+	return session, nil
 }
 
-func newStdioClient(ctx context.Context, srvConfig profile.ServerConfig) (*client.Client, error) {
+func newStdioTransport(srvConfig profile.ServerConfig) (mcp.Transport, error) {
 	parts := strings.Fields(srvConfig.Command)
 	if len(parts) == 0 {
 		return nil, fmt.Errorf("command is empty")
@@ -56,42 +53,5 @@ func newStdioClient(ctx context.Context, srvConfig profile.ServerConfig) (*clien
 	cmd := parts[0]
 	args := parts[1:]
 
-	mcpClient, err := client.NewStdioMCPClient(cmd, os.Environ(), args...)
-	if err != nil {
-		return nil, err
-	}
-	
-	// Start the client.
-	// We need an init request to establish the protocol session.
-	if err := mcpClient.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start stdio client: %w", err)
-	}
-
-	return mcpClient, nil
-}
-
-func newStreamableHTTPClient(ctx context.Context, srvConfig profile.ServerConfig) (*client.Client, error) {
-	mcpClient, err := client.NewStreamableHttpClient(srvConfig.URL)
-	if err != nil {
-		return nil, err
-	}
-	
-	if err := mcpClient.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start streamable-http client: %w", err)
-	}
-
-	return mcpClient, nil
-}
-
-func newSSEClient(ctx context.Context, srvConfig profile.ServerConfig) (*client.Client, error) {
-	mcpClient, err := client.NewSSEMCPClient(srvConfig.URL)
-	if err != nil {
-		return nil, err
-	}
-	
-	if err := mcpClient.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start sse client: %w", err)
-	}
-
-	return mcpClient, nil
+	return &mcp.CommandTransport{Command: exec.Command(cmd, args...)}, nil
 }

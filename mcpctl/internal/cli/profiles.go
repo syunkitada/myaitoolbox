@@ -41,7 +41,7 @@ var useProfileCmd = &cobra.Command{
 			fmt.Println("Error:", err)
 			return
 		}
-		
+
 		oldProfile := cfg.DefaultProfile
 		cfg.DefaultProfile = newProfile
 

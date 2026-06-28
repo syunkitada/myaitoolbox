@@ -2,9 +2,10 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	mcpclient "github.com/syunkitada/myaitoolbox/mcpctl/internal/mcpclient"
 	"github.com/syunkitada/myaitoolbox/mcpctl/internal/profile"
 )
@@ -16,17 +17,22 @@ func CallTool(ctx context.Context, prof *profile.Profile, serverName, toolName s
 		return nil, fmt.Errorf("server %s not found in profile %s", serverName, prof.Name)
 	}
 
-	client, err := mcpclient.NewClient(ctx, srvConfig)
+	session, err := mcpclient.NewClient(ctx, srvConfig)
 	if err != nil {
 		return nil, fmt.Errorf("server %s: failed to connect: %w", serverName, err)
 	}
-	defer client.Close()
+	defer session.Close()
 
-	req := mcp.CallToolRequest{}
-	req.Params.Name = toolName
-	req.Params.Arguments = params
+	// Marshal params to json.RawMessage for Arguments
+	argsJSON, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal params: %w", err)
+	}
 
-	res, err := client.CallTool(ctx, req)
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      toolName,
+		Arguments: json.RawMessage(argsJSON),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("server %s: failed to call tool %s: %w", serverName, toolName, err)
 	}

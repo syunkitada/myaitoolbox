@@ -37,12 +37,18 @@ var infoCmd = &cobra.Command{
 		fmt.Printf("  %s/%s\n\n", entry.ServerName, entry.Tool.Name)
 		fmt.Println("Description:")
 		fmt.Printf("  %s\n\n", entry.Tool.Description)
-		
+
 		fmt.Println("Parameters:")
-		if entry.Tool.InputSchema.Type == "object" {
-			props := entry.Tool.InputSchema.Properties
-			if props != nil {
-				requiredFields := entry.Tool.InputSchema.Required
+		if schema, ok := entry.Tool.InputSchema.(map[string]interface{}); ok {
+			if schemaType, _ := schema["type"].(string); schemaType == "object" {
+				props, _ := schema["properties"].(map[string]interface{})
+				requiredRaw, _ := schema["required"].([]interface{})
+				var requiredFields []string
+				for _, r := range requiredRaw {
+					if s, ok := r.(string); ok {
+						requiredFields = append(requiredFields, s)
+					}
+				}
 
 				isRequired := func(field string) bool {
 					for _, r := range requiredFields {
@@ -55,7 +61,6 @@ var infoCmd = &cobra.Command{
 
 				for paramName, paramSchemaRaw := range props {
 					fmt.Printf("\n  %s\n", paramName)
-					
 					paramSchema, ok := paramSchemaRaw.(map[string]interface{})
 					if ok {
 						if typ, ok := paramSchema["type"]; ok {

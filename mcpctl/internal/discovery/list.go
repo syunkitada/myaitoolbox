@@ -7,14 +7,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	mcpclient "github.com/syunkitada/myaitoolbox/mcpctl/internal/mcpclient"
 	"github.com/syunkitada/myaitoolbox/mcpctl/internal/profile"
 )
 
 type ToolEntry struct {
 	ServerName string
-	Tool       mcp.Tool
+	Tool       *mcp.Tool
 }
 
 // ListTools retrieves all tools from the given profile.
@@ -34,7 +34,7 @@ func ListTools(ctx context.Context, prof *profile.Profile, serverFilter string) 
 		wg.Add(1)
 		go func(name string, config profile.ServerConfig) {
 			defer wg.Done()
-			
+
 			client, err := mcpclient.NewClient(ctx, config)
 			if err != nil {
 				errCh <- fmt.Errorf("server %s: failed to connect: %w", name, err)
@@ -42,7 +42,7 @@ func ListTools(ctx context.Context, prof *profile.Profile, serverFilter string) 
 			}
 			defer client.Close()
 
-			res, err := client.ListTools(ctx, mcp.ListToolsRequest{})
+			res, err := client.ListTools(ctx, &mcp.ListToolsParams{})
 			if err != nil {
 				errCh <- fmt.Errorf("server %s: failed to list tools: %w", name, err)
 				return
@@ -54,6 +54,7 @@ func ListTools(ctx context.Context, prof *profile.Profile, serverFilter string) 
 					ServerName: name,
 					Tool:       t,
 				})
+
 			}
 			mu.Unlock()
 		}(srvName, srvConfig)

@@ -16,9 +16,14 @@ bin/
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-# OS/Editor specific files
-.DS_Store
+# Go workspace file
+go.work
+go.work.sum
+
+# IDEs and editors
 .idea/
 .vscode/
 *.swp
+*.swo
 *~
+.DS_Store

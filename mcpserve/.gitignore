@@ -1,10 +1,11 @@
 # Binaries
-mcpserve
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+mcpserve
+bin/
 
 # Test binary, built with `go test -c`
 *.test

@@ -3,8 +3,7 @@ package aws
 import (
 	"context"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/syunkitada/myaitoolbox/mcpserve/internal/provider"
 	"github.com/syunkitada/myaitoolbox/mcpserve/internal/registry"
 )
@@ -27,18 +26,24 @@ func (p *awsProvider) Description() string {
 	return "AWS integration for MCP."
 }
 
-func (p *awsProvider) NewServer() *server.MCPServer {
-	s := server.NewMCPServer("aws", "0.0.1")
+func (p *awsProvider) NewServer() *mcp.Server {
+	s := mcp.NewServer(&mcp.Implementation{Name: "aws", Version: "0.0.1"}, nil)
 
-	s.AddTool(mcp.Tool{
+	s.AddTool(&mcp.Tool{
 		Name:        "list_instances",
 		Description: "List EC2 instances",
-		InputSchema: mcp.ToolInputSchema{
-			Type:       "object",
-			Properties: map[string]interface{}{},
+		InputSchema: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
 		},
-	}, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return mcp.NewToolResultText("Mock result for list_instances"), nil
+	}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: "Mock result for list_instances",
+				},
+			},
+		}, nil
 	})
 
 	return s

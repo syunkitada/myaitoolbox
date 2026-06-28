@@ -109,7 +109,7 @@ func LoadProfile(name string) (*Profile, error) {
 	if err := yaml.Unmarshal(data, &profile); err != nil {
 		return nil, fmt.Errorf("failed to parse profile %s: %w", name, err)
 	}
-	
+
 	if profile.Name == "" {
 		profile.Name = name
 	}
