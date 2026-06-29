@@ -126,7 +126,60 @@ var listParamsHelperCmd = &cobra.Command{
 	},
 }
 
+var listParamValuesHelperCmd = &cobra.Command{
+	Use:    "__list_param_values <server/tool> <paramName>",
+	Short:  "List param values for shell completion (internal)",
+	Hidden: true,
+	Args:   cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		toolPath := args[0]
+		paramName := args[1]
+		serverName, toolName, err := discovery.ParseToolName(toolPath)
+		if err != nil {
+			return
+		}
+
+		p, err := profile.ResolveProfile(profileFlag, "")
+		if err != nil {
+			return
+		}
+
+		entry, err := discovery.GetToolInfo(context.Background(), p, serverName, toolName)
+		if err != nil {
+			return
+		}
+
+		schema, ok := entry.Tool.InputSchema.(map[string]interface{})
+		if !ok {
+			return
+		}
+
+		props, _ := schema["properties"].(map[string]interface{})
+		paramSchemaRaw, ok := props[paramName]
+		if !ok {
+			return
+		}
+
+		paramSchema, ok := paramSchemaRaw.(map[string]interface{})
+		if !ok {
+			return
+		}
+
+		enum, ok := paramSchema["enum"].([]interface{})
+		if !ok {
+			return
+		}
+
+		for _, v := range enum {
+			if s, ok := v.(string); ok {
+				fmt.Println(s)
+			}
+		}
+	},
+}
+
 func init() {
 	RootCmd.AddCommand(listToolsHelperCmd)
 	RootCmd.AddCommand(listParamsHelperCmd)
+	RootCmd.AddCommand(listParamValuesHelperCmd)
 }

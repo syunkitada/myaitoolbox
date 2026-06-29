@@ -49,6 +49,14 @@ __mcpctl_list_params() {
   _describe -t params 'parameter' params
 }
 
+__mcpctl_list_param_values() {
+  local -a values
+  values=(${(f)"$($service __list_param_values "$1" "$2" 2>/dev/null)"})
+  if (( $#values )); then
+    _describe -t values "values for $2" values
+  fi
+}
+
 __mcpctl_servers() {
   local -a servers
   servers=(${(f)"$($service __list_tools 2>/dev/null | sed 's|/.*||' | sort -u)"})
@@ -81,7 +89,13 @@ _mcpctl() {
         if (( CURRENT == 3 )); then
           __mcpctl_list_tools && ret=0
         elif (( CURRENT > 3 )); then
-          __mcpctl_list_params "$words[3]" && ret=0
+          local prev=$words[$((CURRENT-1))]
+          if [[ $prev == --* ]]; then
+            local paramName=${prev#--}
+            __mcpctl_list_param_values "$words[3]" "$paramName" && ret=0
+          else
+            __mcpctl_list_params "$words[3]" && ret=0
+          fi
         fi
         ;;
       info)

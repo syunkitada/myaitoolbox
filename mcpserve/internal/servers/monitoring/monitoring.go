@@ -42,6 +42,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			"properties": map[string]interface{}{
 				"status": map[string]interface{}{
 					"type": "string",
+					"enum": []string{"active", "silenced", "inhibited"},
 				},
 				"alertname": map[string]interface{}{
 					"type": "string",
