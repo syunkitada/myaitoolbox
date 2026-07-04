@@ -38,6 +38,12 @@ AI Agent
 go install github.com/syunkitada/myaitoolbox/mcpctl/cmd/mcpctl@latest
 ```
 
+ローカルでビルドする場合は、以下のコマンドを実行してください。
+
+```bash
+go install ./cmd/mcpctl
+```
+
 ## ドキュメント
 
 より詳細な使い方は以下のドキュメントを参照してください。
@@ -49,9 +55,11 @@ go install github.com/syunkitada/myaitoolbox/mcpctl/cmd/mcpctl@latest
 
 1. **検索 (Search)**
    ツール名がわからない場合は `mcpctl search <query>` を実行します。
-2. **情報確認 (Info)**
+2. **一覧表示 (List)**
+   ツール一覧を確認する場合は `mcpctl list` を実行します。
+3. **情報確認 (Info)**
    実行前にパラメータなどを確認するために `mcpctl info <server>/<tool>` を実行します。
-3. **実行 (Call)**
+4. **実行 (Call)**
    パラメータを理解した上で `mcpctl call <server>/<tool> [flags]` を実行します。
 
 ### Human Shortcut
@@ -81,4 +89,4 @@ echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
 ```
 
 `call` コマンドでは、ツール名の補完に続けて `--パラメータ名` の補完が効きます。`list` ではサーバ名の補完が可能です。
-```
+
