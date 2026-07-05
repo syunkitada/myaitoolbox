@@ -27,3 +27,5 @@ go.work.sum
 *.swo
 *~
 .DS_Store
+
+.env

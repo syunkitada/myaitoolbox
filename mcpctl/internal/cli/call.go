@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -224,8 +226,8 @@ func printText(text string, format string) {
 	}
 
 	// Try to parse as JSON for structured output
-	var parsed interface{}
-	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+	parsed, err := decodeJSON([]byte(text))
+	if err != nil {
 		// Not JSON — fall back to raw output
 		fmt.Println(text)
 		return
@@ -242,14 +244,27 @@ func printText(text string, format string) {
 // printTSV prints JSON data as TSV (Tab-Separated Values).
 // Supports: array of objects, array of scalars, single object, scalar value.
 func printTSV(data interface{}) {
+	data = extractDataArray(data)
 	switch v := data.(type) {
 	case []interface{}:
 		if len(v) == 0 {
 			return
 		}
 		// array of objects: print header row then data rows
-		if row, ok := v[0].(map[string]interface{}); ok {
-			headers := objectKeys(row)
+		if row, ok := v[0].(orderedMap); ok {
+			headers := row.keys()
+			fmt.Println(strings.Join(headers, "\t"))
+			for _, item := range v {
+				if obj, ok := item.(orderedMap); ok {
+					vals := make([]string, len(headers))
+					for i, h := range headers {
+						vals[i] = fmt.Sprintf("%v", obj.get(h))
+					}
+					fmt.Println(strings.Join(vals, "\t"))
+				}
+			}
+		} else if row, ok := v[0].(map[string]interface{}); ok {
+			headers := orderedKeys(row)
 			fmt.Println(strings.Join(headers, "\t"))
 			for _, item := range v {
 				if obj, ok := item.(map[string]interface{}); ok {
@@ -266,10 +281,15 @@ func printTSV(data interface{}) {
 				fmt.Printf("%v\n", item)
 			}
 		}
+	case orderedMap:
+		// single object: print key\tvalue rows
+		for _, e := range v {
+			fmt.Printf("%s\t%v\n", e.Key, e.Value)
+		}
 	case map[string]interface{}:
 		// single object: print key\tvalue rows
-		for k, val := range v {
-			fmt.Printf("%s\t%v\n", k, val)
+		for _, k := range orderedKeys(v) {
+			fmt.Printf("%s\t%v\n", k, v[k])
 		}
 	default:
 		// scalar
@@ -280,6 +300,7 @@ func printTSV(data interface{}) {
 // printTable prints JSON data as an aligned table using tabwriter.
 // Supports: array of objects, array of scalars, single object, scalar value.
 func printTable(data interface{}) {
+	data = extractDataArray(data)
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	defer w.Flush()
 
@@ -289,8 +310,26 @@ func printTable(data interface{}) {
 			return
 		}
 		// array of objects: print header row then data rows
-		if row, ok := v[0].(map[string]interface{}); ok {
-			headers := objectKeys(row)
+		if row, ok := v[0].(orderedMap); ok {
+			headers := row.keys()
+			fmt.Fprintln(w, strings.Join(headers, "\t"))
+			// separator line
+			seps := make([]string, len(headers))
+			for i, h := range headers {
+				seps[i] = strings.Repeat("-", len(h))
+			}
+			fmt.Fprintln(w, strings.Join(seps, "\t"))
+			for _, item := range v {
+				if obj, ok := item.(orderedMap); ok {
+					vals := make([]string, len(headers))
+					for i, h := range headers {
+						vals[i] = fmt.Sprintf("%v", obj.get(h))
+					}
+					fmt.Fprintln(w, strings.Join(vals, "\t"))
+				}
+			}
+		} else if row, ok := v[0].(map[string]interface{}); ok {
+			headers := orderedKeys(row)
 			fmt.Fprintln(w, strings.Join(headers, "\t"))
 			// separator line
 			seps := make([]string, len(headers))
@@ -313,26 +352,134 @@ func printTable(data interface{}) {
 				fmt.Fprintf(w, "%v\n", item)
 			}
 		}
+	case orderedMap:
+		// single object: print KEY\tVALUE table
+		fmt.Fprintln(w, "KEY\tVALUE")
+		fmt.Fprintln(w, "---\t-----")
+		for _, e := range v {
+			fmt.Fprintf(w, "%s\t%v\n", e.Key, e.Value)
+		}
 	case map[string]interface{}:
 		// single object: print KEY\tVALUE table
 		fmt.Fprintln(w, "KEY\tVALUE")
 		fmt.Fprintln(w, "---\t-----")
-		for k, val := range v {
-			fmt.Fprintf(w, "%s\t%v\n", k, val)
+		for _, k := range orderedKeys(v) {
+			fmt.Fprintf(w, "%s\t%v\n", k, v[k])
 		}
 	default:
 		fmt.Fprintln(w, v)
 	}
 }
 
-// objectKeys returns the keys of a JSON object in a stable order.
-// Keys are collected from the first occurrence, preserving insertion order where possible.
-func objectKeys(obj map[string]interface{}) []string {
-	keys := make([]string, 0, len(obj))
-	for k := range obj {
-		keys = append(keys, k)
+// extractDataArray unwraps a response object: if the data is a map with a
+// "data" key whose value is an array, it returns that array. Otherwise it
+// returns the original data unchanged.
+func extractDataArray(data interface{}) interface{} {
+	if obj, ok := data.(orderedMap); ok {
+		for _, e := range obj {
+			if e.Key == "data" {
+				if arr, ok := e.Value.([]interface{}); ok {
+					return arr
+				}
+			}
+		}
 	}
-	return keys
+	if obj, ok := data.(map[string]interface{}); ok {
+		if arr, ok := obj["data"].([]interface{}); ok {
+			return arr
+		}
+	}
+	return data
+}
+
+// orderedMap preserves JSON object key order.
+type orderedMap []orderedMapEntry
+
+type orderedMapEntry struct {
+	Key   string
+	Value interface{}
+}
+
+func (om orderedMap) keys() []string {
+	ks := make([]string, len(om))
+	for i, e := range om {
+		ks[i] = e.Key
+	}
+	return ks
+}
+
+func (om orderedMap) get(key string) interface{} {
+	for _, e := range om {
+		if e.Key == key {
+			return e.Value
+		}
+	}
+	return nil
+}
+
+// decodeJSON decodes JSON into an ordered representation.
+// Objects become orderedMap (preserving key order), arrays become []interface{},
+// and scalars are represented as their natural Go types.
+func decodeJSON(b []byte) (interface{}, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	return decodeValue(dec)
+}
+
+func decodeValue(dec *json.Decoder) (interface{}, error) {
+	t, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	switch delim := t.(type) {
+	case json.Delim:
+		switch delim {
+		case '{':
+			om := orderedMap{}
+			for dec.More() {
+				keyToken, err := dec.Token()
+				if err != nil {
+					return nil, err
+				}
+				key := keyToken.(string)
+				val, err := decodeValue(dec)
+				if err != nil {
+					return nil, err
+				}
+				om = append(om, orderedMapEntry{Key: key, Value: val})
+			}
+			if _, err := dec.Token(); err != nil {
+				return nil, err
+			}
+			return om, nil
+		case '[':
+			arr := []interface{}{}
+			for dec.More() {
+				val, err := decodeValue(dec)
+				if err != nil {
+					return nil, err
+				}
+				arr = append(arr, val)
+			}
+			if _, err := dec.Token(); err != nil {
+				return nil, err
+			}
+			return arr, nil
+		}
+	}
+
+	return t, nil
+}
+
+// orderedKeys returns map keys sorted alphabetically (fallback when no orderedMap available).
+func orderedKeys(obj map[string]interface{}) []string {
+	ks := make([]string, 0, len(obj))
+	for k := range obj {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
 
 func init() {
