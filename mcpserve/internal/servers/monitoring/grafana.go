@@ -431,3 +431,246 @@ func (c *GrafanaClient) QueryMetricSummary(ctx context.Context, promQL string, v
 
 	return res, nil
 }
+
+type MapEntry struct {
+	Key   string
+	Value interface{}
+}
+
+type OrderedMap []MapEntry
+
+func (om OrderedMap) MarshalJSON() ([]byte, error) {
+	var sb strings.Builder
+	sb.WriteByte('{')
+	for i, entry := range om {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		kBytes, err := json.Marshal(entry.Key)
+		if err != nil {
+			return nil, err
+		}
+		sb.Write(kBytes)
+		sb.WriteByte(':')
+		vBytes, err := json.Marshal(entry.Value)
+		if err != nil {
+			return nil, err
+		}
+		sb.Write(vBytes)
+	}
+	sb.WriteByte('}')
+	return []byte(sb.String()), nil
+}
+
+func (om OrderedMap) Get(key string) (interface{}, bool) {
+	for _, entry := range om {
+		if entry.Key == key {
+			return entry.Value, true
+		}
+	}
+	return nil, false
+}
+
+type QueryMetricHistoryResponse struct {
+	Meta struct {
+		TimeFrom           string `json:"time_from"`
+		TimeTo             string `json:"time_to"`
+		GrafanaExplorerURL string `json:"grafana_explorer_url"`
+	} `json:"meta"`
+	Data []OrderedMap `json:"data"`
+}
+
+func formatTime(t time.Time, duration time.Duration, stepSeconds int) string {
+	if duration > 24*time.Hour {
+		return t.Format("2006-01-02 15:04")
+	}
+	if stepSeconds < 60 {
+		return t.Format("15:04:05")
+	}
+	return t.Format("15:04")
+}
+
+func (c *GrafanaClient) QueryMetricHistory(ctx context.Context, promQLs []string, vars map[string]string, legendTemplate string, timeFrom, timeTo string) (*QueryMetricHistoryResponse, error) {
+	now := time.Now()
+	toTime, err := parseFlexibleTime(timeTo, now, false)
+	if err != nil {
+		return nil, fmt.Errorf("invalid time_to: %w", err)
+	}
+	fromTime, err := parseFlexibleTime(timeFrom, toTime, true)
+	if err != nil {
+		return nil, fmt.Errorf("invalid time_from: %w", err)
+	}
+
+	if !toTime.After(fromTime) {
+		return nil, fmt.Errorf("time_to must be after time_from")
+	}
+
+	duration := toTime.Sub(fromTime)
+	stepSeconds := int(duration.Seconds() / 60)
+	if stepSeconds < 15 {
+		stepSeconds = 15
+	}
+	step := fmt.Sprintf("%ds", stepSeconds)
+
+	// timeMap: unixTimestamp -> legend -> value
+	timeMap := make(map[int64]map[string]float64)
+
+	var expandedQueries []string
+
+	for _, promQL := range promQLs {
+		expandedQL := expandVariables(promQL, vars)
+		expandedQueries = append(expandedQueries, expandedQL)
+
+		proxyURL := fmt.Sprintf("%s/api/datasources/proxy/uid/%s/api/v1/query_range", strings.TrimSuffix(c.baseURL, "/"), c.datasourceUID)
+		u, err := url.Parse(proxyURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid proxy URL: %w", err)
+		}
+
+		q := u.Query()
+		q.Set("query", expandedQL)
+		q.Set("start", fromTime.Format(time.RFC3339))
+		q.Set("end", toTime.Format(time.RFC3339))
+		q.Set("step", step)
+		u.RawQuery = q.Encode()
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+c.apiToken)
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("request to Grafana failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("grafana API returned non-OK status: %s (body: %s)", resp.Status, string(b))
+		}
+
+		var promResp PrometheusResponse
+		if err := json.NewDecoder(resp.Body).Decode(&promResp); err != nil {
+			return nil, fmt.Errorf("failed to decode response: %w", err)
+		}
+
+		if promResp.Status == "error" {
+			return nil, fmt.Errorf("prometheus error: %s (%s)", promResp.Error, promResp.ErrorType)
+		}
+
+		for _, result := range promResp.Data.Result {
+			legend := formatLegend(legendTemplate, result.Metric)
+
+			for _, valPair := range result.Values {
+				if len(valPair) < 2 {
+					continue
+				}
+				tsFloat, ok := valPair[0].(float64)
+				if !ok {
+					continue
+				}
+				valStr, ok := valPair[1].(string)
+				if !ok {
+					continue
+				}
+				v, err := strconv.ParseFloat(valStr, 64)
+				if err != nil {
+					continue
+				}
+
+				ts := int64(tsFloat)
+				if _, ok := timeMap[ts]; !ok {
+					timeMap[ts] = make(map[string]float64)
+				}
+				timeMap[ts][legend] = v
+			}
+		}
+	}
+
+	var timestamps []int64
+	for ts := range timeMap {
+		timestamps = append(timestamps, ts)
+	}
+	sort.Slice(timestamps, func(i, j int) bool {
+		return timestamps[i] < timestamps[j]
+	})
+
+	var data []OrderedMap
+	for _, ts := range timestamps {
+		var item OrderedMap
+		t := time.Unix(ts, 0).In(fromTime.Location())
+		item = append(item, MapEntry{Key: "time", Value: formatTime(t, duration, stepSeconds)})
+
+		// Sort legends to ensure deterministic output order for other keys
+		var legends []string
+		for legend := range timeMap[ts] {
+			legends = append(legends, legend)
+		}
+		sort.Strings(legends)
+
+		for _, legend := range legends {
+			item = append(item, MapEntry{Key: legend, Value: timeMap[ts][legend]})
+		}
+		data = append(data, item)
+	}
+
+	// Construct Grafana Explorer URL
+	type ExploreRange struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	type ExploreDatasource struct {
+		Type string `json:"type"`
+		UID  string `json:"uid"`
+	}
+	type ExploreQuery struct {
+		RefID      string            `json:"refId"`
+		Expr       string            `json:"expr"`
+		Datasource ExploreDatasource `json:"datasource"`
+	}
+	type ExploreLeft struct {
+		Datasource string         `json:"datasource"`
+		Queries    []ExploreQuery `json:"queries"`
+		Range      ExploreRange   `json:"range"`
+	}
+
+	var exploreQueries []ExploreQuery
+	for i, eq := range expandedQueries {
+		refID := string(rune('A' + i))
+		exploreQueries = append(exploreQueries, ExploreQuery{
+			RefID: refID,
+			Expr:  eq,
+			Datasource: ExploreDatasource{
+				Type: "prometheus",
+				UID:  c.datasourceUID,
+			},
+		})
+	}
+
+	left := ExploreLeft{
+		Datasource: c.datasourceUID,
+		Queries:    exploreQueries,
+		Range: ExploreRange{
+			From: fromTime.Format(time.RFC3339),
+			To:   toTime.Format(time.RFC3339),
+		},
+	}
+
+	leftJSON, err := json.Marshal(left)
+	var explorerURL string
+	if err == nil {
+		baseURL := strings.TrimSuffix(c.baseURL, "/")
+		explorerURL = fmt.Sprintf("%s/explore?left=%s", baseURL, url.QueryEscape(string(leftJSON)))
+	}
+
+	res := &QueryMetricHistoryResponse{}
+	res.Meta.TimeFrom = fromTime.Format(time.RFC3339)
+	res.Meta.TimeTo = toTime.Format(time.RFC3339)
+	res.Meta.GrafanaExplorerURL = explorerURL
+	res.Data = data
+
+	return res, nil
+}
+

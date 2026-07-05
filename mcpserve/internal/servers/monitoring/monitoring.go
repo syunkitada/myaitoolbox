@@ -421,6 +421,118 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		}, nil
 	}))
 
+	s.AddTool(&mcp.Tool{
+		Name:        "query_metric_history",
+		Description: "Query prometheus metrics via Grafana API and return time-aligned data points",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"query": map[string]interface{}{
+					"oneOf": []interface{}{
+						map[string]interface{}{"type": "string"},
+						map[string]interface{}{
+							"type": "array",
+							"items": map[string]interface{}{
+								"type": "string",
+							},
+						},
+					},
+					"description": "PromQL query or queries to run",
+				},
+				"vars": map[string]interface{}{
+					"type":        "string",
+					"description": "Comma-separated key=value pairs, e.g. host=\"server1\",env=\"prod\"",
+				},
+				"legend": map[string]interface{}{
+					"type":        "string",
+					"description": "Legend template with labels in curly braces, e.g. {{host}}",
+				},
+				"time_from": map[string]interface{}{
+					"type":        "string",
+					"description": "RFC3339 or relative duration (e.g. now-1h, 1h, 1d). Default is now-1h.",
+				},
+				"time_to": map[string]interface{}{
+					"type":        "string",
+					"description": "RFC3339 or relative duration (e.g. now, 5m). Default is now.",
+				},
+			},
+			"required": []string{"query"},
+		},
+	}, wrapTool(func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Invalid arguments format"}}}, nil
+		}
+
+		var queries []string
+		if qRaw, ok := args["query"]; ok {
+			if qStr, ok := qRaw.(string); ok {
+				queries = []string{qStr}
+			} else if qSlice, ok := qRaw.([]interface{}); ok {
+				for _, item := range qSlice {
+					if itemStr, ok := item.(string); ok {
+						queries = append(queries, itemStr)
+					}
+				}
+			}
+		}
+
+		if len(queries) == 0 {
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "query is required"}}}, nil
+		}
+
+		varsStr, _ := args["vars"].(string)
+		legend, _ := args["legend"].(string)
+		timeFrom, _ := args["time_from"].(string)
+		timeTo, _ := args["time_to"].(string)
+
+		vars := make(map[string]string)
+		if varsStr != "" {
+			re := regexp.MustCompile(`([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(?:"([^"]*)"|([^,\s]+))`)
+			matches := re.FindAllStringSubmatch(varsStr, -1)
+			for _, m := range matches {
+				k := m[1]
+				v := m[2]
+				if v == "" {
+					v = m[3]
+				}
+				vars[k] = v
+			}
+		}
+
+		grafanaURL := os.Getenv("GRAFANA_URL")
+		grafanaAPIToken := os.Getenv("GRAFANA_API_TOKEN")
+		grafanaDatasourceUID := os.Getenv("GRAFANA_DATASOURCE_UID")
+
+		if grafanaURL == "" || grafanaAPIToken == "" || grafanaDatasourceUID == "" {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "GRAFANA_URL, GRAFANA_API_TOKEN, and GRAFANA_DATASOURCE_UID must be set in environment variables"}},
+			}, nil
+		}
+
+		client := NewGrafanaClient(grafanaURL, grafanaAPIToken, grafanaDatasourceUID)
+		res, err := client.QueryMetricHistory(ctx, queries, vars, legend, timeFrom, timeTo)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to query metric history: %v", err)}},
+			}, nil
+		}
+
+		b, err := json.MarshalIndent(res, "", "  ")
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to encode result: %v", err)}},
+			}, nil
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(b)}},
+		}, nil
+	}))
+
 	return s
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -215,3 +216,135 @@ func TestQueryMetricSummary(t *testing.T) {
 		t.Errorf("Expected GrafanaExplorerURL to be populated")
 	}
 }
+
+func TestQueryMetricHistory(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path != "/api/datasources/proxy/uid/prom-123/api/v1/query_range" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		query := r.URL.Query().Get("query")
+		resp := PrometheusResponse{
+			Status: "success",
+		}
+		resp.Data.ResultType = "matrix"
+
+		if query == "cpu_usage" {
+			resp.Data.Result = []struct {
+				Metric map[string]string `json:"metric"`
+				Values [][]interface{}   `json:"values"`
+			}{
+				{
+					Metric: map[string]string{
+						"host": "server-a",
+					},
+					Values: [][]interface{}{
+						{1783270800.0, "10"},
+						{1783270860.0, "20"},
+					},
+				},
+			}
+		} else if query == "memory_usage" {
+			resp.Data.Result = []struct {
+				Metric map[string]string `json:"metric"`
+				Values [][]interface{}   `json:"values"`
+			}{
+				{
+					Metric: map[string]string{
+						"host": "server-b",
+					},
+					Values: [][]interface{}{
+						{1783270800.0, "100"},
+						{1783270860.0, "200"},
+					},
+				},
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockServer.Close()
+
+	client := NewGrafanaClient(mockServer.URL, "test-token", "prom-123")
+
+	origLocal := time.Local
+	time.Local = time.UTC
+	defer func() {
+		time.Local = origLocal
+	}()
+
+	res, err := client.QueryMetricHistory(
+		context.Background(),
+		[]string{"cpu_usage", "memory_usage"},
+		nil,
+		"{{host}}",
+		"2026-07-05T17:00:00Z",
+		"2026-07-05T18:00:00Z",
+	)
+
+	if err != nil {
+		t.Fatalf("QueryMetricHistory failed: %v", err)
+	}
+
+	if len(res.Data) != 2 {
+		t.Fatalf("Expected 2 data points, got %d", len(res.Data))
+	}
+
+	dp1 := res.Data[0]
+	t1, _ := dp1.Get("time")
+	if t1 != "17:00" {
+		t.Errorf("Expected first time to be 17:00, got %v", t1)
+	}
+	sa1, _ := dp1.Get("server-a")
+	if sa1 != 10.0 {
+		t.Errorf("Expected server-a to be 10, got %v", sa1)
+	}
+	sb1, _ := dp1.Get("server-b")
+	if sb1 != 100.0 {
+		t.Errorf("Expected server-b to be 100, got %v", sb1)
+	}
+
+	// Verify that the time key is serialized first in JSON output
+	dp1JSON, err := json.Marshal(dp1)
+	if err != nil {
+		t.Fatalf("Failed to marshal dp1: %v", err)
+	}
+	if !strings.HasPrefix(string(dp1JSON), `{"time":"17:00"`) {
+		t.Errorf("Expected time to be the first key in JSON, got: %s", string(dp1JSON))
+	}
+
+	dp2 := res.Data[1]
+	t2, _ := dp2.Get("time")
+	if t2 != "17:01" {
+		t.Errorf("Expected second time to be 17:01, got %v", t2)
+	}
+	sa2, _ := dp2.Get("server-a")
+	if sa2 != 20.0 {
+		t.Errorf("Expected server-a to be 20, got %v", sa2)
+	}
+	sb2, _ := dp2.Get("server-b")
+	if sb2 != 200.0 {
+		t.Errorf("Expected server-b to be 200, got %v", sb2)
+	}
+
+	if res.Meta.TimeFrom != "2026-07-05T17:00:00Z" {
+		t.Errorf("Expected Meta.TimeFrom 2026-07-05T17:00:00Z, got %s", res.Meta.TimeFrom)
+	}
+	if res.Meta.TimeTo != "2026-07-05T18:00:00Z" {
+		t.Errorf("Expected Meta.TimeTo 2026-07-05T18:00:00Z, got %s", res.Meta.TimeTo)
+	}
+	if res.Meta.GrafanaExplorerURL == "" {
+		t.Errorf("Expected GrafanaExplorerURL to be populated")
+	}
+}
+
