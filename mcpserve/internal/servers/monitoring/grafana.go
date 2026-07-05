@@ -59,9 +59,11 @@ type MetricSummary struct {
 
 type QueryMetricSummaryResponse struct {
 	Meta struct {
-		From               string `json:"from"`
-		To                 string `json:"to"`
-		GrafanaExplorerURL string `json:"grafana_explorer_url"`
+		Query              string   `json:"query"`
+		From               string   `json:"from"`
+		To                 string   `json:"to"`
+		Outputs            []string `json:"outputs"`
+		GrafanaExplorerURL string   `json:"grafana_explore_url"`
 	} `json:"meta"`
 	Data []MetricSummary `json:"data"`
 }
@@ -417,16 +419,18 @@ func (c *GrafanaClient) QueryMetricSummary(ctx context.Context, promQL string, v
 	}
 
 	leftJSON, err := json.Marshal(left)
-	var explorerURL string
+	var exploreURL string
 	if err == nil {
 		baseURL := strings.TrimSuffix(c.baseURL, "/")
-		explorerURL = fmt.Sprintf("%s/explore?left=%s", baseURL, url.QueryEscape(string(leftJSON)))
+		exploreURL = fmt.Sprintf("%s/explore?left=%s", baseURL, url.QueryEscape(string(leftJSON)))
 	}
 
 	res := &QueryMetricSummaryResponse{}
+	res.Meta.Query = expandedQL
 	res.Meta.From = fromTime.Format(time.RFC3339)
 	res.Meta.To = toTime.Format(time.RFC3339)
-	res.Meta.GrafanaExplorerURL = explorerURL
+	res.Meta.Outputs = []string{"grafana_explore_url"}
+	res.Meta.GrafanaExplorerURL = exploreURL
 	res.Data = data
 
 	return res, nil
@@ -471,13 +475,18 @@ func (om OrderedMap) Get(key string) (interface{}, bool) {
 	return nil, false
 }
 
+type QueryMetricHistoryMeta struct {
+	Queries            []string `json:"queries"`
+	Legend             string   `json:"legend,omitempty"`
+	TimeFrom           string   `json:"time_from"`
+	TimeTo             string   `json:"time_to"`
+	Outputs            []string `json:"outputs"`
+	GrafanaExplorerURL string   `json:"grafana_explore_url"`
+}
+
 type QueryMetricHistoryResponse struct {
-	Meta struct {
-		TimeFrom           string `json:"time_from"`
-		TimeTo             string `json:"time_to"`
-		GrafanaExplorerURL string `json:"grafana_explorer_url"`
-	} `json:"meta"`
-	Data []OrderedMap `json:"data"`
+	Meta QueryMetricHistoryMeta `json:"meta"`
+	Data []OrderedMap           `json:"data"`
 }
 
 func formatTime(t time.Time, duration time.Duration, stepSeconds int) string {
@@ -512,8 +521,12 @@ func (c *GrafanaClient) QueryMetricHistory(ctx context.Context, promQLs []string
 	}
 	step := fmt.Sprintf("%ds", stepSeconds)
 
-	// timeMap: unixTimestamp -> legend -> value
-	timeMap := make(map[int64]map[string]float64)
+	multiQuery := len(promQLs) > 1
+
+	// singleMode: timeMap[ts][legend] = value
+	// multiMode:  multiMap[legend][ts][queryName] = value
+	timeMap := make(map[int64]map[string]float64)               // single-query mode
+	multiMap := make(map[string]map[int64]map[string]float64)   // multi-query mode
 
 	var expandedQueries []string
 
@@ -560,60 +573,134 @@ func (c *GrafanaClient) QueryMetricHistory(ctx context.Context, promQLs []string
 			return nil, fmt.Errorf("prometheus error: %s (%s)", promResp.Error, promResp.ErrorType)
 		}
 
-		for _, result := range promResp.Data.Result {
-			legend := formatLegend(legendTemplate, result.Metric)
-
-			for _, valPair := range result.Values {
-				if len(valPair) < 2 {
-					continue
+		if multiQuery {
+			// Validate that all series resolve to exactly one legend value per query
+			legendSet := make(map[string]struct{})
+			for _, result := range promResp.Data.Result {
+				legend := formatLegend(legendTemplate, result.Metric)
+				legendSet[legend] = struct{}{}
+			}
+			// Collect all legends across queries into multiMap
+			for _, result := range promResp.Data.Result {
+				legend := formatLegend(legendTemplate, result.Metric)
+				if _, ok := multiMap[legend]; !ok {
+					multiMap[legend] = make(map[int64]map[string]float64)
 				}
-				tsFloat, ok := valPair[0].(float64)
-				if !ok {
-					continue
+				for _, valPair := range result.Values {
+					if len(valPair) < 2 {
+						continue
+					}
+					tsFloat, ok := valPair[0].(float64)
+					if !ok {
+						continue
+					}
+					valStr, ok := valPair[1].(string)
+					if !ok {
+						continue
+					}
+					v, err := strconv.ParseFloat(valStr, 64)
+					if err != nil {
+						continue
+					}
+					ts := int64(tsFloat)
+					if _, ok := multiMap[legend][ts]; !ok {
+						multiMap[legend][ts] = make(map[string]float64)
+					}
+					multiMap[legend][ts][expandedQL] = v
 				}
-				valStr, ok := valPair[1].(string)
-				if !ok {
-					continue
+			}
+		} else {
+			for _, result := range promResp.Data.Result {
+				legend := formatLegend(legendTemplate, result.Metric)
+				for _, valPair := range result.Values {
+					if len(valPair) < 2 {
+						continue
+					}
+					tsFloat, ok := valPair[0].(float64)
+					if !ok {
+						continue
+					}
+					valStr, ok := valPair[1].(string)
+					if !ok {
+						continue
+					}
+					v, err := strconv.ParseFloat(valStr, 64)
+					if err != nil {
+						continue
+					}
+					ts := int64(tsFloat)
+					if _, ok := timeMap[ts]; !ok {
+						timeMap[ts] = make(map[string]float64)
+					}
+					timeMap[ts][legend] = v
 				}
-				v, err := strconv.ParseFloat(valStr, 64)
-				if err != nil {
-					continue
-				}
-
-				ts := int64(tsFloat)
-				if _, ok := timeMap[ts]; !ok {
-					timeMap[ts] = make(map[string]float64)
-				}
-				timeMap[ts][legend] = v
 			}
 		}
 	}
 
-	var timestamps []int64
-	for ts := range timeMap {
-		timestamps = append(timestamps, ts)
+	// Validate multi-query: all legends must resolve to a single value
+	if multiQuery && len(multiMap) != 1 {
+		var foundLegends []string
+		for l := range multiMap {
+			foundLegends = append(foundLegends, l)
+		}
+		sort.Strings(foundLegends)
+		return nil, fmt.Errorf("multi-query requires legend to resolve to exactly one value, got %d: %v", len(multiMap), foundLegends)
 	}
-	sort.Slice(timestamps, func(i, j int) bool {
-		return timestamps[i] < timestamps[j]
-	})
 
 	var data []OrderedMap
-	for _, ts := range timestamps {
-		var item OrderedMap
-		t := time.Unix(ts, 0).In(fromTime.Location())
-		item = append(item, MapEntry{Key: "time", Value: formatTime(t, duration, stepSeconds)})
+	var resolvedLegend string
 
-		// Sort legends to ensure deterministic output order for other keys
-		var legends []string
-		for legend := range timeMap[ts] {
-			legends = append(legends, legend)
+	if multiQuery {
+		// Multi-query mode: one legend, columns = query names
+		for legend := range multiMap {
+			resolvedLegend = legend
 		}
-		sort.Strings(legends)
+		tsMap := multiMap[resolvedLegend]
 
-		for _, legend := range legends {
-			item = append(item, MapEntry{Key: legend, Value: timeMap[ts][legend]})
+		var timestamps []int64
+		for ts := range tsMap {
+			timestamps = append(timestamps, ts)
 		}
-		data = append(data, item)
+		sort.Slice(timestamps, func(i, j int) bool {
+			return timestamps[i] < timestamps[j]
+		})
+
+		for _, ts := range timestamps {
+			var item OrderedMap
+			t := time.Unix(ts, 0).In(fromTime.Location())
+			item = append(item, MapEntry{Key: "time", Value: formatTime(t, duration, stepSeconds)})
+			for _, eq := range expandedQueries {
+				item = append(item, MapEntry{Key: eq, Value: tsMap[ts][eq]})
+			}
+			data = append(data, item)
+		}
+	} else {
+		// Single-query mode: columns = legend values
+		var timestamps []int64
+		for ts := range timeMap {
+			timestamps = append(timestamps, ts)
+		}
+		sort.Slice(timestamps, func(i, j int) bool {
+			return timestamps[i] < timestamps[j]
+		})
+
+		for _, ts := range timestamps {
+			var item OrderedMap
+			t := time.Unix(ts, 0).In(fromTime.Location())
+			item = append(item, MapEntry{Key: "time", Value: formatTime(t, duration, stepSeconds)})
+
+			var legends []string
+			for legend := range timeMap[ts] {
+				legends = append(legends, legend)
+			}
+			sort.Strings(legends)
+
+			for _, legend := range legends {
+				item = append(item, MapEntry{Key: legend, Value: timeMap[ts][legend]})
+			}
+			data = append(data, item)
+		}
 	}
 
 	// Construct Grafana Explorer URL
@@ -659,16 +746,19 @@ func (c *GrafanaClient) QueryMetricHistory(ctx context.Context, promQLs []string
 	}
 
 	leftJSON, err := json.Marshal(left)
-	var explorerURL string
+	var exploreURL string
 	if err == nil {
 		baseURL := strings.TrimSuffix(c.baseURL, "/")
-		explorerURL = fmt.Sprintf("%s/explore?left=%s", baseURL, url.QueryEscape(string(leftJSON)))
+		exploreURL = fmt.Sprintf("%s/explore?left=%s", baseURL, url.QueryEscape(string(leftJSON)))
 	}
 
 	res := &QueryMetricHistoryResponse{}
+	res.Meta.Queries = expandedQueries
+	res.Meta.Legend = resolvedLegend
 	res.Meta.TimeFrom = fromTime.Format(time.RFC3339)
 	res.Meta.TimeTo = toTime.Format(time.RFC3339)
-	res.Meta.GrafanaExplorerURL = explorerURL
+	res.Meta.Outputs = []string{"grafana_explore_url"}
+	res.Meta.GrafanaExplorerURL = exploreURL
 	res.Data = data
 
 	return res, nil

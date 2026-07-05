@@ -12,9 +12,7 @@
 ## インストール
 
 ```bash
-git clone <repository>
-cd mcpserve
-go build -o mcpserve cmd/mcpserve/main.go
+go install ./cmd/mcpserve
 ```
 
 ## 使い方

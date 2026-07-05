@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -101,10 +102,16 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		if err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to encode result: %v", err)}}}, nil
 		}
-		if len(filtered) == 0 {
-			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "[]"}}}, nil
+		meta := map[string]interface{}{
+			"status":    status,
+			"alertname": alertname,
+			"host":      host,
+			"count":     len(filtered),
 		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil
+		if len(filtered) == 0 {
+			return newStructuredResult("[]", meta, []interface{}{}), nil
+		}
+		return newStructuredResult(string(b), meta, filtered), nil
 	}))
 
 	s.AddTool(&mcp.Tool{
@@ -195,7 +202,13 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			slog.Time("end", endTime),
 			slog.String("by", createdBy),
 		)
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Created silence with ID: %s", id)}}}, nil
+		meta := map[string]interface{}{
+			"matchers":   matchers,
+			"start":      startTime.Format(time.RFC3339),
+			"end":        endTime.Format(time.RFC3339),
+			"created_by": createdBy,
+		}
+		return newStructuredResult(fmt.Sprintf("Created silence with ID: %s", id), meta, map[string]interface{}{"id": id}), nil
 	}))
 
 	s.AddTool(&mcp.Tool{
@@ -263,10 +276,15 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		if err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to encode result: %v", err)}}}, nil
 		}
-		if len(filtered) == 0 {
-			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "[]"}}}, nil
+		meta := map[string]interface{}{
+			"alertname": alertname,
+			"host":      host,
+			"count":     len(filtered),
 		}
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil
+		if len(filtered) == 0 {
+			return newStructuredResult("[]", meta, []interface{}{}), nil
+		}
+		return newStructuredResult(string(b), meta, filtered), nil
 	}))
 
 	s.AddTool(&mcp.Tool{
@@ -297,7 +315,11 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		}
 
 		slog.Info("silence deleted", slog.String("id", id))
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted silence %s", id)}}}, nil
+		meta := map[string]interface{}{
+			"status": "deleted",
+			"id":     id,
+		}
+		return newStructuredResult(fmt.Sprintf("Deleted silence %s", id), meta, nil), nil
 	}))
 
 	s.AddTool(&mcp.Tool{
@@ -310,9 +332,10 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 					"type":        "string",
 					"description": "PromQL query to run",
 				},
-				"vars": map[string]interface{}{
-					"type":        "string",
-					"description": "Comma-separated key=value pairs, e.g. host=\"server1\",env=\"prod\"",
+				"var": map[string]interface{}{
+					"type":        "array",
+					"items":       map[string]interface{}{"type": "string"},
+					"description": "Key=value pairs, e.g. host=server1, env=prod",
 				},
 				"legend": map[string]interface{}{
 					"type":        "string",
@@ -356,7 +379,6 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "query is required"}}}, nil
 		}
 
-		varsStr, _ := args["vars"].(string)
 		legend, _ := args["legend"].(string)
 		sortField, _ := args["sort"].(string)
 		reverse, _ := args["reverse"].(bool)
@@ -375,16 +397,17 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		timeTo, _ := args["time_to"].(string)
 
 		vars := make(map[string]string)
-		if varsStr != "" {
-			re := regexp.MustCompile(`([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(?:"([^"]*)"|([^,\s]+))`)
-			matches := re.FindAllStringSubmatch(varsStr, -1)
-			for _, m := range matches {
-				k := m[1]
-				v := m[2]
-				if v == "" {
-					v = m[3]
+		if varSlice, ok := args["var"].([]interface{}); ok {
+			re := regexp.MustCompile(`^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)\s*$`)
+			for _, item := range varSlice {
+				itemStr, ok := item.(string)
+				if !ok {
+					continue
 				}
-				vars[k] = v
+				m := re.FindStringSubmatch(itemStr)
+				if m != nil {
+					vars[m[1]] = strings.TrimSpace(m[2])
+				}
 			}
 		}
 
@@ -416,9 +439,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			}, nil
 		}
 
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: string(b)}},
-		}, nil
+		return newStructuredResult(string(b), res.Meta, res.Data), nil
 	}))
 
 	s.AddTool(&mcp.Tool{
@@ -428,20 +449,16 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			"type": "object",
 			"properties": map[string]interface{}{
 				"query": map[string]interface{}{
-					"oneOf": []interface{}{
-						map[string]interface{}{"type": "string"},
-						map[string]interface{}{
-							"type": "array",
-							"items": map[string]interface{}{
-								"type": "string",
-							},
-						},
+					"type": "array",
+					"items": map[string]interface{}{
+						"type": "string",
 					},
 					"description": "PromQL query or queries to run",
 				},
-				"vars": map[string]interface{}{
-					"type":        "string",
-					"description": "Comma-separated key=value pairs, e.g. host=\"server1\",env=\"prod\"",
+				"var": map[string]interface{}{
+					"type":        "array",
+					"items":       map[string]interface{}{"type": "string"},
+					"description": "Key=value pairs, e.g. host=server1, env=prod",
 				},
 				"legend": map[string]interface{}{
 					"type":        "string",
@@ -465,14 +482,10 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		}
 
 		var queries []string
-		if qRaw, ok := args["query"]; ok {
-			if qStr, ok := qRaw.(string); ok {
-				queries = []string{qStr}
-			} else if qSlice, ok := qRaw.([]interface{}); ok {
-				for _, item := range qSlice {
-					if itemStr, ok := item.(string); ok {
-						queries = append(queries, itemStr)
-					}
+		if qSlice, ok := args["query"].([]interface{}); ok {
+			for _, item := range qSlice {
+				if itemStr, ok := item.(string); ok {
+					queries = append(queries, itemStr)
 				}
 			}
 		}
@@ -481,22 +494,22 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "query is required"}}}, nil
 		}
 
-		varsStr, _ := args["vars"].(string)
 		legend, _ := args["legend"].(string)
 		timeFrom, _ := args["time_from"].(string)
 		timeTo, _ := args["time_to"].(string)
 
 		vars := make(map[string]string)
-		if varsStr != "" {
-			re := regexp.MustCompile(`([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(?:"([^"]*)"|([^,\s]+))`)
-			matches := re.FindAllStringSubmatch(varsStr, -1)
-			for _, m := range matches {
-				k := m[1]
-				v := m[2]
-				if v == "" {
-					v = m[3]
+		if varSlice, ok := args["var"].([]interface{}); ok {
+			re := regexp.MustCompile(`^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)\s*$`)
+			for _, item := range varSlice {
+				itemStr, ok := item.(string)
+				if !ok {
+					continue
 				}
-				vars[k] = v
+				m := re.FindStringSubmatch(itemStr)
+				if m != nil {
+					vars[m[1]] = strings.TrimSpace(m[2])
+				}
 			}
 		}
 
@@ -528,12 +541,20 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			}, nil
 		}
 
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: string(b)}},
-		}, nil
+		return newStructuredResult(string(b), res.Meta, res.Data), nil
 	}))
 
 	return s
+}
+
+func newStructuredResult(text string, meta, data interface{}) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		StructuredContent: map[string]interface{}{
+			"meta": meta,
+			"data": data,
+		},
+	}
 }
 
 // wrapTool is a helper wrapper to log details of MCP tool execution using slog.

@@ -35,12 +35,6 @@ AI Agent
 ## インストール
 
 ```bash
-go install github.com/syunkitada/myaitoolbox/mcpctl/cmd/mcpctl@latest
-```
-
-ローカルでビルドする場合は、以下のコマンドを実行してください。
-
-```bash
 go install ./cmd/mcpctl
 ```
 
@@ -50,6 +44,7 @@ go install ./cmd/mcpctl
 
 - [AIエージェント向けガイド (AGENTS.md)](./docs/AGENTS.md)
 - [設定ファイルとプロファイル管理 (CONFIGURATION.md)](./docs/CONFIGURATION.md)
+- [詳細仕様書 (SPECIFICATION.md)](./docs/SPECIFICATION.md)
 
 ## 基本的なワークフロー
 
