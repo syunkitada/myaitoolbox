@@ -59,6 +59,20 @@ var callCmd = &cobra.Command{
 			return
 		}
 
+		// pre-extract profile name for schema lookup
+		profName := ""
+		outputFormat := "tsv"
+		for i := 1; i < len(args); i++ {
+			if (args[i] == "--profile" || args[i] == "-p") && i+1 < len(args) {
+				profName = args[i+1]
+			}
+			if (args[i] == "--output" || args[i] == "-o") && i+1 < len(args) {
+				outputFormat = args[i+1]
+			}
+		}
+
+		paramTypes := getParamTypes(profName, serverName, toolName)
+
 		params := make(map[string]interface{})
 
 		// parse args
@@ -89,7 +103,12 @@ var callCmd = &cobra.Command{
 			if strings.HasPrefix(arg, "--") {
 				key := strings.TrimPrefix(arg, "--")
 				if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-					params[key] = args[i+1]
+					val := args[i+1]
+					if paramTypes[key] == "array" {
+						params[key] = parseArrayArg(val, params[key])
+					} else {
+						params[key] = val
+					}
 					i++
 				} else {
 					params[key] = true
@@ -97,7 +116,12 @@ var callCmd = &cobra.Command{
 			} else if strings.HasPrefix(arg, "-") {
 				key := strings.TrimPrefix(arg, "-")
 				if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-					params[key] = args[i+1]
+					val := args[i+1]
+					if paramTypes[key] == "array" {
+						params[key] = parseArrayArg(val, params[key])
+					} else {
+						params[key] = val
+					}
 					i++
 				} else {
 					params[key] = true
@@ -105,25 +129,11 @@ var callCmd = &cobra.Command{
 			}
 		}
 
-		// extract global flags (profile and output format)
-		profName := ""
-		outputFormat := "tsv"
-		for i := 1; i < len(args); i++ {
-			if args[i] == "--profile" || args[i] == "-p" {
-				if i+1 < len(args) {
-					profName = args[i+1]
-					delete(params, "profile")
-					delete(params, "p")
-				}
-			}
-			if args[i] == "--output" || args[i] == "-o" {
-				if i+1 < len(args) {
-					outputFormat = args[i+1]
-					delete(params, "output")
-					delete(params, "o")
-				}
-			}
-		}
+		// remove global flags from params
+		delete(params, "profile")
+		delete(params, "p")
+		delete(params, "output")
+		delete(params, "o")
 
 		// validate output format
 		switch outputFormat {
@@ -208,12 +218,79 @@ func printParamList(toolPath string) {
 		if typ == "" {
 			typ = "any"
 		}
+		if typ == "array" {
+			if items, ok := prop["items"].(map[string]interface{}); ok {
+				if itemType, ok := items["type"].(string); ok {
+					typ = "array[" + itemType + "]"
+				}
+			}
+		}
 		req := ""
 		if requiredSet[name] {
 			req = " (required)"
 		}
 		fmt.Printf("  %s: %s%s\n", name, typ, req)
 	}
+}
+
+// getParamTypes fetches the tool's InputSchema and returns a map of property name to JSON Schema type.
+func getParamTypes(profName, serverName, toolName string) map[string]string {
+	p, err := profile.ResolveProfile(profName, "")
+	if err != nil {
+		return nil
+	}
+
+	entry, err := discovery.GetToolInfo(context.Background(), p, serverName, toolName)
+	if err != nil {
+		return nil
+	}
+
+	schema, ok := entry.Tool.InputSchema.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	props, _ := schema["properties"].(map[string]interface{})
+	if len(props) == 0 {
+		return nil
+	}
+
+	paramTypes := make(map[string]string)
+	for name, propRaw := range props {
+		prop, _ := propRaw.(map[string]interface{})
+		typ, _ := prop["type"].(string)
+		if typ != "" {
+			paramTypes[name] = typ
+		}
+	}
+	return paramTypes
+}
+
+// parseArrayArg parses a CLI argument value for an array-type property.
+// If the value starts with "[", it is parsed as a JSON array.
+// Otherwise, it is split by comma into string elements.
+// If existing is a []interface{}, elements are appended to it (supporting repeated flags).
+func parseArrayArg(val string, existing interface{}) []interface{} {
+	var result []interface{}
+	if existing != nil {
+		if arr, ok := existing.([]interface{}); ok {
+			result = arr
+		}
+	}
+
+	if strings.HasPrefix(val, "[") {
+		var arr []interface{}
+		if err := json.Unmarshal([]byte(val), &arr); err == nil {
+			result = append(result, arr...)
+			return result
+		}
+	}
+
+	parts := strings.Split(val, ",")
+	for _, p := range parts {
+		result = append(result, p)
+	}
+	return result
 }
 
 // printText prints the text in the specified output format.

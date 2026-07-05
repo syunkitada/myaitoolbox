@@ -218,6 +218,7 @@ func TestQueryMetricSummary(t *testing.T) {
 }
 
 func TestQueryMetricHistory(t *testing.T) {
+	// Single-query mode: columns are legend values (server-a, server-b)
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -232,42 +233,26 @@ func TestQueryMetricHistory(t *testing.T) {
 			return
 		}
 
-		query := r.URL.Query().Get("query")
-		resp := PrometheusResponse{
-			Status: "success",
-		}
+		resp := PrometheusResponse{Status: "success"}
 		resp.Data.ResultType = "matrix"
-
-		if query == "cpu_usage" {
-			resp.Data.Result = []struct {
-				Metric map[string]string `json:"metric"`
-				Values [][]interface{}   `json:"values"`
-			}{
-				{
-					Metric: map[string]string{
-						"host": "server-a",
-					},
-					Values: [][]interface{}{
-						{1783270800.0, "10"},
-						{1783270860.0, "20"},
-					},
+		resp.Data.Result = []struct {
+			Metric map[string]string `json:"metric"`
+			Values [][]interface{}   `json:"values"`
+		}{
+			{
+				Metric: map[string]string{"host": "server-a"},
+				Values: [][]interface{}{
+					{1783270800.0, "10"},
+					{1783270860.0, "20"},
 				},
-			}
-		} else if query == "memory_usage" {
-			resp.Data.Result = []struct {
-				Metric map[string]string `json:"metric"`
-				Values [][]interface{}   `json:"values"`
-			}{
-				{
-					Metric: map[string]string{
-						"host": "server-b",
-					},
-					Values: [][]interface{}{
-						{1783270800.0, "100"},
-						{1783270860.0, "200"},
-					},
+			},
+			{
+				Metric: map[string]string{"host": "server-b"},
+				Values: [][]interface{}{
+					{1783270800.0, "100"},
+					{1783270860.0, "200"},
 				},
-			}
+			},
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -285,7 +270,7 @@ func TestQueryMetricHistory(t *testing.T) {
 
 	res, err := client.QueryMetricHistory(
 		context.Background(),
-		[]string{"cpu_usage", "memory_usage"},
+		[]string{"cpu_usage"},
 		nil,
 		"{{host}}",
 		"2026-07-05T17:00:00Z",
@@ -294,6 +279,11 @@ func TestQueryMetricHistory(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("QueryMetricHistory failed: %v", err)
+	}
+
+	// Single-query: meta.legend should be empty
+	if res.Meta.Legend != "" {
+		t.Errorf("Expected meta.legend to be empty for single-query mode, got %q", res.Meta.Legend)
 	}
 
 	if len(res.Data) != 2 {
@@ -348,3 +338,147 @@ func TestQueryMetricHistory(t *testing.T) {
 	}
 }
 
+func TestQueryMetricHistoryMultiQuery(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("query")
+		resp := PrometheusResponse{Status: "success"}
+		resp.Data.ResultType = "matrix"
+
+		switch query {
+		case "cpu_usage":
+			resp.Data.Result = []struct {
+				Metric map[string]string `json:"metric"`
+				Values [][]interface{}   `json:"values"`
+			}{
+				{
+					Metric: map[string]string{"host": "host1"},
+					Values: [][]interface{}{
+						{1783270800.0, "10"},
+						{1783270860.0, "11"},
+					},
+				},
+			}
+		case "disk_usage":
+			resp.Data.Result = []struct {
+				Metric map[string]string `json:"metric"`
+				Values [][]interface{}   `json:"values"`
+			}{
+				{
+					Metric: map[string]string{"host": "host1"},
+					Values: [][]interface{}{
+						{1783270800.0, "20"},
+						{1783270860.0, "21"},
+					},
+				},
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockServer.Close()
+
+	client := NewGrafanaClient(mockServer.URL, "test-token", "prom-123")
+
+	origLocal := time.Local
+	time.Local = time.UTC
+	defer func() { time.Local = origLocal }()
+
+	res, err := client.QueryMetricHistory(
+		context.Background(),
+		[]string{"cpu_usage", "disk_usage"},
+		nil,
+		"{{host}}",
+		"2026-07-05T17:00:00Z",
+		"2026-07-05T18:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("QueryMetricHistory failed: %v", err)
+	}
+
+	if res.Meta.Legend != "host1" {
+		t.Errorf("Expected meta.legend to be host1, got %q", res.Meta.Legend)
+	}
+	if len(res.Data) != 2 {
+		t.Fatalf("Expected 2 data points, got %d", len(res.Data))
+	}
+
+	dp1 := res.Data[0]
+
+	// Verify time is first
+	dp1JSON, err := json.Marshal(dp1)
+	if err != nil {
+		t.Fatalf("Failed to marshal dp1: %v", err)
+	}
+	if !strings.HasPrefix(string(dp1JSON), `{"time":"17:00"`) {
+		t.Errorf("Expected time to be first key, got: %s", string(dp1JSON))
+	}
+
+	// Verify query columns are present in query order
+	if dp1[0].Key != "time" {
+		t.Errorf("Expected first key to be time, got %q", dp1[0].Key)
+	}
+	if dp1[1].Key != "cpu_usage" {
+		t.Errorf("Expected second key to be cpu_usage, got %q", dp1[1].Key)
+	}
+	if dp1[1].Value != 10.0 {
+		t.Errorf("Expected cpu_usage to be 10, got %v", dp1[1].Value)
+	}
+	if dp1[2].Key != "disk_usage" {
+		t.Errorf("Expected third key to be disk_usage, got %q", dp1[2].Key)
+	}
+	if dp1[2].Value != 20.0 {
+		t.Errorf("Expected disk_usage to be 20, got %v", dp1[2].Value)
+	}
+}
+
+func TestQueryMetricHistoryMultiQueryMultipleLegends(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("query")
+		resp := PrometheusResponse{Status: "success"}
+		resp.Data.ResultType = "matrix"
+
+		// Return two different hosts -> legend is not unique
+		if query == "cpu_usage" {
+			resp.Data.Result = []struct {
+				Metric map[string]string `json:"metric"`
+				Values [][]interface{}   `json:"values"`
+			}{
+				{
+					Metric: map[string]string{"host": "host1"},
+					Values: [][]interface{}{{1783270800.0, "10"}},
+				},
+				{
+					Metric: map[string]string{"host": "host2"},
+					Values: [][]interface{}{{1783270800.0, "20"}},
+				},
+			}
+		} else {
+			resp.Data.Result = []struct {
+				Metric map[string]string `json:"metric"`
+				Values [][]interface{}   `json:"values"`
+			}{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockServer.Close()
+
+	client := NewGrafanaClient(mockServer.URL, "test-token", "prom-123")
+
+	_, err := client.QueryMetricHistory(
+		context.Background(),
+		[]string{"cpu_usage", "disk_usage"},
+		nil,
+		"{{host}}",
+		"2026-07-05T17:00:00Z",
+		"2026-07-05T18:00:00Z",
+	)
+	if err == nil {
+		t.Fatal("Expected error when multiple legends are resolved in multi-query mode, got nil")
+	}
+	if !strings.Contains(err.Error(), "multi-query requires legend to resolve to exactly one value") {
+		t.Errorf("Unexpected error message: %v", err)
+	}
+}

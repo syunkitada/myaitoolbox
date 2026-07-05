@@ -64,7 +64,15 @@ var infoCmd = &cobra.Command{
 					paramSchema, ok := paramSchemaRaw.(map[string]interface{})
 					if ok {
 						if typ, ok := paramSchema["type"]; ok {
-							fmt.Printf("    Type: %v\n", typ)
+							typeStr := fmt.Sprintf("%v", typ)
+							if typeStr == "array" {
+								if items, ok := paramSchema["items"].(map[string]interface{}); ok {
+									if itemType, ok := items["type"].(string); ok {
+										typeStr = "array[" + itemType + "]"
+									}
+								}
+							}
+							fmt.Printf("    Type: %s\n", typeStr)
 						}
 					}
 					fmt.Printf("    Required: %t\n", isRequired(paramName))

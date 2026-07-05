@@ -428,14 +428,9 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			"type": "object",
 			"properties": map[string]interface{}{
 				"query": map[string]interface{}{
-					"oneOf": []interface{}{
-						map[string]interface{}{"type": "string"},
-						map[string]interface{}{
-							"type": "array",
-							"items": map[string]interface{}{
-								"type": "string",
-							},
-						},
+					"type": "array",
+					"items": map[string]interface{}{
+						"type": "string",
 					},
 					"description": "PromQL query or queries to run",
 				},
@@ -465,14 +460,10 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		}
 
 		var queries []string
-		if qRaw, ok := args["query"]; ok {
-			if qStr, ok := qRaw.(string); ok {
-				queries = []string{qStr}
-			} else if qSlice, ok := qRaw.([]interface{}); ok {
-				for _, item := range qSlice {
-					if itemStr, ok := item.(string); ok {
-						queries = append(queries, itemStr)
-					}
+		if qSlice, ok := args["query"].([]interface{}); ok {
+			for _, item := range qSlice {
+				if itemStr, ok := item.(string); ok {
+					queries = append(queries, itemStr)
 				}
 			}
 		}
