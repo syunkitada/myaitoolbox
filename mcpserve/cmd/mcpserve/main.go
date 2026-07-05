@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -50,6 +50,9 @@ func printServerHelp(name string) {
 }
 
 func main() {
+	// Initialize default slog handler to output JSON to stderr
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+
 	if err := godotenv.Load(); err != nil {
 		// .env file not found or error reading it; proceed with existing env
 	}
@@ -91,9 +94,10 @@ func main() {
 		handler := mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
 			return srv
 		}, nil)
-		log.Printf("MCP HTTP server listening on %s", addr)
+		slog.Info("MCP HTTP server listening", "addr", addr)
 		if err := http.ListenAndServe(addr, handler); err != nil {
-			log.Fatalf("HTTP server error: %v", err)
+			slog.Error("HTTP server error", "error", err)
+			os.Exit(1)
 		}
 	} else {
 		// stdio

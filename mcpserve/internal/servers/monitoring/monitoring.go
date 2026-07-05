@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"time"
@@ -57,7 +57,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 				},
 			},
 		},
-	}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	}, wrapTool(func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var args map[string]interface{}
 		if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Invalid arguments format"}}}, nil
@@ -105,7 +105,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "[]"}}}, nil
 		}
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil
-	})
+	}))
 
 	s.AddTool(&mcp.Tool{
 		Name:        "create_silence",
@@ -134,7 +134,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			},
 			"required": []string{"endat", "matchers", "comment", "created_by"},
 		},
-	}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	}, wrapTool(func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var args map[string]interface{}
 		if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Invalid arguments format"}}}, nil
@@ -188,9 +188,15 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to create silence: %v", err)}}}, nil
 		}
 
-		log.Printf("silence created: id=%s matchers=%v start=%s end=%s by=%s", id, matchers, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), createdBy)
+		slog.Info("silence created",
+			slog.String("id", id),
+			slog.Any("matchers", matchers),
+			slog.Time("start", startTime),
+			slog.Time("end", endTime),
+			slog.String("by", createdBy),
+		)
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Created silence with ID: %s", id)}}}, nil
-	})
+	}))
 
 	s.AddTool(&mcp.Tool{
 		Name:        "list_silences",
@@ -209,7 +215,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 				},
 			},
 		},
-	}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	}, wrapTool(func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var args map[string]interface{}
 		if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Invalid arguments format"}}}, nil
@@ -261,7 +267,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "[]"}}}, nil
 		}
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil
-	})
+	}))
 
 	s.AddTool(&mcp.Tool{
 		Name:        "delete_silence",
@@ -275,7 +281,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			},
 			"required": []string{"id"},
 		},
-	}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	}, wrapTool(func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var args map[string]interface{}
 		if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Invalid arguments format"}}}, nil
@@ -290,9 +296,9 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to delete silence: %v", err)}}}, nil
 		}
 
-		log.Printf("silence deleted: id=%s", id)
+		slog.Info("silence deleted", slog.String("id", id))
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Deleted silence %s", id)}}}, nil
-	})
+	}))
 
 	s.AddTool(&mcp.Tool{
 		Name:        "query_metric_summary",
@@ -339,7 +345,7 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 			},
 			"required": []string{"query"},
 		},
-	}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	}, wrapTool(func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var args map[string]interface{}
 		if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Invalid arguments format"}}}, nil
@@ -413,7 +419,44 @@ func (p *monitoringProvider) NewServer() *mcp.Server {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: string(b)}},
 		}, nil
-	})
+	}))
 
 	return s
+}
+
+// wrapTool is a helper wrapper to log details of MCP tool execution using slog.
+func wrapTool(handler func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error)) func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var toolName string
+		var args any
+		if request != nil && request.Params != nil {
+			toolName = request.Params.Name
+			if len(request.Params.Arguments) > 0 {
+				_ = json.Unmarshal(request.Params.Arguments, &args)
+			}
+		}
+
+		slog.Info("MCP tool called",
+			slog.String("tool", toolName),
+			slog.Any("parameters", args),
+		)
+
+		res, err := handler(ctx, request)
+		if err != nil {
+			slog.Error("MCP tool error",
+				slog.String("tool", toolName),
+				slog.Any("error", err),
+			)
+		} else if res != nil && res.IsError {
+			slog.Warn("MCP tool returned execution error",
+				slog.String("tool", toolName),
+				slog.Any("result", res),
+			)
+		} else {
+			slog.Info("MCP tool execution completed",
+				slog.String("tool", toolName),
+			)
+		}
+		return res, err
+	}
 }
