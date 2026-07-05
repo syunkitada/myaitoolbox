@@ -525,8 +525,8 @@ func (c *GrafanaClient) QueryMetricHistory(ctx context.Context, promQLs []string
 
 	// singleMode: timeMap[ts][legend] = value
 	// multiMode:  multiMap[legend][ts][queryName] = value
-	timeMap := make(map[int64]map[string]float64)               // single-query mode
-	multiMap := make(map[string]map[int64]map[string]float64)   // multi-query mode
+	timeMap := make(map[int64]map[string]float64)             // single-query mode
+	multiMap := make(map[string]map[int64]map[string]float64) // multi-query mode
 
 	var expandedQueries []string
 
@@ -763,4 +763,3 @@ func (c *GrafanaClient) QueryMetricHistory(ctx context.Context, promQLs []string
 
 	return res, nil
 }
-
