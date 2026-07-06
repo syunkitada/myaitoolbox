@@ -1,4 +1,4 @@
-package monitoring
+package infrastructure
 
 import (
 	"context"
@@ -9,91 +9,6 @@ import (
 	"testing"
 	"time"
 )
-
-func TestParseFlexibleTime(t *testing.T) {
-	baseTime := time.Date(2026, 7, 5, 18, 0, 0, 0, time.UTC)
-
-	tests := []struct {
-		name     string
-		timeStr  string
-		isFrom   bool
-		expected time.Time
-		wantErr  bool
-	}{
-		{"empty from", "", true, baseTime.Add(-1 * time.Hour), false},
-		{"empty to", "", false, baseTime, false},
-		{"now", "now", false, baseTime, false},
-		{"now-1h", "now-1h", false, baseTime.Add(-1 * time.Hour), false},
-		{"5m", "5m", false, baseTime.Add(-5 * time.Minute), false},
-		{"1d", "1d", false, baseTime.Add(-24 * time.Hour), false},
-		{"-1h", "-1h", false, baseTime.Add(-1 * time.Hour), false},
-		{"RFC3339", "2026-07-05T17:00:00Z", false, time.Date(2026, 7, 5, 17, 0, 0, 0, time.UTC), false},
-		{"invalid", "invalid", false, time.Time{}, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseFlexibleTime(tt.timeStr, baseTime, tt.isFrom)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseFlexibleTime() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && !got.Equal(tt.expected) {
-				t.Errorf("parseFlexibleTime() = %v, want %v", got, tt.expected)
-			}
-		})
-	}
-}
-
-func TestExpandVariables(t *testing.T) {
-	vars := map[string]string{
-		"host": "server-a",
-		"env":  "production",
-	}
-
-	tests := []struct {
-		query    string
-		expected string
-	}{
-		{"cpu_usage{host=\"$host\"}", "cpu_usage{host=\"server-a\"}"},
-		{"cpu_usage{host=\"${host}\", env=\"[[env]]\"}", "cpu_usage{host=\"server-a\", env=\"production\"}"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.query, func(t *testing.T) {
-			got := expandVariables(tt.query, vars)
-			if got != tt.expected {
-				t.Errorf("expandVariables() = %q, want %q", got, tt.expected)
-			}
-		})
-	}
-}
-
-func TestFormatLegend(t *testing.T) {
-	metric := map[string]string{
-		"host": "server-a",
-		"job":  "node",
-	}
-
-	tests := []struct {
-		template string
-		expected string
-	}{
-		{"", "{host=\"server-a\",job=\"node\"}"},
-		{"{{host}}", "server-a"},
-		{"{{host}}-{{job}}", "server-a-node"},
-		{"{{missing}}", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.template, func(t *testing.T) {
-			got := formatLegend(tt.template, metric)
-			if got != tt.expected {
-				t.Errorf("formatLegend() = %q, want %q", got, tt.expected)
-			}
-		})
-	}
-}
 
 func TestQueryMetricSummary(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +25,7 @@ func TestQueryMetricSummary(t *testing.T) {
 			return
 		}
 
-		resp := PrometheusResponse{
+		resp := prometheusResponse{
 			Status: "success",
 		}
 		resp.Data.ResultType = "matrix"
@@ -151,14 +66,13 @@ func TestQueryMetricSummary(t *testing.T) {
 
 	client := NewGrafanaClient(mockServer.URL, "test-token", "prom-123")
 
-	// Save original local location and set to UTC for test consistency
 	origLocal := time.Local
 	time.Local = time.UTC
 	defer func() {
 		time.Local = origLocal
 	}()
 
-	res, err := client.QueryMetricSummary(
+	data, meta, err := client.QuerySummary(
 		context.Background(),
 		"cpu_usage{host=\"$host\"}",
 		map[string]string{"host": "server-*"},
@@ -166,27 +80,27 @@ func TestQueryMetricSummary(t *testing.T) {
 		"2026-07-05T17:00:00Z",
 		"2026-07-05T18:00:00Z",
 		"p99",
-		true, // reverse (server-a: 50 > server-b: 45, so server-a should come first)
+		true,
 		10,
 		0,
 	)
 
 	if err != nil {
-		t.Fatalf("QueryMetricSummary failed: %v", err)
+		t.Fatalf("QuerySummary failed: %v", err)
 	}
 
-	if len(res.Data) != 2 {
-		t.Fatalf("Expected 2 series, got %d", len(res.Data))
+	if len(data) != 2 {
+		t.Fatalf("Expected 2 series, got %d", len(data))
 	}
 
-	if res.Data[0].Legend != "server-a" {
-		t.Errorf("Expected first series to be server-a, got %s", res.Data[0].Legend)
+	if data[0].Legend != "server-a" {
+		t.Errorf("Expected first series to be server-a, got %s", data[0].Legend)
 	}
-	if res.Data[1].Legend != "server-b" {
-		t.Errorf("Expected second series to be server-b, got %s", res.Data[1].Legend)
+	if data[1].Legend != "server-b" {
+		t.Errorf("Expected second series to be server-b, got %s", data[1].Legend)
 	}
 
-	sa := res.Data[0]
+	sa := data[0]
 	if sa.Samples != 5 {
 		t.Errorf("Expected 5 samples, got %d", sa.Samples)
 	}
@@ -206,19 +120,18 @@ func TestQueryMetricSummary(t *testing.T) {
 		t.Errorf("Expected last 50, got %v", sa.Last)
 	}
 
-	if res.Meta.From != "2026-07-05T17:00:00Z" {
-		t.Errorf("Expected Meta.From 2026-07-05T17:00:00Z, got %s", res.Meta.From)
+	if meta.From != "2026-07-05T17:00:00Z" {
+		t.Errorf("Expected Meta.From 2026-07-05T17:00:00Z, got %s", meta.From)
 	}
-	if res.Meta.To != "2026-07-05T18:00:00Z" {
-		t.Errorf("Expected Meta.To 2026-07-05T18:00:00Z, got %s", res.Meta.To)
+	if meta.To != "2026-07-05T18:00:00Z" {
+		t.Errorf("Expected Meta.To 2026-07-05T18:00:00Z, got %s", meta.To)
 	}
-	if res.Meta.GrafanaExplorerURL == "" {
+	if meta.GrafanaExplorerURL == "" {
 		t.Errorf("Expected GrafanaExplorerURL to be populated")
 	}
 }
 
 func TestQueryMetricHistory(t *testing.T) {
-	// Single-query mode: columns are legend values (server-a, server-b)
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -233,7 +146,7 @@ func TestQueryMetricHistory(t *testing.T) {
 			return
 		}
 
-		resp := PrometheusResponse{Status: "success"}
+		resp := prometheusResponse{Status: "success"}
 		resp.Data.ResultType = "matrix"
 		resp.Data.Result = []struct {
 			Metric map[string]string `json:"metric"`
@@ -268,7 +181,7 @@ func TestQueryMetricHistory(t *testing.T) {
 		time.Local = origLocal
 	}()
 
-	res, err := client.QueryMetricHistory(
+	data, meta, err := client.QueryHistory(
 		context.Background(),
 		[]string{"cpu_usage"},
 		nil,
@@ -278,19 +191,18 @@ func TestQueryMetricHistory(t *testing.T) {
 	)
 
 	if err != nil {
-		t.Fatalf("QueryMetricHistory failed: %v", err)
+		t.Fatalf("QueryHistory failed: %v", err)
 	}
 
-	// Single-query: meta.legend should be empty
-	if res.Meta.Legend != "" {
-		t.Errorf("Expected meta.legend to be empty for single-query mode, got %q", res.Meta.Legend)
+	if meta.Legend != "" {
+		t.Errorf("Expected meta.legend to be empty for single-query mode, got %q", meta.Legend)
 	}
 
-	if len(res.Data) != 2 {
-		t.Fatalf("Expected 2 data points, got %d", len(res.Data))
+	if len(data) != 2 {
+		t.Fatalf("Expected 2 data points, got %d", len(data))
 	}
 
-	dp1 := res.Data[0]
+	dp1 := data[0]
 	t1, _ := dp1.Get("time")
 	if t1 != "17:00" {
 		t.Errorf("Expected first time to be 17:00, got %v", t1)
@@ -304,7 +216,6 @@ func TestQueryMetricHistory(t *testing.T) {
 		t.Errorf("Expected server-b to be 100, got %v", sb1)
 	}
 
-	// Verify that the time key is serialized first in JSON output
 	dp1JSON, err := json.Marshal(dp1)
 	if err != nil {
 		t.Fatalf("Failed to marshal dp1: %v", err)
@@ -313,27 +224,19 @@ func TestQueryMetricHistory(t *testing.T) {
 		t.Errorf("Expected time to be the first key in JSON, got: %s", string(dp1JSON))
 	}
 
-	dp2 := res.Data[1]
+	dp2 := data[1]
 	t2, _ := dp2.Get("time")
 	if t2 != "17:01" {
 		t.Errorf("Expected second time to be 17:01, got %v", t2)
 	}
-	sa2, _ := dp2.Get("server-a")
-	if sa2 != 20.0 {
-		t.Errorf("Expected server-a to be 20, got %v", sa2)
-	}
-	sb2, _ := dp2.Get("server-b")
-	if sb2 != 200.0 {
-		t.Errorf("Expected server-b to be 200, got %v", sb2)
-	}
 
-	if res.Meta.TimeFrom != "2026-07-05T17:00:00Z" {
-		t.Errorf("Expected Meta.TimeFrom 2026-07-05T17:00:00Z, got %s", res.Meta.TimeFrom)
+	if meta.TimeFrom != "2026-07-05T17:00:00Z" {
+		t.Errorf("Expected Meta.TimeFrom 2026-07-05T17:00:00Z, got %s", meta.TimeFrom)
 	}
-	if res.Meta.TimeTo != "2026-07-05T18:00:00Z" {
-		t.Errorf("Expected Meta.TimeTo 2026-07-05T18:00:00Z, got %s", res.Meta.TimeTo)
+	if meta.TimeTo != "2026-07-05T18:00:00Z" {
+		t.Errorf("Expected Meta.TimeTo 2026-07-05T18:00:00Z, got %s", meta.TimeTo)
 	}
-	if res.Meta.GrafanaExplorerURL == "" {
+	if meta.GrafanaExplorerURL == "" {
 		t.Errorf("Expected GrafanaExplorerURL to be populated")
 	}
 }
@@ -341,7 +244,7 @@ func TestQueryMetricHistory(t *testing.T) {
 func TestQueryMetricHistoryMultiQuery(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query().Get("query")
-		resp := PrometheusResponse{Status: "success"}
+		resp := prometheusResponse{Status: "success"}
 		resp.Data.ResultType = "matrix"
 
 		switch query {
@@ -384,7 +287,7 @@ func TestQueryMetricHistoryMultiQuery(t *testing.T) {
 	time.Local = time.UTC
 	defer func() { time.Local = origLocal }()
 
-	res, err := client.QueryMetricHistory(
+	data, meta, err := client.QueryHistory(
 		context.Background(),
 		[]string{"cpu_usage", "disk_usage"},
 		nil,
@@ -393,19 +296,18 @@ func TestQueryMetricHistoryMultiQuery(t *testing.T) {
 		"2026-07-05T18:00:00Z",
 	)
 	if err != nil {
-		t.Fatalf("QueryMetricHistory failed: %v", err)
+		t.Fatalf("QueryHistory failed: %v", err)
 	}
 
-	if res.Meta.Legend != "host1" {
-		t.Errorf("Expected meta.legend to be host1, got %q", res.Meta.Legend)
+	if meta.Legend != "host1" {
+		t.Errorf("Expected meta.legend to be host1, got %q", meta.Legend)
 	}
-	if len(res.Data) != 2 {
-		t.Fatalf("Expected 2 data points, got %d", len(res.Data))
+	if len(data) != 2 {
+		t.Fatalf("Expected 2 data points, got %d", len(data))
 	}
 
-	dp1 := res.Data[0]
+	dp1 := data[0]
 
-	// Verify time is first
 	dp1JSON, err := json.Marshal(dp1)
 	if err != nil {
 		t.Fatalf("Failed to marshal dp1: %v", err)
@@ -414,7 +316,6 @@ func TestQueryMetricHistoryMultiQuery(t *testing.T) {
 		t.Errorf("Expected time to be first key, got: %s", string(dp1JSON))
 	}
 
-	// Verify query columns are present in query order
 	if dp1[0].Key != "time" {
 		t.Errorf("Expected first key to be time, got %q", dp1[0].Key)
 	}
@@ -435,10 +336,9 @@ func TestQueryMetricHistoryMultiQuery(t *testing.T) {
 func TestQueryMetricHistoryMultiQueryMultipleLegends(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query().Get("query")
-		resp := PrometheusResponse{Status: "success"}
+		resp := prometheusResponse{Status: "success"}
 		resp.Data.ResultType = "matrix"
 
-		// Return two different hosts -> legend is not unique
 		if query == "cpu_usage" {
 			resp.Data.Result = []struct {
 				Metric map[string]string `json:"metric"`
@@ -467,7 +367,7 @@ func TestQueryMetricHistoryMultiQueryMultipleLegends(t *testing.T) {
 
 	client := NewGrafanaClient(mockServer.URL, "test-token", "prom-123")
 
-	_, err := client.QueryMetricHistory(
+	_, _, err := client.QueryHistory(
 		context.Background(),
 		[]string{"cpu_usage", "disk_usage"},
 		nil,

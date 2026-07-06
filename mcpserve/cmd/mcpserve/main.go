@@ -12,8 +12,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/syunkitada/myaitoolbox/mcpserve/internal/registry"
 
-	// Register providers
-	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/monitoring"
+	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/servers"
 )
 
 var (
@@ -92,7 +91,7 @@ func main() {
 	if *transport == "http" {
 		addr := fmt.Sprintf("%s:%s", *host, *port)
 		handler := mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
-			return srv
+			return srv.MCP()
 		}, nil)
 		slog.Info("MCP HTTP server listening", "addr", addr)
 		if err := http.ListenAndServe(addr, handler); err != nil {
