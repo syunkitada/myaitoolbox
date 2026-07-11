@@ -3,6 +3,9 @@
 ## Architecture
 
 ```
+Entrypoint
+      │
+      ▼
 Application
       │
       ▼
@@ -13,14 +16,19 @@ Infrastructure
 ```
 
 - Domain はビジネスルールのみを持つ。
+  - Domain は他レイヤを参照してはいけない。
+  - Domain には `type`・`interface` 定義のみ記述する。
+  - Domain には `func` は定義しない。
+- Entrypoint は Application のみを利用する。
 - Application は UseCase を実装し、Domain のみを利用する。
-- Infrastructure は Domain の Interface を実装する。
-- Domain は他レイヤを参照してはいけない。
-- **Domain には `type`・`interface` 定義のみ記述する。関数（func）は定義しない。**
+- Infrastructure は Domain の `interface` を実装する。
 
 ## ディレクトリ構成
 
 ```
+cmd/
+    <entrypoint>/
+        main.go     # エントリーポイント
 internal/
     application/    # アプリケーション層（UseCase）
     domain/         # ドメイン層（ビジネスルール、インターフェース）
@@ -35,6 +43,9 @@ internal/
 ### Example
 
 ```
+cmd/
+    myapi/
+        main.go
 internal/
     domain/
         provider.go       # Providerインターフェース

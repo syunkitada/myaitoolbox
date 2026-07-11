@@ -11,9 +11,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/infrastructure"
-
-	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/application"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/application"
 )
 
 var (
@@ -31,7 +29,7 @@ var rootCmd = &cobra.Command{
 	Version: "0.0.1",
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		var names []string
-		for _, p := range infrastructure.List() {
+		for _, p := range application.List() {
 			names = append(names, p.Name())
 		}
 		return names, cobra.ShellCompDirectiveNoFileComp
@@ -58,7 +56,7 @@ func initLogger() {
 
 func runServer(cmd *cobra.Command, args []string) error {
 	serverName := args[0]
-	p, exists := infrastructure.Get(serverName)
+	p, exists := application.Get(serverName)
 	if !exists {
 		return fmt.Errorf("server %q not found", serverName)
 	}
