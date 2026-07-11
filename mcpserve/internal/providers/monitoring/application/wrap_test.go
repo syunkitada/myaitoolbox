@@ -1,4 +1,4 @@
-package monitoring
+package application
 
 import (
 	"context"
@@ -13,7 +13,7 @@ func TestWrapTool(t *testing.T) {
 		return "ok", nil, nil
 	}
 
-	wrapped := wrapTool(handler)
+	wrapped := WrapTool(handler)
 	req := &mcp.CallToolRequest{}
 	req.Params = &mcp.CallToolParamsRaw{
 		Name:      "test_tool",

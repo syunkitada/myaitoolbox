@@ -1,4 +1,4 @@
-package monitoring
+package application
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func wrapTool(handler func(context.Context, *mcp.CallToolRequest) (data, meta interface{}, err error)) func(context.Context, *mcp.CallToolRequest) (data, meta interface{}, err error) {
+func WrapTool(handler func(context.Context, *mcp.CallToolRequest) (data, meta interface{}, err error)) func(context.Context, *mcp.CallToolRequest) (data, meta interface{}, err error) {
 	return func(ctx context.Context, request *mcp.CallToolRequest) (data, meta interface{}, err error) {
 		var toolName string
 		var args any

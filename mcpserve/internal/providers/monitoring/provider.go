@@ -7,6 +7,7 @@ import (
 	"github.com/syunkitada/myaitoolbox/mcpserve/internal/domain"
 	"github.com/syunkitada/myaitoolbox/mcpserve/internal/infrastructure"
 
+	monApp "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/application"
 	monDomain "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/domain"
 	monInfra "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/infrastructure"
 )
@@ -44,7 +45,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 		}
 	}
 
-	app := NewApp(alertRepo, silenceRepo, metricRepo)
+	app := monApp.NewApp(alertRepo, silenceRepo, metricRepo)
 
 	s.AddTool(&mcp.Tool{
 		Name:        "list_alerts",
@@ -67,7 +68,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 				},
 			},
 		},
-	}, wrapTool(app.ListAlerts))
+	}, monApp.WrapTool(app.ListAlerts))
 
 	s.AddTool(&mcp.Tool{
 		Name:        "create_silence",
@@ -96,7 +97,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 			},
 			"required": []string{"endat", "matchers", "comment", "created_by"},
 		},
-	}, wrapTool(app.CreateSilence))
+	}, monApp.WrapTool(app.CreateSilence))
 
 	s.AddTool(&mcp.Tool{
 		Name:        "list_silences",
@@ -115,7 +116,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 				},
 			},
 		},
-	}, wrapTool(app.ListSilences))
+	}, monApp.WrapTool(app.ListSilences))
 
 	s.AddTool(&mcp.Tool{
 		Name:        "delete_silence",
@@ -129,7 +130,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 			},
 			"required": []string{"id"},
 		},
-	}, wrapTool(app.DeleteSilence))
+	}, monApp.WrapTool(app.DeleteSilence))
 
 	s.AddTool(&mcp.Tool{
 		Name:        "query_metric_summary",
@@ -177,7 +178,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 			},
 			"required": []string{"query"},
 		},
-	}, wrapTool(app.QueryMetricSummary))
+	}, monApp.WrapTool(app.QueryMetricSummary))
 
 	s.AddTool(&mcp.Tool{
 		Name:        "query_metric_history",
@@ -212,7 +213,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 			},
 			"required": []string{"query"},
 		},
-	}, wrapTool(app.QueryMetricHistory))
+	}, monApp.WrapTool(app.QueryMetricHistory))
 
 	return s
 }
