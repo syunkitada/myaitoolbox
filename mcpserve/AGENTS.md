@@ -1,3 +1,9 @@
+# Instructions for AI agents
+
+## 機能追加・変更時のルール
+
+機能追加・変更時には、対応するREADME.md、docs/* 内のファイルを参照し、必要に応じて更新すること。
+
 ## Response Format Rules
 
 全てのツールは成功時に `structuredContent` を返すこと。形式は以下の通り:
