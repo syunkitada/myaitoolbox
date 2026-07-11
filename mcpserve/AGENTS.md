@@ -16,6 +16,7 @@ Infrastructure
 - Application は UseCase を実装し、Domain のみを利用する。
 - Infrastructure は Domain の Interface を実装する。
 - Domain は他レイヤを参照してはいけない。
+- **Domain には `type`・`interface` 定義のみ記述する。関数（func）は定義しない。**
 
 ## ディレクトリ構成
 
@@ -69,6 +70,8 @@ type User struct {
     Name string
 }
 ```
+
+domain 内に func を記述しない。パース・フォーマット・ユーティリティ関数は Application 層または Infrastructure 層に配置する。
 
 infrastructure/database1/repository.go
 ```

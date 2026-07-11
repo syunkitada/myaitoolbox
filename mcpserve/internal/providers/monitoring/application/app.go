@@ -62,9 +62,9 @@ func (a *App) ListAlerts(ctx context.Context, req *mcp.CallToolRequest) (data, m
 			"status": al.Status,
 		}
 		if verbose {
-			item["labels"] = domain.FormatLabels(al.Labels)
+			item["labels"] = FormatLabels(al.Labels)
 		} else {
-			item["labels"] = domain.FormatSelectedLabels(al.Labels, "alertname", "host")
+			item["labels"] = FormatSelectedLabels(al.Labels, "alertname", "host")
 		}
 		filtered = append(filtered, item)
 	}
@@ -101,13 +101,13 @@ func (a *App) CreateSilence(ctx context.Context, req *mcp.CallToolRequest) (data
 	if startat == "now" {
 		startTime = now
 	} else {
-		startTime, err = domain.ParseTime(startat, now)
+		startTime, err = ParseTime(startat, now)
 		if err != nil {
 			return nil, nil, fmt.Errorf("invalid startat: %w", err)
 		}
 	}
 
-	endTime, err := domain.ParseTime(endat, startTime)
+	endTime, err := ParseTime(endat, startTime)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid endat: %w", err)
 	}
@@ -116,7 +116,7 @@ func (a *App) CreateSilence(ctx context.Context, req *mcp.CallToolRequest) (data
 		return nil, nil, fmt.Errorf("endat must be after startat")
 	}
 
-	matchers, err := domain.ParseMatchers(matchersStr)
+	matchers, err := ParseMatchers(matchersStr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid matchers: %w", err)
 	}
@@ -183,13 +183,13 @@ func (a *App) ListSilences(ctx context.Context, req *mcp.CallToolRequest) (data,
 			"id": s.ID,
 		}
 		if verbose {
-			item["labels"] = domain.FormatLabels(labelsMap)
+			item["labels"] = FormatLabels(labelsMap)
 			item["comment"] = s.Comment
 			item["author"] = s.CreatedBy
 			item["start"] = s.StartsAt.Format(time.RFC3339)
 			item["end"] = s.EndsAt.Format(time.RFC3339)
 		} else {
-			item["labels"] = domain.FormatSelectedLabels(labelsMap, "alertname", "host")
+			item["labels"] = FormatSelectedLabels(labelsMap, "alertname", "host")
 		}
 		filtered = append(filtered, item)
 	}

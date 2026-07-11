@@ -1,7 +1,9 @@
-package domain
+package infrastructure
 
 import (
 	"testing"
+
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/domain"
 )
 
 type mockProvider struct {
@@ -16,13 +18,13 @@ func (m *mockProvider) Description() string {
 	return "mock provider"
 }
 
-func (m *mockProvider) NewServer() Server {
+func (m *mockProvider) NewServer() domain.Server {
 	return nil
 }
 
 func TestRegisterAndGet(t *testing.T) {
 	// Clear the registry for test isolation
-	providers = make(map[string]Provider)
+	providers = make(map[string]domain.Provider)
 
 	p := &mockProvider{name: "test-provider"}
 	Register(p)
@@ -38,7 +40,7 @@ func TestRegisterAndGet(t *testing.T) {
 
 func TestRegisterDuplicate(t *testing.T) {
 	// Clear the registry for test isolation
-	providers = make(map[string]Provider)
+	providers = make(map[string]domain.Provider)
 
 	p1 := &mockProvider{name: "duplicate"}
 	Register(p1)
@@ -55,7 +57,7 @@ func TestRegisterDuplicate(t *testing.T) {
 
 func TestGetNonexistent(t *testing.T) {
 	// Clear the registry for test isolation
-	providers = make(map[string]Provider)
+	providers = make(map[string]domain.Provider)
 
 	_, exists := Get("nonexistent")
 	if exists {
@@ -65,7 +67,7 @@ func TestGetNonexistent(t *testing.T) {
 
 func TestList(t *testing.T) {
 	// Clear the registry for test isolation
-	providers = make(map[string]Provider)
+	providers = make(map[string]domain.Provider)
 
 	p1 := &mockProvider{name: "provider1"}
 	p2 := &mockProvider{name: "provider2"}
@@ -88,7 +90,7 @@ func TestList(t *testing.T) {
 
 func TestListEmpty(t *testing.T) {
 	// Clear the registry for test isolation
-	providers = make(map[string]Provider)
+	providers = make(map[string]domain.Provider)
 
 	list := List()
 	if len(list) != 0 {

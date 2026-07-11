@@ -46,11 +46,11 @@ type prometheusResponse struct {
 
 func (c *grafanaClient) QuerySummary(ctx context.Context, query string, vars map[string]string, legendTemplate string, timeFrom, timeTo string, sortField string, reverse bool, limit, offset int) ([]domain.MetricSummary, domain.SummaryMeta, error) {
 	now := time.Now()
-	toTime, err := domain.ParseFlexibleTime(timeTo, now, false)
+	toTime, err := ParseFlexibleTime(timeTo, now, false)
 	if err != nil {
 		return nil, domain.SummaryMeta{}, fmt.Errorf("invalid time_to: %w", err)
 	}
-	fromTime, err := domain.ParseFlexibleTime(timeFrom, toTime, true)
+	fromTime, err := ParseFlexibleTime(timeFrom, toTime, true)
 	if err != nil {
 		return nil, domain.SummaryMeta{}, fmt.Errorf("invalid time_from: %w", err)
 	}
@@ -59,9 +59,9 @@ func (c *grafanaClient) QuerySummary(ctx context.Context, query string, vars map
 		return nil, domain.SummaryMeta{}, fmt.Errorf("time_to must be after time_from")
 	}
 
-	expandedQL := domain.ExpandVariables(query, vars)
+	expandedQL := ExpandVariables(query, vars)
 	duration := toTime.Sub(fromTime)
-	step := domain.ComputeStep(duration, 300)
+	step := ComputeStep(duration, 300)
 
 	promResp, err := c.queryPrometheus(ctx, expandedQL, fromTime, toTime, step)
 	if err != nil {
@@ -120,8 +120,8 @@ func (c *grafanaClient) QuerySummary(ctx context.Context, query string, vars map
 			continue
 		}
 
-		p50, p90, p99 := domain.Percentiles(vals)
-		legend := domain.FormatLegend(legendTemplate, result.Metric)
+		p50, p90, p99 := Percentiles(vals)
+		legend := FormatLegend(legendTemplate, result.Metric)
 
 		data = append(data, domain.MetricSummary{
 			Legend:  legend,
@@ -157,7 +157,7 @@ func (c *grafanaClient) QuerySummary(ctx context.Context, query string, vars map
 	}
 	data = data[offset:end]
 
-	exploreURL := domain.BuildExploreURL(c.baseURL, c.datasourceUID, []domain.ExploreQueryDef{{Expr: expandedQL}}, fromTime, toTime)
+	exploreURL := BuildExploreURL(c.baseURL, c.datasourceUID, []domain.ExploreQueryDef{{Expr: expandedQL}}, fromTime, toTime)
 
 	meta := domain.SummaryMeta{
 		Query:              expandedQL,
@@ -172,11 +172,11 @@ func (c *grafanaClient) QuerySummary(ctx context.Context, query string, vars map
 
 func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars map[string]string, legendTemplate string, timeFrom, timeTo string) ([]domain.OrderedMap, domain.HistoryMeta, error) {
 	now := time.Now()
-	toTime, err := domain.ParseFlexibleTime(timeTo, now, false)
+	toTime, err := ParseFlexibleTime(timeTo, now, false)
 	if err != nil {
 		return nil, domain.HistoryMeta{}, fmt.Errorf("invalid time_to: %w", err)
 	}
-	fromTime, err := domain.ParseFlexibleTime(timeFrom, toTime, true)
+	fromTime, err := ParseFlexibleTime(timeFrom, toTime, true)
 	if err != nil {
 		return nil, domain.HistoryMeta{}, fmt.Errorf("invalid time_from: %w", err)
 	}
@@ -186,7 +186,7 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 	}
 
 	duration := toTime.Sub(fromTime)
-	step := domain.ComputeStep(duration, 60)
+	step := ComputeStep(duration, 60)
 
 	multiQuery := len(queries) > 1
 
@@ -196,7 +196,7 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 	var expandedQueries []string
 
 	for _, promQL := range queries {
-		expandedQL := domain.ExpandVariables(promQL, vars)
+		expandedQL := ExpandVariables(promQL, vars)
 		expandedQueries = append(expandedQueries, expandedQL)
 
 		promResp, err := c.queryPrometheus(ctx, expandedQL, fromTime, toTime, step)
@@ -206,7 +206,7 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 
 		if multiQuery {
 			for _, result := range promResp.Data.Result {
-				legend := domain.FormatLegend(legendTemplate, result.Metric)
+				legend := FormatLegend(legendTemplate, result.Metric)
 				if _, ok := multiMap[legend]; !ok {
 					multiMap[legend] = make(map[int64]map[string]float64)
 				}
@@ -235,7 +235,7 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 			}
 		} else {
 			for _, result := range promResp.Data.Result {
-				legend := domain.FormatLegend(legendTemplate, result.Metric)
+				legend := FormatLegend(legendTemplate, result.Metric)
 				for _, valPair := range result.Values {
 					if len(valPair) < 2 {
 						continue
@@ -296,7 +296,7 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 		for _, ts := range timestamps {
 			var item domain.OrderedMap
 			t := time.Unix(ts, 0).In(fromTime.Location())
-			item = append(item, domain.MapEntry{Key: "time", Value: domain.FormatTime(t, duration, stepSeconds)})
+			item = append(item, domain.MapEntry{Key: "time", Value: FormatTime(t, duration, stepSeconds)})
 			for _, eq := range expandedQueries {
 				item = append(item, domain.MapEntry{Key: eq, Value: tsMap[ts][eq]})
 			}
@@ -314,7 +314,7 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 		for _, ts := range timestamps {
 			var item domain.OrderedMap
 			t := time.Unix(ts, 0).In(fromTime.Location())
-			item = append(item, domain.MapEntry{Key: "time", Value: domain.FormatTime(t, duration, stepSeconds)})
+			item = append(item, domain.MapEntry{Key: "time", Value: FormatTime(t, duration, stepSeconds)})
 
 			var legends []string
 			for legend := range timeMap[ts] {
@@ -333,7 +333,7 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 	for _, eq := range expandedQueries {
 		exploreDefs = append(exploreDefs, domain.ExploreQueryDef{Expr: eq})
 	}
-	exploreURL := domain.BuildExploreURL(c.baseURL, c.datasourceUID, exploreDefs, fromTime, toTime)
+	exploreURL := BuildExploreURL(c.baseURL, c.datasourceUID, exploreDefs, fromTime, toTime)
 
 	meta := domain.HistoryMeta{
 		Queries:            expandedQueries,

@@ -1,8 +1,10 @@
-package domain
+package application
 
 import (
 	"testing"
 	"time"
+
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/domain"
 )
 
 func TestParseTime(t *testing.T) {
@@ -37,18 +39,18 @@ func TestParseTime(t *testing.T) {
 
 func TestParseMatchers(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		wantCount   int
-		wantFirst   Matcher
-		wantErr     bool
+		name      string
+		input     string
+		wantCount int
+		wantFirst domain.Matcher
+		wantErr   bool
 	}{
-		{"single equals", `alertname="CPU"`, 1, Matcher{Name: "alertname", Value: "CPU", IsRegex: false, IsEqual: true}, false},
-		{"regex match", `host=~"server-.*"`, 1, Matcher{Name: "host", Value: "server-.*", IsRegex: true, IsEqual: true}, false},
-		{"not equal", `severity!="critical"`, 1, Matcher{Name: "severity", Value: "critical", IsRegex: false, IsEqual: false}, false},
-		{"not regex", `host!~"db-.*"`, 1, Matcher{Name: "host", Value: "db-.*", IsRegex: true, IsEqual: false}, false},
-		{"multiple", `alertname="CPU",severity="critical"`, 2, Matcher{Name: "alertname", Value: "CPU", IsEqual: true}, false},
-		{"no match", `invalid`, 0, Matcher{}, true},
+		{"single equals", `alertname="CPU"`, 1, domain.Matcher{Name: "alertname", Value: "CPU", IsRegex: false, IsEqual: true}, false},
+		{"regex match", `host=~"server-.*"`, 1, domain.Matcher{Name: "host", Value: "server-.*", IsRegex: true, IsEqual: true}, false},
+		{"not equal", `severity!="critical"`, 1, domain.Matcher{Name: "severity", Value: "critical", IsRegex: false, IsEqual: false}, false},
+		{"not regex", `host!~"db-.*"`, 1, domain.Matcher{Name: "host", Value: "db-.*", IsRegex: true, IsEqual: false}, false},
+		{"multiple", `alertname="CPU",severity="critical"`, 2, domain.Matcher{Name: "alertname", Value: "CPU", IsEqual: true}, false},
+		{"no match", `invalid`, 0, domain.Matcher{}, true},
 	}
 
 	for _, tt := range tests {
