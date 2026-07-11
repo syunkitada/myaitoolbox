@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/monitoring/domain"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/domain"
 )
 
 func alertmanagerServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, domain.AlertRepository) {

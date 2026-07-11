@@ -8,7 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/monitoring/domain"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/domain"
 )
 
 type mockAlertRepo struct {

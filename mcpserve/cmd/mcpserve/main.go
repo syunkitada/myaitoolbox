@@ -10,9 +10,9 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/registry"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/domain"
 
-	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/servers"
+	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/application"
 )
 
 var (
@@ -28,7 +28,7 @@ func printGlobalHelp() {
 	fmt.Println("\nUsage:")
 	fmt.Println("  mcpserve [options] <server>")
 	fmt.Println("\nAvailable servers:")
-	providers := registry.List()
+	providers := domain.List()
 	for _, p := range providers {
 		fmt.Printf("  %-11s %s\n", p.Name(), p.Description())
 	}
@@ -37,7 +37,7 @@ func printGlobalHelp() {
 }
 
 func printServerHelp(name string) {
-	p, exists := registry.Get(name)
+	p, exists := domain.Get(name)
 	if !exists {
 		fmt.Printf("Error: server %q not found\n", name)
 		os.Exit(1)
@@ -80,13 +80,14 @@ func main() {
 		os.Exit(0)
 	}
 
-	p, exists := registry.Get(serverName)
+	p, exists := domain.Get(serverName)
 	if !exists {
 		fmt.Printf("Error: server %q not found\n", serverName)
 		os.Exit(1)
 	}
 
 	srv := p.NewServer()
+	fmt.Printf("Starting server %q with transport %q\n", serverName, *transport)
 
 	if *transport == "http" {
 		addr := fmt.Sprintf("%s:%s", *host, *port)

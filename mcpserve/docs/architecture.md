@@ -1,6 +1,6 @@
-# Instructions for AI agents
+# アーキテクチャ・設計方針
 
-## Architecture
+## レイヤードアーキテクチャ
 
 ```
 Application
@@ -12,10 +12,10 @@ Application
 Infrastructure
 ```
 
-- Domain はビジネスルールのみを持つ。
-- Application は UseCase を実装し、Domain のみを利用する。
-- Infrastructure は Domain の Interface を実装する。
-- Domain は他レイヤを参照してはいけない。
+- **Domain**: ビジネスルールのみを持つ。他のレイヤを参照してはいけない。
+- **Application**: UseCase を実装し、Domain のみを利用する。
+- **Infrastructure**: Domain の Interface を実装する。
+- **Providers**: 各MCPプロバイダーの実装。
 
 ## ディレクトリ構成
 
@@ -31,7 +31,7 @@ internal/
             infrastructure/
 ```
 
-### Example
+### 例
 
 ```
 internal/
@@ -57,43 +57,31 @@ internal/
                 ...
 ```
 
-domain/database1_repository.go
-```
-type Database1Repository interface {
-    FindUserByID(id string) (*User, error)
-    SaveUser(entity *User) error
-}
+## プロバイダーインターフェース
 
-type User struct {
-    ID   string
-    Name string
-}
-```
+全てのプロバイダーは `provider.Provider` インターフェースを実装する必要がある:
 
-infrastructure/database1/repository.go
-```
-type database1Repository struct {}
-
-func NewDatabase1Repository() Database1Repository {
-    return &database1Repository{}
-}
-
-func (r *database1Repository) FindUserByID(id string) (*User, error) {
-    // 実際のデータベースアクセス処理
-    return &User{ID: id, Name: "Example"}, nil
-}
-
-func (r *database1Repository) Save(user *User) error {
-    // 実際のデータベース保存処理
-    return nil
+```go
+type Provider interface {
+    Name() string
+    Description() string
+    NewServer() Server
 }
 ```
 
-## 機能追加・変更時のルール
+## サーバーインターフェース
 
-機能追加・変更時には、対応するREADME.md、docs/* 内のファイルを参照し、必要に応じて更新すること。
+`provider.Server` インターフェースは、MCPサーバーの標準化されたレスポンスフォーマットを提供する:
 
-## Provider Response Format Rules
+```go
+type Server interface {
+    AddTool(tool *mcp.Tool, handler func(ctx context.Context, req *mcp.CallToolRequest) (data, meta interface{}, err error))
+    Run(ctx context.Context, transport mcp.Transport) error
+    MCP() *mcp.Server
+}
+```
+
+## レスポンスフォーマット
 
 全てのツールは成功時に `structuredContent` を返すこと。形式は以下の通り:
 
@@ -112,3 +100,7 @@ func (r *database1Repository) Save(user *User) error {
 エラー時は `IsError: true` を設定し `structuredContent` は省略すること。
 
 ヘルパー: `newStructuredResult(text, meta, data)` を使用すること。
+
+## レジストリ
+
+プロバイダーは `registry.Register()` を用いて登録される。起動時に `registry.Get()` でプロバイダーを取得し、サーバーを起動する。

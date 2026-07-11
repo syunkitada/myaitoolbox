@@ -1,17 +1,15 @@
-package registry
+package domain
 
 import (
 	"fmt"
-
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/provider"
 )
 
 var (
-	providers = make(map[string]provider.Provider)
+	providers = make(map[string]Provider)
 )
 
 // Register registers a new MCP provider to the registry.
-func Register(p provider.Provider) {
+func Register(p Provider) {
 	if _, exists := providers[p.Name()]; exists {
 		panic(fmt.Sprintf("provider %q already registered", p.Name()))
 	}
@@ -19,14 +17,14 @@ func Register(p provider.Provider) {
 }
 
 // Get returns the provider by name.
-func Get(name string) (provider.Provider, bool) {
+func Get(name string) (Provider, bool) {
 	p, exists := providers[name]
 	return p, exists
 }
 
 // List returns a list of all registered providers.
-func List() []provider.Provider {
-	var list []provider.Provider
+func List() []Provider {
+	var list []Provider
 	for _, p := range providers {
 		list = append(list, p)
 	}

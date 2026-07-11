@@ -4,15 +4,16 @@ import (
 	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/provider"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/domain"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/infrastructure"
 
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/monitoring/domain"
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/servers/monitoring/infrastructure"
+	monDomain "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/domain"
+	monInfra "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/infrastructure"
 )
 
 type monitoringProvider struct{}
 
-func New() provider.Provider {
+func New() domain.Provider {
 	return &monitoringProvider{}
 }
 
@@ -24,21 +25,21 @@ func (p *monitoringProvider) Description() string {
 	return "Monitoring integration (Alertmanager) for MCP."
 }
 
-func (p *monitoringProvider) NewServer() provider.Server {
-	s := provider.NewMCServer(&mcp.Implementation{Name: "monitoring", Version: "0.0.1"}, nil)
+func (p *monitoringProvider) NewServer() domain.Server {
+	s := infrastructure.NewMCServer(&mcp.Implementation{Name: "monitoring", Version: "0.0.1"}, nil)
 
 	amURL := os.Getenv("ALERTMANAGER_URL")
 	if amURL == "" {
 		amURL = "http://127.0.0.1:9093"
 	}
-	alertRepo := infrastructure.NewAlertmanagerClient(amURL)
-	silenceRepo := alertRepo.(domain.SilenceRepository)
+	alertRepo := monInfra.NewAlertmanagerClient(amURL)
+	silenceRepo := alertRepo.(monDomain.SilenceRepository)
 
-	var metricRepo domain.MetricRepository
+	var metricRepo monDomain.MetricRepository
 	if grafanaURL := os.Getenv("GRAFANA_URL"); grafanaURL != "" {
 		if apiToken := os.Getenv("GRAFANA_API_TOKEN"); apiToken != "" {
 			if dsUID := os.Getenv("GRAFANA_DATASOURCE_UID"); dsUID != "" {
-				metricRepo = infrastructure.NewGrafanaClient(grafanaURL, apiToken, dsUID)
+				metricRepo = monInfra.NewGrafanaClient(grafanaURL, apiToken, dsUID)
 			}
 		}
 	}

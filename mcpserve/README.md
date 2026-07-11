@@ -44,3 +44,19 @@ mcpserve github
 
 - [アーキテクチャ・設計方針](docs/architecture.md)
 - [開発ガイド（サーバーの追加方法）](docs/development.md)
+
+## ディレクトリ構成
+
+```
+internal/
+    application/    # アプリケーション層（UseCase）
+    domain/         # ドメイン層（ビジネスルール、インターフェース）
+    infrastructure/ # インフラストラクチャ層（実装）
+    providers/      # MCPプロバイダー実装
+        monitoring/
+            application/
+            domain/
+            infrastructure/
+            provider.go
+            init.go
+```

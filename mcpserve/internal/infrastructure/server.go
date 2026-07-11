@@ -1,28 +1,18 @@
-package provider
+package infrastructure
 
 import (
 	"context"
 	"encoding/json"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/domain"
 )
-
-// Server defines an MCP server with standardized response formatting.
-type Server interface {
-	// AddTool adds a tool. The handler returns (data, meta, err) which is
-	// automatically formatted into {meta, data} StructuredContent.
-	AddTool(tool *mcp.Tool, handler func(ctx context.Context, req *mcp.CallToolRequest) (data, meta interface{}, err error))
-	// Run starts the server with the given transport.
-	Run(ctx context.Context, transport mcp.Transport) error
-	// MCP returns the underlying *mcp.Server for use with NewSSEHandler.
-	MCP() *mcp.Server
-}
 
 type serverImpl struct {
 	inner *mcp.Server
 }
 
-func NewMCServer(impl *mcp.Implementation, opts *mcp.ServerOptions) Server {
+func NewMCServer(impl *mcp.Implementation, opts *mcp.ServerOptions) domain.Server {
 	return &serverImpl{inner: mcp.NewServer(impl, opts)}
 }
 
