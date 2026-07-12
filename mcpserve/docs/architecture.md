@@ -1,6 +1,6 @@
 # mcpserve アーキテクチャ
 
-汎用のレイヤードアーキテクチャ、命名規則、エラーハンドリング、テスト戦略等の詳細は [go_project_guide.md](go_project_guide.md) を参照してください。本文では mcpserve 固有の設計を記述します。
+汎用のレイヤードアーキテクチャ、命名規則、エラーハンドリング、テスト戦略等の詳細は [golang/knowledge/architecture.md](golang/knowledge/architecture.md) を参照してください。本文では mcpserve 固有の設計を記述します。
 
 ## 概要
 
