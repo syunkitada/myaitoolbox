@@ -1,0 +1,62 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // デフォルトモデル
+  "model": "openrouter/anthropic/claude-sonnet-4",
+
+  // 更新通知のみ
+  "autoupdate": "notify",
+
+  // スナップショット
+  "snapshot": true,
+
+  // 共有は手動
+  "share": "manual",
+
+  // デフォルトエージェント
+  "default_agent": "build",
+
+  // グローバル権限
+  "permission": {
+    "edit": "ask",
+
+    "bash": {
+      "*": "ask",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "grep *": "allow"
+    }
+  },
+
+  // エージェント定義
+  "agent": {
+    "build": {
+      "model": "openrouter/anthropic/claude-sonnet-4",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+
+    "plan": {
+      "model": "openrouter/anthropic/claude-haiku-4",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+
+    "review": {
+      "description": "Review only",
+      "mode": "subagent",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "ask",
+          "git diff*": "allow",
+          "git log*": "allow"
+        }
+      }
+    }
+  }
+}
