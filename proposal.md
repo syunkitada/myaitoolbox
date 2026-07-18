@@ -1,143 +1,151 @@
 # AI Agent Workflow System
-## Implementation Specification
+## Implementation Plan
 
-Version: 1.0
+Version: 2.1
 
 ---
 
-# 1. Overview
+# 1. Project Overview
 
-本プロジェクトは、LLM(OpenCode等)を利用したマルチエージェントワークフローシステムを実装する。
+本プロジェクトは **myaitoolbox** に、AIエージェントによるワークフロー実行基盤を追加する。
 
-本システムでは、Workflow EngineやDatabaseを使用しない。
+本システムは以下の思想に基づいて設計する。
 
-代わりに、
+- Agentは単なるCLIである
+- Workflowはファイルシステムで表現する
+- Taskはディレクトリとして管理する
+- Databaseを使用しない
+- Queueを使用しない
+- APIを前提としない
+- MarkdownとYAMLを唯一の管理フォーマットとする
+- Gitによる履歴管理を前提とする
 
-- File System
-- Markdown
-- YAML
-- Shell Command
-
-のみを利用してWorkflowを構築する。
-
-Agentは単なるCLIとして動作し、
-Taskはディレクトリとして管理される。
-
-Workflowの状態はすべてファイルシステムに保存される。
+LLMは「考えること」に専念し、Workflow管理はRuntimeが担当する。
 
 ---
 
 # 2. Goals
 
-本システムの目的は以下である。
+本プロジェクトの目的は以下である。
 
-- Agentを容易に追加できる
-- Agent同士を疎結合にする
-- 人間をWorkflowへ自然に参加させる
-- Databaseを不要にする
-- Gitで履歴管理できる
-- すべての成果物をMarkdownで残す
-- OpenCode以外のAgentへ容易に置き換えられる
+- AI Agentによる自律的なWorkflowを実現する
+- Agent間を疎結合にする
+- HumanをWorkflowへ自然に参加させる
+- OpenCode以外のLLMにも容易に対応できる設計とする
+- File SystemだけでWorkflowが成立するようにする
 
 ---
 
-# 3. Design Principles
+# 3. Scope
 
-以下を必ず守ること。
-
-## 3.1 AgentはCLI
-
-AgentはHTTP Serverではない。
-
-Agentは以下のようなCLIで実行される。
-
-```bash
-agentrun --watch agents/operator
-```
-
-AgentはTaskを入力として受け取り、
-成果物を生成する。
-
----
-
-## 3.2 RuntimeがWorkflowを管理する
-
-AgentはWorkflowを管理しない。
-
-Workflow管理はRuntimeのみが行う。
-
-Agentは禁止事項。
-
-- metadata.yamlを書き換える
-- Taskを移動する
-- Queueを管理する
-- Lockを管理する
-
----
-
-## 3.3 File Systemが唯一のSource of Truth
-
-Databaseは禁止。
-
-Workflowの状態はすべてファイルシステムに保存する。
-
----
-
-## 3.4 Taskは不変
-
-Task Directoryは移動しない。
-
-担当者だけ変更する。
-
----
-
-## 3.5 人間もAgent
-
-Supervisorは特別扱いしない。
-
-Human Agentとして扱う。
-
----
-
-# 4. Architecture
+今回実装するのは以下の2ツールである。
 
 ```
-+----------------+
-| Event Crawlers |
-+-------+--------+
-        |
-        v
-+----------------+
-| Runtime        |
-+-------+--------+
-        |
-        v
-tasks/<task-id>/
-        |
-        +---- metadata.yaml
-        +---- task.md
-        +---- event/
-        +---- artifacts/
-        +---- history/
-        +---- handoff.md
-        +---- escalation.md
+myaitoolbox/
+
+├── mcpctl/
+├── mcpserve/
+├── agentcrawl/ <- 新規開発
+└── agentrun/ <- 新規開発
 ```
 
-RuntimeはTaskを監視し、
-担当Agentへ実行を依頼する。
+## agentcrawl
+
+イベントを監視し、Taskを生成する。
+
+役割
+
+- イベントソースの監視 (Phase 1では指定ディレクトリへのファイルドロップ監視のみとする)
+- Taskディレクトリの生成
+
+入力
+
+```
+External Event (Phase 1: ファイルシステム上の特定ディレクトリへのファイル配置)
+```
+
+出力
+
+```
+$WORKSPACE_ROOT/tasks/<task-id>/
+```
+
+Task生成のみ担当する。
+Workflowの実行は行わない。
 
 ---
 
-# 5. Directory Layout
+## agentrun
+
+Taskを監視し、担当Agentへ処理を依頼するRuntime。
+複数インスタンスでの稼働（早い者勝ちによるTask分散）を前提とする。
+
+役割
+
+- Task監視
+- Lock管理
+- Agent起動とタイムアウト制御
+- 成果物の最低限のバリデーション
+- metadata更新
+- history更新
+- handoff処理
+- escalation処理
+- 異常終了時のリカバリ処理
+
+---
+
+# 4. Overall Architecture
 
 ```
-workspace/
+                +-------------------+
+                |   agentcrawl      |
+                +---------+---------+
+                          |
+                          |
+                    Create Task
+                          |
+                          v
+                +-------------------+
+                | $WORKSPACE_ROOT/  |
+                |      tasks/       |
+                +---------+---------+
+                          |
+                          |
+                    Watch Task
+                          |
+                          v
+                +-------------------+
+                |     agentrun      |
+                +---------+---------+
+                          |
+                          |
+                  Execute Agent
+                          |
+                          v
+                +-------------------+
+                |      Agent        |
+                +---------+---------+
+                          |
+                  Generate Artifacts
+                          |
+                          v
+                    artifacts/
+```
+
+---
+
+# 5. Workspace Layout
+
+環境変数 `WORKSPACE_ROOT` または設定ファイルで定義されたパスを起点とする。
+
+```
+$WORKSPACE_ROOT/
 
 ├── agents/
 │   ├── operator/
 │   │   ├── AGENTS.md
-│   │   ├── knowledge/
-│   │   └── skills/
+│   │   ├── skills/
+│   │   └── knowledge/
 │   │
 │   ├── developer/
 │   ├── reviewer/
@@ -145,21 +153,24 @@ workspace/
 │
 ├── tasks/
 │
-├── crawlers/
+├── events/
 │
 └── runtime/
 ```
 
+### agents/ ディレクトリの管理規約
+- `AGENTS.md`: Agentの定義ファイル。最低限「名前」「役割」「対応可能なTaskの種類」を記述する。
+- `skills/`: Agentが実行可能なスクリプトや手順書（Markdown/シェルスクリプト等）。
+- `knowledge/`: Agentが参照すべきドメイン知識やコーディング規約（Markdown等）。
+
 ---
 
-# 6. Task Directory
-
-Taskは以下の構成を持つ。
+# 6. Task Structure
 
 ```
 tasks/
 
-└── 20260718_103000/
+└── <task-id>/
 
     metadata.yaml
 
@@ -172,69 +183,99 @@ tasks/
     history/
 ```
 
-Task IDは一意であること。
-
 Task Directoryは削除・移動しない。
+Taskは永続オブジェクトとする。
+
+### Task ID生成ルール
+一意性および時系列でのソート可能性を確保するため、以下の形式を採用する。
+形式: `YYYYMMDD-HHMMSS-<source>-<short-hash>`
+(例: `20260718-221200-file-a3f2b1`)
+※将来的にULIDやUUID v7への移行も検討可能とする。
 
 ---
 
-# 7. metadata.yaml
+# 7. metadata.yaml と Task Status
 
-Runtimeが管理する。
+Runtime専用。Agentは更新禁止。
 
 ```yaml
-id: 20260718_103000
+id:
 
-title: Investigate Alert
+title:
 
-status: inbox
+status:
 
-current_assignee: operator1
+current_assignee:
 
-priority: normal
+priority:
 
-retry_count: 0
+retry_count:
 
-created_at: 2026-07-18T10:30:00Z
+created_at:
 
-updated_at: 2026-07-18T10:30:00Z
+updated_at:
 
-source: alert
+source:
 ```
 
-Agentはこのファイルを書き換えてはならない。
+### Task Status と遷移ルール
+
+`status` が取りうる値は以下の通りとする。
+
+- `inbox`: 処理待ち（新規作成、または別Agentへhandoffされた状態）
+- `inprogress`: 処理中（agentrunがLockを取得しAgentを実行中）
+- `waiting`: 外部要因や他Taskの完了待ち
+- `done`: 処理完了
+- `failed`: エラーによる停止（リトライ中）
+- `escalated`: 人間の介入が必要な状態（最大リトライ超過、または明示的なescalation）
+
+```mermaid
+stateDiagram-v2
+    [*] --> inbox: agentcrawl creates
+    inbox --> inprogress: agentrun picks up
+    inprogress --> done: Agent finishes successfully
+    inprogress --> failed: Agent errors / Timeout
+    failed --> inprogress: retry
+    failed --> escalated: max retry exceeded
+    inprogress --> inbox: handoff (next assignee)
+    inprogress --> waiting: waiting for external events
+    waiting --> inprogress: condition met
+    inprogress --> escalated: explicit escalation
+    done --> [*]
+    escalated --> [*]
+```
 
 ---
 
 # 8. task.md
 
-Agentへの指示を書く。
+LLMへの指示。
 
-Markdownで管理する。
+Markdownで記述する。
 
 例
 
-```markdown
-# Task
-
+```
 event.jsonを解析してください。
 
-調査結果を
+結果を
 
 artifacts/report.md
 
 へ保存してください。
 
-必要であればhandoff.mdを書いてください。
+必要であれば
+
+handoff.md
+
+を書いてください。
 ```
 
 ---
 
-# 9. event/
+# 9. Event Directory
 
-イベントの原本を保存する。
-
-例
+イベント原本。
 
 ```
 event/
@@ -243,8 +284,6 @@ alert.json
 
 proposal.md
 
-jira.json
-
 github_issue.json
 ```
 
@@ -252,13 +291,13 @@ github_issue.json
 
 ---
 
-# 10. artifacts/
+# 10. Artifacts
 
-Agentが生成する成果物。
-
-例
+成果物。
 
 ```
+artifacts/
+
 report.md
 
 implementation_plan.md
@@ -266,144 +305,63 @@ implementation_plan.md
 review.md
 
 patch.diff
-
-benchmark.md
 ```
 
-自由に追加できる。
+制限なし。ただし、Phase 1の実装において、agentrunは成果物の最低限のバリデーション（出力ファイルの存在確認、サイズ > 0の確認など）を行う。
 
 ---
 
-# 11. history/
+# 11. History
 
-Runtimeのみが更新する。
-
-例
+Runtimeのみ更新。
 
 ```
+history/
+
 0001-created.md
 
-0002-assigned.md
+0002-started.md
 
-0003-started.md
+0003-finished.md
 
-0004-finished.md
+0004-handoff.md
 
-0005-handoff.md
+0005-escalated.md
 ```
 
-Taskのすべての状態遷移を記録する。
+Workflow監査ログとして利用する。
 
 ---
 
-# 12. Runtime
+# 12. Handoff
 
-RuntimeはWorkflow Engineである。
+AgentはTaskを移動しない。
 
-責務
-
-- Task監視
-- Lock取得
-- metadata更新
-- OpenCode起動
-- handoff処理
-- escalation処理
-- history更新
-
----
-
-## Runtime Flow
-
-```
-Task検知
-
-↓
-
-Lock取得
-
-↓
-
-status=inprogress
-
-↓
-
-OpenCode実行
-
-↓
-
-成果物保存
-
-↓
-
-handoff確認
-
-↓
-
-escalation確認
-
-↓
-
-history追加
-
-↓
-
-status=done
-
-↓
-
-Unlock
-```
-
----
-
-# 13. Agent
-
-Agentは以下のみ実施する。
-
-- task.mdを読む
-- knowledgeを読む
-- skillsを読む
-- eventを読む
-- artifactsを書く
-- handoff.mdを書く
-- escalation.mdを書く
-
-Agentは禁止事項
-
-- metadata.yaml更新
-- history更新
-- Task移動
-- Lock取得
-
----
-
-# 14. Handoff
-
-AgentはTaskを移動してはいけない。
-
-代わりに
+Agentは
 
 ```
 handoff.md
 ```
 
-を書く。
+のみ生成する。
 
 例
 
-```markdown
+```yaml
 next_assignee: developer1
 
-reason:
-
-実装が必要
+reason: 実装が必要
 ```
 
-Runtimeが担当者を変更する。
+**整合性保証:**
+Runtimeは以下の順序で処理を行い、途中でクラッシュした場合の不整合を防ぐ。
+1. `handoff.md` の読み取り
+2. Historyへの記録 (`history/XXXX-handoff.md` の作成)
+3. `metadata.yaml` の更新 (`status: inbox`, `current_assignee`の変更)
 
 ---
 
-# 15. Escalation
+# 13. Escalation
 
 Agentは
 
@@ -415,187 +373,266 @@ escalation.md
 
 例
 
-```markdown
+```yaml
 target: supervisor
 
-reason:
-
-判断が必要
+reason: 判断が必要
 ```
 
-RuntimeがRoutingを決定する。
+RoutingはRuntimeが担当し、整合性保証はHandoffと同様に行う。更新後のステータスは `escalated` となる。
 
 ---
 
-# 16. Event Crawlers
+# 14. Runtime Responsibilities
 
-CrawlerはTask生成のみ担当する。
-
-例
+Runtime(agentrun)の責務。
 
 ```
-Alert
+Task検知 (status: inbox)
 
 ↓
 
-Task生成
+Lock取得 (mkdir)
 
 ↓
 
-metadata.yaml
+metadata更新 (status: inprogress)
 
 ↓
 
-task.md
+Agent起動 (Timeout設定を伴う)
+
+↓
+
+成果物バリデーション
+
+↓
+
+handoff / escalation確認
+
+↓
+
+history更新
+
+↓
+
+status更新 (done / inbox / waiting / escalated / failed)
+
+↓
+
+Unlock
 ```
 
-CrawlerはTaskを実行しない。
+**異常終了時のリカバリ処理:**
+agentrunの起動時および定期ポーリング時に、「`status: inprogress` であるが、有効なLockが存在しないTask」を検知した場合、クラッシュしたとみなし、`status: inbox` (または状況に応じて `failed`) に戻してリカバリを行う。
 
 ---
 
-# 17. Agent Execution
+# 15. Agent Responsibilities
 
-RuntimeはAgentを以下のように起動する。
+Agentは禁止事項。
 
-例
+- metadata更新
+- history更新
+- Lock管理
+- Task管理
+
+Agentが実施すること。
+
+- task.mdを読む
+- eventを読む
+- knowledgeを読む
+- skillsを読む
+- artifacts生成
+- handoff生成
+- escalation生成
+
+---
+
+# 16. Agent Execution
+
+初期実装ではOpenCodeを利用する。
+
+Runtimeは以下を実行する。
 
 ```bash
-opencode \
-    run \
+opencode run \
     --dir agents/operator \
     --file tasks/<task-id>/task.md \
     --thinking \
     --format json
 ```
 
-RuntimeはOpenCodeの実装に依存しないよう抽象化すること。
+OpenCode依存を抽象化し、
 
 将来的に
 
 - Claude Code
-- Codex
+- Codex CLI
 - Gemini CLI
 
 へ置き換え可能にする。
 
 ---
 
-# 18. Lock
+# 17. Lock
 
-同一Taskを複数Runtimeが実行しないこと。
+同一Taskを複数Runtimeが処理しないよう、アトミックな排他制御を実装する。
 
-最低限、
-
-```
-.lock
-```
-
-ファイルによる排他制御を実装する。
+**Lock仕様:**
+- **方式:** `mkdir .lock` (POSIXシステム上でアトミックな操作を利用)
+- **Lock内容:** `.lock/owner.yaml` を作成し、以下を記録する。
+  ```yaml
+  pid: 12345
+  hostname: worker-node-01
+  acquired_at: 2026-07-18T22:00:00Z
+  ```
+- **Stale Lock判定:** 記録されたPIDが存在しない場合、または規定のTTL（例: 2時間）を超過している場合は、Stale Lockとみなし強制解除可能とする。
 
 ---
 
-# 19. Retry
+# 18. Retry と Timeout
 
-Agent失敗時は
+失敗時（Agentのエラー終了など）は
 
+```
 retry_count
+```
 
-を増加させる。
+を更新し、ステータスを一時的に `failed` としリトライを試みる。
+最大Retry超過時は `escalated` とする。
 
-最大回数を超えたら
-
-SupervisorへEscalationする。
+**Timeout:**
+LLM呼び出しのハングアップを防ぐため、Phase 1から最低限のタイムアウト（例: 10分）を設ける。タイムアウト発生時は処理の失敗（Failed）として扱う。
 
 ---
 
-# 20. Logging
+# 19. Logging
 
 Runtimeは以下を記録する。
 
-- Agent起動
-- Agent終了
+- Agent名
+- Task ID
+- 実行開始
+- 実行終了
 - Exit Code
-- 実行時間
 - Retry回数
 - Error
 
 ---
 
-# 21. Extensibility
+# 20. Future Extensions
 
-以下を容易に追加できる設計とする。
+以下を考慮した設計とする。
 
-- 新しいAgent
-- 新しいCrawler
-- 新しいイベント
-- 新しいArtifact
-- 新しいLLM
-- 新しいRouting Rule
-
-既存コードの修正を最小限にすること。
-
----
-
-# 22. Non Functional Requirements
-
-- Database不要
-- Queue不要
-- API不要
-- Linuxで動作
-- Git管理可能
-- Markdown中心
-- YAML中心
-- Shell Scriptから利用可能
-- OpenCode依存を抽象化
-
----
-
-# 23. Future Scope
-
-将来的には以下を追加予定。
-
+- Routing Rule
+- Priority Queue
+- Scheduler
 - Dashboard
 - Web UI
 - Metrics
-- Priority Queue
-- Parallel Execution
-- Multi-Agent Collaboration
-- SLA Monitoring
 - Notification
 - Approval Workflow
-- Workspace Graph Specification (WGS) Integration
+- Parallel Execution
+- Multi-Agent Collaboration
+- MCP Integration
+- WGS Integration
 - Knowledge Repository
 - Skill Repository
-- MCP Integration
 
 ---
 
-# 24. Acceptance Criteria
+# 21. Development Phases
 
-以下を満たせば実装完了とする。
+## Phase 1
 
-- EventからTaskが生成される
-- RuntimeがTaskを検知する
-- AgentがTaskを処理できる
-- Artifactsが生成される
-- Handoffが動作する
-- Escalationが動作する
-- Historyが記録される
-- Lockが動作する
-- Retryが動作する
-- SupervisorがWorkflowへ参加できる
-- Databaseを使用しない
-- Workflow状態がすべてファイルシステムに保存される
-- OpenCode以外へ置き換え可能な構造になっている
+### agentcrawl
+
+- ファイル配置監視 (指定ディレクトリ)
+- Event読込
+- Task生成 (規約に沿ったTask ID生成)
+
+### agentrun
+
+- Task監視
+- Lock (mkdirによるアトミックロックとstale判定)
+- 異常終了時のリカバリ
+- OpenCode起動 (タイムアウト制御付き)
+- 成果物の最低限のバリデーション
+- status更新 (inbox/inprogress/done/failed)
+- history更新
+
+ここまでで最低限動作し、堅牢な実行基盤を確立する。
 
 ---
 
-# 25. Philosophy
+## Phase 2
 
-本システムは、LLMそのものを賢くすることを目的としない。
+- handoff
+- escalation
+- retry
+- waiting / 条件分岐
+- イベントソースの抽象化 (GitHub/Jira等への対応)
+- routing
 
-目的は、LLMを協調動作させるための**シンプルで堅牢なワークフロー基盤**を提供することである。
+---
+
+## Phase 3
+
+- 複数Agent
+- Scheduler
+- Dashboard
+- Metrics
+
+---
+
+## Phase 4
+
+- Plugin化
+- 複数LLM対応
+- Remote Workspace対応
+
+---
+
+# 22. Acceptance Criteria
+
+最低限以下が動作すること。
+
+- EventからTask生成
+- agentrunによるTask検知
+- Agent起動とタイムアウト制御
+- Artifacts生成とバリデーション
+- metadata更新
+- history更新
+- アトミックなLockとリカバリ
+- Retry
+- handoff
+- escalation
+
+Databaseを使用しないこと。
+
+Workflow状態がすべてFile System上に存在すること。
+
+OpenCodeを将来置き換えられる構造になっていること。
+
+---
+
+# 23. Design Philosophy
+
+このプロジェクトは「LLMを賢くする」ことを目的としない。
+
+目的は、LLMが安全かつ協調的に動作するための**シンプルで堅牢なワークフロー基盤**を提供することである。
 
 設計思想は以下の一文に集約される。
 
-> **"Workflow lives in the File System. Agents only think."**
+> **Workflow lives in the File System. Agents only think.**
+
+また、各コンポーネントの責務は明確に分離する。
+
+| Component | Responsibility |
+|-----------|----------------|
+| **agentcrawl** | 外部イベントをTaskへ変換する |
+| **agentrun** | Workflowを実行・管理する |
+| **Agent** | Taskを理解し成果物を生成する |
+| **Human (Supervisor)** | 判断・承認・例外対応を行う |
+| **File System** | Workflowの唯一のSource of Truth |
