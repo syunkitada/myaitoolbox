@@ -45,8 +45,9 @@ myaitoolbox/
 
 ├── mcpctl/
 ├── mcpserve/
-├── agentcrawl/ <- 新規開発
-└── agentrun/ <- 新規開発
+└── agentworkflow/
+    ├── agentcrawl/ <- 新規開発
+    └── agentrun/ <- 新規開発
 ```
 
 ## agentcrawl

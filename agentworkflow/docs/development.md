@@ -116,27 +116,43 @@ mkdir -p $WORKSPACE_ROOT/agents/my-new-agent/{knowledge,skills}
 ## Project Structure
 
 ```
-agentcrawl/                        agentrun/
-├── cmd/agentcrawl/                ├── cmd/agentrun/
-│   └── main.go                    │   └── main.go
-└── internal/                      └── internal/
-    ├── domain/                        ├── domain/
-    │   ├── event.go                    │   ├── task.go
-    │   ├── task.go                     │   ├── metadata.go
-    │   └── util.go                     │   ├── handoff.go
-    ├── application/                   │   ├── lock.go
-    │   └── crawler.go                  │   └── port.go
-    └── infrastructure/                ├── application/
-        ├── fs_event_reader.go          │   ├── runner.go
-        └── fs_task_writer.go          │   ├── detector.go
-                                        │   └── handoff_processor.go
-                                        └── infrastructure/
-                                            ├── fs_task_store.go
-                                            ├── fs_lock.go
-                                            ├── fs_history.go
-                                            ├── fsnotify_watcher.go
-                                            ├── process_spawner.go
-                                            └── opencode_adapter.go
+agentworkflow/
+├── agentcrawl/
+│   ├── cmd/agentcrawl/
+│   │   └── main.go
+│   └── internal/
+│       ├── domain/
+│       │   ├── event.go
+│       │   ├── task.go
+│       │   └── util.go
+│       ├── application/
+│       │   └── crawler.go
+│       └── infrastructure/
+│           ├── fs_event_reader.go
+│           └── fs_task_writer.go
+├── agentrun/
+│   ├── cmd/agentrun/
+│   │   └── main.go
+│   └── internal/
+│       ├── domain/
+│       │   ├── task.go
+│       │   ├── metadata.go
+│       │   ├── handoff.go
+│       │   ├── lock.go
+│       │   └── port.go
+│       ├── application/
+│       │   ├── runner.go
+│       │   ├── detector.go
+│       │   └── handoff_processor.go
+│       └── infrastructure/
+│           ├── fs_task_store.go
+│           ├── fs_lock.go
+│           ├── fs_history.go
+│           ├── fsnotify_watcher.go
+│           ├── process_spawner.go
+│           └── opencode_adapter.go
+├── docs/
+└── README.md
 ```
 
 ---
@@ -147,10 +163,10 @@ agentcrawl/                        agentrun/
 
 ```bash
 # agentcrawl
-cd agentcrawl && go test ./...
+cd agentworkflow/agentcrawl && go test ./...
 
 # agentrun
-cd agentrun && go test ./...
+cd agentworkflow/agentrun && go test ./...
 ```
 
 ### 結合テスト
@@ -164,10 +180,10 @@ mkdir -p $WORKSPACE_ROOT/events/incoming
 echo '{"alert": "test"}' > $WORKSPACE_ROOT/events/incoming/test.json
 
 # agentcrawl で Task 生成
-cd agentcrawl && go run ./cmd/agentcrawl --dir $WORKSPACE_ROOT/events/incoming --pretty
+cd agentworkflow/agentcrawl && go run ./cmd/agentcrawl --dir $WORKSPACE_ROOT/events/incoming --pretty
 
 # agentrun で Task 処理
-cd agentrun && go run ./cmd/agentrun --dir $WORKSPACE_ROOT --pretty
+cd agentworkflow/agentrun && go run ./cmd/agentrun --dir $WORKSPACE_ROOT --pretty
 
 # 結果確認
 cat $WORKSPACE_ROOT/tasks/*/metadata.yaml
@@ -177,8 +193,8 @@ ls $WORKSPACE_ROOT/tasks/*/history/
 ### vet チェック
 
 ```bash
-cd agentcrawl && go vet ./...
-cd agentrun && go vet ./...
+cd agentworkflow/agentcrawl && go vet ./...
+cd agentworkflow/agentrun && go vet ./...
 ```
 
 ---
