@@ -29,6 +29,7 @@ cmd/
         main.go
 
 internal/
+    entrypoint/
     application/
     domain/
     infrastructure/
@@ -54,6 +55,34 @@ Responsibilities
 - Process Lifecycle
 
 Business Logic は配置しません。
+
+---
+
+### internal/entrypoint
+
+共通のエントリポイントを配置します。
+
+Responsibilities
+
+- Shared Dependency Injection
+- Application Bootstrap
+- Health Check Endpoints
+- Metrics Server
+- Module Wiring
+
+Business Logic は配置しません。
+
+例
+
+```text
+entrypoint/
+
+    bootstrap.go
+    health.go
+    wire.go
+```
+
+各モジュールのエントリポイントはこのレイヤを介して接続します。
 
 ---
 
@@ -239,17 +268,20 @@ infrastructure/
 
 ```text
 internal/
+    entrypoint/
     application/
     domain/
     infrastructure/
 
     modules/
         monitoring/
+            entrypoint/
             application/
             domain/
             infrastructure/
 
         inventory/
+            entrypoint/
             application/
             domain/
             infrastructure/
