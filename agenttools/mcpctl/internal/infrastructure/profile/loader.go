@@ -5,32 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
+	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
 )
 
-type Config struct {
-	DefaultProfile string `yaml:"default_profile"`
-	Cache          struct {
-		Enabled bool   `yaml:"enabled"`
-		TTL     string `yaml:"ttl"`
-	} `yaml:"cache"`
-	Output struct {
-		Format string `yaml:"format"`
-	} `yaml:"output"`
-}
-
-type Profile struct {
-	Name    string                  `yaml:"name"`
-	Servers map[string]ServerConfig `yaml:"servers"`
-}
-
-type ServerConfig struct {
-	Transport string `yaml:"transport"`
-	Command   string `yaml:"command,omitempty"`
-	URL       string `yaml:"url,omitempty"`
-}
-
-// GetConfigDir returns the path to the mcpctl config directory.
 func GetConfigDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -39,8 +17,7 @@ func GetConfigDir() (string, error) {
 	return filepath.Join(home, ".config", "mcpctl"), nil
 }
 
-// LoadConfig loads the main config.yaml file.
-func LoadConfig() (*Config, error) {
+func LoadConfig() (*domain.Config, error) {
 	configDir, err := GetConfigDir()
 	if err != nil {
 		return nil, err
@@ -50,17 +27,17 @@ func LoadConfig() (*Config, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &Config{
+			return &domain.Config{
 				DefaultProfile: "default",
 				Output: struct {
 					Format string `yaml:"format"`
 				}{Format: "table"},
-			}, nil // Return default if config doesn't exist
+			}, nil
 		}
 		return nil, fmt.Errorf("failed to read config.yaml: %w", err)
 	}
 
-	var cfg Config
+	var cfg domain.Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config.yaml: %w", err)
 	}
@@ -68,8 +45,7 @@ func LoadConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-// SaveConfig saves the config.yaml file.
-func SaveConfig(cfg *Config) error {
+func SaveConfig(cfg *domain.Config) error {
 	configDir, err := GetConfigDir()
 	if err != nil {
 		return err
@@ -92,8 +68,7 @@ func SaveConfig(cfg *Config) error {
 	return nil
 }
 
-// LoadProfile loads a profile by name from profiles/<name>.yaml.
-func LoadProfile(name string) (*Profile, error) {
+func LoadProfile(name string) (*domain.Profile, error) {
 	configDir, err := GetConfigDir()
 	if err != nil {
 		return nil, err
@@ -105,7 +80,7 @@ func LoadProfile(name string) (*Profile, error) {
 		return nil, fmt.Errorf("failed to read profile %s: %w", name, err)
 	}
 
-	var profile Profile
+	var profile domain.Profile
 	if err := yaml.Unmarshal(data, &profile); err != nil {
 		return nil, fmt.Errorf("failed to parse profile %s: %w", name, err)
 	}
@@ -117,7 +92,6 @@ func LoadProfile(name string) (*Profile, error) {
 	return &profile, nil
 }
 
-// ListProfiles lists all available profiles in the profiles/ directory.
 func ListProfiles() ([]string, error) {
 	configDir, err := GetConfigDir()
 	if err != nil {

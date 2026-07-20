@@ -1,4 +1,4 @@
-package cli
+package entrypoint
 
 import (
 	"fmt"
@@ -7,11 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	profileFlag string
-)
+var profileFlag string
 
-// RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
 	Use:   "mcpctl",
 	Short: "A CLI tool for interacting with MCP servers",
@@ -19,7 +16,6 @@ var RootCmd = &cobra.Command{
 It allows listing, searching, getting info about, and calling tools on remote MCP servers.`,
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
 func Execute() {
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

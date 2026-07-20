@@ -2,13 +2,17 @@ package profile
 
 import (
 	"fmt"
+
+	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
 )
 
-// ResolveProfile determines which profile to load based on the resolution rules:
-// 1. Explicitly provided (e.g., from --profile flag)
-// 2. From MCP request (mcpProfile)
-// 3. Default profile from config.yaml
-func ResolveProfile(flagProfile, mcpProfile string) (*Profile, error) {
+type Resolver struct{}
+
+func NewResolver() *Resolver {
+	return &Resolver{}
+}
+
+func (r *Resolver) Resolve(flagProfile, mcpProfile string) (*domain.Profile, error) {
 	var profileName string
 
 	if flagProfile != "" {
@@ -27,4 +31,16 @@ func ResolveProfile(flagProfile, mcpProfile string) (*Profile, error) {
 	}
 
 	return LoadProfile(profileName)
+}
+
+func (r *Resolver) LoadConfig() (*domain.Config, error) {
+	return LoadConfig()
+}
+
+func (r *Resolver) SaveConfig(cfg *domain.Config) error {
+	return SaveConfig(cfg)
+}
+
+func (r *Resolver) ListProfiles() ([]string, error) {
+	return ListProfiles()
 }

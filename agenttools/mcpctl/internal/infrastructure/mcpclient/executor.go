@@ -1,29 +1,35 @@
-package runtime
+package mcpclient
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	mcpclient "github.com/syunkitada/myaitoolbox/mcpctl/internal/mcpclient"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/profile"
+	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
 )
 
-// CallTool executes a tool on a specific server with the given arguments.
-func CallTool(ctx context.Context, prof *profile.Profile, serverName, toolName string, params map[string]interface{}) (*mcp.CallToolResult, error) {
+type ToolExecutor struct{}
+
+func NewToolExecutor() *ToolExecutor {
+	return &ToolExecutor{}
+}
+
+func (e *ToolExecutor) CallTool(ctx context.Context, prof *domain.Profile, serverName, toolName string, params map[string]interface{}) (*mcp.CallToolResult, error) {
+	slog.Debug("calling tool", "server", serverName, "tool", toolName, "profile", prof.Name)
+
 	srvConfig, ok := prof.Servers[serverName]
 	if !ok {
 		return nil, fmt.Errorf("server %s not found in profile %s", serverName, prof.Name)
 	}
 
-	session, err := mcpclient.NewClient(ctx, srvConfig)
+	session, err := NewClient(ctx, srvConfig)
 	if err != nil {
 		return nil, fmt.Errorf("server %s: failed to connect: %w", serverName, err)
 	}
 	defer session.Close()
 
-	// Marshal params to json.RawMessage for Arguments
 	argsJSON, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal params: %w", err)

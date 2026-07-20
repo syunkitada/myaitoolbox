@@ -1,12 +1,13 @@
-package cli
+package entrypoint
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/discovery"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/profile"
+	"github.com/syunkitada/myaitoolbox/mcpctl/internal/application"
+	infraProfile "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/profile"
+	mcpclientInfra "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/mcpclient"
 )
 
 var listCmd = &cobra.Command{
@@ -18,16 +19,17 @@ var listCmd = &cobra.Command{
 			serverFilter = args[0]
 		}
 
-		p, err := profile.ResolveProfile(profileFlag, "")
+		resolver := infraProfile.NewResolver()
+		p, err := resolver.Resolve(profileFlag, "")
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
 		}
 
-		entries, err := discovery.ListTools(context.Background(), p, serverFilter)
+		discovery := mcpclientInfra.NewToolDiscovery()
+		entries, err := application.ListTools(context.Background(), discovery, p, serverFilter)
 		if err != nil {
 			fmt.Println("Error:", err)
-			// Continue to show what we have
 		}
 
 		for _, entry := range entries {

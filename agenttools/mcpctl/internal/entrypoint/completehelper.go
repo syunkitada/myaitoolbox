@@ -1,4 +1,4 @@
-package cli
+package entrypoint
 
 import (
 	"context"
@@ -6,22 +6,23 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/discovery"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/profile"
+	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
+	infraProfile "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/profile"
+	mcpclientInfra "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/mcpclient"
 )
 
-// __list_tools: prints all available "server/tool" entries, one per line.
-// Used internally by the zsh completion script.
 var listToolsHelperCmd = &cobra.Command{
 	Use:    "__list_tools",
 	Short:  "List tools for shell completion (internal)",
 	Hidden: true,
 	Run: func(cmd *cobra.Command, args []string) {
-		p, err := profile.ResolveProfile(profileFlag, "")
+		resolver := infraProfile.NewResolver()
+		p, err := resolver.Resolve(profileFlag, "")
 		if err != nil {
 			return
 		}
 
+		discovery := mcpclientInfra.NewToolDiscovery()
 		entries, err := discovery.ListTools(context.Background(), p, "")
 		if err != nil && len(entries) == 0 {
 			return
@@ -30,7 +31,6 @@ var listToolsHelperCmd = &cobra.Command{
 		for _, entry := range entries {
 			tool := entry.Tool
 			desc := tool.Description
-			// Trim description to a single line for zsh display
 			for i, c := range desc {
 				if c == '\n' {
 					desc = desc[:i]
@@ -46,8 +46,6 @@ var listToolsHelperCmd = &cobra.Command{
 	},
 }
 
-// __list_params: prints parameter names for a given "server/tool", one per line.
-// Used internally by the zsh completion script.
 var listParamsHelperCmd = &cobra.Command{
 	Use:    "__list_params <server/tool>",
 	Short:  "List params for shell completion (internal)",
@@ -55,16 +53,18 @@ var listParamsHelperCmd = &cobra.Command{
 	Args:   cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		toolPath := args[0]
-		serverName, toolName, err := discovery.ParseToolName(toolPath)
+		serverName, toolName, err := domain.ParseToolName(toolPath)
 		if err != nil {
 			return
 		}
 
-		p, err := profile.ResolveProfile(profileFlag, "")
+		resolver := infraProfile.NewResolver()
+		p, err := resolver.Resolve(profileFlag, "")
 		if err != nil {
 			return
 		}
 
+		discovery := mcpclientInfra.NewToolDiscovery()
 		entry, err := discovery.GetToolInfo(context.Background(), p, serverName, toolName)
 		if err != nil {
 			return
@@ -94,7 +94,6 @@ var listParamsHelperCmd = &cobra.Command{
 			desc := ""
 			if ok {
 				if d, ok := paramSchema["description"].(string); ok {
-					// single line
 					for i, c := range d {
 						if c == '\n' {
 							d = d[:i]
@@ -103,7 +102,6 @@ var listParamsHelperCmd = &cobra.Command{
 					}
 					desc = d
 				}
-				// If enum, show possible values in description
 				if enum, ok := paramSchema["enum"].([]interface{}); ok {
 					b, _ := json.Marshal(enum)
 					desc = fmt.Sprintf("one of %s", string(b))
@@ -120,7 +118,6 @@ var listParamsHelperCmd = &cobra.Command{
 			}
 		}
 
-		// Always offer -o and -p
 		fmt.Println("-o:output format (raw, tsv, table)")
 		fmt.Println("-p:profile to use")
 	},
@@ -134,16 +131,18 @@ var listParamValuesHelperCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		toolPath := args[0]
 		paramName := args[1]
-		serverName, toolName, err := discovery.ParseToolName(toolPath)
+		serverName, toolName, err := domain.ParseToolName(toolPath)
 		if err != nil {
 			return
 		}
 
-		p, err := profile.ResolveProfile(profileFlag, "")
+		resolver := infraProfile.NewResolver()
+		p, err := resolver.Resolve(profileFlag, "")
 		if err != nil {
 			return
 		}
 
+		discovery := mcpclientInfra.NewToolDiscovery()
 		entry, err := discovery.GetToolInfo(context.Background(), p, serverName, toolName)
 		if err != nil {
 			return

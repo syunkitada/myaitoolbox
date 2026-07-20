@@ -2,10 +2,11 @@ package profile
 
 import (
 	"fmt"
+
+	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
 )
 
-// Validate checks if the given profile is valid.
-func Validate(p *Profile) error {
+func Validate(p *domain.Profile) error {
 	if p.Name == "" {
 		return fmt.Errorf("profile name is required")
 	}

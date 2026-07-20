@@ -1,12 +1,13 @@
-package cli
+package entrypoint
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/discovery"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/profile"
+	"github.com/syunkitada/myaitoolbox/mcpctl/internal/application"
+	infraProfile "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/profile"
+	mcpclientInfra "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/mcpclient"
 )
 
 var searchCmd = &cobra.Command{
@@ -16,16 +17,17 @@ var searchCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		query := args[0]
 
-		p, err := profile.ResolveProfile(profileFlag, "")
+		resolver := infraProfile.NewResolver()
+		p, err := resolver.Resolve(profileFlag, "")
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
 		}
 
-		entries, err := discovery.SearchTools(context.Background(), p, query)
+		discovery := mcpclientInfra.NewToolDiscovery()
+		entries, err := application.SearchTools(context.Background(), discovery, p, query)
 		if err != nil {
 			fmt.Println("Error:", err)
-			// Continue to show what we have
 		}
 
 		for _, entry := range entries {

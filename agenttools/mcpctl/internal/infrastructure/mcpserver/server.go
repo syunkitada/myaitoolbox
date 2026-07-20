@@ -6,19 +6,38 @@ import (
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/discovery"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/profile"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/runtime"
+	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
 )
 
-func NewServer() *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{
+type Server struct {
+	mcp       *mcp.Server
+	discovery domain.ToolDiscovery
+	executor  domain.ToolExecutor
+	resolver  domain.ProfileResolver
+}
+
+func NewServer(discovery domain.ToolDiscovery, executor domain.ToolExecutor, resolver domain.ProfileResolver) *Server {
+	s := &Server{
+		discovery: discovery,
+		executor:  executor,
+		resolver:  resolver,
+	}
+
+	s.mcp = mcp.NewServer(&mcp.Implementation{
 		Name:    "mcpctl",
-		Version: "1.0.0",
+		Version: domain.Version,
 	}, nil)
 
-	// Tool: list
-	s.AddTool(&mcp.Tool{
+	s.registerTools()
+	return s
+}
+
+func (s *Server) Run(ctx context.Context, transport mcp.Transport) error {
+	return s.mcp.Run(ctx, transport)
+}
+
+func (s *Server) registerTools() {
+	s.mcp.AddTool(&mcp.Tool{
 		Name:        "list",
 		Description: "List available tools across configured MCP servers",
 		InputSchema: map[string]interface{}{
@@ -30,10 +49,9 @@ func NewServer() *mcp.Server {
 				},
 			},
 		},
-	}, listHandler)
+	}, s.listHandler)
 
-	// Tool: search
-	s.AddTool(&mcp.Tool{
+	s.mcp.AddTool(&mcp.Tool{
 		Name:        "search",
 		Description: "Search for tools by keyword in name or description",
 		InputSchema: map[string]interface{}{
@@ -50,10 +68,9 @@ func NewServer() *mcp.Server {
 			},
 			"required": []string{"query"},
 		},
-	}, searchHandler)
+	}, s.searchHandler)
 
-	// Tool: info
-	s.AddTool(&mcp.Tool{
+	s.mcp.AddTool(&mcp.Tool{
 		Name:        "info",
 		Description: "Get detailed information about a specific tool",
 		InputSchema: map[string]interface{}{
@@ -70,10 +87,9 @@ func NewServer() *mcp.Server {
 			},
 			"required": []string{"tool"},
 		},
-	}, infoHandler)
+	}, s.infoHandler)
 
-	// Tool: call
-	s.AddTool(&mcp.Tool{
+	s.mcp.AddTool(&mcp.Tool{
 		Name:        "call",
 		Description: "Execute a specific tool",
 		InputSchema: map[string]interface{}{
@@ -94,12 +110,10 @@ func NewServer() *mcp.Server {
 			},
 			"required": []string{"tool"},
 		},
-	}, callHandler)
-
-	return s
+	}, s.callHandler)
 }
 
-func parseArgs(request *mcp.CallToolRequest) (map[string]interface{}, error) {
+func (s *Server) parseArgs(request *mcp.CallToolRequest) (map[string]interface{}, error) {
 	var args map[string]interface{}
 	if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
 		return nil, err
@@ -120,16 +134,16 @@ func toolResultText(text string) *mcp.CallToolResult {
 	}
 }
 
-func listHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, _ := parseArgs(request)
+func (s *Server) listHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, _ := s.parseArgs(request)
 	profName, _ := args["profile"].(string)
 
-	p, err := profile.ResolveProfile("", profName)
+	p, err := s.resolver.Resolve("", profName)
 	if err != nil {
 		return toolResultError(fmt.Sprintf("Failed to resolve profile: %v", err)), nil
 	}
 
-	entries, err := discovery.ListTools(ctx, p, "")
+	entries, err := s.discovery.ListTools(ctx, p, "")
 	if err != nil && len(entries) == 0 {
 		return toolResultError(fmt.Sprintf("Failed to list tools: %v", err)), nil
 	}
@@ -144,8 +158,8 @@ func listHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallTo
 	return toolResultText(out), nil
 }
 
-func searchHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, _ := parseArgs(request)
+func (s *Server) searchHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, _ := s.parseArgs(request)
 	profName, _ := args["profile"].(string)
 	query, _ := args["query"].(string)
 
@@ -153,12 +167,12 @@ func searchHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Call
 		return toolResultError("Query is required"), nil
 	}
 
-	p, err := profile.ResolveProfile("", profName)
+	p, err := s.resolver.Resolve("", profName)
 	if err != nil {
 		return toolResultError(fmt.Sprintf("Failed to resolve profile: %v", err)), nil
 	}
 
-	entries, err := discovery.SearchTools(ctx, p, query)
+	entries, err := s.discovery.SearchTools(ctx, p, query)
 	if err != nil && len(entries) == 0 {
 		return toolResultError(fmt.Sprintf("Failed to search tools: %v", err)), nil
 	}
@@ -173,8 +187,8 @@ func searchHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Call
 	return toolResultText(out), nil
 }
 
-func infoHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, _ := parseArgs(request)
+func (s *Server) infoHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, _ := s.parseArgs(request)
 	profName, _ := args["profile"].(string)
 	toolPath, _ := args["tool"].(string)
 
@@ -182,27 +196,68 @@ func infoHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallTo
 		return toolResultError("Tool name is required"), nil
 	}
 
-	p, err := profile.ResolveProfile("", profName)
+	p, err := s.resolver.Resolve("", profName)
 	if err != nil {
 		return toolResultError(fmt.Sprintf("Failed to resolve profile: %v", err)), nil
 	}
 
-	serverName, toolName, err := discovery.ParseToolName(toolPath)
+	serverName, toolName, err := domain.ParseToolName(toolPath)
 	if err != nil {
 		return toolResultError(err.Error()), nil
 	}
 
-	entry, err := discovery.GetToolInfo(ctx, p, serverName, toolName)
+	entry, err := s.discovery.GetToolInfo(ctx, p, serverName, toolName)
 	if err != nil {
 		return toolResultError(err.Error()), nil
 	}
 
 	out := fmt.Sprintf("Name:\n  %s/%s\n\nDescription:\n  %s\n", entry.ServerName, entry.Tool.Name, entry.Tool.Description)
+
+	if schema, ok := entry.Tool.InputSchema.(map[string]interface{}); ok {
+		if schemaType, _ := schema["type"].(string); schemaType == "object" {
+			props, _ := schema["properties"].(map[string]interface{})
+			requiredRaw, _ := schema["required"].([]interface{})
+			requiredSet := make(map[string]bool)
+			for _, r := range requiredRaw {
+				if s, ok := r.(string); ok {
+					requiredSet[s] = true
+				}
+			}
+
+			if len(props) > 0 {
+				out += "\nParameters:\n"
+				for paramName, paramSchemaRaw := range props {
+					paramSchema, ok := paramSchemaRaw.(map[string]interface{})
+					req := ""
+					if requiredSet[paramName] {
+						req = " (required)"
+					}
+					if ok {
+						typ, _ := paramSchema["type"].(string)
+						if typ == "" {
+							typ = "any"
+						}
+						if typ == "array" {
+							if items, ok := paramSchema["items"].(map[string]interface{}); ok {
+								if itemType, ok := items["type"].(string); ok {
+									typ = "array[" + itemType + "]"
+								}
+							}
+						}
+						out += fmt.Sprintf("  %s: %s%s\n", paramName, typ, req)
+					} else {
+						out += fmt.Sprintf("  %s%s\n", paramName, req)
+					}
+				}
+			}
+		}
+	}
+
 	return toolResultText(out), nil
 }
 
-func callHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, _ := parseArgs(request)
+func (s *Server) callHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, _ := s.parseArgs(request)
 	profName, _ := args["profile"].(string)
 	toolPath, _ := args["tool"].(string)
 	params := make(map[string]interface{})
@@ -214,15 +269,15 @@ func callHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallTo
 		return toolResultError("Tool name is required"), nil
 	}
 
-	p, err := profile.ResolveProfile("", profName)
+	p, err := s.resolver.Resolve("", profName)
 	if err != nil {
 		return toolResultError(fmt.Sprintf("Failed to resolve profile: %v", err)), nil
 	}
 
-	serverName, toolName, err := discovery.ParseToolName(toolPath)
+	serverName, toolName, err := domain.ParseToolName(toolPath)
 	if err != nil {
 		return toolResultError(err.Error()), nil
 	}
 
-	return runtime.CallTool(ctx, p, serverName, toolName, params)
+	return s.executor.CallTool(ctx, p, serverName, toolName, params)
 }

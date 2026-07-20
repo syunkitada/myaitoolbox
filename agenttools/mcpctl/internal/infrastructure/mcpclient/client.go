@@ -3,15 +3,17 @@ package mcpclient
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/syunkitada/myaitoolbox/mcpctl/internal/profile"
+	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
 )
 
-// NewClient creates a new MCP client for the given server configuration.
-func NewClient(ctx context.Context, srvConfig profile.ServerConfig) (*mcp.ClientSession, error) {
+func NewClient(ctx context.Context, srvConfig domain.ServerConfig) (*mcp.ClientSession, error) {
+	slog.Debug("creating MCP client", "transport", srvConfig.Transport)
+
 	var transport mcp.Transport
 	var err error
 
@@ -32,7 +34,7 @@ func NewClient(ctx context.Context, srvConfig profile.ServerConfig) (*mcp.Client
 
 	impl := mcp.Implementation{
 		Name:    "mcpctl",
-		Version: "1.0.0",
+		Version: domain.Version,
 	}
 
 	client := mcp.NewClient(&impl, nil)
@@ -44,14 +46,25 @@ func NewClient(ctx context.Context, srvConfig profile.ServerConfig) (*mcp.Client
 	return session, nil
 }
 
-func newStdioTransport(srvConfig profile.ServerConfig) (mcp.Transport, error) {
-	parts := strings.Fields(srvConfig.Command)
-	if len(parts) == 0 {
+func newStdioTransport(srvConfig domain.ServerConfig) (mcp.Transport, error) {
+	if srvConfig.Command == "" {
 		return nil, fmt.Errorf("command is empty")
 	}
 
-	cmd := parts[0]
-	args := parts[1:]
+	var cmd string
+	var args []string
+
+	if len(srvConfig.Args) > 0 {
+		cmd = srvConfig.Command
+		args = srvConfig.Args
+	} else {
+		parts := strings.Fields(srvConfig.Command)
+		if len(parts) == 0 {
+			return nil, fmt.Errorf("command is empty")
+		}
+		cmd = parts[0]
+		args = parts[1:]
+	}
 
 	return &mcp.CommandTransport{Command: exec.Command(cmd, args...)}, nil
 }
