@@ -1,5 +1,11 @@
 # mcpctl AIエージェントガイドライン
 
+## 参考ドキュメント
+
+- [Go アーキテクチャ・設計方針](../../../docs/golang/golang_architecture.md)
+- [Go プロジェクト構成](../../../docs/golang/golang_project_structure.md)
+- [Go 技術スタック](../../../docs/golang/golang_technology_stack.md)
+
 このドキュメントは、AIエージェント向けに `mcpctl` を効率的に使用するための手順と例を提供します。
 
 ## ツール検索

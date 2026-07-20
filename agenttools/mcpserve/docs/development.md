@@ -1,6 +1,6 @@
 # 開発ガイド（サーバーの追加方法）
 
-`mcpserve` への新しい MCP Server の追加は非常に簡単です。`Provider` インターフェースを実装した新しいパッケージを作成し、それを Registry に登録するだけです。レイヤードアーキテクチャの全般的な説明は [golang/knowledge/architecture.md](golang/knowledge/architecture.md) を参照してください。
+`mcpserve` への新しい MCP Server の追加は非常に簡単です。`Provider` インターフェースを実装した新しいパッケージを作成し、それを Registry に登録するだけです。レイヤードアーキテクチャの全般的な説明は [golangアーキテクチャ](../../../docs/golang/golang_architecture.md) を参照してください。
 
 ## 1. パッケージの作成
 

@@ -44,7 +44,7 @@ mcpserve github
 
 - [アーキテクチャ・設計方針](docs/architecture.md)
 - [開発ガイド（サーバーの追加方法）](docs/development.md)
-- [Go プロジェクトガイド（汎用）](docs/golang/knowledge/architecture.md)
+- [Go プロジェクトガイド（汎用）](../../docs/golang/golang_architecture.md)
 
 ## ディレクトリ構成
 
