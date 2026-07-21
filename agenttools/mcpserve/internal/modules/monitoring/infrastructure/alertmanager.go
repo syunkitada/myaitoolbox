@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/domain"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/modules/monitoring/domain"
 )
 
 type alertmanagerClient struct {

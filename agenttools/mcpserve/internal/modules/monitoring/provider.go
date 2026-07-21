@@ -4,12 +4,12 @@ import (
 	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/domain"
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/infrastructure"
 
-	monApp "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/application"
-	monDomain "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/domain"
-	monInfra "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/infrastructure"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/domain"
+
+	monApp "github.com/syunkitada/myaitoolbox/mcpserve/internal/modules/monitoring/application"
+	monDomain "github.com/syunkitada/myaitoolbox/mcpserve/internal/modules/monitoring/domain"
+	monInfra "github.com/syunkitada/myaitoolbox/mcpserve/internal/modules/monitoring/infrastructure"
 )
 
 type monitoringProvider struct{}
@@ -26,9 +26,7 @@ func (p *monitoringProvider) Description() string {
 	return "Monitoring integration (Alertmanager) for MCP."
 }
 
-func (p *monitoringProvider) NewServer() domain.Server {
-	s := infrastructure.NewMCServer(&mcp.Implementation{Name: "monitoring", Version: "0.0.1"}, nil)
-
+func (p *monitoringProvider) RegisterTools(server domain.Server) {
 	amURL := os.Getenv("ALERTMANAGER_URL")
 	if amURL == "" {
 		amURL = "http://127.0.0.1:9093"
@@ -47,7 +45,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 
 	app := monApp.NewApp(alertRepo, silenceRepo, metricRepo)
 
-	s.AddTool(&mcp.Tool{
+	server.AddTool(&mcp.Tool{
 		Name:        "list_alerts",
 		Description: "Get alerts from Alertmanager",
 		InputSchema: map[string]interface{}{
@@ -70,7 +68,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 		},
 	}, monApp.WrapTool(app.ListAlerts))
 
-	s.AddTool(&mcp.Tool{
+	server.AddTool(&mcp.Tool{
 		Name:        "create_silence",
 		Description: "Create a new silence in Alertmanager",
 		InputSchema: map[string]interface{}{
@@ -99,7 +97,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 		},
 	}, monApp.WrapTool(app.CreateSilence))
 
-	s.AddTool(&mcp.Tool{
+	server.AddTool(&mcp.Tool{
 		Name:        "list_silences",
 		Description: "Get silences from Alertmanager",
 		InputSchema: map[string]interface{}{
@@ -118,7 +116,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 		},
 	}, monApp.WrapTool(app.ListSilences))
 
-	s.AddTool(&mcp.Tool{
+	server.AddTool(&mcp.Tool{
 		Name:        "delete_silence",
 		Description: "Delete a silence in Alertmanager",
 		InputSchema: map[string]interface{}{
@@ -132,7 +130,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 		},
 	}, monApp.WrapTool(app.DeleteSilence))
 
-	s.AddTool(&mcp.Tool{
+	server.AddTool(&mcp.Tool{
 		Name:        "query_metric_summary",
 		Description: "Query prometheus metrics via Grafana API and return summary statistics",
 		InputSchema: map[string]interface{}{
@@ -180,7 +178,7 @@ func (p *monitoringProvider) NewServer() domain.Server {
 		},
 	}, monApp.WrapTool(app.QueryMetricSummary))
 
-	s.AddTool(&mcp.Tool{
+	server.AddTool(&mcp.Tool{
 		Name:        "query_metric_history",
 		Description: "Query prometheus metrics via Grafana API and return time-aligned data points",
 		InputSchema: map[string]interface{}{
@@ -214,6 +212,4 @@ func (p *monitoringProvider) NewServer() domain.Server {
 			"required": []string{"query"},
 		},
 	}, monApp.WrapTool(app.QueryMetricHistory))
-
-	return s
 }

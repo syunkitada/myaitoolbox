@@ -10,7 +10,7 @@ import (
 type Provider interface {
 	Name() string
 	Description() string
-	NewServer() Server
+	RegisterTools(server Server)
 }
 
 // Server defines an MCP server with standardized response formatting.

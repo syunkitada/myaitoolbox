@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring/domain"
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/modules/monitoring/domain"
 )
 
 var LegendRegex = regexp.MustCompile(`\{\{([^}]+)\}\}`)

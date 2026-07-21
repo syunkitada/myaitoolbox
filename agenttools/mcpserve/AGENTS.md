@@ -25,9 +25,11 @@ Infrastructure
   - Domain は他レイヤを参照してはいけない。
   - Domain には `type`・`interface` 定義のみ記述する。
   - Domain には `func` は定義しない。
-- Entrypoint は Application のみを利用する。
+- Entrypoint は Application、Domain、Infrastructure を利用する（DIのため）。
 - Application は UseCase を実装し、Domain のみを利用する。
 - Infrastructure は Domain の `interface` を実装する。
+- Module は `internal/modules/` に配置し、各モジュールは同じ Layered Architecture を採用する。
+  - Module は Domain のみに依存し、Infrastructure や Application に依存しない。
 
 ## ディレクトリ構成
 
@@ -36,11 +38,11 @@ cmd/
     <entrypoint>/
         main.go     # エントリーポイント
 internal/
-    application/    # アプリケーション層（UseCase）
+    entrypoint/     # DI、プロバイダー登録、サーバー起動
     domain/         # ドメイン層（ビジネスルール、インターフェース）
     infrastructure/ # インフラストラクチャ層（実装）
-    providers/      # MCPプロバイダー実装
-        <provider>/
+    modules/        # MCPモジュール実装
+        <module>/
             application/
             domain/
             infrastructure/
@@ -50,28 +52,30 @@ internal/
 
 ```
 cmd/
-    myapi/
+    mcpserve/
         main.go
 internal/
+    entrypoint/
+        registry.go     # プロバイダーレジストリ
+        bootstrap.go    # DI、サーバー起動
     domain/
-        provider.go       # Providerインターフェース
-        registry.go       # プロバイダーレジストリ
+        provider.go     # Provider、Server インターフェース
     infrastructure/
-        server.go         # Server実装
-    providers/
+        server.go       # Server実装
+    modules/
         monitoring/
+            provider.go         # モジュールプロバイダー
             application/
-                usecase1.go
+                app.go
+                wrap.go
                 ...
             domain/
-                database1_repository.go
-                externalservice1_client.go
+                alert.go
+                metric.go
                 ...
             infrastructure/
-                database1/
-                    repository.go
-                externalservice1/
-                    client.go
+                alertmanager.go
+                prometheus.go
                 ...
 ```
 

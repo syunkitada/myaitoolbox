@@ -1,17 +1,14 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/application"
+
+	"github.com/syunkitada/myaitoolbox/mcpserve/internal/entrypoint"
 )
 
 var (
@@ -21,6 +18,8 @@ var (
 	logLevel  string
 )
 
+var registry = entrypoint.NewRegistryWithProviders()
+
 var rootCmd = &cobra.Command{
 	Use:     "mcpserve <server>",
 	Short:   "MCP Server Runtime",
@@ -28,11 +27,7 @@ var rootCmd = &cobra.Command{
 	Args:    cobra.ExactArgs(1),
 	Version: "0.0.1",
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		var names []string
-		for _, p := range application.List() {
-			names = append(names, p.Name())
-		}
-		return names, cobra.ShellCompDirectiveNoFileComp
+		return registry.ListNames(), cobra.ShellCompDirectiveNoFileComp
 	},
 	RunE: runServer,
 }
@@ -55,32 +50,7 @@ func initLogger() {
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
-	serverName := args[0]
-	p, exists := application.Get(serverName)
-	if !exists {
-		return fmt.Errorf("server %q not found", serverName)
-	}
-
-	srv := p.NewServer()
-	slog.Info("Starting server", "server", serverName, "transport", transport)
-
-	if transport == "http" {
-		addr := fmt.Sprintf("%s:%s", host, port)
-		handler := mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
-			return srv.MCP()
-		}, nil)
-		slog.Info("MCP HTTP server listening", "addr", addr)
-		if err := http.ListenAndServe(addr, handler); err != nil {
-			slog.Error("HTTP server error", "error", err)
-			return err
-		}
-	} else {
-		if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-			slog.Error("Server error", "error", err)
-			return err
-		}
-	}
-	return nil
+	return entrypoint.Run(registry, args[0], transport, host, port)
 }
 
 func main() {
