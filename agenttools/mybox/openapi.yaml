@@ -1,0 +1,485 @@
+openapi: 3.0.3
+info:
+  title: mybox API
+  description: Markdown-based personal workspace API
+  version: 0.1.0
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /api/meta:
+    get:
+      operationId: getMeta
+      summary: Get workspace meta information
+      responses:
+        "200":
+          description: meta information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Meta"
+  /api/meta/favorites:
+    put:
+      operationId: updateFavorite
+      summary: Add or remove a favorite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFavoriteRequest"
+      responses:
+        "204":
+          description: updated
+  /api/meta/recent:
+    post:
+      operationId: recordRecent
+      summary: Record a recently opened file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordRecentRequest"
+      responses:
+        "204":
+          description: recorded
+  /api/search:
+    get:
+      operationId: search
+      summary: Search tasks and knowledge
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["task", "knowledge"]
+      responses:
+        "200":
+          description: search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SearchResult"
+  /api/tasks:
+    get:
+      operationId: listTasks
+      summary: List tasks
+      parameters:
+        - name: all
+          in: query
+          schema:
+            type: boolean
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: tag
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
+      responses:
+        "201":
+          description: created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /api/tasks/{id}:
+    get:
+      operationId: getTask
+      summary: Get a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: not found
+    patch:
+      operationId: updateTask
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskRequest"
+      responses:
+        "200":
+          description: updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /api/tasks/{id}/archive:
+    post:
+      operationId: archiveTask
+      summary: Archive a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: archived
+  /api/knowledge:
+    get:
+      operationId: listKnowledge
+      summary: List knowledge
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+        - name: tag
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: knowledge
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Knowledge"
+    post:
+      operationId: createKnowledge
+      summary: Create knowledge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKnowledgeRequest"
+      responses:
+        "201":
+          description: created knowledge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Knowledge"
+  /api/knowledge/content:
+    get:
+      operationId: getKnowledgeContent
+      summary: Get knowledge markdown content
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: markdown content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeContent"
+    put:
+      operationId: saveKnowledgeContent
+      summary: Save knowledge markdown content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeContent"
+      responses:
+        "204":
+          description: saved
+  /api/knowledge/move:
+    post:
+      operationId: moveKnowledge
+      summary: Move knowledge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveKnowledgeRequest"
+      responses:
+        "204":
+          description: moved
+  /api/knowledge/rename:
+    post:
+      operationId: renameKnowledge
+      summary: Rename knowledge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameKnowledgeRequest"
+      responses:
+        "204":
+          description: renamed
+  /api/graph:
+    get:
+      operationId: getGraph
+      summary: Get graph data for Graph View
+      responses:
+        "200":
+          description: graph data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphData"
+components:
+  schemas:
+    Meta:
+      type: object
+      required: [project, projects, default_project, tags, favorites, recent_files]
+      properties:
+        project:
+          type: string
+        projects:
+          type: array
+          items:
+            type: string
+        default_project:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        favorites:
+          type: array
+          items:
+            type: string
+        recent_files:
+          type: array
+          items:
+            type: string
+    UpdateFavoriteRequest:
+      type: object
+      required: [path, enabled]
+      properties:
+        path:
+          type: string
+        enabled:
+          type: boolean
+    RecordRecentRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+    SearchResult:
+      type: object
+      required: [type, path, title]
+      properties:
+        type:
+          type: string
+          enum: ["task", "knowledge"]
+        id:
+          type: string
+        path:
+          type: string
+        title:
+          type: string
+        snippet:
+          type: string
+    Task:
+      type: object
+      required: [id, title, status, priority]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        assignee:
+          type: string
+        due:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        project:
+          type: string
+        created:
+          type: string
+          format: date-time
+        body:
+          type: string
+        archived:
+          type: boolean
+    TaskStatus:
+      type: string
+      enum: ["todo", "doing", "blocked", "review", "done"]
+    TaskPriority:
+      type: string
+      enum: ["low", "medium", "high", "urgent"]
+    CreateTaskRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        assignee:
+          type: string
+        due:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+    UpdateTaskRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        assignee:
+          type: string
+        due:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+    Knowledge:
+      type: object
+      required: [path, title]
+      properties:
+        path:
+          type: string
+        title:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        type:
+          type: string
+        created:
+          type: string
+          format: date-time
+        lastmod:
+          type: string
+          format: date-time
+        wiki_links:
+          type: array
+          items:
+            type: string
+        body:
+          type: string
+    KnowledgeContent:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+    CreateKnowledgeRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+    MoveKnowledgeRequest:
+      type: object
+      required: [old_path, new_path]
+      properties:
+        old_path:
+          type: string
+        new_path:
+          type: string
+    RenameKnowledgeRequest:
+      type: object
+      required: [old_path, new_name]
+      properties:
+        old_path:
+          type: string
+        new_name:
+          type: string
+    GraphData:
+      type: object
+      required: [nodes, links]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphNode"
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphLink"
+    GraphNode:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+    GraphLink:
+      type: object
+      required: [source, target]
+      properties:
+        source:
+          type: string
+        target:
+          type: string
