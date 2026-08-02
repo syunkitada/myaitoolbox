@@ -29,9 +29,27 @@ export default function App() {
     void refreshMeta()
   }, [refreshMeta])
 
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  const closeSidebar = useCallback(() => setSidebarOpen(false), [])
+
   return (
     <div className="app">
-      <Sidebar meta={meta} navigate={navigate} />
+      {/* Mobile overlay */}
+      {sidebarOpen && <div className="sidebar-overlay" onClick={closeSidebar} />}
+
+      {/* Hamburger button (mobile only) */}
+      <button
+        className="hamburger"
+        aria-label="Toggle menu"
+        onClick={() => setSidebarOpen((o) => !o)}
+      >
+        <span />
+        <span />
+        <span />
+      </button>
+
+      <Sidebar meta={meta} navigate={navigate} open={sidebarOpen} onClose={closeSidebar} />
       <main className="content">
         {error && (
           <div className="error-banner">

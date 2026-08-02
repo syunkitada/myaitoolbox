@@ -6,13 +6,19 @@ import { SearchBar } from './SearchBar'
 interface SidebarProps {
   meta: Meta | null
   navigate: ReturnType<typeof useNavigate>
+  open?: boolean
+  onClose?: () => void
 }
 
-export function Sidebar({ meta, navigate }: SidebarProps) {
+export function Sidebar({ meta, navigate, open, onClose }: SidebarProps) {
   const [q, setQ] = useState('')
 
+  const handleNav = () => {
+    onClose?.()
+  }
+
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${open ? ' sidebar--open' : ''}`}>
       <div className="sidebar-brand">
         mybox
         {meta && meta.projects && meta.projects.length > 0 && (
@@ -20,7 +26,6 @@ export function Sidebar({ meta, navigate }: SidebarProps) {
             value={meta.project}
             onChange={(e) => {
               setProject(e.target.value)
-              window.location.reload()
             }}
             style={{
               marginLeft: '0.5rem',
@@ -46,16 +51,17 @@ export function Sidebar({ meta, navigate }: SidebarProps) {
         onChange={setQ}
         onSubmit={(query) => {
           navigate(`/search?q=${encodeURIComponent(query)}`)
+          handleNav()
         }}
       />
       <nav className="sidebar-nav">
-        <NavLink to="/" end>
+        <NavLink to="/" end onClick={handleNav}>
           Dashboard
         </NavLink>
-        <NavLink to="/tasks">Tasks</NavLink>
-        <NavLink to="/board">Board</NavLink>
-        <NavLink to="/knowledge">Knowledge</NavLink>
-        <NavLink to="/graph">Graph</NavLink>
+        <NavLink to="/tasks" onClick={handleNav}>Tasks</NavLink>
+        <NavLink to="/board" onClick={handleNav}>Board</NavLink>
+        <NavLink to="/knowledge" onClick={handleNav}>Knowledge</NavLink>
+        <NavLink to="/graph" onClick={handleNav}>Graph</NavLink>
       </nav>
       <div className="sidebar-section">
         <div className="sidebar-section-title">Favorites</div>
@@ -63,7 +69,10 @@ export function Sidebar({ meta, navigate }: SidebarProps) {
           {(meta?.favorites ?? []).map((p) => (
             <li key={p}>
               <button
-                onClick={() => navigate(`/knowledge/${encodeURIComponent(p)}`)}
+                onClick={() => {
+                  navigate(`/knowledge/${encodeURIComponent(p)}`)
+                  handleNav()
+                }}
                 className="link-btn"
               >
                 {p}
@@ -78,7 +87,10 @@ export function Sidebar({ meta, navigate }: SidebarProps) {
           {(meta?.recent_files ?? []).map((p) => (
             <li key={p}>
               <button
-                onClick={() => navigate(`/knowledge/${encodeURIComponent(p)}`)}
+                onClick={() => {
+                  navigate(`/knowledge/${encodeURIComponent(p)}`)
+                  handleNav()
+                }}
                 className="link-btn"
               >
                 {p}

@@ -2,3 +2,7 @@
 /web/node_modules
 /web/dist
 *.log
+
+# web-build で生成されるファイルは追跡しない（.gitkeep だけ例外）
+/internal/webui/dist/*
+!/internal/webui/dist/.gitkeep

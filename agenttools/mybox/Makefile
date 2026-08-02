@@ -26,6 +26,7 @@ web-build:
 	rm -rf internal/webui/dist
 	mkdir -p internal/webui/dist
 	cp -r web/dist/. internal/webui/dist/
+	touch internal/webui/dist/.gitkeep
 
 web-dev:
 	cd web && npm run dev

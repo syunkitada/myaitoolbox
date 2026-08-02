@@ -39,6 +39,9 @@ type Server struct {
 }
 
 func NewServer(cfg *domain.Config, defaultProject string, readOnly bool) *Server {
+	if defaultProject == "" {
+		defaultProject = cfg.DefaultProject
+	}
 	return &Server{
 		config:         cfg,
 		apps:           make(map[string]*App),
@@ -87,7 +90,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) handleIndex(c echo.Context) error {
 	path := strings.TrimPrefix(c.Request().URL.Path, "/")
 	if path == "" {
-		path = "index.html"
+		return c.Redirect(http.StatusFound, "/"+s.defaultProject+"/")
 	}
 	f, err := webDist.Open(path)
 	if err == nil {

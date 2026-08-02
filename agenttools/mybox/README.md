@@ -16,13 +16,19 @@ Markdownを唯一のデータソースとする個人ワークスペースツー
 
 ## インストール
 
+**前提:** Go 1.25+、Node.js（Web UI のビルドに必要）
+
 ```bash
-go install ./cmd/mybox
+git clone https://github.com/syunkitada/myaitoolbox
+cd myaitoolbox/agenttools/mybox
+
+make web-build          # Web UI をビルドして internal/webui/dist へコピー
+go install ./cmd/mybox  # $GOPATH/bin/mybox にインストール
 ```
 
-Go 1.25+ が必要です。`mybox` が `$(go env GOPATH)/bin` にインストールされます。
-
-開発時は `make build` で `./mybox` に生成することもできます。
+> [!NOTE]
+> `make web-build` を先に実行しないと、Web UI が空のバイナリがインストールされます。
+> `go install github.com/syunkitada/myaitoolbox/mybox/cmd/mybox@latest` のようなリモートからの直接インストールは Web UI が含まれないため非推奨です。
 
 ### zsh 補完
 
@@ -104,9 +110,10 @@ myproject/
 ## 開発
 
 ```bash
+make web-build # Web UI をビルドして internal/webui/dist へコピー
+make build     # ./mybox バイナリを生成（go install の代わりにローカル確認用）
 make test      # Go のユニットテスト
 make lint      # golangci-lint
-make web-build # Web UI をビルドして internal/webui/dist へコピー
 make e2e       # CLI E2E + Playwright E2E
 ```
 

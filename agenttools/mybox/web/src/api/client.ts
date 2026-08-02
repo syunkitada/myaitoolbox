@@ -85,19 +85,21 @@ export class ApiError extends Error {
   }
 }
 
-export let currentProject = localStorage.getItem('mybox_project') || ''
-
-export function setProject(project: string) {
-  currentProject = project
-  localStorage.setItem('mybox_project', project)
+export function getProject(): string {
+  const parts = window.location.pathname.split('/')
+  if (parts.length > 1 && parts[1] !== '') {
+    return parts[1]
+  }
+  return ''
 }
 
-export function getProject(): string {
-  return currentProject
+export function setProject(project: string) {
+  window.location.href = '/' + encodeURIComponent(project) + '/' + window.location.hash
 }
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const init: RequestInit = { method, headers: {} }
+  const currentProject = getProject()
   if (currentProject) {
     (init.headers as Record<string, string>)['X-Project'] = currentProject
   }
