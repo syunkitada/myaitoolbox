@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
-import { renderWikiLinks } from '../utils/markdown'
+import { renderWikiLinks, resolveMarkdownLink } from '../utils/markdown'
 import { Mermaid } from './Mermaid'
 
 const md = new MarkdownIt({
@@ -13,9 +13,19 @@ const md = new MarkdownIt({
 md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
   const token = tokens[idx]
   const inline = tokens[idx + 1]
-  const text = inline ? md.renderer.renderInlineAsText([inline], options, undefined) : ''
-  const slug = slugify(text)
+  const text = inline ? md.renderer.renderInlineAsText(inline.children ?? [], options, undefined) : ''
+  const plain = text.replace(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g, '$1').replace(/[*_`#]/g, '')
+  const slug = slugify(plain)
   token.attrSet('id', slug)
+  return self.renderToken(tokens, idx, options)
+}
+
+md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  const href = tokens[idx].attrGet('href') ?? ''
+  const resolved = resolveMarkdownLink(href, env?.relativeTo)
+  if (resolved) {
+    tokens[idx].attrSet('href', `#/knowledge/${encodeURIComponent(resolved)}`)
+  }
   return self.renderToken(tokens, idx, options)
 }
 
@@ -43,6 +53,7 @@ export function extractOutline(text: string): Array<{ level: number; id: string;
 export interface RichMarkdownProps {
   text: string
   pathOf?: (target: string) => string | null
+  relativeTo?: string
 }
 
 interface Segment {
@@ -67,7 +78,7 @@ function splitSegments(text: string): Segment[] {
   return segments
 }
 
-export function RichMarkdown({ text, pathOf }: RichMarkdownProps) {
+export function RichMarkdown({ text, pathOf, relativeTo }: RichMarkdownProps) {
   const segments = useMemo(() => splitSegments(text), [text])
 
   return (
@@ -77,7 +88,7 @@ export function RichMarkdown({ text, pathOf }: RichMarkdownProps) {
           return <Mermaid key={i} code={seg.content} />
         }
         const withLinks = pathOf ? renderWikiLinks(seg.content, pathOf) : seg.content
-        const html = DOMPurify.sanitize(md.render(withLinks))
+        const html = DOMPurify.sanitize(md.render(withLinks, { relativeTo }))
         return <div key={i} dangerouslySetInnerHTML={{ __html: html }} />
       })}
     </div>

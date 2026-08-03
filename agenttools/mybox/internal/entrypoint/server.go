@@ -521,13 +521,31 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request) {
 	nodes := make([]api.GraphNode, 0, len(list))
 	index := make(map[string]string, len(list))
 	for _, k := range list {
-		id := strings.ToLower(k.Path)
-		index[id] = k.Path
+		index[strings.ToLower(k.Path)] = k.Path
 		nodes = append(nodes, api.GraphNode{
 			Id:    k.Path,
 			Label: k.Title,
 			Type:  strPtr("knowledge"),
 		})
+	}
+	for _, k := range list {
+		if t := strings.ToLower(k.Title); t != "" {
+			if _, ok := index[t]; !ok {
+				index[t] = k.Path
+			}
+		}
+		for _, a := range k.Aliases {
+			if key := strings.ToLower(a); key != "" {
+				if _, ok := index[key]; !ok {
+					index[key] = k.Path
+				}
+			}
+		}
+		if b := strings.ToLower(filepath.Base(k.Path)); b != "" {
+			if _, ok := index[b]; !ok {
+				index[b] = k.Path
+			}
+		}
 	}
 	var links []api.GraphLink
 	for _, k := range list {

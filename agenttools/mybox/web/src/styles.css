@@ -90,7 +90,7 @@ body {
 .content {
   flex: 1;
   padding: 24px 32px;
-  max-width: 960px;
+  max-width: 1440px;
 }
 
 .page-header {
@@ -465,6 +465,9 @@ button.active {
 .outline {
   width: 180px;
   flex-shrink: 0;
+  align-self: flex-start;
+  position: sticky;
+  top: 24px;
   border-left: 1px solid var(--border);
   padding-left: 14px;
   display: flex;
@@ -502,6 +505,22 @@ button.active {
   padding-left: 12px;
 }
 
+.outline-graph-block {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.outline-graph {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
 .mermaid {
   margin: 12px 0;
 }
@@ -510,6 +529,163 @@ button.active {
   color: var(--danger);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre-wrap;
+}
+
+/* ─── Knowledge: explorer + viewer ─────────────────────────── */
+.knowledge-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.knowledge-explorer {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.knowledge-explorer .page-header {
+  margin-bottom: 4px;
+}
+
+.knowledge-explorer h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.knowledge-tree {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.knowledge-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  line-height: 1.9;
+}
+
+.knowledge-tree-row:hover {
+  background: var(--bg);
+}
+
+.knowledge-caret {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  width: 20px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.knowledge-dir-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.knowledge-file {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.knowledge-file:hover {
+  color: var(--accent);
+}
+
+.knowledge-file.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.knowledge-pane {
+  flex: 1;
+  min-width: 0;
+}
+
+.knowledge-empty {
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.mobile-back {
+  display: none;
+}
+
+/* Narrow desktop: shrink the explorer */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .knowledge-explorer {
+    width: 220px;
+  }
+}
+
+/* Tablet and below: single-column knowledge page
+   (explorer OR viewer, driven by whether a note is selected) */
+@media (max-width: 900px) {
+  .knowledge-layout {
+    flex-direction: column;
+  }
+
+  .knowledge-layout:not(.has-selection) .knowledge-pane {
+    display: none;
+  }
+
+  .knowledge-layout.has-selection .knowledge-explorer {
+    display: none;
+  }
+
+  .knowledge-explorer {
+    width: 100%;
+    position: static;
+    max-height: none;
+  }
+
+  .mobile-back {
+    display: inline-flex;
+  }
+
+  .knowledge-body {
+    flex-direction: column;
+  }
+
+  .outline {
+    width: 100%;
+    position: static;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-left: 0;
+    padding-top: 12px;
+    max-height: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .outline-title {
+    width: 100%;
+  }
+
+  .outline-graph-block {
+    width: 100%;
+  }
 }
 
 /* ─── Hamburger button (mobile only) ─────────────────────────── */
@@ -596,27 +772,6 @@ button.active {
     flex-shrink: 0;
     scroll-snap-align: start;
     min-height: 40vh;
-  }
-
-  /* Knowledge outline: hide on mobile, show below content */
-  .knowledge-body {
-    flex-direction: column;
-  }
-
-  .outline {
-    width: 100%;
-    border-left: none;
-    border-top: 1px solid var(--border);
-    padding-left: 0;
-    padding-top: 12px;
-    max-height: none;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .outline-title {
-    width: 100%;
   }
 
   /* Stats: wrap cleanly */

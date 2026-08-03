@@ -40,3 +40,22 @@ export function renderWikiLinks(text: string, pathOf: (target: string) => string
     return label
   })
 }
+
+export function resolveMarkdownLink(target: string, relativeTo?: string | null): string | null {
+  if (!target || target.startsWith('#') || target.startsWith('/')) return null
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return null
+  const clean = target.split(/[?#]/)[0]
+  if (!/\.md$/i.test(clean)) return null
+  const stack = (relativeTo ?? '').split('/').filter(Boolean)
+  stack.pop()
+  for (const part of clean.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') {
+      stack.pop()
+    } else {
+      stack.push(part)
+    }
+  }
+  const resolved = stack.join('/').replace(/\.md$/i, '')
+  return resolved || null
+}

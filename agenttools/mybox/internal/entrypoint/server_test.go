@@ -150,6 +150,25 @@ func TestFavoritesAndRecent(t *testing.T) {
 	assert.Contains(t, meta.RecentFiles, "notes/n1")
 }
 
+func TestGraphResolvesWikiLinksByAliasAndTitle(t *testing.T) {
+	s, app := newTestServer(t, false)
+	ctx := context.Background()
+	_, err := app.Knowledge.Create(ctx, "notes/phase6")
+	require.NoError(t, err)
+	_, err = app.Knowledge.Create(ctx, "index")
+	require.NoError(t, err)
+	require.NoError(t, app.Knowledge.SaveContent(ctx, "notes/phase6", "---\ntitle: Phase 6\naliases: [P6]\n---\n\ncontent"))
+	require.NoError(t, app.Knowledge.SaveContent(ctx, "index", "see [[Phase 6]], [[P6]], [[notes/phase6]], [[phase6]]"))
+
+	rec := do(t, s, http.MethodGet, "/api/graph", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	graph := decode[api.GraphData](t, rec)
+	require.Len(t, graph.Links, 4)
+	for _, l := range graph.Links {
+		assert.Equal(t, "notes/phase6", l.Target)
+	}
+}
+
 func TestNotFoundAndTraversal(t *testing.T) {
 	s, _ := newTestServer(t, false)
 

@@ -47,7 +47,7 @@ test('creates and opens a task', async ({ page }) => {
 
 test('knowledge view renders markdown with wiki links', async ({ page }) => {
   await page.getByRole('link', { name: 'Knowledge' }).click()
-  await page.getByRole('button', { name: 'index', exact: true }).click()
+  await page.locator('main').getByRole('button', { name: 'index', exact: true }).click()
   await expect(page.getByText('Welcome to the workspace.')).toBeVisible()
 })
 
@@ -61,16 +61,45 @@ test('search finds knowledge and opens it', async ({ page }) => {
 
 test('knowledge view shows outline and renders mermaid', async ({ page }) => {
   await page.getByRole('link', { name: 'Knowledge' }).click()
-  await page.locator('main').getByRole('button', { name: 'notes/phase6', exact: true }).click()
+  await page.locator('main').getByRole('button', { name: 'phase6', exact: true }).click()
   await expect(page.getByText('Overview', { exact: true }).first()).toBeVisible()
   await expect(page.locator('.outline')).toContainText('Overview')
   await expect(page.locator('.outline')).toContainText('Diagram')
   await expect(page.locator('.mermaid svg')).toBeVisible()
 })
 
+test('knowledge outline link scrolls to its heading', async ({ page }) => {
+  await page.getByRole('link', { name: 'Knowledge' }).click()
+  await page.locator('main').getByRole('button', { name: 'phase6', exact: true }).click()
+  await expect(page.locator('.outline')).toContainText('Diagram')
+  await expect
+    .poll(() => page.locator('.outline').evaluate((el) => getComputedStyle(el).position))
+    .toBe('sticky')
+  await page.getByRole('link', { name: 'Diagram' }).click()
+  await expect(page.locator('h2#diagram')).toBeInViewport()
+})
+
+test('knowledge page switches explorer/viewer on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'Toggle menu' }).click()
+  await page.getByRole('link', { name: 'Knowledge' }).click()
+
+  await expect(page.locator('.knowledge-explorer')).toBeVisible()
+  await expect(page.locator('.knowledge-pane')).toBeHidden()
+
+  await page.locator('main').getByRole('button', { name: 'phase6', exact: true }).click()
+  await expect(page.locator('.knowledge-explorer')).toBeHidden()
+  await expect(page.locator('.knowledge-pane')).toBeVisible()
+  await expect(page.getByRole('button', { name: '← Files' })).toBeVisible()
+
+  await page.getByRole('button', { name: '← Files' }).click()
+  await expect(page.locator('.knowledge-explorer')).toBeVisible()
+  await expect(page.locator('.knowledge-pane')).toBeHidden()
+})
+
 test('edits a knowledge file and persists to disk', async ({ page }) => {
   await page.getByRole('link', { name: 'Knowledge' }).click()
-  await page.locator('main').getByRole('button', { name: 'notes/phase6', exact: true }).click()
+  await page.locator('main').getByRole('button', { name: 'phase6', exact: true }).click()
 
   await page.getByRole('button', { name: 'Edit' }).click()
   const editor = page.getByLabel('Markdown editor')
@@ -110,4 +139,85 @@ test('board drag-and-drop changes task status and front matter', async ({ page }
   const tasks = (await res.json()) as Array<{ id: string; status: string }>
   const moved = tasks.find((t) => t.id === 'e2e-status-change-target')
   expect(moved?.status).toBe('done')
+})
+
+test('wiki links resolve by path, title, and alias', async ({ page }) => {
+  await page.request.put('/api/knowledge/content', {
+    data: {
+      path: 'notes/phase6',
+      content: '---\ntitle: Phase 6\naliases: [P6]\n---\n\n# Phase 6\n',
+    },
+  })
+  await page.request.put('/api/knowledge/content', {
+    data: {
+      path: 'notes/wiki-test',
+      content:
+        'by path: [[notes/phase6]]\n' +
+        'by title: [[Phase 6]]\n' +
+        'by alias: [[P6]]\n' +
+        'by basename: [[phase6]]\n',
+    },
+  })
+  await page.goto('/#/knowledge/notes/wiki-test')
+  await expect(page.getByText('by path:')).toBeVisible()
+  const hrefs = await page
+    .locator('.markdown-body a')
+    .evaluateAll((as) => as.map((a) => a.getAttribute('href')))
+  expect(hrefs).toEqual([
+    '#/knowledge/notes%2Fphase6',
+    '#/knowledge/notes%2Fphase6',
+    '#/knowledge/notes%2Fphase6',
+    '#/knowledge/notes%2Fphase6',
+  ])
+})
+
+test('relative markdown links resolve against the note directory', async ({ page }) => {
+  await page.request.put('/api/knowledge/content', {
+    data: { path: 'golang/golang_project_structure', content: '# Structure\n' },
+  })
+  await page.request.put('/api/knowledge/content', {
+    data: {
+      path: 'golang/golang_architecture',
+      content: 'see [structure](./golang_project_structure.md)\nand [top](../index.md)\n',
+    },
+  })
+  await page.goto('/#/knowledge/golang/golang_architecture')
+  const link = page.locator('.markdown-body a', { hasText: 'structure' })
+  await expect(link).toHaveAttribute('href', '#/knowledge/golang%2Fgolang_project_structure')
+  const top = page.locator('.markdown-body a', { hasText: 'top' })
+  await expect(top).toHaveAttribute('href', '#/knowledge/index')
+  await link.click()
+  await expect(
+    page.locator('.markdown-body').getByRole('heading', { name: 'Structure' }),
+  ).toBeVisible()
+})
+
+test('outline does not accumulate when navigating between notes', async ({ page }) => {
+  await page.request.put('/api/knowledge/content', {
+    data: {
+      path: 'notes/dup-a',
+      content: '# Note A\n\n## Library\n\n## Library\n\n## Reason\n\n## Reason\n\nsee [[notes/dup-b]]\n',
+    },
+  })
+  await page.request.put('/api/knowledge/content', {
+    data: {
+      path: 'notes/dup-b',
+      content: '# Note B\n\n## Overview\n\n## Overview\n\nsee [[notes/dup-a]]\n',
+    },
+  })
+  await page.goto('/#/knowledge/notes/dup-a')
+  await expect(page.locator('.outline-link')).toHaveCount(5)
+  await page.locator('.markdown-body a', { hasText: 'notes/dup-b' }).click()
+  await expect(page.locator('.outline-link')).toHaveCount(3)
+  await page.locator('.markdown-body a', { hasText: 'notes/dup-a' }).click()
+  await expect(page.locator('.outline-link')).toHaveCount(5)
+})
+
+test('outline shows a graph of linked notes', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Knowledge' }).click()
+  await page.locator('main').getByRole('button', { name: 'index', exact: true }).click()
+  const block = page.locator('.outline-graph-block')
+  await expect(block.getByText('Graph')).toBeVisible()
+  await expect(block.locator('canvas')).toBeVisible()
 })
