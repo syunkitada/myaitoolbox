@@ -46,13 +46,13 @@ export function GraphPage() {
             nodeCanvasObjectMode={() => 'replace'}
             nodeCanvasObject={(n, ctx) => {
               const node = n as Node & { x: number; y: number }
-              const size = 5
+              const size = 3.5
               ctx.beginPath()
               ctx.arc(node.x, node.y, size, 0, 2 * Math.PI)
               ctx.fillStyle = node.type === 'task' ? '#4a6' : '#4a7fd4'
               ctx.fill()
               const label = node.label
-              ctx.font = '10px sans-serif'
+              ctx.font = '7px sans-serif'
               ctx.fillStyle = '#333'
               ctx.textAlign = 'center'
               ctx.fillText(label, node.x, node.y - 8)

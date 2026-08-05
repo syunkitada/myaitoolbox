@@ -85,8 +85,14 @@ export class ApiError extends Error {
   }
 }
 
+export function getBasePath(): string {
+  return (window as unknown as { __MYBOX_BASE__?: string }).__MYBOX_BASE__ ?? ''
+}
+
 export function getProject(): string {
-  const parts = window.location.pathname.split('/')
+  const base = getBasePath()
+  const rest = base ? window.location.pathname.slice(base.length) : window.location.pathname
+  const parts = rest.split('/')
   if (parts.length > 1 && parts[1] !== '') {
     return parts[1]
   }
@@ -94,7 +100,8 @@ export function getProject(): string {
 }
 
 export function setProject(project: string) {
-  window.location.href = '/' + encodeURIComponent(project) + '/' + window.location.hash
+  window.location.href =
+    getBasePath() + '/' + encodeURIComponent(project) + '/' + window.location.hash
 }
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
@@ -107,7 +114,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     (init.headers as Record<string, string>)['Content-Type'] = 'application/json'
     init.body = JSON.stringify(body)
   }
-  const res = await fetch(url, init)
+  const res = await fetch(getBasePath() + url, init)
   if (!res.ok) {
     let message = res.statusText
     try {

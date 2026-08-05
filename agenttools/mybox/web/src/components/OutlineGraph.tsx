@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ForceGraph2D from 'react-force-graph-2d'
 import { GraphData, api } from '../api/client'
@@ -23,6 +23,8 @@ function linkEndpoints(l: GraphLink): [string, string] {
 export function OutlineGraph({ path }: { path: string }) {
   const navigate = useNavigate()
   const [data, setData] = useState<GraphData | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 300, h: 220 })
 
   useEffect(() => {
     let cancelled = false
@@ -36,6 +38,20 @@ export function OutlineGraph({ path }: { path: string }) {
       cancelled = true
     }
   }, [path])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const update = () => {
+      if (el.clientWidth > 0) {
+        setSize({ w: el.clientWidth, h: el.clientHeight || 220 })
+      }
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const graphData = useMemo(() => {
     if (!data) return null
@@ -53,24 +69,24 @@ export function OutlineGraph({ path }: { path: string }) {
   if (!graphData) return <div className="outline-graph" />
 
   return (
-    <div className="outline-graph">
+    <div className="outline-graph" ref={containerRef}>
       <ForceGraph2D
         graphData={{ nodes: graphData.nodes, links: graphData.links }}
-        width={162}
-        height={180}
+        width={size.w}
+        height={size.h}
         nodeLabel={(n) => (n as GraphNode).label}
         nodeCanvasObjectMode={() => 'replace'}
         nodeCanvasObject={(n, ctx) => {
           const node = n as GraphNode & { x: number; y: number }
           const isCurrent = node.id === path
           const isLinked = graphData.linked.has(node.id)
-          const size = isCurrent ? 7 : isLinked ? 4.5 : 2.5
+          const size = isCurrent ? 5 : isLinked ? 3.5 : 1.5
           ctx.beginPath()
           ctx.arc(node.x, node.y, size, 0, 2 * Math.PI)
           ctx.fillStyle = isCurrent ? '#e0533d' : isLinked ? '#4a7fd4' : '#d8dee9'
           ctx.fill()
           if (isCurrent || isLinked) {
-            ctx.font = '8px sans-serif'
+            ctx.font = '5px sans-serif'
             ctx.fillStyle = '#6b7684'
             ctx.textAlign = 'center'
             ctx.fillText(node.label, node.x, node.y - size - 2)

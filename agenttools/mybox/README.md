@@ -91,7 +91,20 @@ mybox serve --project proj
 # http://127.0.0.1:8080 （ブラウザ自動起動）
 ```
 
-オプション: `--host` `--port` `--no-browser` `--read-only`
+オプション: `--host` `--port` `--no-browser` `--read-only` `--base-path`
+
+### ベースパス配下で公開する場合
+
+リバースプロキシ配下などで `/mybox/` のような特定パス配下から Web UI を配信できます。
+
+```bash
+mybox serve --project proj --base-path /mybox
+# http://127.0.0.1:8080/mybox/ 配下で表示（ブラウザ自動起動）
+```
+
+- アセットは相対パスで生成されるため、ビルド後の配置場所に依存しません。
+- API は `{base-path}/api/...` にマウントされ、Web UI 側も自動で `{base-path}` を検出して呼び出します。
+- プロジェクト選択（URL のパス第 2 セグメント）もベースパスを考慮して動作します。
 
 ## データ構造
 

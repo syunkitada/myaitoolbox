@@ -37,8 +37,15 @@ func newTestServer(t *testing.T, readOnly bool) (*Server, *App) {
 		Search: application.NewSearchUseCase(markdown.NewSearcher(root)),
 		State:  application.NewStateUseCase(&fakeStateStore{}),
 	}
-	s := NewServer(app.Config, "test", readOnly)
+	s := NewServer(app.Config, "test", readOnly, "")
 	s.apps["test"] = app
+	return s, app
+}
+
+func newTestServerWithBase(t *testing.T, readOnly bool, basePath string) (*Server, *App) {
+	t.Helper()
+	s, app := newTestServer(t, readOnly)
+	s.basePath = normalizeBasePath(basePath)
 	return s, app
 }
 
@@ -177,4 +184,34 @@ func TestNotFoundAndTraversal(t *testing.T) {
 
 	rec = do(t, s, http.MethodGet, "/api/knowledge/..%2f..%2fetc%2fpasswd", nil)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestBasePath(t *testing.T) {
+	s, _ := newTestServerWithBase(t, false, "/mybox")
+
+	rec := do(t, s, http.MethodGet, "/mybox/api/meta", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/mybox/", nil)
+	assert.Equal(t, http.StatusFound, rec.Code)
+	assert.Equal(t, "/mybox/test/", rec.Header().Get("Location"))
+
+	rec = do(t, s, http.MethodGet, "/mybox/test/", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `window.__MYBOX_BASE__="/mybox"`)
+	assert.Contains(t, rec.Body.String(), `<base href="/mybox/">`)
+
+	rec = do(t, s, http.MethodGet, "/", nil)
+	assert.Equal(t, http.StatusFound, rec.Code)
+	assert.Equal(t, "/mybox/", rec.Header().Get("Location"))
+
+	rec = do(t, s, http.MethodGet, "/api/meta", nil)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestNormalizeBasePath(t *testing.T) {
+	assert.Equal(t, "", normalizeBasePath(""))
+	assert.Equal(t, "", normalizeBasePath("/"))
+	assert.Equal(t, "/mybox", normalizeBasePath("mybox"))
+	assert.Equal(t, "/mybox", normalizeBasePath("/mybox/"))
 }

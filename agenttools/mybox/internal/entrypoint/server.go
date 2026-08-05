@@ -36,18 +36,30 @@ type Server struct {
 	mu             sync.RWMutex
 	readOnly       bool
 	defaultProject string
+	basePath       string
 }
 
-func NewServer(cfg *domain.Config, defaultProject string, readOnly bool) *Server {
+func NewServer(cfg *domain.Config, defaultProject string, readOnly bool, basePath string) *Server {
 	if defaultProject == "" {
 		defaultProject = cfg.DefaultProject
 	}
+	basePath = normalizeBasePath(basePath)
 	return &Server{
 		config:         cfg,
 		apps:           make(map[string]*App),
 		readOnly:       readOnly,
 		defaultProject: defaultProject,
+		basePath:       basePath,
 	}
+}
+
+func normalizeBasePath(basePath string) string {
+	basePath = strings.TrimSpace(basePath)
+	basePath = strings.TrimSuffix(basePath, "/")
+	if basePath != "" && !strings.HasPrefix(basePath, "/") {
+		basePath = "/" + basePath
+	}
+	return basePath
 }
 
 func (s *Server) getApp(r *http.Request) (*App, error) {
@@ -80,17 +92,32 @@ func (s *Server) Handler() http.Handler {
 	e.HidePort = true
 	e.Use(middleware.Recover())
 
-	apiHandler := api.HandlerWithOptions(s, api.StdHTTPServerOptions{BaseURL: ""})
-	e.Any("/api/*", echo.WrapHandler(apiHandler))
-	e.Any("/api", echo.WrapHandler(apiHandler))
-	e.GET("/*", s.handleIndex)
+	apiHandler := api.HandlerWithOptions(s, api.StdHTTPServerOptions{BaseURL: s.basePath})
+	if s.basePath == "" {
+		e.Any("/api/*", echo.WrapHandler(apiHandler))
+		e.Any("/api", echo.WrapHandler(apiHandler))
+		e.GET("/*", s.handleIndex)
+		return e
+	}
+	g := e.Group(s.basePath)
+	g.Any("/api/*", echo.WrapHandler(apiHandler))
+	g.Any("/api", echo.WrapHandler(apiHandler))
+	g.GET("", s.handleIndex)
+	g.GET("/*", s.handleIndex)
+	e.GET("/", func(c echo.Context) error {
+		return c.Redirect(http.StatusFound, s.basePath+"/")
+	})
 	return e
 }
 
 func (s *Server) handleIndex(c echo.Context) error {
-	path := strings.TrimPrefix(c.Request().URL.Path, "/")
+	path := c.Request().URL.Path
+	if s.basePath != "" {
+		path = strings.TrimPrefix(path, s.basePath)
+	}
+	path = strings.TrimPrefix(path, "/")
 	if path == "" {
-		return c.Redirect(http.StatusFound, "/"+s.defaultProject+"/")
+		return c.Redirect(http.StatusFound, s.basePath+"/"+s.defaultProject+"/")
 	}
 	f, err := webDist.Open(path)
 	if err == nil {
@@ -111,12 +138,24 @@ func (s *Server) handleIndex(c echo.Context) error {
 		}
 		_ = f.Close()
 	}
+	return s.serveIndex(c)
+}
+
+func (s *Server) serveIndex(c echo.Context) error {
 	data, readErr := fs.ReadFile(webDist, "index.html")
 	if readErr != nil {
 		return readErr
 	}
+	html := string(data)
+	if s.basePath != "" {
+		inject := fmt.Sprintf(
+			"<base href=\"%s/\">\n<script>window.__MYBOX_BASE__=%q;</script>",
+			s.basePath, s.basePath,
+		)
+		html = strings.Replace(html, "<head>", "<head>\n"+inject, 1)
+	}
 	c.Response().Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = c.Response().Write(data)
+	_, _ = c.Response().Write([]byte(html))
 	return nil
 }
 

@@ -53,9 +53,10 @@ interface ExplorerProps {
   selected: string
   onSelect: (path: string) => void
   onNew: () => void
+  onClose: () => void
 }
 
-function Explorer({ list, selected, onSelect, onNew }: ExplorerProps) {
+function Explorer({ list, selected, onSelect, onNew, onClose }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -136,6 +137,9 @@ function Explorer({ list, selected, onSelect, onNew }: ExplorerProps) {
   return (
     <aside className="knowledge-explorer">
       <div className="page-header">
+        <button className="ghost mobile-close" onClick={onClose} aria-label="Close explorer">
+          ← Back
+        </button>
         <h1>Knowledge</h1>
         <button className="primary" onClick={onNew}>
           New
@@ -292,53 +296,54 @@ function NotePane({ path, list, favorites, refreshMeta, onChanged }: NotePanePro
   }
 
   const links = useMemo(() => extractWikiLinks(content), [content])
+  const tags = list.find((k) => k.path === path)?.tags ?? []
 
   return (
     <div>
-      <div className="page-header">
-        <button className="ghost mobile-back" onClick={() => navigate('/knowledge')}>
-          ← Files
-        </button>
-        <div className="actions">
-          <button className={isFav ? 'ghost active' : 'ghost'} onClick={() => fav(!isFav)}>
-            {isFav ? '★ Favorite' : '☆ Favorite'}
-          </button>
-          <button className="ghost" onClick={rename}>
-            Rename
-          </button>
-          <button className="ghost" onClick={move}>
-            Move
-          </button>
-          {!editing && (
-            <button className="primary" onClick={() => setEditing(true)}>
-              Edit
+      <div className="knowledge-body">
+        <div className="knowledge-main">
+          <div className="page-header note-toolbar">
+            <button className="ghost mobile-back" onClick={() => navigate('/knowledge')}>
+              ← Files
             </button>
-          )}
-        </div>
-      </div>
-      {error && <div className="error-banner">{error}</div>}
-      {saved && <div className="notice">Saved.</div>}
-      {editing ? (
-        <div className="card">
-          <div className="actions">
-            <button className="primary" onClick={save}>
-              Save
-            </button>
-            <button className="ghost" onClick={() => setDraft(content)}>
-              Cancel
-            </button>
+            <div className="actions">
+              <button className={isFav ? 'ghost active' : 'ghost'} onClick={() => fav(!isFav)}>
+                {isFav ? '★ Favorite' : '☆ Favorite'}
+              </button>
+              <button className="ghost" onClick={rename}>
+                Rename
+              </button>
+              <button className="ghost" onClick={move}>
+                Move
+              </button>
+              {!editing && (
+                <button className="primary" onClick={() => setEditing(true)}>
+                  Edit
+                </button>
+              )}
+            </div>
           </div>
-          <textarea
-            className="editor"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            aria-label="Markdown editor"
-          />
-        </div>
-      ) : (
-        <div className="card knowledge-view">
-          <div className="knowledge-body">
-            <div className="knowledge-main">
+          {error && <div className="error-banner">{error}</div>}
+          {saved && <div className="notice">Saved.</div>}
+          {editing ? (
+            <div className="card">
+              <div className="actions">
+                <button className="primary" onClick={save}>
+                  Save
+                </button>
+                <button className="ghost" onClick={() => setDraft(content)}>
+                  Cancel
+                </button>
+              </div>
+              <textarea
+                className="editor"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                aria-label="Markdown editor"
+              />
+            </div>
+          ) : (
+            <div className="card knowledge-view">
               <h1>{title || path.split('/').pop()}</h1>
               <div className="meta-line">
                 <span className="muted">{path}</span>
@@ -349,9 +354,54 @@ function NotePane({ path, list, favorites, refreshMeta, onChanged }: NotePanePro
                 ))}
               </div>
               <RichMarkdown text={content} pathOf={pathOf} relativeTo={path} />
+              {links.length > 0 && (
+                <div className="card-section">
+                  <h3>Links</h3>
+                  <ul>
+                    {links.map((l) => {
+                      const resolved = pathOf(l.target)
+                      return (
+                        <li key={l.raw}>
+                          {resolved ? (
+                            <button
+                              className="link-btn"
+                              onClick={() => navigate(`/knowledge/${encodeURIComponent(resolved)}`)}
+                            >
+                              {l.alias ?? l.target}
+                            </button>
+                          ) : (
+                            <span className="broken-link">{l.alias ?? l.target}</span>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+              {backlinks.length > 0 && (
+                <div className="card-section">
+                  <h3>Backlinks</h3>
+                  <ul>
+                    {backlinks.map((b) => (
+                      <li key={b.path}>
+                        <button
+                          className="link-btn"
+                          onClick={() => navigate(`/knowledge/${encodeURIComponent(b.path)}`)}
+                        >
+                          {b.path}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-            <aside className="outline">
-              <div className="outline-title">Outline</div>
+          )}
+        </div>
+        {!editing && (
+          <aside className="outline">
+            <div className="outline-section">
+              <div className="outline-title">Content</div>
               {extractOutline(content).map((h, i) => (
                 <a
                   key={i}
@@ -365,55 +415,28 @@ function NotePane({ path, list, favorites, refreshMeta, onChanged }: NotePanePro
                   {h.text}
                 </a>
               ))}
-              <div className="outline-graph-block">
-                <div className="outline-title">Graph</div>
-                <OutlineGraph path={path} />
-              </div>
-            </aside>
-          </div>
-          {links.length > 0 && (
-            <div className="card-section">
-              <h3>Links</h3>
-              <ul>
-                {links.map((l) => {
-                  const resolved = pathOf(l.target)
-                  return (
-                    <li key={l.raw}>
-                      {resolved ? (
-                        <button
-                          className="link-btn"
-                          onClick={() => navigate(`/knowledge/${encodeURIComponent(resolved)}`)}
-                        >
-                          {l.alias ?? l.target}
-                        </button>
-                      ) : (
-                        <span className="broken-link">{l.alias ?? l.target}</span>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
             </div>
-          )}
-          {backlinks.length > 0 && (
-            <div className="card-section">
-              <h3>Backlinks</h3>
-              <ul>
-                {backlinks.map((b) => (
-                  <li key={b.path}>
-                    <button
-                      className="link-btn"
-                      onClick={() => navigate(`/knowledge/${encodeURIComponent(b.path)}`)}
-                    >
-                      {b.path}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+            <div className="outline-section">
+              <div className="outline-title">Tags</div>
+              {tags.length === 0 ? (
+                <span className="muted outline-none">No tags</span>
+              ) : (
+                <div className="outline-tags">
+                  {tags.map((t) => (
+                    <span key={t} className="badge tag">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      )}
+            <div className="outline-section">
+              <div className="outline-title">Graph</div>
+              <OutlineGraph path={path} />
+            </div>
+          </aside>
+        )}
+      </div>
     </div>
   )
 }
@@ -424,6 +447,11 @@ export function KnowledgePage({ refreshMeta, favorites }: KnowledgePageProps) {
   const navigate = useNavigate()
   const [list, setList] = useState<Knowledge[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [lastPath, setLastPath] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (selected) setLastPath(selected)
+  }, [selected])
 
   const load = () => {
     void api
@@ -451,10 +479,21 @@ export function KnowledgePage({ refreshMeta, favorites }: KnowledgePageProps) {
     navigate(`/knowledge/${encodeURIComponent(path)}`)
   }
 
+  const handleClose = () => {
+    if (lastPath) navigate(`/knowledge/${encodeURIComponent(lastPath)}`)
+    else navigate('/')
+  }
+
   return (
     <div className="page">
       <div className={`knowledge-layout${selected ? ' has-selection' : ''}`}>
-        <Explorer list={list} selected={selected} onSelect={handleSelect} onNew={handleNew} />
+        <Explorer
+          list={list}
+          selected={selected}
+          onSelect={handleSelect}
+          onNew={handleNew}
+          onClose={handleClose}
+        />
         <div className="knowledge-pane">
           {error && <div className="error-banner">{error}</div>}
           {selected ? (

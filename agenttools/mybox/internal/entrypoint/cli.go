@@ -495,6 +495,7 @@ func newServeCommand() *cobra.Command {
 	var host string
 	var port int
 	var noBrowser, readOnly bool
+	var basePath string
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the web UI",
@@ -505,9 +506,10 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			server := NewServer(cfg, project, readOnly)
+			server := NewServer(cfg, project, readOnly, basePath)
+			basePath = normalizeBasePath(basePath)
 			addr := net.JoinHostPort(host, strconv.Itoa(port))
-			url := "http://" + addr
+			url := "http://" + addr + basePath + "/"
 			if !noBrowser {
 				go openBrowser(url)
 			}
@@ -535,6 +537,7 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().IntVar(&port, "port", 8080, "bind port")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "do not open the browser")
 	cmd.Flags().BoolVar(&readOnly, "read-only", false, "disallow writes")
+	cmd.Flags().StringVar(&basePath, "base-path", "", "serve the app under this URL path prefix (e.g. /mybox)")
 	return cmd
 }
 
