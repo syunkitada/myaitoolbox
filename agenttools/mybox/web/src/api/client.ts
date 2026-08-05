@@ -198,5 +198,8 @@ export const api = {
   getFileContent: (path: string) =>
     request<FileContent>('GET', '/api/files/content' + qs({ path })),
 
+  saveFileContent: (path: string, content: string) =>
+    request<void>('PUT', '/api/files/content', { path, content }),
+
   getGraph: () => request<GraphData>('GET', '/api/graph'),
 }

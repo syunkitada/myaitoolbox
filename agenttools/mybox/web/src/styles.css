@@ -636,12 +636,6 @@ button.active {
 }
 
 /* ─── Dashboard: project file explorer ─────────────────────── */
-.file-pane-title {
-  font-size: 18px;
-  margin: 0;
-  word-break: break-all;
-}
-
 .file-raw {
   background: #f0f2f5;
   padding: 12px;

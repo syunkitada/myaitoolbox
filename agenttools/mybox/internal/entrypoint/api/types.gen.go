@@ -289,6 +289,9 @@ type ListTasksParams struct {
 	Tag    *string `form:"tag,omitempty" json:"tag,omitempty"`
 }
 
+// SaveFileContentJSONRequestBody defines body for SaveFileContent for application/json ContentType.
+type SaveFileContentJSONRequestBody = FileContent
+
 // CreateKnowledgeJSONRequestBody defines body for CreateKnowledge for application/json ContentType.
 type CreateKnowledgeJSONRequestBody = CreateKnowledgeRequest
 

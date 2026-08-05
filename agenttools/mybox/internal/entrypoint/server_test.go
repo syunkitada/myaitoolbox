@@ -220,6 +220,25 @@ func TestFiles(t *testing.T) {
 
 	rec = do(t, s, http.MethodGet, "/api/files/content?path=docs", nil)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = do(t, s, http.MethodPut, "/api/files/content",
+		api.FileContent{Path: "docs/guide.md", Content: "# Guide\n\nUpdated.\n"})
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	got, err := os.ReadFile(filepath.Join(root, "docs", "guide.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# Guide\n\nUpdated.\n", string(got))
+
+	rec = do(t, s, http.MethodPut, "/api/files/content",
+		api.FileContent{Path: "docs/new.md", Content: "# New\n"})
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+
+	rec = do(t, s, http.MethodPut, "/api/files/content",
+		api.FileContent{Path: "../../etc/passwd", Content: "x"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = do(t, s, http.MethodPut, "/api/files/content",
+		api.FileContent{Path: "docs", Content: "x"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestBasePath(t *testing.T) {

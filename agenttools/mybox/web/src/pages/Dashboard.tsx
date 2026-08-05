@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { api, FileEntry } from '../api/client'
-import { RichMarkdown } from '../components/RichMarkdown'
+import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { SearchBar } from '../components/SearchBar'
 
 interface TreeFile {
@@ -154,17 +154,45 @@ interface FilePaneProps {
 
 function FilePane({ path, onBack }: FilePaneProps) {
   const [content, setContent] = useState('')
+  const [draft, setDraft] = useState('')
+  const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     setError(null)
+    setEditing(false)
+    setSaved(false)
     void api
       .getFileContent(path)
-      .then((c) => setContent(c.content))
+      .then((c) => {
+        setContent(c.content)
+        setDraft(c.content)
+      })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [path])
 
   const isMarkdown = /\.md$/i.test(path) || /\.markdown$/i.test(path)
+
+  const outline = useMemo(() => extractOutline(content), [content])
+
+  const save = () => {
+    setSaved(false)
+    void api
+      .saveFileContent(path, draft)
+      .then(() => {
+        setContent(draft)
+        setEditing(false)
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }
+
+  const cancel = () => {
+    setDraft(content)
+    setEditing(false)
+  }
 
   return (
     <div>
@@ -174,17 +202,67 @@ function FilePane({ path, onBack }: FilePaneProps) {
             <button className="ghost mobile-back" onClick={onBack}>
               ← Files
             </button>
-            <h1 className="file-pane-title">{path}</h1>
+            <div className="actions">
+              {!editing && (
+                <button className="primary" onClick={() => setEditing(true)}>
+                  Edit
+                </button>
+              )}
+            </div>
           </div>
           {error && <div className="error-banner">{error}</div>}
-          <div className="card knowledge-view">
-            {isMarkdown ? (
-              <RichMarkdown text={content} />
-            ) : (
-              <pre className="file-raw">{content}</pre>
-            )}
-          </div>
+          {saved && <div className="notice">Saved.</div>}
+          {editing ? (
+            <div className="card">
+              <div className="actions">
+                <button className="primary" onClick={save}>
+                  Save
+                </button>
+                <button className="ghost" onClick={cancel}>
+                  Cancel
+                </button>
+              </div>
+              <textarea
+                className="editor"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                aria-label="File editor"
+              />
+            </div>
+          ) : (
+            <div className="card knowledge-view">
+              <h1>{path.split('/').pop()}</h1>
+              <div className="meta-line">
+                <span className="muted">{path}</span>
+              </div>
+              {isMarkdown ? (
+                <RichMarkdown text={content} />
+              ) : (
+                <pre className="file-raw">{content}</pre>
+              )}
+            </div>
+          )}
         </div>
+        {!editing && isMarkdown && (
+          <aside className="outline">
+            <div className="outline-section">
+              <div className="outline-title">Content</div>
+              {outline.map((h, i) => (
+                <a
+                  key={i}
+                  href={`#${h.id}`}
+                  className={`outline-link level-${h.level}`}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' })
+                  }}
+                >
+                  {h.text}
+                </a>
+              ))}
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   )

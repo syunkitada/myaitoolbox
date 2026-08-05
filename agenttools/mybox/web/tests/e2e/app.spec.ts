@@ -25,6 +25,26 @@ test('dashboard opens a markdown file from the explorer', async ({ page }) => {
   ).toHaveClass(/active/)
 })
 
+test('dashboard shows a content outline for markdown files', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
+  await expect(page.getByText('Task tracking lives here.')).toBeVisible()
+  const outline = page.locator('.outline')
+  await expect(outline).toContainText('Content')
+  await expect(outline.getByRole('link', { name: 'Tasks' })).toBeVisible()
+})
+
+test('dashboard edits and saves a file', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit' }).click()
+  const editor = page.getByLabel('File editor')
+  await editor.fill('# Task tracking\n\nEdited content.\n')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('Saved.')).toBeVisible()
+  await expect(page.getByText('Edited content.')).toBeVisible()
+})
+
 test('task list shows seeded tasks', async ({ page }) => {
   await page.getByRole('link', { name: 'Tasks' }).click()
   await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible()

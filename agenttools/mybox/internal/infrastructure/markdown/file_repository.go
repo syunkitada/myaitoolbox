@@ -90,6 +90,20 @@ func (r *FileRepository) Content(ctx context.Context, path string) (string, erro
 	return string(data), nil
 }
 
+func (r *FileRepository) Save(ctx context.Context, path string, content string) error {
+	if err := validateFilePath(path); err != nil {
+		return err
+	}
+	file := filepath.Join(r.root, filepath.FromSlash(path))
+	if info, err := os.Stat(file); err == nil && info.IsDir() {
+		return fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(file, []byte(content), 0o644)
+}
+
 func validateFilePath(path string) error {
 	if path == "" || path == "." || path == ".." ||
 		strings.HasPrefix(path, "/") || strings.Contains(path, "..") ||

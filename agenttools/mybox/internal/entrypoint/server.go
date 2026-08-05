@@ -586,6 +586,26 @@ func (s *Server) GetFileContent(w http.ResponseWriter, r *http.Request, params a
 	writeJSONResponse(w, http.StatusOK, api.FileContent{Path: params.Path, Content: content})
 }
 
+func (s *Server) SaveFileContent(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req api.FileContent
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if err := app.Files.Save(r.Context(), req.Path, req.Content); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request) {
 	app, err := s.getApp(r)
 	if err != nil {

@@ -102,6 +102,18 @@ paths:
           description: invalid path
         "404":
           description: not found
+    put:
+      operationId: saveFileContent
+      summary: Save file content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileContent"
+      responses:
+        "204":
+          description: saved
   /api/tasks:
     get:
       operationId: listTasks

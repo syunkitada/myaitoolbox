@@ -35,3 +35,10 @@ func (u *FileUseCase) Content(ctx context.Context, path string) (string, error) 
 	}
 	return u.Files.Content(ctx, path)
 }
+
+func (u *FileUseCase) Save(ctx context.Context, path string, content string) error {
+	if err := validatePath(path); err != nil {
+		return err
+	}
+	return u.Files.Save(ctx, path, content)
+}
