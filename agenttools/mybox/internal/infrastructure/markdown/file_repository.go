@@ -104,6 +104,43 @@ func (r *FileRepository) Save(ctx context.Context, path string, content string) 
 	return os.WriteFile(file, []byte(content), 0o644)
 }
 
+func (r *FileRepository) Move(ctx context.Context, oldPath string, newPath string) error {
+	if err := validateFilePath(oldPath); err != nil {
+		return err
+	}
+	if err := validateFilePath(newPath); err != nil {
+		return err
+	}
+	oldFile := filepath.Join(r.root, filepath.FromSlash(oldPath))
+	if info, err := os.Stat(oldFile); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%w: %s", domain.ErrNotFound, oldPath)
+		}
+		return err
+	} else if info.IsDir() {
+		return fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, oldPath)
+	}
+	target := filepath.Join(r.root, filepath.FromSlash(newPath))
+	if info, err := os.Stat(target); err == nil && info.IsDir() {
+		target = filepath.Join(target, filepath.Base(oldFile))
+	}
+	if target == oldFile {
+		return nil
+	}
+	if _, err := os.Stat(target); err == nil {
+		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, newPath)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	if isGitRepo(r.root) {
+		if err := runGit(ctx, r.root, "mv", oldFile, target); err == nil {
+			return nil
+		}
+	}
+	return os.Rename(oldFile, target)
+}
+
 func validateFilePath(path string) error {
 	if path == "" || path == "." || path == ".." ||
 		strings.HasPrefix(path, "/") || strings.Contains(path, "..") ||

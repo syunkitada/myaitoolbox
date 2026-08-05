@@ -191,6 +191,12 @@ type Meta struct {
 	Tags           []string `json:"tags"`
 }
 
+// MoveFileRequest defines model for MoveFileRequest.
+type MoveFileRequest struct {
+	NewPath string `json:"new_path"`
+	OldPath string `json:"old_path"`
+}
+
 // MoveKnowledgeRequest defines model for MoveKnowledgeRequest.
 type MoveKnowledgeRequest struct {
 	NewPath string `json:"new_path"`
@@ -291,6 +297,9 @@ type ListTasksParams struct {
 
 // SaveFileContentJSONRequestBody defines body for SaveFileContent for application/json ContentType.
 type SaveFileContentJSONRequestBody = FileContent
+
+// MoveFileJSONRequestBody defines body for MoveFile for application/json ContentType.
+type MoveFileJSONRequestBody = MoveFileRequest
 
 // CreateKnowledgeJSONRequestBody defines body for CreateKnowledge for application/json ContentType.
 type CreateKnowledgeJSONRequestBody = CreateKnowledgeRequest

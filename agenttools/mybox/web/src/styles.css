@@ -617,6 +617,25 @@ button.active {
   font-weight: 600;
 }
 
+.knowledge-tree-row.drop-target.drag-over {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+}
+
+.knowledge-tree-row.dragging {
+  opacity: 0.4;
+}
+
+.knowledge-tree-row.dragging .knowledge-caret,
+.knowledge-tree-row.dragging .knowledge-dir-name {
+  cursor: grabbing;
+}
+
+.knowledge-tree-row.drop-target {
+  cursor: copy;
+}
+
 .knowledge-pane {
   flex: 1;
   min-width: 0;

@@ -24,6 +24,9 @@ type ServerInterface interface {
 	// SaveFileContent Save file content
 	// (PUT /api/files/content)
 	SaveFileContent(w http.ResponseWriter, r *http.Request)
+	// MoveFile Move a file
+	// (POST /api/files/move)
+	MoveFile(w http.ResponseWriter, r *http.Request)
 	// GetGraph Get graph data for Graph View
 	// (GET /api/graph)
 	GetGraph(w http.ResponseWriter, r *http.Request)
@@ -135,6 +138,20 @@ func (siw *ServerInterfaceWrapper) SaveFileContent(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SaveFileContent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveFile operation middleware
+func (siw *ServerInterfaceWrapper) MoveFile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveFile(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -659,6 +676,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files", wrapper.ListFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/content", wrapper.GetFileContent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/files/content", wrapper.SaveFileContent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/move", wrapper.MoveFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks", wrapper.CreateTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/{id}", wrapper.GetTask)

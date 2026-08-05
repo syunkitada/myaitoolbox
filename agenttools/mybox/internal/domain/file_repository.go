@@ -19,4 +19,5 @@ type FileRepository interface {
 	Tree(ctx context.Context) ([]FileEntry, error)
 	Content(ctx context.Context, path string) (string, error)
 	Save(ctx context.Context, path string, content string) error
+	Move(ctx context.Context, oldPath string, newPath string) error
 }

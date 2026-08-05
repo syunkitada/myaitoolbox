@@ -42,3 +42,13 @@ func (u *FileUseCase) Save(ctx context.Context, path string, content string) err
 	}
 	return u.Files.Save(ctx, path, content)
 }
+
+func (u *FileUseCase) Move(ctx context.Context, oldPath string, newPath string) error {
+	if err := validatePath(oldPath); err != nil {
+		return err
+	}
+	if err := validatePath(newPath); err != nil {
+		return err
+	}
+	return u.Files.Move(ctx, oldPath, newPath)
+}

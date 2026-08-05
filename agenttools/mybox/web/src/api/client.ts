@@ -201,5 +201,8 @@ export const api = {
   saveFileContent: (path: string, content: string) =>
     request<void>('PUT', '/api/files/content', { path, content }),
 
+  moveFile: (oldPath: string, newPath: string) =>
+    request<void>('POST', '/api/files/move', { old_path: oldPath, new_path: newPath }),
+
   getGraph: () => request<GraphData>('GET', '/api/graph'),
 }

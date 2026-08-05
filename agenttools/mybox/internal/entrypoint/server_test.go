@@ -239,6 +239,30 @@ func TestFiles(t *testing.T) {
 	rec = do(t, s, http.MethodPut, "/api/files/content",
 		api.FileContent{Path: "docs", Content: "x"})
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/files/move",
+		api.MoveFileRequest{OldPath: "docs/guide.md", NewPath: "notes/guide.md"})
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	_, err = os.Stat(filepath.Join(root, "docs", "guide.md"))
+	assert.True(t, os.IsNotExist(err))
+	got, err = os.ReadFile(filepath.Join(root, "notes", "guide.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# Guide\n\nUpdated.\n", string(got))
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "sub"), 0o755))
+	rec = do(t, s, http.MethodPost, "/api/files/move",
+		api.MoveFileRequest{OldPath: "docs/new.md", NewPath: "docs/sub"})
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	_, err = os.Stat(filepath.Join(root, "docs", "sub", "new.md"))
+	require.NoError(t, err)
+
+	rec = do(t, s, http.MethodPost, "/api/files/move",
+		api.MoveFileRequest{OldPath: "README.md", NewPath: "../../etc/passwd"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/files/move",
+		api.MoveFileRequest{OldPath: "nope.md", NewPath: "notes/x.md"})
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestBasePath(t *testing.T) {

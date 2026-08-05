@@ -54,6 +54,17 @@ test('dashboard favorites a file from the file pane', async ({ page }) => {
   await expect(favorites.locator('.sidebar-list')).toContainText('tasks.md')
 })
 
+test('dashboard moves a file by dragging onto a directory', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  await expect(explorer).toContainText('tasks.md')
+  await explorer
+    .getByRole('button', { name: 'tasks.md', exact: true })
+    .dragTo(explorer.getByRole('button', { name: 'Collapse knowledge' }))
+  await explorer.locator('.search-bar input').fill('knowledge/tasks')
+  const list = explorer.locator('.file-list')
+  await expect(list.getByRole('button', { name: 'knowledge/tasks.md' })).toBeVisible()
+})
+
 test('task list shows seeded tasks', async ({ page }) => {
   await page.getByRole('link', { name: 'Tasks' }).click()
   await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible()

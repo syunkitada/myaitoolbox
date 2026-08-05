@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { api, FileEntry } from '../api/client'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { SearchBar } from '../components/SearchBar'
@@ -49,11 +49,13 @@ interface ExplorerProps {
   entries: FileEntry[]
   selected: string
   onSelect: (path: string) => void
+  onMoveFile: (filePath: string, dirPath: string) => void
 }
 
-function Explorer({ entries, selected, onSelect }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, onMoveFile }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [dragOverDir, setDragOverDir] = useState<string | null>(null)
 
   const filtering = q.trim() !== ''
 
@@ -74,17 +76,44 @@ function Explorer({ entries, selected, onSelect }: ExplorerProps) {
     })
   }
 
+  const dropFile = (dirPath: string) => (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOverDir(null)
+    const file = e.dataTransfer.getData('text/plain')
+    if (file) onMoveFile(file, dirPath)
+  }
+
+  const rootDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOverDir(null)
+    const file = e.dataTransfer.getData('text/plain')
+    if (file) onMoveFile(file, '')
+  }
+
   const items: ReactNode[] = []
   const renderNodes = (nodes: TreeNode[], depth: number) => {
     for (const node of nodes) {
       const pad = depth * 14
       if (node.kind === 'dir') {
         const open = !collapsed.has(node.dirPath)
+        const highlighted = dragOverDir === node.dirPath
         items.push(
           <li
             key={`dir:${node.dirPath}`}
-            className="knowledge-tree-row"
+            className={`knowledge-tree-row drop-target${highlighted ? ' drag-over' : ''}`}
             style={{ paddingLeft: pad }}
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              if (dragOverDir !== node.dirPath) setDragOverDir(node.dirPath)
+            }}
+            onDragLeave={(e) => {
+              if (dragOverDir === node.dirPath && !e.currentTarget.contains(e.relatedTarget as Node)) {
+                setDragOverDir(null)
+              }
+            }}
+            onDrop={dropFile(node.dirPath)}
           >
             <button
               className="knowledge-caret"
@@ -103,6 +132,13 @@ function Explorer({ entries, selected, onSelect }: ExplorerProps) {
             key={`file:${node.path}`}
             className="knowledge-tree-row"
             style={{ paddingLeft: pad + 20 }}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('text/plain', node.path)
+              e.dataTransfer.effectAllowed = 'move'
+            }}
+            onDragEnd={() => setDragOverDir(null)}
+            onDragOver={(e) => e.stopPropagation()}
           >
             <button
               className={`knowledge-file${node.path === selected ? ' active' : ''}`}
@@ -141,7 +177,9 @@ function Explorer({ entries, selected, onSelect }: ExplorerProps) {
           {fileMatches.length === 0 && <li className="muted">No matches.</li>}
         </ul>
       ) : (
-        <ul className="knowledge-tree">{items}</ul>
+        <ul className="knowledge-tree" onDragOver={(e) => e.preventDefault()} onDrop={rootDrop}>
+          {items}
+        </ul>
       )}
     </aside>
   )
@@ -295,23 +333,51 @@ export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
   const [files, setFiles] = useState<FileEntry[]>([])
   const [selected, setSelected] = useState<string>('')
   const [loaded, setLoaded] = useState(false)
+  const [moveError, setMoveError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     void api
       .listFiles()
       .then((entries) => {
         setFiles(entries)
         setLoaded(true)
-        const hasReadme = entries.some((e) => e.kind === 'file' && e.path === 'README.md')
-        if (hasReadme) setSelected('README.md')
+        setSelected((prev) => {
+          if (prev) return prev
+          const hasReadme = entries.some((e) => e.kind === 'file' && e.path === 'README.md')
+          return hasReadme ? 'README.md' : ''
+        })
       })
       .catch(() => setFiles([]))
   }, [])
 
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const handleMoveFile = (filePath: string, dirPath: string) => {
+    const name = filePath.split('/').pop() ?? filePath
+    const newPath = dirPath ? `${dirPath}/${name}` : name
+    if (newPath === filePath) return
+    setMoveError(null)
+    void api
+      .moveFile(filePath, newPath)
+      .then(() => {
+        load()
+        setSelected(newPath)
+      })
+      .catch((e) => setMoveError(e instanceof Error ? e.message : String(e)))
+  }
+
   return (
     <div className="page">
+      {moveError && <div className="error-banner">{moveError}</div>}
       <div className={`knowledge-layout${selected ? ' has-selection' : ''}`}>
-        <Explorer entries={files} selected={selected} onSelect={setSelected} />
+        <Explorer
+          entries={files}
+          selected={selected}
+          onSelect={setSelected}
+          onMoveFile={handleMoveFile}
+        />
         <div className="knowledge-pane">
           {selected ? (
             <FilePane path={selected} onBack={() => setSelected('')} favorites={favorites} refreshMeta={refreshMeta} />

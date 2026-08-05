@@ -114,6 +114,23 @@ paths:
       responses:
         "204":
           description: saved
+  /api/files/move:
+    post:
+      operationId: moveFile
+      summary: Move a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveFileRequest"
+      responses:
+        "204":
+          description: moved
+        "400":
+          description: invalid path
+        "404":
+          description: not found
   /api/tasks:
     get:
       operationId: listTasks
@@ -503,6 +520,14 @@ components:
         path:
           type: string
     MoveKnowledgeRequest:
+      type: object
+      required: [old_path, new_path]
+      properties:
+        old_path:
+          type: string
+        new_path:
+          type: string
+    MoveFileRequest:
       type: object
       required: [old_path, new_path]
       properties:
