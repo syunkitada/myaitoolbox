@@ -52,3 +52,20 @@ func (u *FileUseCase) Move(ctx context.Context, oldPath string, newPath string) 
 	}
 	return u.Files.Move(ctx, oldPath, newPath)
 }
+
+func (u *FileUseCase) Copy(ctx context.Context, oldPath string, newPath string) error {
+	if err := validatePath(oldPath); err != nil {
+		return err
+	}
+	if err := validatePath(newPath); err != nil {
+		return err
+	}
+	return u.Files.Copy(ctx, oldPath, newPath)
+}
+
+func (u *FileUseCase) Delete(ctx context.Context, path string) error {
+	if err := validatePath(path); err != nil {
+		return err
+	}
+	return u.Files.Delete(ctx, path)
+}

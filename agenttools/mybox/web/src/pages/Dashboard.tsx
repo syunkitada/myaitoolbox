@@ -190,9 +190,12 @@ interface FilePaneProps {
   onBack: () => void
   favorites: string[]
   refreshMeta: () => Promise<void>
+  onChanged: () => void
+  onOpen: (path: string) => void
+  onDeleted: () => void
 }
 
-function FilePane({ path, onBack, favorites, refreshMeta }: FilePaneProps) {
+function FilePane({ path, onBack, favorites, refreshMeta, onChanged, onOpen, onDeleted }: FilePaneProps) {
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
   const [editing, setEditing] = useState(false)
@@ -229,6 +232,55 @@ function FilePane({ path, onBack, favorites, refreshMeta }: FilePaneProps) {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }
 
+  const dirOf = (p: string) => {
+    const i = p.lastIndexOf('/')
+    return i >= 0 ? p.slice(0, i) : ''
+  }
+
+  const baseOf = (p: string) => (p.split('/').pop() ?? p)
+
+  const rename = () => {
+    const name = window.prompt('New file name', baseOf(path))
+    if (!name || !name.trim() || name.trim() === baseOf(path)) return
+    const dir = dirOf(path)
+    const newPath = dir ? `${dir}/${name.trim()}` : name.trim()
+    void api
+      .moveFile(path, newPath)
+      .then(() => {
+        onChanged()
+        onOpen(newPath)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }
+
+  const duplicate = () => {
+    const base = baseOf(path)
+    const dot = base.lastIndexOf('.')
+    const copyName = dot > 0 ? base.slice(0, dot) + '-copy' + base.slice(dot) : base + '-copy'
+    const dir = dirOf(path)
+    const defaultPath = dir ? `${dir}/${copyName}` : copyName
+    const newPath = window.prompt('New file path', defaultPath)
+    if (!newPath || !newPath.trim() || newPath.trim() === path) return
+    void api
+      .copyFile(path, newPath.trim())
+      .then(() => {
+        onChanged()
+        onOpen(newPath.trim())
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }
+
+  const remove = () => {
+    if (!window.confirm(`Delete "${path}"?`)) return
+    void api
+      .deleteFile(path)
+      .then(() => {
+        onChanged()
+        onDeleted()
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }
+
   const save = () => {
     setSaved(false)
     void api
@@ -258,6 +310,15 @@ function FilePane({ path, onBack, favorites, refreshMeta }: FilePaneProps) {
             <div className="actions">
               <button className={isFav ? 'ghost active' : 'ghost'} onClick={() => fav(!isFav)}>
                 {isFav ? '★ Favorite' : '☆ Favorite'}
+              </button>
+              <button className="ghost" onClick={rename}>
+                Rename
+              </button>
+              <button className="ghost" onClick={duplicate}>
+                Duplicate
+              </button>
+              <button className="ghost" onClick={remove}>
+                Delete
               </button>
               {!editing && (
                 <button className="primary" onClick={() => setEditing(true)}>
@@ -380,7 +441,15 @@ export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
         />
         <div className="knowledge-pane">
           {selected ? (
-            <FilePane path={selected} onBack={() => setSelected('')} favorites={favorites} refreshMeta={refreshMeta} />
+            <FilePane
+              path={selected}
+              onBack={() => setSelected('')}
+              favorites={favorites}
+              refreshMeta={refreshMeta}
+              onChanged={load}
+              onOpen={setSelected}
+              onDeleted={() => setSelected('')}
+            />
           ) : (
             <div className="card knowledge-empty">
               <h2>Files</h2>

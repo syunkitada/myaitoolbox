@@ -24,6 +24,12 @@ type ServerInterface interface {
 	// SaveFileContent Save file content
 	// (PUT /api/files/content)
 	SaveFileContent(w http.ResponseWriter, r *http.Request)
+	// CopyFile Copy a file
+	// (POST /api/files/copy)
+	CopyFile(w http.ResponseWriter, r *http.Request)
+	// DeleteFile Delete a file
+	// (POST /api/files/delete)
+	DeleteFile(w http.ResponseWriter, r *http.Request)
 	// MoveFile Move a file
 	// (POST /api/files/move)
 	MoveFile(w http.ResponseWriter, r *http.Request)
@@ -138,6 +144,34 @@ func (siw *ServerInterfaceWrapper) SaveFileContent(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SaveFileContent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CopyFile operation middleware
+func (siw *ServerInterfaceWrapper) CopyFile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CopyFile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFile operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFile(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -677,6 +711,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/content", wrapper.GetFileContent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/files/content", wrapper.SaveFileContent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/move", wrapper.MoveFile)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/copy", wrapper.CopyFile)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/delete", wrapper.DeleteFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks", wrapper.CreateTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/{id}", wrapper.GetTask)

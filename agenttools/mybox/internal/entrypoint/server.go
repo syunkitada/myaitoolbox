@@ -626,6 +626,46 @@ func (s *Server) MoveFile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) CopyFile(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req api.MoveFileRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if err := app.Files.Copy(r.Context(), req.OldPath, req.NewPath); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) DeleteFile(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req api.FilePathRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if err := app.Files.Delete(r.Context(), req.Path); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request) {
 	app, err := s.getApp(r)
 	if err != nil {

@@ -131,6 +131,40 @@ paths:
           description: invalid path
         "404":
           description: not found
+  /api/files/copy:
+    post:
+      operationId: copyFile
+      summary: Copy a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveFileRequest"
+      responses:
+        "204":
+          description: copied
+        "400":
+          description: invalid path
+        "404":
+          description: not found
+  /api/files/delete:
+    post:
+      operationId: deleteFile
+      summary: Delete a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilePathRequest"
+      responses:
+        "204":
+          description: deleted
+        "400":
+          description: invalid path
+        "404":
+          description: not found
   /api/tasks:
     get:
       operationId: listTasks
@@ -534,6 +568,12 @@ components:
         old_path:
           type: string
         new_path:
+          type: string
+    FilePathRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
           type: string
     RenameKnowledgeRequest:
       type: object

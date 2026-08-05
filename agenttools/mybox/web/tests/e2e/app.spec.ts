@@ -65,6 +65,34 @@ test('dashboard moves a file by dragging onto a directory', async ({ page }) => 
   await expect(list.getByRole('button', { name: 'knowledge/tasks.md' })).toBeVisible()
 })
 
+test('dashboard renames a file', async ({ page }) => {
+  page.on('dialog', (d) => d.accept('tasks2.md'))
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
+  await page.getByRole('button', { name: 'Rename' }).click()
+  await expect(page.getByText('knowledge/tasks2.md', { exact: true })).toBeVisible()
+  await expect(explorer).toContainText('tasks2.md')
+})
+
+test('dashboard duplicates a file', async ({ page }) => {
+  page.on('dialog', (d) => d.accept('knowledge/tasks2-copy.md'))
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'tasks2.md', exact: true }).click()
+  await page.getByRole('button', { name: 'Duplicate' }).click()
+  await expect(page.getByText('knowledge/tasks2-copy.md', { exact: true })).toBeVisible()
+})
+
+test('dashboard deletes a file', async ({ page }) => {
+  page.on('dialog', (d) => d.accept())
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'tasks2-copy.md', exact: true }).click()
+  await page.getByRole('button', { name: 'Delete' }).click()
+  await expect(
+    page.getByText('Select a file from the explorer to view it here.', { exact: true }),
+  ).toBeVisible()
+  await expect(explorer).not.toContainText('tasks2-copy.md')
+})
+
 test('task list shows seeded tasks', async ({ page }) => {
   await page.getByRole('link', { name: 'Tasks' }).click()
   await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible()

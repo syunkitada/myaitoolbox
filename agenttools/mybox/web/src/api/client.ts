@@ -204,5 +204,10 @@ export const api = {
   moveFile: (oldPath: string, newPath: string) =>
     request<void>('POST', '/api/files/move', { old_path: oldPath, new_path: newPath }),
 
+  copyFile: (oldPath: string, newPath: string) =>
+    request<void>('POST', '/api/files/copy', { old_path: oldPath, new_path: newPath }),
+
+  deleteFile: (path: string) => request<void>('POST', '/api/files/delete', { path }),
+
   getGraph: () => request<GraphData>('GET', '/api/graph'),
 }

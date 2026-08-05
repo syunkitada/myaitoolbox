@@ -143,6 +143,11 @@ type FileEntry struct {
 // FileEntryKind defines model for FileEntry.Kind.
 type FileEntryKind string
 
+// FilePathRequest defines model for FilePathRequest.
+type FilePathRequest struct {
+	Path string `json:"path"`
+}
+
 // GraphData defines model for GraphData.
 type GraphData struct {
 	Links []GraphLink `json:"links"`
@@ -297,6 +302,12 @@ type ListTasksParams struct {
 
 // SaveFileContentJSONRequestBody defines body for SaveFileContent for application/json ContentType.
 type SaveFileContentJSONRequestBody = FileContent
+
+// CopyFileJSONRequestBody defines body for CopyFile for application/json ContentType.
+type CopyFileJSONRequestBody = MoveFileRequest
+
+// DeleteFileJSONRequestBody defines body for DeleteFile for application/json ContentType.
+type DeleteFileJSONRequestBody = FilePathRequest
 
 // MoveFileJSONRequestBody defines body for MoveFile for application/json ContentType.
 type MoveFileJSONRequestBody = MoveFileRequest
