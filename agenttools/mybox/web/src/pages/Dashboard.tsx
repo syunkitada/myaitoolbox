@@ -1,11 +1,7 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react'
-import { Meta, api, FileEntry, Task } from '../api/client'
+import { api, FileEntry } from '../api/client'
 import { RichMarkdown } from '../components/RichMarkdown'
 import { SearchBar } from '../components/SearchBar'
-
-interface DashboardProps {
-  meta: Meta | null
-}
 
 interface TreeFile {
   kind: 'file'
@@ -194,15 +190,10 @@ function FilePane({ path, onBack }: FilePaneProps) {
   )
 }
 
-export function Dashboard({ meta }: DashboardProps) {
-  const [tasks, setTasks] = useState<Task[]>([])
+export function Dashboard() {
   const [files, setFiles] = useState<FileEntry[]>([])
   const [selected, setSelected] = useState<string>('')
   const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    void api.listTasks().then(setTasks).catch(() => setTasks([]))
-  }, [])
 
   useEffect(() => {
     void api
@@ -216,36 +207,9 @@ export function Dashboard({ meta }: DashboardProps) {
       .catch(() => setFiles([]))
   }, [])
 
-  const open = tasks.filter((t) => t.status !== 'done')
-  const done = tasks.filter((t) => t.status === 'done')
-
   return (
     <div className="page">
-      <h1>Dashboard</h1>
-      {meta && (
-        <p>
-          Project: <strong>{meta.project}</strong> ({meta.projects.join(', ')})
-        </p>
-      )}
-      <div className="stats">
-        <div className="stat">
-          <span className="stat-value">{open.length}</span>
-          <span className="stat-label">open tasks</span>
-        </div>
-        <div className="stat">
-          <span className="stat-value">{done.length}</span>
-          <span className="stat-label">done</span>
-        </div>
-        <div className="stat">
-          <span className="stat-value">{(meta?.tags ?? []).length}</span>
-          <span className="stat-label">tags</span>
-        </div>
-        <div className="stat">
-          <span className="stat-value">{(meta?.favorites ?? []).length}</span>
-          <span className="stat-label">favorites</span>
-        </div>
-      </div>
-      <div className={`knowledge-layout dashboard-layout${selected ? ' has-selection' : ''}`}>
+      <div className={`knowledge-layout${selected ? ' has-selection' : ''}`}>
         <Explorer entries={files} selected={selected} onSelect={setSelected} />
         <div className="knowledge-pane">
           {selected ? (

@@ -192,32 +192,6 @@ button.active {
   padding-top: 12px;
 }
 
-.stats {
-  display: flex;
-  gap: 16px;
-  margin: 16px 0;
-  flex-wrap: wrap;
-}
-
-.stat {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 16px;
-  display: flex;
-  flex-direction: column;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.stat-label {
-  color: var(--muted);
-  font-size: 13px;
-}
-
 .task-list,
 .file-list,
 .search-results {
@@ -680,11 +654,6 @@ button.active {
   line-height: 1.6;
 }
 
-.dashboard-layout .knowledge-explorer {
-  height: calc(100vh - 180px);
-  max-height: calc(100vh - 180px);
-}
-
 .mobile-back {
   display: none;
 }
@@ -843,15 +812,6 @@ button.active {
     min-height: 40vh;
   }
 
-  /* Stats: wrap cleanly */
-  .stats {
-    gap: 10px;
-  }
-
-  .stat {
-    flex: 1 1 calc(50% - 10px);
-  }
-
   /* Page header: stack on very small screens */
   .page-header {
     flex-wrap: wrap;
@@ -883,10 +843,6 @@ button.active {
 @media (max-width: 480px) {
   .content {
     padding: 60px 0 0;
-  }
-
-  .stat {
-    flex: 1 1 100%;
   }
 
   .board-column {

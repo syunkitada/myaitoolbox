@@ -4,24 +4,19 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/')
 })
 
-test('renders dashboard with stats', async ({ page }) => {
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-  await expect(page.getByText('open tasks', { exact: true })).toBeVisible()
-})
-
 test('dashboard shows project file explorer with README by default', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Files' })).toBeVisible()
   await expect(
     page.getByText('This project tracks tasks and knowledge.', { exact: true }),
   ).toBeVisible()
-  const explorer = page.locator('.dashboard-layout .knowledge-explorer')
+  const explorer = page.locator('.knowledge-explorer')
   await expect(explorer).toContainText('README.md')
   await expect(explorer).toContainText('knowledge')
   await expect(explorer).toContainText('tasks')
 })
 
 test('dashboard opens a markdown file from the explorer', async ({ page }) => {
-  const explorer = page.locator('.dashboard-layout .knowledge-explorer')
+  const explorer = page.locator('.knowledge-explorer')
   await expect(explorer).toContainText('tasks.md')
   await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
   await expect(page.getByText('Task tracking lives here.')).toBeVisible()
