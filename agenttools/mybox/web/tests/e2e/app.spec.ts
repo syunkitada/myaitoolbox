@@ -45,6 +45,15 @@ test('dashboard edits and saves a file', async ({ page }) => {
   await expect(page.getByText('Edited content.')).toBeVisible()
 })
 
+test('dashboard favorites a file from the file pane', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
+  await page.getByRole('button', { name: '☆ Favorite' }).click()
+  await expect(page.getByRole('button', { name: '★ Favorite' })).toBeVisible()
+  const favorites = page.locator('.sidebar-section').filter({ hasText: 'Favorites' })
+  await expect(favorites.locator('.sidebar-list')).toContainText('tasks.md')
+})
+
 test('task list shows seeded tasks', async ({ page }) => {
   await page.getByRole('link', { name: 'Tasks' }).click()
   await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible()

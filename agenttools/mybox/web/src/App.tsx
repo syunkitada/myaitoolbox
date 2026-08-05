@@ -57,7 +57,7 @@ export default function App() {
           </div>
         )}
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />} />
           <Route path="/tasks" element={<TaskList />} />
           <Route path="/tasks/:id" element={<TaskDetail navigate={navigate} />} />
           <Route path="/board" element={<KanbanBoard />} />

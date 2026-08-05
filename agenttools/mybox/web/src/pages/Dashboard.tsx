@@ -150,19 +150,23 @@ function Explorer({ entries, selected, onSelect }: ExplorerProps) {
 interface FilePaneProps {
   path: string
   onBack: () => void
+  favorites: string[]
+  refreshMeta: () => Promise<void>
 }
 
-function FilePane({ path, onBack }: FilePaneProps) {
+function FilePane({ path, onBack, favorites, refreshMeta }: FilePaneProps) {
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [isFav, setIsFav] = useState(false)
 
   useEffect(() => {
     setError(null)
     setEditing(false)
     setSaved(false)
+    setIsFav(favorites.includes(path))
     void api
       .getFileContent(path)
       .then((c) => {
@@ -170,11 +174,22 @@ function FilePane({ path, onBack }: FilePaneProps) {
         setDraft(c.content)
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path])
 
   const isMarkdown = /\.md$/i.test(path) || /\.markdown$/i.test(path)
 
   const outline = useMemo(() => extractOutline(content), [content])
+
+  const fav = (enabled: boolean) => {
+    void api
+      .setFavorite(path, enabled)
+      .then(() => {
+        setIsFav(enabled)
+        void refreshMeta()
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }
 
   const save = () => {
     setSaved(false)
@@ -203,6 +218,9 @@ function FilePane({ path, onBack }: FilePaneProps) {
               ← Files
             </button>
             <div className="actions">
+              <button className={isFav ? 'ghost active' : 'ghost'} onClick={() => fav(!isFav)}>
+                {isFav ? '★ Favorite' : '☆ Favorite'}
+              </button>
               {!editing && (
                 <button className="primary" onClick={() => setEditing(true)}>
                   Edit
@@ -268,7 +286,12 @@ function FilePane({ path, onBack }: FilePaneProps) {
   )
 }
 
-export function Dashboard() {
+interface DashboardProps {
+  refreshMeta: () => Promise<void>
+  favorites: string[]
+}
+
+export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
   const [files, setFiles] = useState<FileEntry[]>([])
   const [selected, setSelected] = useState<string>('')
   const [loaded, setLoaded] = useState(false)
@@ -291,7 +314,7 @@ export function Dashboard() {
         <Explorer entries={files} selected={selected} onSelect={setSelected} />
         <div className="knowledge-pane">
           {selected ? (
-            <FilePane path={selected} onBack={() => setSelected('')} />
+            <FilePane path={selected} onBack={() => setSelected('')} favorites={favorites} refreshMeta={refreshMeta} />
           ) : (
             <div className="card knowledge-empty">
               <h2>Files</h2>
