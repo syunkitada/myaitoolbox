@@ -9,6 +9,27 @@ test('renders dashboard with stats', async ({ page }) => {
   await expect(page.getByText('open tasks', { exact: true })).toBeVisible()
 })
 
+test('dashboard shows project file explorer with README by default', async ({ page }) => {
+  await expect(page.getByRole('heading', { name: 'Files' })).toBeVisible()
+  await expect(
+    page.getByText('This project tracks tasks and knowledge.', { exact: true }),
+  ).toBeVisible()
+  const explorer = page.locator('.dashboard-layout .knowledge-explorer')
+  await expect(explorer).toContainText('README.md')
+  await expect(explorer).toContainText('knowledge')
+  await expect(explorer).toContainText('tasks')
+})
+
+test('dashboard opens a markdown file from the explorer', async ({ page }) => {
+  const explorer = page.locator('.dashboard-layout .knowledge-explorer')
+  await expect(explorer).toContainText('tasks.md')
+  await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
+  await expect(page.getByText('Task tracking lives here.')).toBeVisible()
+  await expect(
+    explorer.getByRole('button', { name: 'tasks.md', exact: true }),
+  ).toHaveClass(/active/)
+})
+
 test('task list shows seeded tasks', async ({ page }) => {
   await page.getByRole('link', { name: 'Tasks' }).click()
   await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible()
@@ -217,7 +238,7 @@ test('outline shows a graph of linked notes', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('link', { name: 'Knowledge' }).click()
   await page.locator('main').getByRole('button', { name: 'index', exact: true }).click()
-  const block = page.locator('.outline-graph-block')
+  const block = page.locator('.outline-section').filter({ hasText: 'Graph' })
   await expect(block.getByText('Graph')).toBeVisible()
   await expect(block.locator('canvas')).toBeVisible()
 })

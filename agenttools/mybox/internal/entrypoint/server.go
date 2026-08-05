@@ -120,6 +120,14 @@ func (s *Server) handleIndex(c echo.Context) error {
 		return c.Redirect(http.StatusFound, s.basePath+"/"+s.defaultProject+"/")
 	}
 	f, err := webDist.Open(path)
+	// The SPA is served under /{project}/ (or /{basePath}/{project}/) and Vite
+	// emits relative asset paths (./assets/...), so those requests arrive as
+	// /{project}/assets/... — strip the leading project segment and retry.
+	if err != nil {
+		if i := strings.Index(path, "/"); i > 0 {
+			f, err = webDist.Open(path[i+1:])
+		}
+	}
 	if err == nil {
 		info, statErr := f.Stat()
 		if statErr == nil && !info.IsDir() {
@@ -544,6 +552,38 @@ func (s *Server) RenameKnowledge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) ListFiles(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	entries, err := app.Files.Tree(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out := make([]api.FileEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, api.FileEntry{Path: e.Path, Name: e.Name, Kind: api.FileEntryKind(e.Kind)})
+	}
+	writeJSONResponse(w, http.StatusOK, out)
+}
+
+func (s *Server) GetFileContent(w http.ResponseWriter, r *http.Request, params api.GetFileContentParams) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	content, err := app.Files.Content(r.Context(), params.Path)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, api.FileContent{Path: params.Path, Content: content})
 }
 
 func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request) {

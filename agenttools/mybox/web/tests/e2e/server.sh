@@ -15,6 +15,7 @@ if [ ! -x "$ROOT/mybox" ]; then
 fi
 
 "$ROOT/mybox" project add "$PROJ"
+printf '# Mybox\n\nThis project tracks tasks and knowledge.\n' >"$PROJ/README.md"
 "$ROOT/mybox" task create --project proj --name "Ship the web UI"
 "$ROOT/mybox" task create --project proj --name "Write E2E tests"
 "$ROOT/mybox" task create --project proj --name "E2E status change target"

@@ -7,6 +7,24 @@ import (
 	"time"
 )
 
+// Defines values for FileEntryKind.
+const (
+	Dir  FileEntryKind = "dir"
+	File FileEntryKind = "file"
+)
+
+// Valid indicates whether the value is a known member of the FileEntryKind enum.
+func (e FileEntryKind) Valid() bool {
+	switch e {
+	case Dir:
+		return true
+	case File:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SearchResultType.
 const (
 	SearchResultTypeKnowledge SearchResultType = "knowledge"
@@ -108,6 +126,22 @@ type CreateTaskRequest struct {
 	Status   *TaskStatus   `json:"status,omitempty"`
 	Tags     *[]string     `json:"tags,omitempty"`
 }
+
+// FileContent defines model for FileContent.
+type FileContent struct {
+	Content string `json:"content"`
+	Path    string `json:"path"`
+}
+
+// FileEntry defines model for FileEntry.
+type FileEntry struct {
+	Kind FileEntryKind `json:"kind"`
+	Name string        `json:"name"`
+	Path string        `json:"path"`
+}
+
+// FileEntryKind defines model for FileEntry.Kind.
+type FileEntryKind string
 
 // GraphData defines model for GraphData.
 type GraphData struct {
@@ -221,6 +255,11 @@ type UpdateTaskRequest struct {
 	Priority *TaskPriority `json:"priority,omitempty"`
 	Status   *TaskStatus   `json:"status,omitempty"`
 	Tags     *[]string     `json:"tags,omitempty"`
+}
+
+// GetFileContentParams defines parameters for GetFileContent.
+type GetFileContentParams struct {
+	Path string `form:"path" json:"path"`
 }
 
 // ListKnowledgeParams defines parameters for ListKnowledge.

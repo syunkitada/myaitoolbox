@@ -43,6 +43,19 @@ export interface KnowledgeContent {
   content: string
 }
 
+export type FileKind = 'file' | 'dir'
+
+export interface FileEntry {
+  path: string
+  name: string
+  kind: FileKind
+}
+
+export interface FileContent {
+  path: string
+  content: string
+}
+
 export interface SearchResult {
   type: 'task' | 'knowledge'
   id?: string | null
@@ -179,6 +192,11 @@ export const api = {
 
   renameKnowledge: (oldPath: string, newName: string) =>
     request<void>('POST', '/api/knowledge/rename', { old_path: oldPath, new_name: newName }),
+
+  listFiles: () => request<FileEntry[]>('GET', '/api/files'),
+
+  getFileContent: (path: string) =>
+    request<FileContent>('GET', '/api/files/content' + qs({ path })),
 
   getGraph: () => request<GraphData>('GET', '/api/graph'),
 }

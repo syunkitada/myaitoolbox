@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,6 +36,7 @@ func newTestServer(t *testing.T, readOnly bool) (*Server, *App) {
 			markdown.NewKnowledgeRepository(root),
 			markdown.NewTemplateRenderer(root, root),
 		),
+		Files:  application.NewFileUseCase(markdown.NewFileRepository(root)),
 		Search: application.NewSearchUseCase(markdown.NewSearcher(root)),
 		State:  application.NewStateUseCase(&fakeStateStore{}),
 	}
@@ -184,6 +187,39 @@ func TestNotFoundAndTraversal(t *testing.T) {
 
 	rec = do(t, s, http.MethodGet, "/api/knowledge/..%2f..%2fetc%2fpasswd", nil)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestFiles(t *testing.T) {
+	s, app := newTestServer(t, false)
+	root := app.Project.Path
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("# Project\n\nHello.\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("# Guide\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".hidden"), []byte("x"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".git", "config"), []byte("x"), 0o644))
+
+	rec := do(t, s, http.MethodGet, "/api/files", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	files := decode[[]api.FileEntry](t, rec)
+	require.Len(t, files, 3)
+	assert.Equal(t, api.FileEntry{Path: "docs", Name: "docs", Kind: api.FileEntryKind("dir")}, files[0])
+	assert.Equal(t, api.FileEntry{Path: "README.md", Name: "README.md", Kind: api.FileEntryKind("file")}, files[1])
+	assert.Equal(t, api.FileEntry{Path: "docs/guide.md", Name: "guide.md", Kind: api.FileEntryKind("file")}, files[2])
+
+	rec = do(t, s, http.MethodGet, "/api/files/content?path=README.md", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	content := decode[api.FileContent](t, rec)
+	assert.Equal(t, "# Project\n\nHello.\n", content.Content)
+
+	rec = do(t, s, http.MethodGet, "/api/files/content?path=nope.md", nil)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/api/files/content?path=..%2f..%2fetc%2fpasswd", nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/api/files/content?path=docs", nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestBasePath(t *testing.T) {

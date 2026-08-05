@@ -68,6 +68,40 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/SearchResult"
+  /api/files:
+    get:
+      operationId: listFiles
+      summary: List files in the project directory tree
+      responses:
+        "200":
+          description: file tree
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FileEntry"
+  /api/files/content:
+    get:
+      operationId: getFileContent
+      summary: Get file content
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: file content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileContent"
+        "400":
+          description: invalid path
+        "404":
+          description: not found
   /api/tasks:
     get:
       operationId: listTasks
@@ -424,6 +458,25 @@ components:
         body:
           type: string
     KnowledgeContent:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+    FileEntry:
+      type: object
+      required: [path, name, kind]
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: ["file", "dir"]
+    FileContent:
       type: object
       required: [path, content]
       properties:
