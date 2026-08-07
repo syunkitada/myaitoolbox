@@ -35,7 +35,7 @@ type ServerInterface interface {
 	MoveFile(w http.ResponseWriter, r *http.Request)
 	// GetGraph Get graph data for Graph View
 	// (GET /api/graph)
-	GetGraph(w http.ResponseWriter, r *http.Request)
+	GetGraph(w http.ResponseWriter, r *http.Request, params GetGraphParams)
 	// ListKnowledge List knowledge
 	// (GET /api/knowledge)
 	ListKnowledge(w http.ResponseWriter, r *http.Request, params ListKnowledgeParams)
@@ -198,8 +198,27 @@ func (siw *ServerInterfaceWrapper) MoveFile(w http.ResponseWriter, r *http.Reque
 // GetGraph operation middleware
 func (siw *ServerInterfaceWrapper) GetGraph(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetGraphParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetGraph(w, r)
+		siw.Handler.GetGraph(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

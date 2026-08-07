@@ -4,6 +4,7 @@ import "context"
 
 type KnowledgeRepository interface {
 	List(ctx context.Context) ([]Knowledge, error)
+	ListScoped(ctx context.Context, scope string) ([]Knowledge, error)
 	Find(ctx context.Context, path string) (*Knowledge, error)
 	RawContent(ctx context.Context, path string) (string, error)
 	Create(ctx context.Context, path string, content string) error

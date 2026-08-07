@@ -567,7 +567,11 @@ func (s *Server) ListFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]api.FileEntry, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, api.FileEntry{Path: e.Path, Name: e.Name, Kind: api.FileEntryKind(e.Kind)})
+		entry := api.FileEntry{Path: e.Path, Name: e.Name, Kind: api.FileEntryKind(e.Kind)}
+		if e.Status != "" {
+			entry.Status = &e.Status
+		}
+		out = append(out, entry)
 	}
 	writeJSONResponse(w, http.StatusOK, out)
 }
@@ -666,13 +670,17 @@ func (s *Server) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request) {
+func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.GetGraphParams) {
 	app, err := s.getApp(r)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	list, err := app.Knowledge.List(r.Context(), application.KnowledgeFilter{})
+	var scope string
+	if params.Path != nil {
+		scope = *params.Path
+	}
+	list, err := app.Knowledge.ListScoped(r.Context(), scope)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -681,6 +689,11 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request) {
 	index := make(map[string]string, len(list))
 	for _, k := range list {
 		index[strings.ToLower(k.Path)] = k.Path
+		if rel := strings.TrimPrefix(k.Path, "knowledge/"); rel != k.Path {
+			if _, ok := index[rel]; !ok {
+				index[rel] = k.Path
+			}
+		}
 		nodes = append(nodes, api.GraphNode{
 			Id:    k.Path,
 			Label: k.Title,

@@ -358,6 +358,13 @@ paths:
     get:
       operationId: getGraph
       summary: Get graph data for Graph View
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: Optional root directory to scope the graph to (empty means the whole project)
+          schema:
+            type: string
       responses:
         "200":
           description: graph data
@@ -539,6 +546,9 @@ components:
         kind:
           type: string
           enum: ["file", "dir"]
+        status:
+          type: string
+          description: Front matter status metadata for markdown files, if present
     FileContent:
       type: object
       required: [path, content]

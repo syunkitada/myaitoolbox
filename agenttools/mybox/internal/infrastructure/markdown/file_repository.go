@@ -49,10 +49,15 @@ func (r *FileRepository) Tree(ctx context.Context) ([]domain.FileEntry, error) {
 		if d.IsDir() {
 			kind = domain.FileKindDir
 		}
+		status := ""
+		if kind == domain.FileKindFile {
+			status = markdownStatus(path)
+		}
 		entries = append(entries, domain.FileEntry{
-			Path: filepath.ToSlash(rel),
-			Name: d.Name(),
-			Kind: kind,
+			Path:   filepath.ToSlash(rel),
+			Name:   d.Name(),
+			Kind:   kind,
+			Status: status,
 		})
 		return nil
 	})
@@ -66,6 +71,18 @@ func (r *FileRepository) Tree(ctx context.Context) ([]domain.FileEntry, error) {
 		return entries[i].Path < entries[j].Path
 	})
 	return entries, nil
+}
+
+func markdownStatus(path string) string {
+	if !strings.HasSuffix(strings.ToLower(path), ".md") &&
+		!strings.HasSuffix(strings.ToLower(path), ".markdown") {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return extractStatus(string(data))
 }
 
 func (r *FileRepository) Content(ctx context.Context, path string) (string, error) {

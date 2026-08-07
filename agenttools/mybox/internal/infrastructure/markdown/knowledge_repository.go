@@ -31,10 +31,33 @@ type knowledgeFields struct {
 }
 
 func (r *KnowledgeRepository) List(ctx context.Context) ([]domain.Knowledge, error) {
-	return r.walk(filepath.Join(r.root, "knowledge"), "")
+	return r.walk(ctx, filepath.Join(r.root, "knowledge"), "", false)
 }
 
-func (r *KnowledgeRepository) walk(dir string, base string) ([]domain.Knowledge, error) {
+// ListScoped walks markdown notes under a scope directory and returns them with
+// project-root-relative paths. An empty scope walks the whole project root,
+// skipping hidden entries and the managed tasks/archives directories.
+func (r *KnowledgeRepository) ListScoped(ctx context.Context, scope string) ([]domain.Knowledge, error) {
+	if err := validateScope(scope); err != nil {
+		return nil, err
+	}
+	list, err := r.walk(ctx, r.root, "", scope == "")
+	if err != nil {
+		return nil, err
+	}
+	if scope == "" {
+		return list, nil
+	}
+	var out []domain.Knowledge
+	for _, k := range list {
+		if k.Path == scope || strings.HasPrefix(k.Path, scope+"/") {
+			out = append(out, k)
+		}
+	}
+	return out, nil
+}
+
+func (r *KnowledgeRepository) walk(ctx context.Context, dir string, base string, skipManaged bool) ([]domain.Knowledge, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -44,18 +67,25 @@ func (r *KnowledgeRepository) walk(dir string, base string) ([]domain.Knowledge,
 	}
 	var knowledge []domain.Knowledge
 	for _, e := range entries {
-		rel := filepath.ToSlash(filepath.Join(base, e.Name()))
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if e.IsDir() && skipManaged && (name == "tasks" || name == "archives") {
+			continue
+		}
+		rel := filepath.ToSlash(filepath.Join(base, name))
 		if e.IsDir() {
-			sub, err := r.walk(filepath.Join(dir, e.Name()), rel)
+			sub, err := r.walk(ctx, filepath.Join(dir, name), rel, skipManaged)
 			if err != nil {
 				return nil, err
 			}
 			knowledge = append(knowledge, sub...)
 			continue
 		}
-		if strings.HasSuffix(e.Name(), ".md") {
+		if strings.HasSuffix(name, ".md") {
 			path := strings.TrimSuffix(rel, ".md")
-			k, err := r.read(filepath.Join(dir, e.Name()), path)
+			k, err := r.read(filepath.Join(dir, name), path)
 			if err != nil {
 				return nil, err
 			}
@@ -63,6 +93,17 @@ func (r *KnowledgeRepository) walk(dir string, base string) ([]domain.Knowledge,
 		}
 	}
 	return knowledge, nil
+}
+
+func validateScope(scope string) error {
+	if scope == "" {
+		return nil
+	}
+	if scope == "." || scope == ".." || strings.HasPrefix(scope, "/") ||
+		strings.Contains(scope, "..") || strings.ContainsAny(scope, `\`) {
+		return fmt.Errorf("%w: %q", domain.ErrInvalidPath, scope)
+	}
+	return nil
 }
 
 func (r *KnowledgeRepository) read(path string, relPath string) (*domain.Knowledge, error) {

@@ -49,6 +49,7 @@ export interface FileEntry {
   path: string
   name: string
   kind: FileKind
+  status?: string
 }
 
 export interface FileContent {
@@ -209,5 +210,6 @@ export const api = {
 
   deleteFile: (path: string) => request<void>('POST', '/api/files/delete', { path }),
 
-  getGraph: () => request<GraphData>('GET', '/api/graph'),
+  getGraph: (path?: string) =>
+    request<GraphData>('GET', '/api/graph' + qs({ path })),
 }

@@ -37,6 +37,19 @@ func parseFrontMatter(fmStr string) (map[string]any, error) {
 	return fm, nil
 }
 
+func extractStatus(content string) string {
+	fmStr, _, ok := splitFrontMatter(content)
+	if !ok {
+		return ""
+	}
+	fm, err := parseFrontMatter(fmStr)
+	if err != nil {
+		return ""
+	}
+	status, _ := fm["status"].(string)
+	return status
+}
+
 func buildFrontMatter(fields map[string]any, body string) (string, error) {
 	fmBytes, err := yaml.Marshal(fields)
 	if err != nil {

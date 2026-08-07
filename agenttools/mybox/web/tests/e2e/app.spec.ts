@@ -15,6 +15,13 @@ test('dashboard shows project file explorer with README by default', async ({ pa
   await expect(explorer).toContainText('tasks')
 })
 
+test('dashboard shows a status badge for markdown files with status metadata', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  const row = explorer.locator('.knowledge-tree-row', { hasText: 'task.md' })
+  await expect(row.locator('.badge.status-doing')).toBeVisible()
+  await expect(row.locator('.badge.status-doing')).toHaveText('doing')
+})
+
 test('dashboard opens a markdown file from the explorer', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await expect(explorer).toContainText('tasks.md')
@@ -43,6 +50,33 @@ test('dashboard edits and saves a file', async ({ page }) => {
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('Saved.')).toBeVisible()
   await expect(page.getByText('Edited content.')).toBeVisible()
+})
+
+test('dashboard edits frontmatter metadata separately from the body', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit' }).click()
+  await page.getByLabel('Metadata status').selectOption('done')
+  await page.getByLabel('Metadata priority').selectOption('high')
+  await page.getByLabel('Metadata tags').fill('docs, meta')
+  await page.getByLabel('File editor').fill('# Tasks\n\nMetadata added.\n')
+  await page.getByRole('button', { name: 'Save' }).click()
+
+  await expect(page.locator('.frontmatter-card .badge.status-done')).toBeVisible()
+  await expect(page.locator('.frontmatter-card .badge.priority-high')).toBeVisible()
+  await expect(page.locator('.frontmatter-card .badge.tag').filter({ hasText: 'docs' })).toBeVisible()
+  await expect(page.getByText('Metadata added.')).toBeVisible()
+
+  const res = await page.request.get('/api/files/content?path=tasks.md')
+  const body = (await res.json()) as { content: string }
+  expect(body.content).toContain('status: done')
+  expect(body.content).toContain('priority: high')
+  expect(body.content).toContain('tags')
+  expect(body.content).toContain('docs')
+  expect(body.content).toContain('Metadata added.')
+
+  const row = explorer.locator('.knowledge-tree-row', { hasText: 'tasks.md' })
+  await expect(row.locator('.badge.status-done')).toBeVisible()
 })
 
 test('dashboard favorites a file from the file pane', async ({ page }) => {

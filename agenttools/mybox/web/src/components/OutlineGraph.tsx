@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import ForceGraph2D from 'react-force-graph-2d'
+import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d'
 import { GraphData, api } from '../api/client'
 
 interface GraphNode {
@@ -20,7 +20,15 @@ function linkEndpoints(l: GraphLink): [string, string] {
   return [s, t]
 }
 
-export function OutlineGraph({ path }: { path: string }) {
+export function OutlineGraph({
+  path,
+  root,
+  onNodeClick,
+}: {
+  path: string
+  root?: string
+  onNodeClick?: (node: GraphNode) => void
+}) {
   const navigate = useNavigate()
   const [data, setData] = useState<GraphData | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -29,7 +37,7 @@ export function OutlineGraph({ path }: { path: string }) {
   useEffect(() => {
     let cancelled = false
     void api
-      .getGraph()
+      .getGraph(root)
       .then((d) => {
         if (!cancelled) setData(d)
       })
@@ -37,7 +45,7 @@ export function OutlineGraph({ path }: { path: string }) {
     return () => {
       cancelled = true
     }
-  }, [path])
+  }, [path, root])
 
   useEffect(() => {
     const el = containerRef.current
@@ -57,20 +65,63 @@ export function OutlineGraph({ path }: { path: string }) {
     if (!data) return null
     const nodes: GraphNode[] = data.nodes.map((n) => ({ ...n }))
     const links: GraphLink[] = (data.links ?? []).map((l) => ({ ...l }))
-    const linked = new Set<string>([path])
+    const current = nodeIdOf(path, root)
+    if (nodes.some((n) => n.id === current)) {
+      const linked = new Set<string>([current])
+      for (const l of links) {
+        const [s, t] = linkEndpoints(l)
+        if (s === current) linked.add(t)
+        if (t === current) linked.add(s)
+      }
+      const subNodes = nodes.filter((n) => linked.has(n.id))
+      const subLinks = links.filter((l) => {
+        const [s, t] = linkEndpoints(l)
+        return linked.has(s) && linked.has(t)
+      })
+      return { nodes: subNodes, links: subLinks, linked, current }
+    }
+    const linked = new Set<string>([current])
     for (const l of links) {
       const [s, t] = linkEndpoints(l)
-      if (s === path) linked.add(t)
-      if (t === path) linked.add(s)
+      if (s === current) linked.add(t)
+      if (t === current) linked.add(s)
     }
-    return { nodes, links, linked }
-  }, [data, path])
+    return { nodes, links, linked, current }
+  }, [data, path, root])
+
+  const fgRef = useRef<ForceGraphMethods<any, any> | undefined>(undefined)
+
+  useEffect(() => {
+    if (!graphData) return
+    const fg = fgRef.current
+    if (!fg) return
+    const t = window.setTimeout(() => {
+      const nodes = graphData.nodes as Array<{ id: string; x?: number; y?: number }>
+      const cur = nodes.find((n) => n.id === graphData.current)
+      if (cur && typeof cur.x === 'number' && typeof cur.y === 'number') {
+        fg.centerAt(cur.x, cur.y, 400)
+        fg.zoom(1.6, 400)
+      }
+    }, 500)
+    return () => window.clearTimeout(t)
+  }, [graphData])
 
   if (!graphData) return <div className="outline-graph" />
+
+  const handleClick =
+    onNodeClick ??
+    ((n: GraphNode) => {
+      if (n.type === 'task') navigate(`/tasks/${n.id}`)
+      else {
+        const id = root && n.id.startsWith(root + '/') ? n.id.slice(root.length + 1) : n.id
+        navigate(`/knowledge/${encodeURIComponent(id)}`)
+      }
+    })
 
   return (
     <div className="outline-graph" ref={containerRef}>
       <ForceGraph2D
+        ref={fgRef}
         graphData={{ nodes: graphData.nodes, links: graphData.links }}
         width={size.w}
         height={size.h}
@@ -78,7 +129,7 @@ export function OutlineGraph({ path }: { path: string }) {
         nodeCanvasObjectMode={() => 'replace'}
         nodeCanvasObject={(n, ctx) => {
           const node = n as GraphNode & { x: number; y: number }
-          const isCurrent = node.id === path
+          const isCurrent = node.id === graphData.current
           const isLinked = graphData.linked.has(node.id)
           const size = isCurrent ? 5 : isLinked ? 3.5 : 1.5
           ctx.beginPath()
@@ -94,14 +145,17 @@ export function OutlineGraph({ path }: { path: string }) {
         }}
         linkColor={(l) => {
           const [s, t] = linkEndpoints(l as unknown as GraphLink)
-          return s === path || t === path ? '#9ab8d8' : '#e5e9f0'
+          return s === graphData.current || t === graphData.current ? '#9ab8d8' : '#e5e9f0'
         }}
-        onNodeClick={(n) => {
-          const node = n as GraphNode
-          if (node.type === 'task') navigate(`/tasks/${node.id}`)
-          else navigate(`/knowledge/${encodeURIComponent(node.id)}`)
-        }}
+        onNodeClick={(n) => handleClick(n as GraphNode)}
       />
     </div>
   )
+}
+
+function nodeIdOf(path: string, root?: string): string {
+  const stripped = path.replace(/\.md$/i, '')
+  return root && stripped && !stripped.startsWith(root + '/')
+    ? `${root}/${stripped}`
+    : stripped
 }

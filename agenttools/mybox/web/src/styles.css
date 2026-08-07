@@ -617,6 +617,16 @@ button.active {
   font-weight: 600;
 }
 
+.knowledge-tree-row .knowledge-file {
+  min-width: 0;
+  flex: 1;
+}
+
+.knowledge-tree-row .file-status {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 .knowledge-tree-row.drop-target.drag-over {
   background: var(--accent);
   color: #fff;
@@ -673,6 +683,102 @@ button.active {
 
 .mobile-close {
   display: none;
+}
+
+/* ─── Dashboard: front matter metadata ─────────────────────── */
+.frontmatter-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: var(--bg);
+}
+
+.frontmatter-card h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.frontmatter-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.frontmatter-row {
+  display: contents;
+}
+
+.frontmatter-key {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.frontmatter-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  margin: 0;
+  color: var(--text);
+}
+
+.frontmatter-form .field-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.frontmatter-form .field {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.frontmatter-form .field input,
+.frontmatter-form .field select {
+  font-weight: 400;
+}
+
+.frontmatter-form .extra-fields {
+  margin: 4px 0 10px;
+}
+
+.frontmatter-form .extra-fields h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.frontmatter-form .extra-field-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.frontmatter-form .extra-field-row .extra-key {
+  flex: 0 0 160px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.frontmatter-form .extra-field-row .extra-value {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
 }
 
 /* Narrow desktop: shrink the explorer */

@@ -10,9 +10,10 @@ const (
 )
 
 type FileEntry struct {
-	Path string
-	Name string
-	Kind FileKind
+	Path   string
+	Name   string
+	Kind   FileKind
+	Status string
 }
 
 type FileRepository interface {

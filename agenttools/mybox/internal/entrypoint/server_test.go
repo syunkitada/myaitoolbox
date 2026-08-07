@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -175,8 +176,64 @@ func TestGraphResolvesWikiLinksByAliasAndTitle(t *testing.T) {
 	graph := decode[api.GraphData](t, rec)
 	require.Len(t, graph.Links, 4)
 	for _, l := range graph.Links {
-		assert.Equal(t, "notes/phase6", l.Target)
+		assert.Equal(t, "knowledge/notes/phase6", l.Target)
 	}
+}
+
+func TestGraphScopesByRootDirectory(t *testing.T) {
+	s, app := newTestServer(t, false)
+	root := app.Project.Path
+	ctx := context.Background()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("# Project\n\nHello.\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("# Guide\n\nSee [[README]]\n"), 0o644))
+	_, err := app.Knowledge.Create(ctx, "index")
+	require.NoError(t, err)
+	require.NoError(t, app.Knowledge.SaveContent(ctx, "index", "see [[notes/phase6]]"))
+	_, err = app.Knowledge.Create(ctx, "notes/phase6")
+	require.NoError(t, err)
+
+	// Project-wide graph includes root notes and skips task files.
+	rec := do(t, s, http.MethodGet, "/api/graph", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	graph := decode[api.GraphData](t, rec)
+	assertNodes(t, graph, []string{"README", "docs/guide", "knowledge/index", "knowledge/notes/phase6"})
+	assertLinks(t, graph, map[string]string{"docs/guide": "README", "knowledge/index": "knowledge/notes/phase6"})
+
+	// Scoped graph only contains nodes under the requested root.
+	rec = do(t, s, http.MethodGet, "/api/graph?path=knowledge", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	scoped := decode[api.GraphData](t, rec)
+	assertNodes(t, scoped, []string{"knowledge/index", "knowledge/notes/phase6"})
+
+	rec = do(t, s, http.MethodGet, "/api/graph?path=docs", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	docs := decode[api.GraphData](t, rec)
+	assertNodes(t, docs, []string{"docs/guide"})
+
+	// Invalid scopes are rejected.
+	rec = do(t, s, http.MethodGet, "/api/graph?path=..%2f..%2fetc", nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func assertNodes(t *testing.T, graph api.GraphData, want []string) {
+	t.Helper()
+	var got []string
+	for _, n := range graph.Nodes {
+		got = append(got, n.Id)
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	assert.Equal(t, want, got)
+}
+
+func assertLinks(t *testing.T, graph api.GraphData, want map[string]string) {
+	t.Helper()
+	got := map[string]string{}
+	for _, l := range graph.Links {
+		got[l.Source] = l.Target
+	}
+	assert.Equal(t, want, got)
 }
 
 func TestNotFoundAndTraversal(t *testing.T) {
@@ -194,7 +251,7 @@ func TestFiles(t *testing.T) {
 	root := app.Project.Path
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("# Project\n\nHello.\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("# Guide\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("---\nstatus: doing\n---\n\n# Guide\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".hidden"), []byte("x"), 0o644))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".git", "config"), []byte("x"), 0o644))
@@ -205,7 +262,8 @@ func TestFiles(t *testing.T) {
 	require.Len(t, files, 3)
 	assert.Equal(t, api.FileEntry{Path: "docs", Name: "docs", Kind: api.FileEntryKind("dir")}, files[0])
 	assert.Equal(t, api.FileEntry{Path: "README.md", Name: "README.md", Kind: api.FileEntryKind("file")}, files[1])
-	assert.Equal(t, api.FileEntry{Path: "docs/guide.md", Name: "guide.md", Kind: api.FileEntryKind("file")}, files[2])
+	status := "doing"
+	assert.Equal(t, api.FileEntry{Path: "docs/guide.md", Name: "guide.md", Kind: api.FileEntryKind("file"), Status: &status}, files[2])
 
 	rec = do(t, s, http.MethodGet, "/api/files/content?path=README.md", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)

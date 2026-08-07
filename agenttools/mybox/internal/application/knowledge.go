@@ -40,6 +40,19 @@ func (u *KnowledgeUseCase) List(ctx context.Context, filter KnowledgeFilter) ([]
 	return out, nil
 }
 
+// ListScoped lists notes under a scope directory with project-root-relative
+// paths. An empty scope covers the whole project. Used for scoped graph data.
+func (u *KnowledgeUseCase) ListScoped(ctx context.Context, scope string) ([]domain.Knowledge, error) {
+	list, err := u.Knowledge.ListScoped(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].Path < list[j].Path
+	})
+	return list, nil
+}
+
 func (u *KnowledgeUseCase) Show(ctx context.Context, path string) (*domain.Knowledge, error) {
 	return u.Knowledge.Find(ctx, path)
 }

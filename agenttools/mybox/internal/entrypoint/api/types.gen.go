@@ -138,6 +138,9 @@ type FileEntry struct {
 	Kind FileEntryKind `json:"kind"`
 	Name string        `json:"name"`
 	Path string        `json:"path"`
+
+	// Status Front matter status metadata for markdown files, if present
+	Status *string `json:"status,omitempty"`
 }
 
 // FileEntryKind defines model for FileEntry.Kind.
@@ -271,6 +274,12 @@ type UpdateTaskRequest struct {
 // GetFileContentParams defines parameters for GetFileContent.
 type GetFileContentParams struct {
 	Path string `form:"path" json:"path"`
+}
+
+// GetGraphParams defines parameters for GetGraph.
+type GetGraphParams struct {
+	// Path Optional root directory to scope the graph to (empty means the whole project)
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
 // ListKnowledgeParams defines parameters for ListKnowledge.
