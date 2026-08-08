@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { BrowserPage } from './BrowserPage'
 
 interface DashboardProps {
@@ -7,7 +7,9 @@ interface DashboardProps {
 }
 
 export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
-  const [selected, setSelected] = useState('')
+  const params = useParams()
+  const selected = (params['*'] ?? '').trim()
+  const navigate = useNavigate()
 
   return (
     <BrowserPage
@@ -15,8 +17,8 @@ export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
       root=""
       title="Files"
       selected={selected}
-      onSelect={setSelected}
-      onBack={() => setSelected('')}
+      onSelect={(path) => navigate(`/files/${encodeURIComponent(path)}`)}
+      onBack={() => navigate('/')}
       favorites={favorites}
       refreshMeta={refreshMeta}
       defaultSelect={(entries) =>

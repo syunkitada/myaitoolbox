@@ -62,6 +62,10 @@ export default function App() {
           {project ? (
             <>
               <Route path="/" element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />} />
+              <Route
+                path="/files/*"
+                element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
+              />
               <Route path="/projects" element={<ProjectsPage onChanged={refreshMeta} />} />
               <Route path="/tasks" element={<TaskList />} />
               <Route path="/tasks/:id" element={<TaskDetail navigate={navigate} />} />

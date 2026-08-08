@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('dashboard shows project file explorer with README by default', async ({ page }) => {
-  await expect(page.getByRole('heading', { name: 'Files' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Files', level: 1 })).toBeVisible()
   await expect(
     page.getByText('This project tracks tasks and knowledge.', { exact: true }),
   ).toBeVisible()
@@ -29,6 +29,18 @@ test('dashboard opens a markdown file from the explorer', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await expect(explorer).toContainText('tasks.md')
   await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
+  await expect(page.getByText('Task tracking lives here.')).toBeVisible()
+  await expect(
+    explorer.getByRole('button', { name: 'tasks.md', exact: true }),
+  ).toHaveClass(/active/)
+})
+
+test('dashboard keeps the open file in the URL across a reload', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
+  await expect(page.getByText('Task tracking lives here.')).toBeVisible()
+  await expect(page).toHaveURL(/#\/files\/tasks\.md$/)
+  await page.reload()
   await expect(page.getByText('Task tracking lives here.')).toBeVisible()
   await expect(
     explorer.getByRole('button', { name: 'tasks.md', exact: true }),
