@@ -6,6 +6,71 @@ info:
 servers:
   - url: http://127.0.0.1:8080
 paths:
+  /api/projects:
+    get:
+      operationId: listProjects
+      summary: List projects
+      responses:
+        "200":
+          description: list of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      summary: Register a directory as a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          description: path does not exist or is not a directory
+  /api/projects/paths:
+    get:
+      operationId: getProjectPaths
+      summary: List existing directory paths for project path autocompletion
+      parameters:
+        - name: prefix
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: candidate directory paths
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /api/projects/{name}:
+    delete:
+      operationId: deleteProject
+      summary: Remove a project
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: removed
+        "404":
+          description: project not found
   /api/meta:
     get:
       operationId: getMeta
@@ -374,6 +439,20 @@ paths:
                 $ref: "#/components/schemas/GraphData"
 components:
   schemas:
+    Project:
+      type: object
+      required: [name, path]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+    CreateProjectRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
     Meta:
       type: object
       required: [project, projects, default_project, tags, favorites, recent_files]

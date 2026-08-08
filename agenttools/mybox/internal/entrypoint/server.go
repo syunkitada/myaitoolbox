@@ -33,6 +33,7 @@ var webDist = func() fs.FS {
 type Server struct {
 	config         *domain.Config
 	apps           map[string]*App
+	projects       *application.ProjectUseCase
 	mu             sync.RWMutex
 	readOnly       bool
 	defaultProject string
@@ -47,6 +48,7 @@ func NewServer(cfg *domain.Config, defaultProject string, readOnly bool, basePat
 	return &Server{
 		config:         cfg,
 		apps:           make(map[string]*App),
+		projects:       NewProjectApp(),
 		readOnly:       readOnly,
 		defaultProject: defaultProject,
 		basePath:       basePath,
@@ -116,9 +118,6 @@ func (s *Server) handleIndex(c echo.Context) error {
 		path = strings.TrimPrefix(path, s.basePath)
 	}
 	path = strings.TrimPrefix(path, "/")
-	if path == "" {
-		return c.Redirect(http.StatusFound, s.basePath+"/"+s.defaultProject+"/")
-	}
 	f, err := webDist.Open(path)
 	// The SPA is served under /{project}/ (or /{basePath}/{project}/) and Vite
 	// emits relative asset paths (./assets/...), so those requests arrive as
@@ -167,7 +166,87 @@ func (s *Server) serveIndex(c echo.Context) error {
 	return nil
 }
 
+func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request) {
+	projects, err := s.projects.List(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out := make([]api.Project, 0, len(projects))
+	for _, p := range projects {
+		out = append(out, api.Project{Name: p.Name, Path: p.Path})
+	}
+	writeJSONResponse(w, http.StatusOK, out)
+}
+
+func (s *Server) CreateProject(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req api.CreateProjectRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	project, err := s.projects.Add(r.Context(), req.Path)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusCreated, api.Project{Name: project.Name, Path: project.Path})
+}
+
+func (s *Server) DeleteProject(w http.ResponseWriter, r *http.Request, name string) {
+	if !s.ensureWritable(w) {
+		return
+	}
+	if err := s.projects.Remove(r.Context(), name); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.mu.Lock()
+	delete(s.apps, name)
+	s.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) GetProjectPaths(w http.ResponseWriter, r *http.Request, params api.GetProjectPathsParams) {
+	var prefix string
+	if params.Prefix != nil {
+		prefix = *params.Prefix
+	}
+	paths, err := s.projects.PathCandidates(r.Context(), prefix)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if paths == nil {
+		paths = []string{}
+	}
+	writeJSONResponse(w, http.StatusOK, paths)
+}
+
 func (s *Server) GetMeta(w http.ResponseWriter, r *http.Request) {
+	project := r.Header.Get("X-Project")
+	if project == "" {
+		cfg, err := s.projects.Config.Load(r.Context())
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		projects := make([]string, 0, len(cfg.Projects))
+		for _, p := range cfg.Projects {
+			projects = append(projects, p.Name)
+		}
+		writeJSONResponse(w, http.StatusOK, api.Meta{
+			Project:        "",
+			Projects:       projects,
+			DefaultProject: cfg.DefaultProject,
+			Tags:           []string{},
+			Favorites:      []string{},
+			RecentFiles:    []string{},
+		})
+		return
+	}
 	app, err := s.getApp(r)
 	if err != nil {
 		writeError(w, err)

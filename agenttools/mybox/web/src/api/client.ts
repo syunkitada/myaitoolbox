@@ -90,6 +90,11 @@ export interface Meta {
   recent_files: string[]
 }
 
+export interface Project {
+  name: string
+  path: string
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -116,6 +121,10 @@ export function getProject(): string {
 export function setProject(project: string) {
   window.location.href =
     getBasePath() + '/' + encodeURIComponent(project) + '/' + window.location.hash
+}
+
+export function clearProject() {
+  window.location.href = getBasePath() + '/#/'
 }
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
@@ -153,6 +162,16 @@ function qs(params: Record<string, string | number | boolean | undefined | null>
 
 export const api = {
   getMeta: () => request<Meta>('GET', '/api/meta'),
+
+  listProjects: () => request<Project[]>('GET', '/api/projects'),
+
+  createProject: (path: string) => request<Project>('POST', '/api/projects', { path }),
+
+  deleteProject: (name: string) =>
+    request<void>('DELETE', `/api/projects/${encodeURIComponent(name)}`),
+
+  getProjectPaths: (prefix: string) =>
+    request<string[]>('GET', '/api/projects/paths' + qs({ prefix })),
 
   setFavorite: (path: string, enabled: boolean) =>
     request<void>('PUT', '/api/meta/favorites', { path, enabled }),

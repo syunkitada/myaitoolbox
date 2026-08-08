@@ -43,6 +43,7 @@ func newTestServer(t *testing.T, readOnly bool) (*Server, *App) {
 	}
 	s := NewServer(app.Config, "test", readOnly, "")
 	s.apps["test"] = app
+	s.projects = application.NewProjectUseCase(&fakeConfigStore{})
 	return s, app
 }
 
@@ -74,7 +75,7 @@ func (f *fakeStateStore) Save(ctx context.Context, st *domain.State) error {
 	return nil
 }
 
-func do(t *testing.T, s *Server, method, target string, body any) *httptest.ResponseRecorder {
+func do(t *testing.T, s *Server, method, target string, body any, headers ...string) *httptest.ResponseRecorder {
 	t.Helper()
 	var r io.Reader
 	if body != nil {
@@ -85,6 +86,9 @@ func do(t *testing.T, s *Server, method, target string, body any) *httptest.Resp
 	req := httptest.NewRequest(method, target, r)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for i := 0; i+1 < len(headers); i += 2 {
+		req.Header.Set(headers[i], headers[i+1])
 	}
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -101,7 +105,7 @@ func decode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 func TestMetaAndLifecycle(t *testing.T) {
 	s, _ := newTestServer(t, false)
 
-	rec := do(t, s, http.MethodGet, "/api/meta", nil)
+	rec := do(t, s, http.MethodGet, "/api/meta", nil, "X-Project", "test")
 	assert.Equal(t, http.StatusOK, rec.Code)
 	meta := decode[api.Meta](t, rec)
 	assert.Equal(t, "test", meta.Project)
@@ -116,6 +120,68 @@ func TestMetaAndLifecycle(t *testing.T) {
 
 	rec = do(t, s, http.MethodPost, "/api/tasks", map[string]any{"name": ""})
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestMetaUnselectedProject(t *testing.T) {
+	s, _ := newTestServer(t, false)
+
+	rec := do(t, s, http.MethodGet, "/api/meta", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	meta := decode[api.Meta](t, rec)
+	assert.Equal(t, "", meta.Project)
+	assert.Contains(t, meta.Projects, "test")
+}
+
+func TestProjectsAPI(t *testing.T) {
+	s, _ := newTestServer(t, false)
+
+	rec := do(t, s, http.MethodGet, "/api/projects", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	projects := decode[[]api.Project](t, rec)
+	assert.Contains(t, projects, api.Project{Name: "test", Path: "/tmp"})
+
+	// Path candidates only contain existing directories.
+	dir := t.TempDir()
+	rec = do(t, s, http.MethodGet, "/api/projects/paths?prefix="+dir, nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	paths := decode[[]string](t, rec)
+	require.Contains(t, paths, dir)
+
+	rec = do(t, s, http.MethodGet, "/api/projects/paths?prefix="+filepath.Join(dir, "nope"), nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Empty(t, decode[[]string](t, rec))
+
+	// Creating a project from a non-existent path is rejected.
+	rec = do(t, s, http.MethodPost, "/api/projects", map[string]any{"path": filepath.Join(dir, "missing")})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/projects", map[string]any{"path": dir})
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	project := decode[api.Project](t, rec)
+	assert.Equal(t, filepath.Base(dir), project.Name)
+	assert.Equal(t, dir, project.Path)
+
+	rec = do(t, s, http.MethodDelete, "/api/projects/does-not-exist", nil)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+
+	rec = do(t, s, http.MethodDelete, "/api/projects/test", nil)
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestProjectsReadOnly(t *testing.T) {
+	s, _ := newTestServer(t, true)
+
+	rec := do(t, s, http.MethodPost, "/api/projects", map[string]any{"path": "/tmp"})
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+
+	rec = do(t, s, http.MethodDelete, "/api/projects/test", nil)
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/api/projects", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/api/projects/paths?prefix=/tmp", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestReadOnly(t *testing.T) {
@@ -155,7 +221,7 @@ func TestFavoritesAndRecent(t *testing.T) {
 	rec = do(t, s, http.MethodPost, "/api/meta/recent", map[string]any{"path": "notes/n1"})
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 
-	rec = do(t, s, http.MethodGet, "/api/meta", nil)
+	rec = do(t, s, http.MethodGet, "/api/meta", nil, "X-Project", "test")
 	meta := decode[api.Meta](t, rec)
 	assert.Contains(t, meta.Favorites, "notes/n1")
 	assert.Contains(t, meta.RecentFiles, "notes/n1")
@@ -359,8 +425,9 @@ func TestBasePath(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	rec = do(t, s, http.MethodGet, "/mybox/", nil)
-	assert.Equal(t, http.StatusFound, rec.Code)
-	assert.Equal(t, "/mybox/test/", rec.Header().Get("Location"))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `window.__MYBOX_BASE__="/mybox"`)
+	assert.Contains(t, rec.Body.String(), `<base href="/mybox/">`)
 
 	rec = do(t, s, http.MethodGet, "/mybox/test/", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)

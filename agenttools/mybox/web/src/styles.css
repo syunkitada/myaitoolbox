@@ -45,6 +45,18 @@ body {
 .sidebar-brand {
   font-size: 20px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-brand-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  line-height: inherit;
 }
 
 .sidebar-nav {
@@ -983,6 +995,142 @@ button.active {
   button {
     font-size: 13px;
     padding: 6px 10px;
+  }
+}
+
+/* Projects page */
+.projects-page {
+  padding: 24px;
+  max-width: 900px;
+}
+
+.projects-create h2 {
+  margin: 0 0 4px;
+}
+
+.projects-create-hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.projects-create form {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.path-picker {
+  position: relative;
+  flex: 1;
+}
+
+.path-picker input {
+  width: 100%;
+}
+
+.path-candidates {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.path-candidates li button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.path-candidates li button:hover {
+  background: var(--bg);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.btn-danger {
+  background: #fdeaea;
+  color: #b03a3a;
+  border-color: #e7b8b8;
+}
+
+.btn-primary:disabled,
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.projects-feedback {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.error-text {
+  color: #b03a3a;
+}
+
+.projects-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.projects-table th,
+.projects-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.projects-table th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.project-name {
+  font-weight: 600;
+}
+
+.project-path {
+  color: var(--muted);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.projects-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 480px) {
+  .projects-create form {
+    flex-direction: column;
+  }
+
+  .path-picker {
+    width: 100%;
   }
 }
 

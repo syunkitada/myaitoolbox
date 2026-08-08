@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
@@ -66,6 +67,61 @@ func (u *ProjectUseCase) Add(ctx context.Context, path string) (*domain.Project,
 		return nil, err
 	}
 	return &domain.Project{Name: name, Path: abs}, nil
+}
+
+// PathCandidates returns existing directory paths matching the given prefix so
+// the UI can offer real directories when registering a project. An empty prefix
+// returns the subdirectories of the user's home directory; a trailing slash
+// lists the subdirectories of the directory itself.
+func (u *ProjectUseCase) PathCandidates(ctx context.Context, prefix string) ([]string, error) {
+	_ = ctx
+	prefix = strings.TrimSpace(prefix)
+	listChildren := prefix == "" || strings.HasSuffix(prefix, string(filepath.Separator))
+	if prefix == "" || prefix == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		prefix = home
+	} else if strings.HasPrefix(prefix, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		prefix = filepath.Join(home, prefix[2:])
+	}
+	prefix = filepath.Clean(prefix)
+	if !filepath.IsAbs(prefix) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		prefix = filepath.Join(wd, prefix)
+	}
+
+	scanDir := prefix
+	match := ""
+	if !listChildren {
+		scanDir = filepath.Dir(prefix)
+		match = filepath.Base(prefix)
+	}
+
+	entries, err := os.ReadDir(scanDir)
+	if err != nil {
+		return nil, nil
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if match != "" && !strings.HasPrefix(e.Name(), match) {
+			continue
+		}
+		out = append(out, filepath.Join(scanDir, e.Name()))
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func (u *ProjectUseCase) Remove(ctx context.Context, name string) error {

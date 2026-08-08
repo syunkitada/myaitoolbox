@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Routes, Route, useNavigate } from 'react-router-dom'
-import { api, Meta } from './api/client'
+import { api, getProject, Meta } from './api/client'
 import { Sidebar } from './components/Sidebar'
 import { Dashboard } from './pages/Dashboard'
 import { TaskList } from './pages/TaskList'
@@ -9,11 +9,13 @@ import { KnowledgePage } from './pages/KnowledgePage'
 import { GraphPage } from './pages/GraphPage'
 import { SearchPage } from './pages/SearchPage'
 import { KanbanBoard } from './pages/KanbanBoard'
+import { ProjectsPage } from './pages/ProjectsPage'
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const project = getProject()
 
   const refreshMeta = useCallback(async () => {
     try {
@@ -48,7 +50,7 @@ export default function App() {
         <span />
       </button>
 
-      <Sidebar meta={meta} navigate={navigate} open={sidebarOpen} onClose={closeSidebar} />
+      <Sidebar meta={meta} navigate={navigate} open={sidebarOpen} onClose={closeSidebar} project={project} />
       <main className="content">
         {error && (
           <div className="error-banner">
@@ -57,17 +59,24 @@ export default function App() {
           </div>
         )}
         <Routes>
-          <Route path="/" element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />} />
-          <Route path="/tasks" element={<TaskList />} />
-          <Route path="/tasks/:id" element={<TaskDetail navigate={navigate} />} />
-          <Route path="/board" element={<KanbanBoard />} />
-          <Route path="/knowledge" element={<KnowledgePage refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />} />
-          <Route
-            path="/knowledge/*"
-            element={<KnowledgePage refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
-          />
-          <Route path="/graph" element={<GraphPage />} />
-          <Route path="/search" element={<SearchPage navigate={navigate} />} />
+          {project ? (
+            <>
+              <Route path="/" element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />} />
+              <Route path="/projects" element={<ProjectsPage onChanged={refreshMeta} />} />
+              <Route path="/tasks" element={<TaskList />} />
+              <Route path="/tasks/:id" element={<TaskDetail navigate={navigate} />} />
+              <Route path="/board" element={<KanbanBoard />} />
+              <Route path="/knowledge" element={<KnowledgePage refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />} />
+              <Route
+                path="/knowledge/*"
+                element={<KnowledgePage refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
+              />
+              <Route path="/graph" element={<GraphPage />} />
+              <Route path="/search" element={<SearchPage navigate={navigate} />} />
+            </>
+          ) : (
+            <Route path="*" element={<ProjectsPage onChanged={refreshMeta} />} />
+          )}
         </Routes>
       </main>
     </div>

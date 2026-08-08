@@ -63,6 +63,18 @@ type ServerInterface interface {
 	// RecordRecent Record a recently opened file
 	// (POST /api/meta/recent)
 	RecordRecent(w http.ResponseWriter, r *http.Request)
+	// ListProjects List projects
+	// (GET /api/projects)
+	ListProjects(w http.ResponseWriter, r *http.Request)
+	// CreateProject Register a directory as a project
+	// (POST /api/projects)
+	CreateProject(w http.ResponseWriter, r *http.Request)
+	// GetProjectPaths List existing directory paths for project path autocompletion
+	// (GET /api/projects/paths)
+	GetProjectPaths(w http.ResponseWriter, r *http.Request, params GetProjectPathsParams)
+	// DeleteProject Remove a project
+	// (DELETE /api/projects/{name})
+	DeleteProject(w http.ResponseWriter, r *http.Request, name string)
 	// Search Search tasks and knowledge
 	// (GET /api/search)
 	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
@@ -405,6 +417,93 @@ func (siw *ServerInterfaceWrapper) RecordRecent(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ListProjects operation middleware
+func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjects(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateProject operation middleware
+func (siw *ServerInterfaceWrapper) CreateProject(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateProject(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectPaths operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectPaths(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectPathsParams
+
+	// ------------- Optional query parameter "prefix" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "prefix", r.URL.Query(), &params.Prefix, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "prefix"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "prefix", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectPaths(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProject(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Search operation middleware
 func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request) {
 
@@ -722,6 +821,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects", wrapper.ListProjects)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/projects", wrapper.CreateProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects/paths", wrapper.GetProjectPaths)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/projects/{name}", wrapper.DeleteProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/meta", wrapper.GetMeta)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/meta/favorites", wrapper.UpdateFavorite)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/meta/recent", wrapper.RecordRecent)

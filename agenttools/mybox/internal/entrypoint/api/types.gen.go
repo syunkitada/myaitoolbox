@@ -117,6 +117,11 @@ type CreateKnowledgeRequest struct {
 	Path string `json:"path"`
 }
 
+// CreateProjectRequest defines model for CreateProjectRequest.
+type CreateProjectRequest struct {
+	Path string `json:"path"`
+}
+
 // CreateTaskRequest defines model for CreateTaskRequest.
 type CreateTaskRequest struct {
 	Assignee *string       `json:"assignee,omitempty"`
@@ -211,6 +216,12 @@ type MoveKnowledgeRequest struct {
 	OldPath string `json:"old_path"`
 }
 
+// Project defines model for Project.
+type Project struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
 // RecordRecentRequest defines model for RecordRecentRequest.
 type RecordRecentRequest struct {
 	Path string `json:"path"`
@@ -293,6 +304,11 @@ type GetKnowledgeContentParams struct {
 	Path string `form:"path" json:"path"`
 }
 
+// GetProjectPathsParams defines parameters for GetProjectPaths.
+type GetProjectPathsParams struct {
+	Prefix *string `form:"prefix,omitempty" json:"prefix,omitempty"`
+}
+
 // SearchParams defines parameters for Search.
 type SearchParams struct {
 	Q    string            `form:"q" json:"q"`
@@ -338,6 +354,9 @@ type UpdateFavoriteJSONRequestBody = UpdateFavoriteRequest
 
 // RecordRecentJSONRequestBody defines body for RecordRecent for application/json ContentType.
 type RecordRecentJSONRequestBody = RecordRecentRequest
+
+// CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
+type CreateProjectJSONRequestBody = CreateProjectRequest
 
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
 type CreateTaskJSONRequestBody = CreateTaskRequest

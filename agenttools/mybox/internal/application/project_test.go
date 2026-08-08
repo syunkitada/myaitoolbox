@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -62,3 +63,34 @@ func TestProjectRemoveMissing(t *testing.T) {
 	err := uc.Remove(context.Background(), "nope")
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
+
+func TestPathCandidates(t *testing.T) {
+	uc := NewProjectUseCase(&memoryConfigStore{cfg: &domain.Config{}})
+	ctx := context.Background()
+
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "notes"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes", "deep.md"), []byte("x"), 0o644))
+
+	// Prefix matches existing directories only.
+	got, err := uc.PathCandidates(ctx, filepath.Join(root, "doc"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join(root, "docs")}, got)
+
+	// Trailing slash lists subdirectories.
+	got, err = uc.PathCandidates(ctx, filepath.Join(root, "docs")+string(filepath.Separator))
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	// Non-existent prefix yields no candidates.
+	got, err = uc.PathCandidates(ctx, filepath.Join(root, "missing"))
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	// Files and hidden entries are never suggested.
+	got, err = uc.PathCandidates(ctx, filepath.Join(root, "notes"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join(root, "notes")}, got)
+}
+

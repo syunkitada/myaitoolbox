@@ -1,7 +1,10 @@
 import { test, expect } from '@playwright/test'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/proj/')
 })
 
 test('dashboard shows project file explorer with README by default', async ({ page }) => {
@@ -132,6 +135,15 @@ test('task list shows seeded tasks', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible()
   await expect(page.getByText('Ship the web UI')).toBeVisible()
   await expect(page.getByText('Write E2E tests')).toBeVisible()
+})
+
+test('clicking the mybox brand returns to the unselected projects page', async ({ page }) => {
+  await page.getByRole('link', { name: 'Tasks' }).click()
+  await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible()
+  await page.getByRole('button', { name: 'Go to top' }).click()
+  await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()
+  await expect(page.locator('.sidebar-brand select')).toHaveValue('')
+  await expect(page.locator('.sidebar-nav').getByRole('link', { name: 'Dashboard' })).toBeHidden()
 })
 
 test('edits a task status and assignee from the detail page', async ({ page }) => {
@@ -276,7 +288,7 @@ test('wiki links resolve by path, title, and alias', async ({ page }) => {
         'by basename: [[phase6]]\n',
     },
   })
-  await page.goto('/#/knowledge/notes/wiki-test')
+  await page.goto('/proj/#/knowledge/notes/wiki-test')
   await expect(page.getByText('by path:')).toBeVisible()
   const hrefs = await page
     .locator('.markdown-body a')
@@ -299,7 +311,7 @@ test('relative markdown links resolve against the note directory', async ({ page
       content: 'see [structure](./golang_project_structure.md)\nand [top](../index.md)\n',
     },
   })
-  await page.goto('/#/knowledge/golang/golang_architecture')
+  await page.goto('/proj/#/knowledge/golang/golang_architecture')
   const link = page.locator('.markdown-body a', { hasText: 'structure' })
   await expect(link).toHaveAttribute('href', '#/knowledge/golang%2Fgolang_project_structure')
   const top = page.locator('.markdown-body a', { hasText: 'top' })
@@ -323,7 +335,7 @@ test('outline does not accumulate when navigating between notes', async ({ page 
       content: '# Note B\n\n## Overview\n\n## Overview\n\nsee [[notes/dup-a]]\n',
     },
   })
-  await page.goto('/#/knowledge/notes/dup-a')
+  await page.goto('/proj/#/knowledge/notes/dup-a')
   await expect(page.locator('.outline-link')).toHaveCount(5)
   await page.locator('.markdown-body a', { hasText: 'notes/dup-b' }).click()
   await expect(page.locator('.outline-link')).toHaveCount(3)
@@ -332,10 +344,48 @@ test('outline does not accumulate when navigating between notes', async ({ page 
 })
 
 test('outline shows a graph of linked notes', async ({ page }) => {
-  await page.goto('/')
   await page.getByRole('link', { name: 'Knowledge' }).click()
   await page.locator('main').getByRole('button', { name: 'index', exact: true }).click()
   const block = page.locator('.outline-section').filter({ hasText: 'Graph' })
   await expect(block.getByText('Graph')).toBeVisible()
   await expect(block.locator('canvas')).toBeVisible()
+})
+
+test.describe('project selection at /', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/')
+  })
+
+  test('shows projects with an unselected project box and a Projects-only menu', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible()
+    const nav = page.locator('.sidebar-nav')
+    await expect(nav.getByRole('link', { name: 'Projects' })).toBeVisible()
+    await expect(nav.getByRole('link', { name: 'Dashboard' })).toBeHidden()
+    await expect(page.locator('.sidebar-brand select')).toHaveValue('')
+  })
+
+  test('offers real path candidates when creating a project', async ({ page }) => {
+    const input = page.getByLabel('Project path')
+    await input.click()
+    const list = page.locator('.path-candidates')
+    await expect(list).toBeVisible()
+    await expect(list.locator('li').first()).toBeVisible()
+    await input.fill(os.homedir())
+    await expect(list.locator('li').first()).toContainText(os.homedir())
+  })
+
+  test('creates and deletes a project from a real path', async ({ page }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mybox-e2e-'))
+    await page.getByLabel('Project path').fill(dir)
+    await page.getByRole('button', { name: 'Create project' }).click()
+    const row = page.locator('.projects-table tbody tr', { hasText: path.basename(dir) })
+    await expect(row).toBeVisible()
+    await expect(row.locator('.project-path')).toHaveText(dir)
+
+    page.once('dialog', (d) => d.accept())
+    await row.getByRole('button', { name: 'Delete' }).click()
+    await expect(
+      page.locator('.projects-table tbody tr', { hasText: path.basename(dir) }),
+    ).toBeHidden()
+  })
 })

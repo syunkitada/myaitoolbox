@@ -25,7 +25,6 @@ cd myaitoolbox/agenttools/mybox
 make web-build          # Web UI をビルドして internal/webui/dist へコピー
 go install ./cmd/mybox  # $GOPATH/bin/mybox にインストール
 ```
-
 > [!NOTE]
 > `make web-build` を先に実行しないと、Web UI が空のバイナリがインストールされます。
 > `go install github.com/syunkitada/myaitoolbox/mybox/cmd/mybox@latest` のようなリモートからの直接インストールは Web UI が含まれないため非推奨です。
