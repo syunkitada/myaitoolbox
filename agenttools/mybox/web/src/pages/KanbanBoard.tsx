@@ -10,6 +10,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { Task, TaskStatus, api } from '../api/client'
+import { projectUrl } from '../utils/routes'
 
 const COLUMNS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
@@ -111,7 +112,7 @@ export function KanbanBoard() {
     <div className="page">
       <div className="page-header">
         <h1>Board</h1>
-        <button className="ghost" onClick={() => navigate('/tasks')}>
+        <button className="ghost" onClick={() => navigate(projectUrl('/tasks'))}>
           List view →
         </button>
       </div>
@@ -119,7 +120,7 @@ export function KanbanBoard() {
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="board">
           {COLUMNS.map((s) => (
-            <Column key={s} status={s} tasks={byStatus(s)} onOpen={(id) => navigate(`/tasks/${id}`)} />
+            <Column key={s} status={s} tasks={byStatus(s)} onOpen={(id) => navigate(projectUrl(`/tasks/${id}`))} />
           ))}
         </div>
       </DndContext>

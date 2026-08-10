@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d'
 import { GraphData, api } from '../api/client'
+import { encodePath, projectUrl } from '../utils/routes'
 
 interface GraphNode {
   id: string
@@ -111,10 +112,10 @@ export function OutlineGraph({
   const handleClick =
     onNodeClick ??
     ((n: GraphNode) => {
-      if (n.type === 'task') navigate(`/tasks/${n.id}`)
+      if (n.type === 'task') navigate(projectUrl(`/tasks/${n.id}`))
       else {
         const id = root && n.id.startsWith(root + '/') ? n.id.slice(root.length + 1) : n.id
-        navigate(`/knowledge/${encodeURIComponent(id)}`)
+        navigate(projectUrl(`/knowledge/${encodePath(id)}`))
       }
     })
 

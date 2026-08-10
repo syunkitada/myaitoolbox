@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Task, TaskPriority, TaskStatus, api } from '../api/client'
+import { projectUrl } from '../utils/routes'
 import { Markdown } from '../components/Markdown'
 
 const statuses: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
@@ -67,13 +68,13 @@ export function TaskDetail({ navigate }: TaskDetailProps) {
 
   const archive = () => {
     if (!id) return
-    void api.archiveTask(id).then(() => navigate('/tasks'))
+    void api.archiveTask(id).then(() => navigate(projectUrl('/tasks')))
   }
 
   return (
     <div className="page">
       <div className="page-header">
-        <button className="ghost" onClick={() => navigate('/tasks')}>
+        <button className="ghost" onClick={() => navigate(projectUrl('/tasks'))}>
           ← Tasks
         </button>
         {!editing && (

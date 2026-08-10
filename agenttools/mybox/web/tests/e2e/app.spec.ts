@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/proj/')
+  await page.goto('/projects/proj/dashboard')
 })
 
 test('dashboard shows project file explorer with README by default', async ({ page }) => {
@@ -39,7 +39,7 @@ test('dashboard keeps the open file in the URL across a reload', async ({ page }
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
   await expect(page.getByText('Task tracking lives here.')).toBeVisible()
-  await expect(page).toHaveURL(/#\/files\/tasks\.md$/)
+  await expect(page).toHaveURL(/\/projects\/proj\/dashboard\/files\/tasks\.md$/)
   await page.reload()
   await expect(page.getByText('Task tracking lives here.')).toBeVisible()
   await expect(
@@ -300,16 +300,16 @@ test('wiki links resolve by path, title, and alias', async ({ page }) => {
         'by basename: [[phase6]]\n',
     },
   })
-  await page.goto('/proj/#/knowledge/notes/wiki-test')
+  await page.goto('/projects/proj/knowledge/notes/wiki-test')
   await expect(page.getByText('by path:')).toBeVisible()
   const hrefs = await page
     .locator('.markdown-body a')
     .evaluateAll((as) => as.map((a) => a.getAttribute('href')))
   expect(hrefs).toEqual([
-    '#/knowledge/notes%2Fphase6',
-    '#/knowledge/notes%2Fphase6',
-    '#/knowledge/notes%2Fphase6',
-    '#/knowledge/notes%2Fphase6',
+    '/projects/proj/knowledge/notes/phase6',
+    '/projects/proj/knowledge/notes/phase6',
+    '/projects/proj/knowledge/notes/phase6',
+    '/projects/proj/knowledge/notes/phase6',
   ])
 })
 
@@ -323,11 +323,11 @@ test('relative markdown links resolve against the note directory', async ({ page
       content: 'see [structure](./golang_project_structure.md)\nand [top](../index.md)\n',
     },
   })
-  await page.goto('/proj/#/knowledge/golang/golang_architecture')
+  await page.goto('/projects/proj/knowledge/golang/golang_architecture')
   const link = page.locator('.markdown-body a', { hasText: 'structure' })
-  await expect(link).toHaveAttribute('href', '#/knowledge/golang%2Fgolang_project_structure')
+  await expect(link).toHaveAttribute('href', '/projects/proj/knowledge/golang/golang_project_structure')
   const top = page.locator('.markdown-body a', { hasText: 'top' })
-  await expect(top).toHaveAttribute('href', '#/knowledge/index')
+  await expect(top).toHaveAttribute('href', '/projects/proj/knowledge/index')
   await link.click()
   await expect(
     page.locator('.markdown-body').getByRole('heading', { name: 'Structure' }),
@@ -347,7 +347,7 @@ test('outline does not accumulate when navigating between notes', async ({ page 
       content: '# Note B\n\n## Overview\n\n## Overview\n\nsee [[notes/dup-a]]\n',
     },
   })
-  await page.goto('/proj/#/knowledge/notes/dup-a')
+  await page.goto('/projects/proj/knowledge/notes/dup-a')
   await expect(page.locator('.outline-link')).toHaveCount(5)
   await page.locator('.markdown-body a', { hasText: 'notes/dup-b' }).click()
   await expect(page.locator('.outline-link')).toHaveCount(3)

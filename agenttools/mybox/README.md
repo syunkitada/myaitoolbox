@@ -103,7 +103,7 @@ mybox serve --project proj --base-path /mybox
 
 - アセットは相対パスで生成されるため、ビルド後の配置場所に依存しません。
 - API は `{base-path}/api/...` にマウントされ、Web UI 側も自動で `{base-path}` を検出して呼び出します。
-- プロジェクト選択（URL のパス第 2 セグメント）もベースパスを考慮して動作します。
+- プロジェクトは `/projects/{project}/` 配下のパスベースルーティングで提供されます（例: `/projects/proj/dashboard/files/knowledge/architecture.md`）。`--base-path` 指定時はその配下に自動的に前置されます。
 
 ## データ構造
 

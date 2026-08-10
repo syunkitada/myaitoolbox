@@ -119,12 +119,16 @@ func (s *Server) handleIndex(c echo.Context) error {
 	}
 	path = strings.TrimPrefix(path, "/")
 	f, err := webDist.Open(path)
-	// The SPA is served under /{project}/ (or /{basePath}/{project}/) and Vite
+	// The SPA is served under /{basePath}/projects/{project}/... and Vite
 	// emits relative asset paths (./assets/...), so those requests arrive as
-	// /{project}/assets/... — strip the leading project segment and retry.
+	// /{basePath}/projects/{project}/assets/... — strip leading segments
+	// until the file resolves.
 	if err != nil {
-		if i := strings.Index(path, "/"); i > 0 {
-			f, err = webDist.Open(path[i+1:])
+		for i := strings.Index(path, "/"); i > 0; i = strings.Index(path, "/") {
+			path = path[i+1:]
+			if f, err = webDist.Open(path); err == nil {
+				break
+			}
 		}
 	}
 	if err == nil {

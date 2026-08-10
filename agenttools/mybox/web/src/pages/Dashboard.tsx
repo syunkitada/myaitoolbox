@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
+import { encodePath, projectUrl } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
 
 interface DashboardProps {
@@ -17,8 +18,8 @@ export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
       root=""
       title="Files"
       selected={selected}
-      onSelect={(path) => navigate(`/files/${encodeURIComponent(path)}`)}
-      onBack={() => navigate('/')}
+      onSelect={(path) => navigate(projectUrl(`/dashboard/files/${encodePath(path)}`))}
+      onBack={() => navigate(projectUrl('/dashboard'))}
       favorites={favorites}
       refreshMeta={refreshMeta}
       defaultSelect={(entries) =>

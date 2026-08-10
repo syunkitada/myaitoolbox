@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Meta, clearProject, setProject } from '../api/client'
+import { Meta } from '../api/client'
+import { clearProject, encodePath, projectUrl, setProject } from '../utils/routes'
 import { SearchBar } from './SearchBar'
 
 interface SidebarProps {
@@ -60,18 +61,18 @@ export function Sidebar({ meta, navigate, open, onClose, project }: SidebarProps
             value={q}
             onChange={setQ}
             onSubmit={(query) => {
-              navigate(`/search?q=${encodeURIComponent(query)}`)
+              navigate(projectUrl(`/search?q=${encodeURIComponent(query)}`))
               handleNav()
             }}
           />
           <nav className="sidebar-nav">
-            <NavLink to="/" end onClick={handleNav}>
+            <NavLink to={projectUrl('/dashboard')} end onClick={handleNav}>
               Dashboard
             </NavLink>
-            <NavLink to="/tasks" onClick={handleNav}>Tasks</NavLink>
-            <NavLink to="/board" onClick={handleNav}>Board</NavLink>
-            <NavLink to="/knowledge" onClick={handleNav}>Knowledge</NavLink>
-            <NavLink to="/graph" onClick={handleNav}>Graph</NavLink>
+            <NavLink to={projectUrl('/tasks')} onClick={handleNav}>Tasks</NavLink>
+            <NavLink to={projectUrl('/board')} onClick={handleNav}>Board</NavLink>
+            <NavLink to={projectUrl('/knowledge')} onClick={handleNav}>Knowledge</NavLink>
+            <NavLink to={projectUrl('/graph')} onClick={handleNav}>Graph</NavLink>
           </nav>
           <div className="sidebar-section">
             <div className="sidebar-section-title">Favorites</div>
@@ -80,7 +81,7 @@ export function Sidebar({ meta, navigate, open, onClose, project }: SidebarProps
                 <li key={p}>
                   <button
                     onClick={() => {
-                      navigate(`/knowledge/${encodeURIComponent(p)}`)
+                      navigate(projectUrl(`/knowledge/${encodePath(p)}`))
                       handleNav()
                     }}
                     className="link-btn"
@@ -98,7 +99,7 @@ export function Sidebar({ meta, navigate, open, onClose, project }: SidebarProps
                 <li key={p}>
                   <button
                     onClick={() => {
-                      navigate(`/knowledge/${encodeURIComponent(p)}`)
+                      navigate(projectUrl(`/knowledge/${encodePath(p)}`))
                       handleNav()
                     }}
                     className="link-btn"

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Task, TaskStatus, api } from '../api/client'
+import { projectUrl } from '../utils/routes'
 import { SearchBar } from '../components/SearchBar'
 
 const statuses: Array<TaskStatus | ''> = ['', 'todo', 'doing', 'blocked', 'review', 'done']
@@ -41,7 +42,7 @@ export function TaskList() {
           onClick={() => {
             const name = window.prompt('New task name')
             if (name && name.trim()) {
-              void api.createTask({ name: name.trim() }).then((t) => navigate(`/tasks/${t.id}`))
+              void api.createTask({ name: name.trim() }).then((t) => navigate(projectUrl(`/tasks/${t.id}`)))
             }
           }}
         >
@@ -68,7 +69,7 @@ export function TaskList() {
       <ul className="task-list">
         {filtered.map((t) => (
           <li key={t.id} className="task-row">
-            <button className="link-btn" onClick={() => navigate(`/tasks/${t.id}`)}>
+            <button className="link-btn" onClick={() => navigate(projectUrl(`/tasks/${t.id}`))}>
               {t.title}
             </button>
             <span className={`badge status-${t.status}`}>{t.status}</span>

@@ -118,19 +118,20 @@ describe('normalizePath', () => {
 
 describe('renderWikiLinks', () => {
   const pathOf = (t: string) => (t === 'notes/alpha' ? 'notes/alpha' : null)
+  const hrefOf = (r: string) => `/projects/proj/knowledge/${r}`
 
-  it('turns resolved links into hash anchors', () => {
-    const out = renderWikiLinks('[[notes/alpha]]', pathOf)
-    expect(out).toContain('[notes/alpha](#/knowledge/notes%2Falpha)')
+  it('turns resolved links into path anchors', () => {
+    const out = renderWikiLinks('[[notes/alpha]]', pathOf, hrefOf)
+    expect(out).toContain('[notes/alpha](/projects/proj/knowledge/notes/alpha)')
   })
 
   it('uses alias as label', () => {
-    const out = renderWikiLinks('[[notes/alpha|Alpha Doc]]', pathOf)
-    expect(out).toContain('[Alpha Doc](#/knowledge/notes%2Falpha)')
+    const out = renderWikiLinks('[[notes/alpha|Alpha Doc]]', pathOf, hrefOf)
+    expect(out).toContain('[Alpha Doc](/projects/proj/knowledge/notes/alpha)')
   })
 
   it('leaves unresolved links as plain label', () => {
-    expect(renderWikiLinks('[[notes/missing]]', pathOf)).toBe('notes/missing')
+    expect(renderWikiLinks('[[notes/missing]]', pathOf, hrefOf)).toBe('notes/missing')
   })
 })
 

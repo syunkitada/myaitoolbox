@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { SearchResult, api } from '../api/client'
+import { encodePath, projectUrl } from '../utils/routes'
 import { SearchBar } from '../components/SearchBar'
 
 interface SearchPageProps {
@@ -48,8 +49,8 @@ export function SearchPage({ navigate }: SearchPageProps) {
             <button
               className="link-btn"
               onClick={() => {
-                if (r.type === 'task') navigate(`/tasks/${r.id ?? r.path}`)
-                else navigate(`/knowledge/${encodeURIComponent(r.path)}`)
+                if (r.type === 'task') navigate(projectUrl(`/tasks/${r.id ?? r.path}`))
+                else navigate(projectUrl(`/knowledge/${encodePath(r.path)}`))
               }}
             >
               {r.title}

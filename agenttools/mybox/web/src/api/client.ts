@@ -1,3 +1,6 @@
+import { getBasePath, getProject } from '../utils/routes'
+export { getBasePath, getProject, setProject, clearProject } from '../utils/routes'
+
 export type TaskStatus = 'todo' | 'doing' | 'blocked' | 'review' | 'done'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
@@ -102,29 +105,6 @@ export class ApiError extends Error {
     super(message)
     this.status = status
   }
-}
-
-export function getBasePath(): string {
-  return (window as unknown as { __MYBOX_BASE__?: string }).__MYBOX_BASE__ ?? ''
-}
-
-export function getProject(): string {
-  const base = getBasePath()
-  const rest = base ? window.location.pathname.slice(base.length) : window.location.pathname
-  const parts = rest.split('/')
-  if (parts.length > 1 && parts[1] !== '') {
-    return parts[1]
-  }
-  return ''
-}
-
-export function setProject(project: string) {
-  window.location.href =
-    getBasePath() + '/' + encodeURIComponent(project) + '/' + window.location.hash
-}
-
-export function clearProject() {
-  window.location.href = getBasePath() + '/#/'
 }
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {

@@ -63,7 +63,6 @@ export function ProjectsPage({ onChanged }: ProjectsPageProps) {
   }
 
   const openProject = (name: string) => {
-    window.location.hash = '#/'
     setProject(name)
   }
 

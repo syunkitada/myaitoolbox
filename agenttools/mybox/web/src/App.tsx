@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Routes, Route, useNavigate } from 'react-router-dom'
-import { api, getProject, Meta } from './api/client'
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
+import { api, Meta } from './api/client'
+import { getProject, projectUrl } from './utils/routes'
 import { Sidebar } from './components/Sidebar'
 import { Dashboard } from './pages/Dashboard'
 import { TaskList } from './pages/TaskList'
@@ -59,27 +60,38 @@ export default function App() {
           </div>
         )}
         <Routes>
+          <Route path="/projects" element={<ProjectsPage onChanged={refreshMeta} />} />
           {project ? (
             <>
-              <Route path="/" element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />} />
               <Route
-                path="/files/*"
+                path="/projects/:project/dashboard"
                 element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
               />
-              <Route path="/projects" element={<ProjectsPage onChanged={refreshMeta} />} />
-              <Route path="/tasks" element={<TaskList />} />
-              <Route path="/tasks/:id" element={<TaskDetail navigate={navigate} />} />
-              <Route path="/board" element={<KanbanBoard />} />
-              <Route path="/knowledge" element={<KnowledgePage refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />} />
               <Route
-                path="/knowledge/*"
+                path="/projects/:project/dashboard/files/*"
+                element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
+              />
+              <Route path="/projects/:project/tasks" element={<TaskList />} />
+              <Route path="/projects/:project/tasks/:id" element={<TaskDetail navigate={navigate} />} />
+              <Route path="/projects/:project/board" element={<KanbanBoard />} />
+              <Route
+                path="/projects/:project/knowledge"
                 element={<KnowledgePage refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
               />
-              <Route path="/graph" element={<GraphPage />} />
-              <Route path="/search" element={<SearchPage navigate={navigate} />} />
+              <Route
+                path="/projects/:project/knowledge/*"
+                element={<KnowledgePage refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
+              />
+              <Route path="/projects/:project/graph" element={<GraphPage />} />
+              <Route path="/projects/:project/search" element={<SearchPage navigate={navigate} />} />
+              <Route
+                path="/projects/:project"
+                element={<Navigate to={projectUrl('/dashboard')} replace />}
+              />
+              <Route path="*" element={<Navigate to={projectUrl('/dashboard')} replace />} />
             </>
           ) : (
-            <Route path="*" element={<ProjectsPage onChanged={refreshMeta} />} />
+            <Route path="*" element={<Navigate to="/projects" replace />} />
           )}
         </Routes>
       </main>

@@ -1,4 +1,5 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
+import { knowledgeUrl } from './routes'
 
 const wikiLinkPattern = /\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g
 
@@ -115,14 +116,19 @@ export function normalizePath(path: string): string {
   return path.toLowerCase().replace(/\.md$/, '')
 }
 
-export function renderWikiLinks(text: string, pathOf: (target: string) => string | null): string {
+export function renderWikiLinks(
+  text: string,
+  pathOf: (target: string) => string | null,
+  hrefOf?: (resolved: string) => string,
+): string {
   return text.replace(wikiLinkPattern, (_raw, targetRaw: string, aliasRaw?: string) => {
     const target = targetRaw.trim()
     const alias = aliasRaw ? aliasRaw.trim() : null
     const resolved = pathOf(resolveWikiPath(target))
     const label = alias ?? target
     if (resolved) {
-      return `[${label}](#/knowledge/${encodeURIComponent(resolved)})`
+      const href = hrefOf ? hrefOf(resolved) : knowledgeUrl(resolved)
+      return `[${label}](${href})`
     }
     return label
   })

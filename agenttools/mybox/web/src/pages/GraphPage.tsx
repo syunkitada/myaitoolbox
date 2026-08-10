@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ForceGraph2D from 'react-force-graph-2d'
 import { GraphData, api } from '../api/client'
+import { encodePath, projectUrl } from '../utils/routes'
 
 interface Node extends Object {
   id: string
@@ -59,8 +60,8 @@ export function GraphPage() {
             }}
             onNodeClick={(n) => {
               const node = n as Node
-              if (node.type === 'task') navigate(`/tasks/${node.id}`)
-              else navigate(`/knowledge/${encodeURIComponent(node.id)}`)
+              if (node.type === 'task') navigate(projectUrl(`/tasks/${node.id}`))
+              else navigate(projectUrl(`/knowledge/${encodePath(node.id)}`))
             }}
             linkColor={() => '#ccc'}
           />

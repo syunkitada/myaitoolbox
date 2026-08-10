@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { encodePath, projectUrl } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
 
 interface KnowledgePageProps {
@@ -25,15 +26,15 @@ export function KnowledgePage({ refreshMeta, favorites }: KnowledgePageProps) {
         .createKnowledge(path.trim())
         .then((k) => {
           setLastPath(k.path)
-          navigate(`/knowledge/${encodeURIComponent(k.path)}`)
+          navigate(projectUrl(`/knowledge/${encodePath(k.path)}`))
         })
         .catch(() => undefined)
     }
   }
 
   const handleClose = () => {
-    if (lastPath) navigate(`/knowledge/${encodeURIComponent(lastPath)}`)
-    else navigate('/knowledge')
+    if (lastPath) navigate(projectUrl(`/knowledge/${encodePath(lastPath)}`))
+    else navigate(projectUrl('/knowledge'))
   }
 
   return (
@@ -42,8 +43,8 @@ export function KnowledgePage({ refreshMeta, favorites }: KnowledgePageProps) {
       root="knowledge"
       title="Knowledge"
       selected={selected}
-      onSelect={(path) => navigate(`/knowledge/${encodeURIComponent(path)}`)}
-      onBack={() => navigate('/knowledge')}
+      onSelect={(path) => navigate(projectUrl(`/knowledge/${encodePath(path)}`))}
+      onBack={() => navigate(projectUrl('/knowledge'))}
       favorites={favorites}
       refreshMeta={refreshMeta}
       onNew={handleNew}

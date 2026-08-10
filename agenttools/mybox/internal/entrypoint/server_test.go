@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -434,6 +435,12 @@ func TestBasePath(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), `window.__MYBOX_BASE__="/mybox"`)
 	assert.Contains(t, rec.Body.String(), `<base href="/mybox/">`)
 
+	assets, err := fs.ReadDir(webDist, "assets")
+	require.NoError(t, err)
+	require.NotEmpty(t, assets)
+	rec = do(t, s, http.MethodGet, "/mybox/projects/test/assets/"+assets[0].Name(), nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
 	rec = do(t, s, http.MethodGet, "/", nil)
 	assert.Equal(t, http.StatusFound, rec.Code)
 	assert.Equal(t, "/mybox/", rec.Header().Get("Location"))
@@ -447,4 +454,19 @@ func TestNormalizeBasePath(t *testing.T) {
 	assert.Equal(t, "", normalizeBasePath("/"))
 	assert.Equal(t, "/mybox", normalizeBasePath("mybox"))
 	assert.Equal(t, "/mybox", normalizeBasePath("/mybox/"))
+}
+
+func TestSPAAssetResolution(t *testing.T) {
+	s, _ := newTestServer(t, false)
+
+	assets, err := fs.ReadDir(webDist, "assets")
+	require.NoError(t, err)
+	require.NotEmpty(t, assets)
+	name := assets[0].Name()
+
+	rec := do(t, s, http.MethodGet, "/projects/test/assets/"+name, nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/mybox/projects/test/assets/"+name, nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
 }

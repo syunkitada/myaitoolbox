@@ -5,6 +5,7 @@ import { SearchBar } from '../components/SearchBar'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { OutlineGraph } from '../components/OutlineGraph'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
+import { encodePath, projectUrl } from '../utils/routes'
 import {
   buildMarkdown,
   extractFrontmatterTags,
@@ -618,7 +619,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                           {resolved ? (
                             <button
                               className="link-btn"
-                              onClick={() => navigate(`/knowledge/${encodeURIComponent(resolved)}`)}
+                              onClick={() => navigate(projectUrl(`/knowledge/${encodePath(resolved)}`))}
                             >
                               {l.alias ?? l.target}
                             </button>
@@ -639,7 +640,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                       <li key={b.path}>
                         <button
                           className="link-btn"
-                          onClick={() => navigate(`/knowledge/${encodeURIComponent(b.path)}`)}
+                          onClick={() => navigate(projectUrl(`/knowledge/${encodePath(b.path)}`))}
                         >
                           {b.path}
                         </button>
@@ -692,7 +693,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   mode === 'knowledge'
                     ? undefined
                     : (n) => {
-                        if (n.type === 'task') navigate(`/tasks/${n.id}`)
+                        if (n.type === 'task') navigate(projectUrl(`/tasks/${n.id}`))
                         else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
                       }
                 }
