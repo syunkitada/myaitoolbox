@@ -41,6 +41,7 @@ interface BrowserPageProps {
   refreshMeta: () => Promise<void>
   defaultSelect?: (entries: BrowserEntry[]) => string | undefined
   onNew?: () => void
+  newLabel?: string
   onClose?: () => void
 }
 
@@ -121,14 +122,15 @@ interface ExplorerProps {
   title: string
   mode: BrowserMode
   onNew?: () => void
+  newLabel?: string
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, onNew, onClose, onMoveFile }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 'New', onClose, onMoveFile }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverDir, setDragOverDir] = useState<string | null>(null)
 
   const allTags = useMemo(
@@ -153,13 +155,30 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, onClose, on
   const tree = useMemo(() => buildTree(entries), [entries])
 
   const toggle = (dirPath: string) => {
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(dirPath)) next.delete(dirPath)
       else next.add(dirPath)
       return next
     })
   }
+
+  useEffect(() => {
+    if (!selected) return
+    const parts = selected.split('/')
+    const dirs: string[] = []
+    let prefix = ''
+    for (let i = 0; i < parts.length - 1; i++) {
+      prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+      dirs.push(prefix)
+    }
+    if (dirs.length === 0) return
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      for (const d of dirs) next.add(d)
+      return next
+    })
+  }, [selected])
 
   const dropFile = (dirPath: string) => (e: React.DragEvent) => {
     e.preventDefault()
@@ -181,7 +200,7 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, onClose, on
     for (const node of nodes) {
       const pad = depth * 14
       if (node.kind === 'dir') {
-        const open = !collapsed.has(node.dirPath)
+        const open = expanded.has(node.dirPath)
         const highlighted = dragOverDir === node.dirPath
         const draggable = mode === 'files' && !!onMoveFile
         items.push(
@@ -264,7 +283,7 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, onClose, on
         <h1>{title}</h1>
         {onNew && (
           <button className="primary" onClick={onNew}>
-            New
+            {newLabel}
           </button>
         )}
       </div>
@@ -719,6 +738,7 @@ export function BrowserPage({
   refreshMeta,
   defaultSelect,
   onNew,
+  newLabel,
   onClose,
 }: BrowserPageProps) {
   const [entries, setEntries] = useState<BrowserEntry[]>([])
@@ -749,6 +769,17 @@ export function BrowserPage({
     if (mode === 'knowledge' && selected) load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected])
+
+  const reloadedFor = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (mode === 'files' && selected && !entries.some((e) => e.path === selected)) {
+      if (reloadedFor.current !== selected) {
+        reloadedFor.current = selected
+        load()
+      }
+    }
+  }, [selected, entries, mode, load])
 
   useEffect(() => {
     if (loaded && !selected && !autoDefaulted.current && defaultSelect) {
@@ -788,6 +819,7 @@ export function BrowserPage({
           title={title}
           mode={mode}
           onNew={onNew}
+          newLabel={newLabel}
           onClose={onClose}
           onMoveFile={mode === 'files' ? handleMoveFile : undefined}
         />
