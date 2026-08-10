@@ -57,6 +57,7 @@ interface TreeDir {
   name: string
   dirPath: string
   children: TreeNode[]
+  status?: string
 }
 
 type TreeNode = TreeFile | TreeDir
@@ -88,6 +89,17 @@ function toEntries(mode: BrowserMode, list: (FileEntry | Knowledge)[]): BrowserE
   }))
 }
 
+function applyDirStatus(nodes: TreeNode[]) {
+  for (const node of nodes) {
+    if (node.kind !== 'dir') continue
+    const task = node.children.find(
+      (c): c is TreeFile => c.kind === 'file' && c.name === 'task.md',
+    )
+    if (task?.status) node.status = task.status
+    applyDirStatus(node.children)
+  }
+}
+
 function buildTree(list: BrowserEntry[]): TreeNode[] {
   const root: TreeNode[] = []
   const sorted = [...list].sort((a, b) => {
@@ -112,6 +124,7 @@ function buildTree(list: BrowserEntry[]): TreeNode[] {
       cur.push({ kind: 'file', name: parts[parts.length - 1], path: e.path, status: e.status })
     }
   }
+  applyDirStatus(root)
   return root
 }
 
@@ -196,7 +209,7 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
   }
 
   const items: ReactNode[] = []
-  const renderNodes = (nodes: TreeNode[], depth: number) => {
+  const renderNodes = (nodes: TreeNode[], depth: number, parent?: TreeDir) => {
     for (const node of nodes) {
       const pad = depth * 14
       if (node.kind === 'dir') {
@@ -235,9 +248,10 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
               {open ? '▾' : '▸'}
             </button>
             <span className="knowledge-dir-name">{node.name}</span>
+            <StatusBadge status={node.status} />
           </li>,
         )
-        if (open) renderNodes(node.children, depth + 1)
+        if (open) renderNodes(node.children, depth + 1, node)
       } else {
         items.push(
           <li
@@ -262,7 +276,7 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
             >
               {node.name}
             </button>
-            <StatusBadge status={node.status} />
+            <StatusBadge status={parent?.status && node.name === 'task.md' ? undefined : node.status} />
           </li>,
         )
       }

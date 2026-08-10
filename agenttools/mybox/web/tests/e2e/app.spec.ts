@@ -18,11 +18,15 @@ test('dashboard shows project file explorer with README by default', async ({ pa
   await expect(explorer).toContainText('tasks')
 })
 
-test('dashboard shows a status badge for markdown files with status metadata', async ({ page }) => {
+test('dashboard shows a task status badge on the containing directory', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
-  const row = explorer.locator('.knowledge-tree-row', { hasText: 'task.md' })
-  await expect(row.locator('.badge.status-doing')).toBeVisible()
-  await expect(row.locator('.badge.status-doing')).toHaveText('doing')
+  await explorer.getByRole('button', { name: 'Expand tasks' }).click()
+  const dirRow = explorer.locator('.knowledge-tree-row', { hasText: 'e2e-status-change-target' })
+  await expect(dirRow.locator('.badge.status-doing')).toBeVisible()
+  await expect(dirRow.locator('.badge.status-doing')).toHaveText('doing')
+  await explorer.getByRole('button', { name: 'Expand e2e-status-change-target' }).click()
+  const taskRow = explorer.locator('.knowledge-tree-row', { hasText: 'task.md' })
+  await expect(taskRow.locator('.badge')).toHaveCount(0)
 })
 
 test('dashboard opens a markdown file from the explorer', async ({ page }) => {
