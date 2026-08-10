@@ -111,6 +111,11 @@ body {
   gap: 12px;
 }
 
+.page-subtitle {
+  font-size: 0.78rem;
+  margin: 2px 0 0;
+}
+
 .note-toolbar {
   position: sticky;
   top: 0;
@@ -265,6 +270,12 @@ button.active {
 .badge.tag {
   background: #eceffb;
   color: #5a5a80;
+}
+
+.badge.project-badge {
+  background: #e8f0fe;
+  color: #1a56b0;
+  font-weight: 600;
 }
 
 .meta-line {

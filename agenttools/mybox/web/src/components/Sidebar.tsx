@@ -116,6 +116,9 @@ export function Sidebar({ meta, navigate, open, onClose, project }: SidebarProps
           <NavLink to="/projects" end onClick={handleNav}>
             Projects
           </NavLink>
+          <NavLink to="/board" onClick={handleNav}>
+            Board
+          </NavLink>
         </nav>
       )}
     </aside>

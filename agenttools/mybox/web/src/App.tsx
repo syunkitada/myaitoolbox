@@ -91,7 +91,10 @@ export default function App() {
               <Route path="*" element={<Navigate to={projectUrl('/dashboard')} replace />} />
             </>
           ) : (
-            <Route path="*" element={<Navigate to="/projects" replace />} />
+            <>
+              <Route path="/board" element={<KanbanBoard />} />
+              <Route path="*" element={<Navigate to="/projects" replace />} />
+            </>
           )}
         </Routes>
       </main>

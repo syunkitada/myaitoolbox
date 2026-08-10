@@ -383,11 +383,7 @@ func (s *Server) Search(w http.ResponseWriter, r *http.Request, params api.Searc
 }
 
 func (s *Server) ListTasks(w http.ResponseWriter, r *http.Request, params api.ListTasksParams) {
-	app, err := s.getApp(r)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
+	project := r.Header.Get("X-Project")
 	filter := application.TaskFilter{}
 	if params.All != nil {
 		filter.All = *params.All
@@ -398,12 +394,69 @@ func (s *Server) ListTasks(w http.ResponseWriter, r *http.Request, params api.Li
 	if params.Tag != nil {
 		filter.Tag = *params.Tag
 	}
+
+	// X-Project ヘッダーがない = プロジェクト未選択 → 全プロジェクトを横断
+	if project == "" {
+		tasks, err := s.listAllProjectsTasks(r.Context(), filter)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSONResponse(w, http.StatusOK, toAPITasks(tasks))
+		return
+	}
+
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	tasks, err := app.Tasks.List(r.Context(), filter)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSONResponse(w, http.StatusOK, toAPITasks(tasks))
+}
+
+func (s *Server) listAllProjectsTasks(ctx context.Context, filter application.TaskFilter) ([]domain.Task, error) {
+	projects, err := s.projects.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var all []domain.Task
+	for _, p := range projects {
+		app, appErr := s.getAppByProject(ctx, p.Name)
+		if appErr != nil {
+			continue
+		}
+		tasks, taskErr := app.Tasks.List(ctx, filter)
+		if taskErr != nil {
+			continue
+		}
+		all = append(all, tasks...)
+	}
+	return all, nil
+}
+
+func (s *Server) getAppByProject(ctx context.Context, project string) (*App, error) {
+	s.mu.RLock()
+	app, ok := s.apps[project]
+	s.mu.RUnlock()
+	if ok {
+		return app, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if app, ok := s.apps[project]; ok {
+		return app, nil
+	}
+	app, err := NewApp(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+	s.apps[project] = app
+	return app, nil
 }
 
 func (s *Server) CreateTask(w http.ResponseWriter, r *http.Request) {

@@ -60,6 +60,10 @@ func (u *TaskUseCase) List(ctx context.Context, filter TaskFilter) ([]domain.Tas
 		if filter.Assignee != "" && t.Assignee != filter.Assignee {
 			continue
 		}
+		// リポジトリはプロジェクト名を持たないため UseCase 層で補完する
+		if t.Project == "" {
+			t.Project = u.Project
+		}
 		out = append(out, t)
 	}
 	sort.Slice(out, func(i, j int) bool {
