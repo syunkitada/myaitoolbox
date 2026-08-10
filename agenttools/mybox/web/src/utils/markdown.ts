@@ -134,7 +134,11 @@ export function renderWikiLinks(
   })
 }
 
-export function resolveMarkdownLink(target: string, relativeTo?: string | null): string | null {
+export function resolveMarkdownLink(
+  target: string,
+  relativeTo?: string | null,
+  preserveExtension = false,
+): string | null {
   if (!target || target.startsWith('#') || target.startsWith('/')) return null
   if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return null
   const clean = target.split(/[?#]/)[0]
@@ -149,6 +153,6 @@ export function resolveMarkdownLink(target: string, relativeTo?: string | null):
       stack.push(part)
     }
   }
-  const resolved = stack.join('/').replace(/\.md$/i, '')
+  const resolved = preserveExtension ? stack.join('/') : stack.join('/').replace(/\.md$/i, '')
   return resolved || null
 }

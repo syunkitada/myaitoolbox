@@ -14,4 +14,33 @@ describe('RichMarkdown', () => {
       expect(el?.tagName).toBe(`H${h.level}`)
     }
   })
+
+  it('resolves relative file links with a custom linkUrl', () => {
+    const { container } = render(
+      <RichMarkdown
+        text="see [golang_project_structure](./golang_project_structure.md)"
+        relativeTo="golang/golang_architecture"
+        linkUrl={(resolved) => `/projects/proj/dashboard/files/${resolved}`}
+      />,
+    )
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('href')).toBe(
+      '/projects/proj/dashboard/files/golang/golang_project_structure',
+    )
+  })
+
+  it('keeps the .md extension on file links in files mode', () => {
+    const { container } = render(
+      <RichMarkdown
+        text="see [golang_project_structure](./golang_project_structure.md)"
+        relativeTo="golang/golang_architecture"
+        linkUrl={(resolved) => `/projects/proj/dashboard/files/${resolved}`}
+        preserveExtension
+      />,
+    )
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('href')).toBe(
+      '/projects/proj/dashboard/files/golang/golang_project_structure.md',
+    )
+  })
 })

@@ -5,7 +5,7 @@ import { SearchBar } from '../components/SearchBar'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { OutlineGraph } from '../components/OutlineGraph'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
-import { encodePath, projectUrl } from '../utils/routes'
+import { encodePath, filesUrl, projectUrl } from '../utils/routes'
 import {
   buildMarkdown,
   extractFrontmatterTags,
@@ -603,7 +603,9 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                 <RichMarkdown
                   text={viewText}
                   pathOf={mode === 'knowledge' ? pathOf : undefined}
-                  relativeTo={mode === 'knowledge' ? path : undefined}
+                  relativeTo={path}
+                  linkUrl={mode === 'knowledge' ? undefined : filesUrl}
+                  preserveExtension={mode === 'files'}
                 />
               ) : (
                 <pre className="file-raw">{viewText}</pre>

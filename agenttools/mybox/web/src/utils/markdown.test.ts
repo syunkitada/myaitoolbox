@@ -152,6 +152,12 @@ describe('resolveMarkdownLink', () => {
     expect(resolveMarkdownLink('foo.md', 'index')).toBe('foo')
   })
 
+  it('preserves the .md extension when preserveExtension is set', () => {
+    expect(resolveMarkdownLink('./hoge.md', 'golang/golang_architecture', true)).toBe('golang/hoge.md')
+    expect(resolveMarkdownLink('../index.md', 'golang/golang_architecture', true)).toBe('index.md')
+    expect(resolveMarkdownLink('foo.md', 'index', true)).toBe('foo.md')
+  })
+
   it('ignores absolute, scheme, anchor, and non-md targets', () => {
     expect(resolveMarkdownLink('/hoge.md', 'notes/x')).toBeNull()
     expect(resolveMarkdownLink('https://example.com/hoge.md', 'notes/x')).toBeNull()

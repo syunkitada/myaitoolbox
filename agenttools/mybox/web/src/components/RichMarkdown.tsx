@@ -23,9 +23,9 @@ md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
 
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   const href = tokens[idx].attrGet('href') ?? ''
-  const resolved = resolveMarkdownLink(href, env?.relativeTo)
+  const resolved = resolveMarkdownLink(href, env?.relativeTo, env?.preserveExtension)
   if (resolved) {
-    tokens[idx].attrSet('href', knowledgeUrl(resolved))
+    tokens[idx].attrSet('href', env?.linkUrl ? env.linkUrl(resolved) : knowledgeUrl(resolved))
   }
   return self.renderToken(tokens, idx, options)
 }
@@ -55,6 +55,8 @@ export interface RichMarkdownProps {
   text: string
   pathOf?: (target: string) => string | null
   relativeTo?: string
+  linkUrl?: (resolved: string) => string
+  preserveExtension?: boolean
 }
 
 interface Segment {
@@ -79,7 +81,7 @@ function splitSegments(text: string): Segment[] {
   return segments
 }
 
-export function RichMarkdown({ text, pathOf, relativeTo }: RichMarkdownProps) {
+export function RichMarkdown({ text, pathOf, relativeTo, linkUrl, preserveExtension }: RichMarkdownProps) {
   const segments = useMemo(() => splitSegments(text), [text])
 
   return (
@@ -89,7 +91,7 @@ export function RichMarkdown({ text, pathOf, relativeTo }: RichMarkdownProps) {
           return <Mermaid key={i} code={seg.content} />
         }
         const withLinks = pathOf ? renderWikiLinks(seg.content, pathOf) : seg.content
-        const html = DOMPurify.sanitize(md.render(withLinks, { relativeTo }))
+        const html = DOMPurify.sanitize(md.render(withLinks, { relativeTo, linkUrl, preserveExtension }))
         return <div key={i} dangerouslySetInnerHTML={{ __html: html }} />
       })}
     </div>

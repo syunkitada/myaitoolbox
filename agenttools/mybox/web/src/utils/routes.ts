@@ -34,6 +34,10 @@ export function knowledgeUrl(resolved: string): string {
   return appUrl(projectUrl(`/knowledge/${encodePath(resolved)}`))
 }
 
+export function filesUrl(resolved: string): string {
+  return appUrl(projectUrl(`/dashboard/files/${encodePath(resolved)}`))
+}
+
 export function setProject(project: string) {
   window.location.href =
     getBasePath() + '/projects/' + encodeURIComponent(project) + '/dashboard'
