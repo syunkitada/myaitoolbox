@@ -58,7 +58,7 @@ mybox project list
 mybox task create --project proj --name "Design the login flow"
 mybox task list --project proj
 mybox task list --project proj --status doing --tag web
-mybox task show --project proj 20260802_1200_design-the-login-flow
+mybox task show --project proj 20260802_design-the-login-flow
 mybox task set --project proj <task-id> --status review --priority high
 mybox task edit --project proj <task-id>   # $EDITOR で編集
 mybox task archive --project proj <task-id>
@@ -110,7 +110,7 @@ mybox serve --project proj --base-path /mybox
 ```
 myproject/
 ├── tasks/
-│   └── 20260802_1200_design-the-login-flow/
+│   └── 20260802_design-the-login-flow/
 │       └── task.md          # --- フロントマターで status / priority 等を保持
 └── knowledge/
     ├── index.md

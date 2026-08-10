@@ -90,7 +90,7 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 	}
 	now := time.Now()
 	task := &domain.Task{
-		ID:       now.Format("20060102_1504") + "_" + slugify(name),
+		ID:       now.Format("20060102") + "_" + slugify(name),
 		Title:    name,
 		Status:   status,
 		Priority: priority,
@@ -101,10 +101,7 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 		Created:  now,
 	}
 	content, err := u.Template.RenderTask(domain.TaskTemplateData{
-		ID:      task.ID,
-		Name:    task.Title,
-		Project: task.Project,
-		Created: now,
+		Name: task.Title,
 	})
 	if err != nil {
 		return nil, err

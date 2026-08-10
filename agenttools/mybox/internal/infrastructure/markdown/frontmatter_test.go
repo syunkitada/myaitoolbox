@@ -50,10 +50,7 @@ func TestParseFrontMatterEmpty(t *testing.T) {
 func TestTaskTemplateQuotesYamlValues(t *testing.T) {
 	r := NewTemplateRenderer(t.TempDir(), t.TempDir())
 	out, err := r.RenderTask(domain.TaskTemplateData{
-		ID:      "20260810_1319_mcp-mysql-test",
-		Name:    "mcp: mysql: test",
-		Project: "pj1",
-		Created: time.Date(2026, 8, 10, 13, 19, 13, 0, time.Local),
+		Name: "mcp: mysql: test",
 	})
 	require.NoError(t, err)
 
@@ -64,6 +61,9 @@ func TestTaskTemplateQuotesYamlValues(t *testing.T) {
 	assert.Equal(t, "mcp: mysql: test", parsed["title"])
 	assert.Contains(t, fm, `title: "mcp: mysql: test"`)
 	assert.Contains(t, body, "# mcp: mysql: test")
+	assert.NotContains(t, fm, "id:")
+	assert.NotContains(t, fm, "project:")
+	assert.NotContains(t, fm, "created")
 }
 
 func TestKnowledgeTemplateQuotesYamlValues(t *testing.T) {

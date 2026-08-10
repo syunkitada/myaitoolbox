@@ -11,11 +11,7 @@ const FIELD_ORDER = [
   'aliases',
   'assignee',
   'due',
-  'project',
   'type',
-  'created',
-  'lastmod',
-  'id',
 ]
 
 const KNOWN = new Set(FIELD_ORDER)
@@ -189,14 +185,8 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
         <Field label="Due" value={value.due} onChange={(v) => setField('due', v)} ariaLabel="Metadata due" />
       </div>
       <div className="field-row">
-        <Field label="Project" value={value.project} onChange={(v) => setField('project', v)} ariaLabel="Metadata project" />
         <Field label="Type" value={value.type} onChange={(v) => setField('type', v)} ariaLabel="Metadata type" />
       </div>
-      <div className="field-row">
-        <Field label="Created" value={value.created} onChange={(v) => setField('created', v)} ariaLabel="Metadata created" />
-        <Field label="Last modified" value={value.lastmod} onChange={(v) => setField('lastmod', v)} ariaLabel="Metadata lastmod" />
-      </div>
-      <Field label="ID" value={value.id} onChange={(v) => setField('id', v)} ariaLabel="Metadata id" />
 
       {extraKeys.length > 0 && (
         <div className="extra-fields">

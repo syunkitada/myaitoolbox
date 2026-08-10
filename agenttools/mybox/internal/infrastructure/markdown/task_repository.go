@@ -22,15 +22,12 @@ func NewTaskRepository(root string) *TaskRepository {
 }
 
 type taskFields struct {
-	ID       string    `yaml:"id"`
-	Title    string    `yaml:"title"`
-	Status   string    `yaml:"status"`
-	Priority string    `yaml:"priority"`
-	Assignee string    `yaml:"assignee"`
-	Due      string    `yaml:"due"`
-	Tags     []string  `yaml:"tags"`
-	Project  string    `yaml:"project"`
-	Created  time.Time `yaml:"created"`
+	Title    string   `yaml:"title"`
+	Status   string   `yaml:"status"`
+	Priority string   `yaml:"priority"`
+	Assignee string   `yaml:"assignee"`
+	Due      string   `yaml:"due"`
+	Tags     []string `yaml:"tags"`
 }
 
 func (r *TaskRepository) List(ctx context.Context) ([]domain.Task, error) {
@@ -78,9 +75,6 @@ func (r *TaskRepository) readTask(dir string, id string, archived bool) (*domain
 			return nil, err
 		}
 	}
-	if f.ID == "" {
-		f.ID = id
-	}
 	if f.Title == "" {
 		f.Title = id
 	}
@@ -91,18 +85,30 @@ func (r *TaskRepository) readTask(dir string, id string, archived bool) (*domain
 		f.Priority = string(domain.TaskPriorityMedium)
 	}
 	return &domain.Task{
-		ID:       f.ID,
+		ID:       id,
 		Title:    f.Title,
 		Status:   domain.TaskStatus(f.Status),
 		Priority: domain.TaskPriority(f.Priority),
 		Assignee: f.Assignee,
 		Due:      f.Due,
 		Tags:     f.Tags,
-		Project:  f.Project,
-		Created:  f.Created,
+		Created:  createdFromTaskID(id),
 		Body:     strings.TrimPrefix(body, "\n"),
 		Archived: archived,
 	}, nil
+}
+
+// createdFromTaskID derives the creation time from the leading YYYYMMDD
+// date prefix of the task directory name (e.g. 20260801_fix-login).
+func createdFromTaskID(id string) time.Time {
+	if len(id) < 8 {
+		return time.Time{}
+	}
+	t, err := time.ParseInLocation("20060102", id[:8], time.Local)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 func (r *TaskRepository) Find(ctx context.Context, id string) (*domain.Task, error) {
@@ -157,7 +163,10 @@ func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
 			return err
 		}
 	}
-	fm["id"] = task.ID
+	delete(fm, "id")
+	delete(fm, "project")
+	delete(fm, "created")
+	delete(fm, "created_at")
 	fm["title"] = task.Title
 	fm["status"] = string(task.Status)
 	fm["priority"] = string(task.Priority)
@@ -167,10 +176,6 @@ func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
 		task.Tags = []string{}
 	}
 	fm["tags"] = task.Tags
-	fm["project"] = task.Project
-	if !task.Created.IsZero() {
-		fm["created"] = task.Created
-	}
 	if task.Body != "" {
 		body = task.Body
 	}

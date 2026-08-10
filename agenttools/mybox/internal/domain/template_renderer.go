@@ -3,10 +3,7 @@ package domain
 import "time"
 
 type TaskTemplateData struct {
-	ID      string
-	Name    string
-	Project string
-	Created time.Time
+	Name string
 }
 
 type KnowledgeTemplateData struct {

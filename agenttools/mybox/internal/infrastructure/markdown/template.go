@@ -86,15 +86,12 @@ func builtinTemplate(rel string) (string, error) {
 }
 
 const builtinTaskTemplate = `---
-id: {{.ID}}
 title: {{.Name | yamlq}}
 status: todo
 priority: medium
 assignee: ""
 due: ""
 tags: []
-project: {{.Project}}
-created: {{.Created.Format "2006-01-02T15:04:05Z07:00"}}
 ---
 
 # {{.Name}}
