@@ -74,3 +74,15 @@ func TestKnowledgeWithoutFrontMatter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "My Title", k.Title)
 }
+
+func TestKnowledgeExtractsMarkdownLinksRelativeToNote(t *testing.T) {
+	root := t.TempDir()
+	repo := NewKnowledgeRepository(root)
+	ctx := context.Background()
+	require.NoError(t, repo.Create(ctx, "notes/guide", "see [Detail](sub/detail.md) and [Other](../other.md) and [Web](https://example.com)"))
+	require.NoError(t, repo.Create(ctx, "notes/other", "body"))
+
+	k, err := repo.Find(ctx, "notes/guide")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"notes/sub/detail", "other"}, k.MarkdownLinks)
+}

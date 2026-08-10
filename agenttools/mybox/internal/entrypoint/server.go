@@ -803,6 +803,15 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 		}
 	}
 	var links []api.GraphLink
+	seen := map[[2]string]bool{}
+	addLink := func(source, target string) {
+		key := [2]string{source, target}
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		links = append(links, api.GraphLink{Source: source, Target: target})
+	}
 	for _, k := range list {
 		for _, link := range k.WikiLinks {
 			target := strings.ToLower(strings.TrimSuffix(link, ".md"))
@@ -810,7 +819,16 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 				continue
 			}
 			if resolved, ok := index[target]; ok {
-				links = append(links, api.GraphLink{Source: k.Path, Target: resolved})
+				addLink(k.Path, resolved)
+			}
+		}
+		for _, link := range k.MarkdownLinks {
+			target := strings.ToLower(link)
+			if target == strings.ToLower(k.Path) {
+				continue
+			}
+			if resolved, ok := index[target]; ok {
+				addLink(k.Path, resolved)
 			}
 		}
 	}

@@ -241,10 +241,41 @@ func TestGraphResolvesWikiLinksByAliasAndTitle(t *testing.T) {
 	rec := do(t, s, http.MethodGet, "/api/graph", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	graph := decode[api.GraphData](t, rec)
-	require.Len(t, graph.Links, 4)
+	require.Len(t, graph.Links, 1)
+	assert.Equal(t, "knowledge/index", graph.Links[0].Source)
+	assert.Equal(t, "knowledge/notes/phase6", graph.Links[0].Target)
+}
+
+func TestGraphResolvesMarkdownLinksRelativeToNote(t *testing.T) {
+	s, app := newTestServer(t, false)
+	ctx := context.Background()
+	_, err := app.Knowledge.Create(ctx, "notes/guide")
+	require.NoError(t, err)
+	_, err = app.Knowledge.Create(ctx, "notes/sub/detail")
+	require.NoError(t, err)
+	_, err = app.Knowledge.Create(ctx, "notes/other")
+	require.NoError(t, err)
+	_, err = app.Knowledge.Create(ctx, "index")
+	require.NoError(t, err)
+	require.NoError(t, app.Knowledge.SaveContent(ctx, "notes/guide", "see [Detail](sub/detail.md) and [Other](other.md)"))
+	require.NoError(t, app.Knowledge.SaveContent(ctx, "notes/sub/detail", "see [Guide](../guide.md) and [Index](../../index.md)"))
+	require.NoError(t, app.Knowledge.SaveContent(ctx, "notes/other", "see [Guide](guide.md)"))
+
+	rec := do(t, s, http.MethodGet, "/api/graph", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	graph := decode[api.GraphData](t, rec)
+	var pairs []string
 	for _, l := range graph.Links {
-		assert.Equal(t, "knowledge/notes/phase6", l.Target)
+		pairs = append(pairs, l.Source+"->"+l.Target)
 	}
+	sort.Strings(pairs)
+	assert.Equal(t, []string{
+		"knowledge/notes/guide->knowledge/notes/other",
+		"knowledge/notes/guide->knowledge/notes/sub/detail",
+		"knowledge/notes/other->knowledge/notes/guide",
+		"knowledge/notes/sub/detail->knowledge/index",
+		"knowledge/notes/sub/detail->knowledge/notes/guide",
+	}, pairs)
 }
 
 func TestGraphScopesByRootDirectory(t *testing.T) {

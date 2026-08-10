@@ -122,16 +122,24 @@ func (r *KnowledgeRepository) read(path string, relPath string) (*domain.Knowled
 	if title == "" {
 		title = extractTitle(body)
 	}
+	mdLinks := extractMarkdownLinks(body)
+	resolved := make([]string, 0, len(mdLinks))
+	for _, l := range mdLinks {
+		if r := resolveRelativeLink(l, filepath.Dir(relPath)); r != "" {
+			resolved = append(resolved, r)
+		}
+	}
 	return &domain.Knowledge{
-		Path:      relPath,
-		Title:     title,
-		Aliases:   f.Aliases,
-		Tags:      f.Tags,
-		Type:      f.Type,
-		Created:   f.Created,
-		LastMod:   f.LastMod,
-		WikiLinks: extractWikiLinks(body),
-		Body:      strings.TrimPrefix(body, "\n"),
+		Path:          relPath,
+		Title:         title,
+		Aliases:       f.Aliases,
+		Tags:          f.Tags,
+		Type:          f.Type,
+		Created:       f.Created,
+		LastMod:       f.LastMod,
+		WikiLinks:     extractWikiLinks(body),
+		MarkdownLinks: resolved,
+		Body:          strings.TrimPrefix(body, "\n"),
 	}, nil
 }
 
@@ -259,4 +267,63 @@ func extractWikiLinks(body string) []string {
 		links = append(links, strings.TrimSpace(m[1]))
 	}
 	return links
+}
+
+var markdownLinkPattern = regexp.MustCompile(`\[([^\]]*)\]\(([^)\s]+)\)`)
+
+func extractMarkdownLinks(body string) []string {
+	var links []string
+	for _, m := range markdownLinkPattern.FindAllStringSubmatch(body, -1) {
+		target := strings.TrimSpace(m[2])
+		if !isMarkdownNoteTarget(target) {
+			continue
+		}
+		links = append(links, strings.TrimPrefix(target, "./"))
+	}
+	return links
+}
+
+func isMarkdownNoteTarget(target string) bool {
+	if target == "" || strings.HasPrefix(target, "#") || strings.HasPrefix(target, "/") {
+		return false
+	}
+	if strings.ContainsAny(target, `\`) {
+		return false
+	}
+	if scheme, _, ok := strings.Cut(target, ":"); ok && !strings.ContainsAny(scheme, "/.") {
+		return false
+	}
+	clean := target
+	if i := strings.IndexAny(clean, "?#"); i >= 0 {
+		clean = clean[:i]
+	}
+	return strings.HasSuffix(strings.ToLower(clean), ".md")
+}
+
+// resolveRelativeLink resolves a markdown link target relative to the
+// directory of the note that contains it, returning a project-root-relative
+// path without the ".md" extension.
+func resolveRelativeLink(target string, dir string) string {
+	clean := target
+	if i := strings.IndexAny(clean, "?#"); i >= 0 {
+		clean = clean[:i]
+	}
+	clean = strings.TrimSuffix(clean, ".md")
+	parts := []string{}
+	if dir != "" && dir != "." {
+		parts = strings.Split(filepath.ToSlash(dir), "/")
+	}
+	for _, p := range strings.Split(clean, "/") {
+		switch p {
+		case "", ".":
+			continue
+		case "..":
+			if len(parts) > 0 {
+				parts = parts[:len(parts)-1]
+			}
+		default:
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, "/")
 }
