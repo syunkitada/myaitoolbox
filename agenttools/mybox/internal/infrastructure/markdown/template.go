@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"text/template"
 
+	"github.com/goccy/go-yaml"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 )
 
@@ -31,7 +34,9 @@ func (r *TemplateRenderer) render(rel string, data any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tmpl, err := template.New("mybox").Parse(source)
+	tmpl, err := template.New("mybox").Funcs(template.FuncMap{
+		"yamlq": yamlQuote,
+	}).Parse(source)
 	if err != nil {
 		return "", err
 	}
@@ -40,6 +45,16 @@ func (r *TemplateRenderer) render(rel string, data any) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// yamlQuote returns s as a single YAML scalar, quoting it when necessary so
+// the value cannot break frontmatter parsing (e.g. colons followed by spaces).
+func yamlQuote(s string) string {
+	b, err := yaml.Marshal(s)
+	if err != nil {
+		return strconv.Quote(s)
+	}
+	return strings.TrimRight(string(b), "\n")
 }
 
 func (r *TemplateRenderer) loadTemplate(rel string) (string, error) {
@@ -72,7 +87,7 @@ func builtinTemplate(rel string) (string, error) {
 
 const builtinTaskTemplate = `---
 id: {{.ID}}
-title: {{.Name}}
+title: {{.Name | yamlq}}
 status: todo
 priority: medium
 assignee: ""
@@ -92,7 +107,7 @@ created: {{.Created.Format "2006-01-02T15:04:05Z07:00"}}
 `
 
 const builtinKnowledgeTemplate = `---
-title: {{.Name}}
+title: {{.Name | yamlq}}
 aliases: []
 tags: []
 created: {{.Created.Format "2006-01-02T15:04:05Z07:00"}}

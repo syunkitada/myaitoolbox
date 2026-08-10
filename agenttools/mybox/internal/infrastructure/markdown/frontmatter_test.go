@@ -2,9 +2,11 @@ package markdown
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 )
 
 func TestSplitFrontMatter(t *testing.T) {
@@ -43,4 +45,39 @@ func TestParseFrontMatterEmpty(t *testing.T) {
 	fm, err := parseFrontMatter("")
 	require.NoError(t, err)
 	assert.Empty(t, fm)
+}
+
+func TestTaskTemplateQuotesYamlValues(t *testing.T) {
+	r := NewTemplateRenderer(t.TempDir(), t.TempDir())
+	out, err := r.RenderTask(domain.TaskTemplateData{
+		ID:      "20260810_1319_mcp-mysql-test",
+		Name:    "mcp: mysql: test",
+		Project: "pj1",
+		Created: time.Date(2026, 8, 10, 13, 19, 13, 0, time.Local),
+	})
+	require.NoError(t, err)
+
+	fm, body, ok := splitFrontMatter(out)
+	require.True(t, ok)
+	parsed, err := parseFrontMatter(fm)
+	require.NoError(t, err)
+	assert.Equal(t, "mcp: mysql: test", parsed["title"])
+	assert.Contains(t, fm, `title: "mcp: mysql: test"`)
+	assert.Contains(t, body, "# mcp: mysql: test")
+}
+
+func TestKnowledgeTemplateQuotesYamlValues(t *testing.T) {
+	r := NewTemplateRenderer(t.TempDir(), t.TempDir())
+	out, err := r.RenderKnowledge(domain.KnowledgeTemplateData{
+		Path:    "notes/mcp",
+		Name:    `mcp: mysql "connector"`,
+		Created: time.Date(2026, 8, 10, 13, 19, 13, 0, time.Local),
+	})
+	require.NoError(t, err)
+
+	fm, _, ok := splitFrontMatter(out)
+	require.True(t, ok)
+	parsed, err := parseFrontMatter(fm)
+	require.NoError(t, err)
+	assert.Equal(t, `mcp: mysql "connector"`, parsed["title"])
 }
