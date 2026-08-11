@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d'
 import { GraphData, api } from '../api/client'
 import { encodePath, projectUrl } from '../utils/routes'
+import { installLabelCollision } from '../utils/graphCollision'
 
 interface GraphNode {
   id: string
@@ -93,6 +94,17 @@ export function OutlineGraph({
   const fgRef = useRef<ForceGraphMethods<any, any> | undefined>(undefined)
 
   useEffect(() => {
+    if (fgRef.current) {
+      installLabelCollision(fgRef.current, {
+        nodeRadius: 12,
+        dirCharWidth: 3,
+        dirPadding: 12,
+      })
+      fgRef.current.d3ReheatSimulation()
+    }
+  }, [graphData])
+
+  useEffect(() => {
     if (!graphData) return
     const fg = fgRef.current
     if (!fg) return
@@ -113,9 +125,10 @@ export function OutlineGraph({
     onNodeClick ??
     ((n: GraphNode) => {
       if (n.type === 'task') navigate(projectUrl(`/tasks/${n.id}`))
+      else if (n.type === 'dir') navigate(projectUrl(`/dashboard/files/${encodePath(n.id)}`))
       else {
-        const id = root && n.id.startsWith(root + '/') ? n.id.slice(root.length + 1) : n.id
-        navigate(projectUrl(`/knowledge/${encodePath(id)}`))
+        const id = n.id.endsWith('.md') ? n.id : `${n.id}.md`
+        navigate(projectUrl(`/dashboard/files/${encodePath(id)}`))
       }
     })
 
@@ -132,6 +145,24 @@ export function OutlineGraph({
           const node = n as GraphNode & { x: number; y: number }
           const isCurrent = node.id === graphData.current
           const isLinked = graphData.linked.has(node.id)
+          if (node.type === 'dir') {
+            const h = 18
+            ctx.font = '5px sans-serif'
+            const w = ctx.measureText(node.label).width + 12
+            ctx.beginPath()
+            ctx.rect(node.x - w / 2, node.y - h / 2, w, h)
+            ctx.fillStyle = isCurrent ? 'rgba(224, 83, 61, 0.08)' : 'rgba(74, 127, 212, 0.08)'
+            ctx.fill()
+            ctx.strokeStyle = isCurrent ? '#e0533d' : '#8a9bb0'
+            ctx.lineWidth = 1
+            ctx.stroke()
+            if (isCurrent || isLinked) {
+              ctx.fillStyle = '#6b7684'
+              ctx.textAlign = 'center'
+              ctx.fillText(node.label, node.x, node.y + 3)
+            }
+            return
+          }
           const size = isCurrent ? 5 : isLinked ? 3.5 : 1.5
           ctx.beginPath()
           ctx.arc(node.x, node.y, size, 0, 2 * Math.PI)

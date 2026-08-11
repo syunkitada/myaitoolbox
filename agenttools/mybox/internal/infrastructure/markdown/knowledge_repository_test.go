@@ -86,3 +86,15 @@ func TestKnowledgeExtractsMarkdownLinksRelativeToNote(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"notes/sub/detail", "other"}, k.MarkdownLinks)
 }
+
+func TestKnowledgeExtractsDirectoryLinks(t *testing.T) {
+	root := t.TempDir()
+	repo := NewKnowledgeRepository(root)
+	ctx := context.Background()
+	require.NoError(t, repo.Create(ctx, "docs/index", "see [config](./xdgconfig/) and [sub](../sub/)"))
+	require.NoError(t, repo.Create(ctx, "docs/xdgconfig/README", "body"))
+
+	k, err := repo.Find(ctx, "docs/index")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"docs/xdgconfig", "sub"}, k.MarkdownLinks)
+}

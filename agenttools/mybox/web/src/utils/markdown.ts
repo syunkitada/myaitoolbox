@@ -1,5 +1,5 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { knowledgeUrl } from './routes'
+import { filesUrl } from './routes'
 
 const wikiLinkPattern = /\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g
 
@@ -127,24 +127,33 @@ export function renderWikiLinks(
     const resolved = pathOf(resolveWikiPath(target))
     const label = alias ?? target
     if (resolved) {
-      const href = hrefOf ? hrefOf(resolved) : knowledgeUrl(resolved)
+      const href = hrefOf ? hrefOf(resolved) : filesUrl(resolved)
       return `[${label}](${href})`
     }
     return label
   })
 }
 
+export interface ResolveLinkOptions {
+  resolveDirectories?: boolean
+  resolveAnyFile?: boolean
+}
+
 export function resolveMarkdownLink(
   target: string,
   relativeTo?: string | null,
   preserveExtension = false,
+  opts: ResolveLinkOptions = {},
 ): string | null {
   if (!target || target.startsWith('#') || target.startsWith('/')) return null
   if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return null
   const clean = target.split(/[?#]/)[0]
-  if (!/\.md$/i.test(clean)) return null
+  const dirTarget = opts.resolveDirectories && clean.endsWith('/')
+  const fileTarget = /\.md$/i.test(clean) || (opts.resolveAnyFile && /\.[a-z0-9]+$/i.test(clean))
+  if (!dirTarget && !fileTarget) return null
+  const isDir = (relativeTo ?? '').endsWith('/')
   const stack = (relativeTo ?? '').split('/').filter(Boolean)
-  stack.pop()
+  if (!isDir) stack.pop()
   for (const part of clean.split('/')) {
     if (part === '' || part === '.') continue
     if (part === '..') {
@@ -153,6 +162,46 @@ export function resolveMarkdownLink(
       stack.push(part)
     }
   }
-  const resolved = preserveExtension ? stack.join('/') : stack.join('/').replace(/\.md$/i, '')
-  return resolved || null
+  const joined = stack.join('/')
+  if (!joined) return null
+  if (dirTarget) return joined
+  return preserveExtension ? joined : joined.replace(/\.md$/i, '')
+}
+
+export function buildDirListing(
+  dir: string,
+  entries: Array<{ path: string; name: string; kind: 'file' | 'dir' }>,
+): string {
+  const parent = (p: string) => {
+    const i = p.lastIndexOf('/')
+    return i >= 0 ? p.slice(0, i) : ''
+  }
+  const children = entries
+    .filter((e) => parent(e.path) === dir)
+    .sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+  const linkable = (name: string) => /^[^()<>\s]+$/.test(name)
+  const link = (e: { name: string; kind: 'file' | 'dir' }) => {
+    const label = e.kind === 'dir' ? `${e.name}/` : e.name
+    if (!linkable(label)) return `- ${label}`
+    return `- [${label}](${label})`
+  }
+  const title = dir ? dir.split('/').pop() ?? dir : 'Files'
+  const lines = [`# ${title}`, '']
+  const dirs = children.filter((c) => c.kind === 'dir')
+  const files = children.filter((c) => c.kind === 'file')
+  if (dirs.length > 0) {
+    lines.push('## Directories', '')
+    lines.push(...dirs.map((d) => link(d)))
+    lines.push('')
+  }
+  if (files.length > 0) {
+    lines.push('## Files', '')
+    lines.push(...files.map((f) => link(f)))
+    lines.push('')
+  }
+  if (children.length === 0) lines.push('(empty)', '')
+  return lines.join('\n')
 }

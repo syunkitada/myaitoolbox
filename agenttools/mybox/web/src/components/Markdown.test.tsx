@@ -17,10 +17,10 @@ describe('Markdown', () => {
 
   it('renders resolved wiki links as anchors', () => {
     const pathOf = (t: string) => (t === 'notes/alpha' ? 'notes/alpha' : null)
-    window.history.pushState({}, '', '/projects/proj/knowledge/notes/alpha')
+    window.history.pushState({}, '', '/projects/proj/dashboard/files/notes/alpha')
     render(<Markdown text={'see [[notes/alpha|Alpha]]'} pathOf={pathOf} />)
     const link = screen.getByRole('link', { name: 'Alpha' })
-    expect(link).toHaveAttribute('href', '/projects/proj/knowledge/notes/alpha')
+    expect(link).toHaveAttribute('href', '/projects/proj/dashboard/files/notes/alpha')
   })
 
   it('leaves broken wiki links as plain text', () => {

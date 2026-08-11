@@ -30,10 +30,6 @@ export function encodePath(path: string): string {
     .join('/')
 }
 
-export function knowledgeUrl(resolved: string): string {
-  return appUrl(projectUrl(`/knowledge/${encodePath(resolved)}`))
-}
-
 export function filesUrl(resolved: string): string {
   return appUrl(projectUrl(`/dashboard/files/${encodePath(resolved)}`))
 }

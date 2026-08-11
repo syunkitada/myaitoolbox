@@ -71,7 +71,6 @@ export function Sidebar({ meta, navigate, open, onClose, project }: SidebarProps
             </NavLink>
             <NavLink to={projectUrl('/tasks')} onClick={handleNav}>Tasks</NavLink>
             <NavLink to={projectUrl('/board')} onClick={handleNav}>Board</NavLink>
-            <NavLink to={projectUrl('/knowledge')} onClick={handleNav}>Knowledge</NavLink>
             <NavLink to={projectUrl('/graph')} onClick={handleNav}>Graph</NavLink>
           </nav>
           <div className="sidebar-section">
@@ -81,7 +80,7 @@ export function Sidebar({ meta, navigate, open, onClose, project }: SidebarProps
                 <li key={p}>
                   <button
                     onClick={() => {
-                      navigate(projectUrl(`/knowledge/${encodePath(p)}`))
+                      navigate(projectUrl(`/dashboard/files/${encodePath(p)}`))
                       handleNav()
                     }}
                     className="link-btn"
@@ -99,7 +98,7 @@ export function Sidebar({ meta, navigate, open, onClose, project }: SidebarProps
                 <li key={p}>
                   <button
                     onClick={() => {
-                      navigate(projectUrl(`/knowledge/${encodePath(p)}`))
+                      navigate(projectUrl(`/dashboard/files/${encodePath(p)}`))
                       handleNav()
                     }}
                     className="link-btn"

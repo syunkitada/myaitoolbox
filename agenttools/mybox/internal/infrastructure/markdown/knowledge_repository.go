@@ -297,18 +297,19 @@ func isMarkdownNoteTarget(target string) bool {
 	if i := strings.IndexAny(clean, "?#"); i >= 0 {
 		clean = clean[:i]
 	}
-	return strings.HasSuffix(strings.ToLower(clean), ".md")
+	return strings.HasSuffix(strings.ToLower(clean), ".md") || strings.HasSuffix(clean, "/")
 }
 
 // resolveRelativeLink resolves a markdown link target relative to the
 // directory of the note that contains it, returning a project-root-relative
-// path without the ".md" extension.
+// path. A trailing ".md" or "/" is stripped from the target.
 func resolveRelativeLink(target string, dir string) string {
 	clean := target
 	if i := strings.IndexAny(clean, "?#"); i >= 0 {
 		clean = clean[:i]
 	}
 	clean = strings.TrimSuffix(clean, ".md")
+	clean = strings.TrimSuffix(clean, "/")
 	parts := []string{}
 	if dir != "" && dir != "." {
 		parts = strings.Split(filepath.ToSlash(dir), "/")

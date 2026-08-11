@@ -821,8 +821,41 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 		writeError(w, err)
 		return
 	}
-	nodes := make([]api.GraphNode, 0, len(list))
-	index := make(map[string]string, len(list))
+	tree, err := app.Files.Tree(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	inScope := func(p string) bool {
+		if scope == "" {
+			return true
+		}
+		return p == scope || strings.HasPrefix(p, scope+"/")
+	}
+	// Collect project directories (scoped) that contain at least one graph
+	// note, so they are drawn as frames around their notes. Task/archive
+	// directories are excluded because their notes are not graphed.
+	allDirs := make(map[string]string)
+	for _, e := range tree {
+		if e.Kind != domain.FileKindDir || !inScope(e.Path) {
+			continue
+		}
+		if e.Path == "tasks" || e.Path == "archives" ||
+			strings.HasPrefix(e.Path, "tasks/") || strings.HasPrefix(e.Path, "archives/") {
+			continue
+		}
+		allDirs[e.Path] = e.Name
+	}
+	dirs := make(map[string]bool)
+	for _, k := range list {
+		for d := parentDir(k.Path); d != ""; d = parentDir(d) {
+			if _, ok := allDirs[d]; ok {
+				dirs[d] = true
+			}
+		}
+	}
+	nodes := make([]api.GraphNode, 0, len(list)+len(dirs))
+	index := make(map[string]string, len(list)+len(dirs))
 	for _, k := range list {
 		index[strings.ToLower(k.Path)] = k.Path
 		if rel := strings.TrimPrefix(k.Path, "knowledge/"); rel != k.Path {
@@ -834,6 +867,20 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 			Id:    k.Path,
 			Label: k.Title,
 			Type:  strPtr("knowledge"),
+		})
+	}
+	for d, name := range allDirs {
+		if !dirs[d] {
+			continue
+		}
+		if _, ok := index[strings.ToLower(d)]; ok {
+			continue
+		}
+		index[strings.ToLower(d)] = d
+		nodes = append(nodes, api.GraphNode{
+			Id:    d,
+			Label: name,
+			Type:  strPtr("dir"),
 		})
 	}
 	for _, k := range list {
@@ -885,7 +932,28 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 			}
 		}
 	}
+	// Containment edges keep notes clustered inside their directory frames.
+	for d := range dirs {
+		if p := parentDir(d); p != "" {
+			if dirs[p] {
+				addLink(p, d)
+			}
+		}
+	}
+	for _, k := range list {
+		if p := parentDir(k.Path); p != "" && dirs[p] {
+			addLink(p, k.Path)
+		}
+	}
 	writeJSONResponse(w, http.StatusOK, api.GraphData{Nodes: nodes, Links: links})
+}
+
+func parentDir(p string) string {
+	d := filepath.Dir(filepath.ToSlash(p))
+	if d == "." || d == "/" || d == "" {
+		return ""
+	}
+	return d
 }
 
 func (s *Server) ensureWritable(w http.ResponseWriter) bool {

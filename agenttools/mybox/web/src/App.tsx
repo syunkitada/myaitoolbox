@@ -6,7 +6,6 @@ import { Sidebar } from './components/Sidebar'
 import { Dashboard } from './pages/Dashboard'
 import { TaskList } from './pages/TaskList'
 import { TaskDetail } from './pages/TaskDetail'
-import { KnowledgePage } from './pages/KnowledgePage'
 import { GraphPage } from './pages/GraphPage'
 import { SearchPage } from './pages/SearchPage'
 import { KanbanBoard } from './pages/KanbanBoard'
@@ -74,14 +73,6 @@ export default function App() {
               <Route path="/projects/:project/tasks" element={<TaskList />} />
               <Route path="/projects/:project/tasks/:id" element={<TaskDetail navigate={navigate} />} />
               <Route path="/projects/:project/board" element={<KanbanBoard />} />
-              <Route
-                path="/projects/:project/knowledge"
-                element={<KnowledgePage refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
-              />
-              <Route
-                path="/projects/:project/knowledge/*"
-                element={<KnowledgePage refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
-              />
               <Route path="/projects/:project/graph" element={<GraphPage />} />
               <Route path="/projects/:project/search" element={<SearchPage navigate={navigate} />} />
               <Route

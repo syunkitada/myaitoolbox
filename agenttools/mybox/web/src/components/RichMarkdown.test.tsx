@@ -43,4 +43,26 @@ describe('RichMarkdown', () => {
       '/projects/proj/dashboard/files/golang/golang_project_structure.md',
     )
   })
+
+  it('resolves directory links in files mode', () => {
+    const { container } = render(
+      <RichMarkdown
+        text="see [config](./xdgconfig/) and [image](./logo.png)"
+        relativeTo="golang/golang_architecture"
+        linkUrl={(resolved) => `/projects/proj/dashboard/files/${resolved}`}
+      />,
+    )
+    const links = container.querySelectorAll('a')
+    const hrefs = Array.from(links).map((a) => a.getAttribute('href'))
+    expect(hrefs).toContain('/projects/proj/dashboard/files/golang/xdgconfig')
+    expect(hrefs).toContain('/projects/proj/dashboard/files/golang/logo.png')
+  })
+
+  it('does not resolve directory links without a linkUrl', () => {
+    const { container } = render(
+      <RichMarkdown text="see [config](./xdgconfig/)" relativeTo="golang/golang_architecture" />,
+    )
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('href')).toBe('./xdgconfig/')
+  })
 })

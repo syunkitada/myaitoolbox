@@ -25,6 +25,11 @@ printf -- '---\nstatus: doing\n---\n\n# Drag me to done\n' \
 mkdir -p "$PROJ/knowledge/notes"
 printf '# Mybox\n\nWelcome to the workspace.\n\nSee [[notes/phase6]] and [[tasks]].\n' \
   >"$PROJ/knowledge/index.md"
+printf '# Knowledge\n\nAll knowledge lives here.\n\nSee [docs](docs/).\n' \
+  >"$PROJ/knowledge/README.md"
+mkdir -p "$PROJ/knowledge/docs/recipes"
+printf '# Guide\n\nDeep docs.\n' >"$PROJ/knowledge/docs/guide.md"
+printf '# Pizza\n\nMargherita.\n' >"$PROJ/knowledge/docs/recipes/pizza.md"
 printf '# Phase 6\n\n## Overview\n\nThe HTTP API is done.\n\n## Diagram\n\n```mermaid\ngraph LR\n  A[API] --> B[UI]\n```\n' >"$PROJ/knowledge/notes/phase6.md"
 printf '# Tasks\n\nTask tracking lives here.\n' >"$PROJ/tasks.md"
 

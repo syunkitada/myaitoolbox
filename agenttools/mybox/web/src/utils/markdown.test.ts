@@ -5,6 +5,7 @@ import {
   resolveWikiPath,
   normalizePath,
   resolveMarkdownLink,
+  buildDirListing,
   extractFrontmatterTags,
   splitFrontmatter,
   parseFrontmatter,
@@ -118,16 +119,16 @@ describe('normalizePath', () => {
 
 describe('renderWikiLinks', () => {
   const pathOf = (t: string) => (t === 'notes/alpha' ? 'notes/alpha' : null)
-  const hrefOf = (r: string) => `/projects/proj/knowledge/${r}`
+  const hrefOf = (r: string) => `/projects/proj/dashboard/files/${r}`
 
   it('turns resolved links into path anchors', () => {
     const out = renderWikiLinks('[[notes/alpha]]', pathOf, hrefOf)
-    expect(out).toContain('[notes/alpha](/projects/proj/knowledge/notes/alpha)')
+    expect(out).toContain('[notes/alpha](/projects/proj/dashboard/files/notes/alpha)')
   })
 
   it('uses alias as label', () => {
     const out = renderWikiLinks('[[notes/alpha|Alpha Doc]]', pathOf, hrefOf)
-    expect(out).toContain('[Alpha Doc](/projects/proj/knowledge/notes/alpha)')
+    expect(out).toContain('[Alpha Doc](/projects/proj/dashboard/files/notes/alpha)')
   })
 
   it('leaves unresolved links as plain label', () => {
@@ -164,5 +165,75 @@ describe('resolveMarkdownLink', () => {
     expect(resolveMarkdownLink('#heading', 'notes/x')).toBeNull()
     expect(resolveMarkdownLink('./image.png', 'notes/x')).toBeNull()
     expect(resolveMarkdownLink('', 'notes/x')).toBeNull()
+  })
+})
+
+describe('resolveMarkdownLink directory links', () => {
+  const opts = { resolveDirectories: true }
+
+  it('resolves ./dir/ relative to the note directory', () => {
+    expect(resolveMarkdownLink('./xdgconfig/', 'golang/golang_architecture', true, opts)).toBe(
+      'golang/xdgconfig',
+    )
+  })
+
+  it('resolves ../parent/ one level up', () => {
+    expect(resolveMarkdownLink('../config/', 'golang/sub/note', true, opts)).toBe('golang/config')
+  })
+
+  it('resolves a dir target from a directory context', () => {
+    expect(resolveMarkdownLink('sub/', 'xdgconfig/', true, opts)).toBe('xdgconfig/sub')
+  })
+
+  it('does not resolve directory links without the option', () => {
+    expect(resolveMarkdownLink('./xdgconfig/', 'notes/x', true)).toBeNull()
+  })
+})
+
+describe('resolveMarkdownLink relativeTo directory', () => {
+  it('keeps the directory segment when relativeTo ends with a slash', () => {
+    expect(resolveMarkdownLink('guide.md', 'xdgconfig/', true)).toBe('xdgconfig/guide.md')
+    expect(resolveMarkdownLink('guide.md', 'xdgconfig/', false)).toBe('xdgconfig/guide')
+  })
+
+  it('resolves non-md files when resolveAnyFile is set', () => {
+    expect(resolveMarkdownLink('logo.png', 'notes/guide', true, { resolveAnyFile: true })).toBe(
+      'notes/logo.png',
+    )
+  })
+})
+
+describe('buildDirListing', () => {
+  const entries = [
+    { path: 'xdgconfig', name: 'xdgconfig', kind: 'dir' as const },
+    { path: 'xdgconfig/README.md', name: 'README.md', kind: 'file' as const },
+    { path: 'xdgconfig/config.toml', name: 'config.toml', kind: 'file' as const },
+    { path: 'xdgconfig/sub', name: 'sub', kind: 'dir' as const },
+    { path: 'other.md', name: 'other.md', kind: 'file' as const },
+  ]
+
+  it('links directories with a trailing slash and files plainly', () => {
+    const out = buildDirListing('xdgconfig', entries)
+    expect(out).toContain('# xdgconfig')
+    expect(out).toContain('- [sub/](sub/)')
+    expect(out).toContain('- [README.md](README.md)')
+    expect(out).toContain('- [config.toml](config.toml)')
+    expect(out).not.toContain('other.md')
+  })
+
+  it('renders directories before files', () => {
+    const out = buildDirListing('xdgconfig', entries)
+    expect(out.indexOf('- [sub/](sub/)')).toBeLessThan(out.indexOf('- [README.md](README.md)'))
+  })
+
+  it('handles the project root', () => {
+    const out = buildDirListing('', entries)
+    expect(out).toContain('# Files')
+    expect(out).toContain('- [xdgconfig/](xdgconfig/)')
+  })
+
+  it('marks empty directories', () => {
+    const out = buildDirListing('xdgconfig/empty', entries)
+    expect(out).toContain('(empty)')
   })
 })

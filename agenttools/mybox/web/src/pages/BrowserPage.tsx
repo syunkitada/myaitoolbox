@@ -7,6 +7,7 @@ import { OutlineGraph } from '../components/OutlineGraph'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
 import { encodePath, filesUrl, projectUrl } from '../utils/routes'
 import {
+  buildDirListing,
   buildMarkdown,
   extractFrontmatterTags,
   extractWikiLinks,
@@ -247,7 +248,12 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
             >
               {open ? '▾' : '▸'}
             </button>
-            <span className="knowledge-dir-name">{node.name}</span>
+            <button
+              className={`knowledge-dir${node.dirPath === selected ? ' active' : ''}`}
+              onClick={() => onSelect(node.dirPath)}
+            >
+              {node.name}
+            </button>
             <StatusBadge status={node.status} />
           </li>,
         )
@@ -391,6 +397,22 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
   const pathOf = (target: string) =>
     byPath.get(normalizePath(target)) ?? byAlias.get(normalizePath(target)) ?? byBasename.get(normalizePath(target)) ?? null
 
+  const isDir = entry?.kind === 'dir'
+
+  const readmePath = useMemo(() => {
+    if (!isDir) return null
+    for (const name of ['README.md', 'README.markdown']) {
+      const p = `${path}/${name}`
+      if (byPath.has(normalizePath(p))) return p
+    }
+    return null
+  }, [isDir, path, byPath])
+
+  const listing = useMemo(
+    () => (isDir && !readmePath ? buildDirListing(path, list) : null),
+    [isDir, readmePath, path, list],
+  )
+
   const backlinks = useMemo(
     () => list.filter((e) => (e.wikiLinks ?? []).some((l) => pathOf(l) === path)),
     [list, path],
@@ -401,6 +423,28 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
     setEditing(false)
     setSaved(false)
     setIsFav(favorites.includes(path))
+    if (mode === 'files' && isDir) {
+      if (readmePath) {
+        void api
+          .getFileContent(readmePath)
+          .then((c) => {
+            setContent(c.content)
+            setDraft(c.content)
+            const split = splitFrontmatter(c.content)
+            setDraftBody(split.body)
+            setDraftFm(parseFrontmatter(split.frontmatter).data)
+          })
+          .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      } else {
+        const text = listing ?? ''
+        setContent(text)
+        setDraft(text)
+        const split = splitFrontmatter(text)
+        setDraftBody(split.body)
+        setDraftFm(parseFrontmatter(split.frontmatter).data)
+      }
+      return
+    }
     const p = mode === 'knowledge' ? api.getKnowledgeContent(path) : api.getFileContent(path)
     void p
       .then((c) => {
@@ -415,9 +459,10 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
       void api.recordRecent(path).then(() => void refreshMeta()).catch(() => undefined)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path])
+  }, [path, isDir, readmePath, listing])
 
-  const isMarkdown = entry?.markdown ?? (mode === 'knowledge' || /\.(md|markdown)$/i.test(path))
+  const isMarkdown =
+    isDir || (entry?.markdown ?? (mode === 'knowledge' || /\.(md|markdown)$/i.test(path)))
 
   const fmSplit = useMemo(() => splitFrontmatter(content), [content])
   const fmParsed = useMemo(() => parseFrontmatter(fmSplit.frontmatter), [fmSplit])
@@ -537,8 +582,9 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
 
   const links = useMemo(() => (mode === 'knowledge' ? extractWikiLinks(content) : []), [mode, content])
   const fmTitle = useForm && typeof fmParsed.data.title === 'string' ? fmParsed.data.title : ''
-  const heading = entry?.title || fmTitle || baseOf(path)
+  const heading = entry?.title || fmTitle || (isDir && !path ? 'Files' : baseOf(path))
   const viewText = useForm ? fmSplit.body : content
+  const viewRelativeTo = isDir && mode === 'files' ? readmePath ?? `${path}/` : path
 
   return (
     <div>
@@ -552,13 +598,17 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
               <button className={isFav ? 'ghost active' : 'ghost'} onClick={() => fav(!isFav)}>
                 {isFav ? '★ Favorite' : '☆ Favorite'}
               </button>
-              <button className="ghost" onClick={rename}>
-                Rename
-              </button>
-              <button className="ghost" onClick={move}>
-                Move
-              </button>
-              {mode === 'files' && (
+              {!isDir && (
+                <>
+                  <button className="ghost" onClick={rename}>
+                    Rename
+                  </button>
+                  <button className="ghost" onClick={move}>
+                    Move
+                  </button>
+                </>
+              )}
+              {mode === 'files' && !isDir && (
                 <>
                   <button className="ghost" onClick={duplicate}>
                     Duplicate
@@ -568,7 +618,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   </button>
                 </>
               )}
-              {!editing && (
+              {!isDir && !editing && (
                 <button className="primary" onClick={() => setEditing(true)}>
                   Edit
                 </button>
@@ -636,7 +686,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                 <RichMarkdown
                   text={viewText}
                   pathOf={mode === 'knowledge' ? pathOf : undefined}
-                  relativeTo={path}
+                  relativeTo={viewRelativeTo}
                   linkUrl={mode === 'knowledge' ? undefined : filesUrl}
                   preserveExtension={mode === 'files'}
                 />
@@ -729,6 +779,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                     ? undefined
                     : (n) => {
                         if (n.type === 'task') navigate(projectUrl(`/tasks/${n.id}`))
+                        else if (n.type === 'dir') onOpen(n.id)
                         else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
                       }
                 }

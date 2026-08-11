@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 import { renderWikiLinks, resolveMarkdownLink } from '../utils/markdown'
-import { knowledgeUrl } from '../utils/routes'
+import { filesUrl } from '../utils/routes'
 import { Mermaid } from './Mermaid'
 
 const md = new MarkdownIt({
@@ -23,9 +23,13 @@ md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
 
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   const href = tokens[idx].attrGet('href') ?? ''
-  const resolved = resolveMarkdownLink(href, env?.relativeTo, env?.preserveExtension)
+  const files = Boolean(env?.linkUrl)
+  const resolved = resolveMarkdownLink(href, env?.relativeTo, env?.preserveExtension, {
+    resolveDirectories: files,
+    resolveAnyFile: files,
+  })
   if (resolved) {
-    tokens[idx].attrSet('href', env?.linkUrl ? env.linkUrl(resolved) : knowledgeUrl(resolved))
+    tokens[idx].attrSet('href', env?.linkUrl ? env.linkUrl(resolved) : filesUrl(resolved))
   }
   return self.renderToken(tokens, idx, options)
 }

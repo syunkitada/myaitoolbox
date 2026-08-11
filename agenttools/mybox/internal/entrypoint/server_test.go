@@ -241,9 +241,15 @@ func TestGraphResolvesWikiLinksByAliasAndTitle(t *testing.T) {
 	rec := do(t, s, http.MethodGet, "/api/graph", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	graph := decode[api.GraphData](t, rec)
-	require.Len(t, graph.Links, 1)
-	assert.Equal(t, "knowledge/index", graph.Links[0].Source)
-	assert.Equal(t, "knowledge/notes/phase6", graph.Links[0].Target)
+	assertPairs(t, graph, map[string]bool{
+		"knowledge/index->knowledge/notes/phase6":  true,
+		"knowledge->knowledge/index":               true,
+		"knowledge->knowledge/notes":               true,
+		"knowledge/notes->knowledge/notes/phase6":  true,
+	})
+	assertNodes(t, graph, []string{
+		"knowledge/index", "knowledge/notes/phase6", "knowledge", "knowledge/notes",
+	})
 }
 
 func TestGraphResolvesMarkdownLinksRelativeToNote(t *testing.T) {
@@ -264,18 +270,19 @@ func TestGraphResolvesMarkdownLinksRelativeToNote(t *testing.T) {
 	rec := do(t, s, http.MethodGet, "/api/graph", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	graph := decode[api.GraphData](t, rec)
-	var pairs []string
-	for _, l := range graph.Links {
-		pairs = append(pairs, l.Source+"->"+l.Target)
-	}
-	sort.Strings(pairs)
-	assert.Equal(t, []string{
-		"knowledge/notes/guide->knowledge/notes/other",
-		"knowledge/notes/guide->knowledge/notes/sub/detail",
-		"knowledge/notes/other->knowledge/notes/guide",
-		"knowledge/notes/sub/detail->knowledge/index",
-		"knowledge/notes/sub/detail->knowledge/notes/guide",
-	}, pairs)
+	assertPairs(t, graph, map[string]bool{
+		"knowledge/notes/guide->knowledge/notes/other":       true,
+		"knowledge/notes/guide->knowledge/notes/sub/detail":  true,
+		"knowledge/notes/other->knowledge/notes/guide":       true,
+		"knowledge/notes/sub/detail->knowledge/index":        true,
+		"knowledge/notes/sub/detail->knowledge/notes/guide":  true,
+		"knowledge->knowledge/index":                          true,
+		"knowledge->knowledge/notes":                          true,
+		"knowledge/notes->knowledge/notes/guide":              true,
+		"knowledge/notes->knowledge/notes/other":              true,
+		"knowledge/notes->knowledge/notes/sub":                true,
+		"knowledge/notes/sub->knowledge/notes/sub/detail":     true,
+	})
 }
 
 func TestGraphScopesByRootDirectory(t *testing.T) {
@@ -295,19 +302,38 @@ func TestGraphScopesByRootDirectory(t *testing.T) {
 	rec := do(t, s, http.MethodGet, "/api/graph", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	graph := decode[api.GraphData](t, rec)
-	assertNodes(t, graph, []string{"README", "docs/guide", "knowledge/index", "knowledge/notes/phase6"})
-	assertLinks(t, graph, map[string]string{"docs/guide": "README", "knowledge/index": "knowledge/notes/phase6"})
+	assertNodes(t, graph, []string{
+		"README", "docs/guide", "knowledge/index", "knowledge/notes/phase6",
+		"docs", "knowledge", "knowledge/notes",
+	})
+	assertPairs(t, graph, map[string]bool{
+		"docs/guide->README":                          true,
+		"knowledge/index->knowledge/notes/phase6":     true,
+		"docs->docs/guide":                            true,
+		"knowledge->knowledge/index":                  true,
+		"knowledge->knowledge/notes":                  true,
+		"knowledge/notes->knowledge/notes/phase6":     true,
+	})
 
 	// Scoped graph only contains nodes under the requested root.
 	rec = do(t, s, http.MethodGet, "/api/graph?path=knowledge", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	scoped := decode[api.GraphData](t, rec)
-	assertNodes(t, scoped, []string{"knowledge/index", "knowledge/notes/phase6"})
+	assertNodes(t, scoped, []string{
+		"knowledge/index", "knowledge/notes/phase6", "knowledge", "knowledge/notes",
+	})
+	assertPairs(t, scoped, map[string]bool{
+		"knowledge/index->knowledge/notes/phase6":     true,
+		"knowledge->knowledge/index":                  true,
+		"knowledge->knowledge/notes":                  true,
+		"knowledge/notes->knowledge/notes/phase6":     true,
+	})
 
 	rec = do(t, s, http.MethodGet, "/api/graph?path=docs", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	docs := decode[api.GraphData](t, rec)
-	assertNodes(t, docs, []string{"docs/guide"})
+	assertNodes(t, docs, []string{"docs/guide", "docs"})
+	assertPairs(t, docs, map[string]bool{"docs->docs/guide": true})
 
 	// Invalid scopes are rejected.
 	rec = do(t, s, http.MethodGet, "/api/graph?path=..%2f..%2fetc", nil)
@@ -325,11 +351,11 @@ func assertNodes(t *testing.T, graph api.GraphData, want []string) {
 	assert.Equal(t, want, got)
 }
 
-func assertLinks(t *testing.T, graph api.GraphData, want map[string]string) {
+func assertPairs(t *testing.T, graph api.GraphData, want map[string]bool) {
 	t.Helper()
-	got := map[string]string{}
+	got := map[string]bool{}
 	for _, l := range graph.Links {
-		got[l.Source] = l.Target
+		got[l.Source+"->"+l.Target] = true
 	}
 	assert.Equal(t, want, got)
 }
