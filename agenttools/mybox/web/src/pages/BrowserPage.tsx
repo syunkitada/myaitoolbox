@@ -5,7 +5,7 @@ import { SearchBar } from '../components/SearchBar'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { OutlineGraph } from '../components/OutlineGraph'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
-import { encodePath, filesUrl, projectUrl } from '../utils/routes'
+import { encodePath, filesUrl, projectUrl, taskIdOf } from '../utils/routes'
 import {
   buildDirListing,
   buildMarkdown,
@@ -548,7 +548,8 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
   }
 
   const remove = () => {
-    if (!window.confirm(`Delete "${path}"?`)) return
+    const label = isDir ? `directory "${path}" and all its contents` : `"${path}"`
+    if (!window.confirm(`Delete ${label}?`)) return
     void api
       .deleteFile(path)
       .then(() => {
@@ -608,11 +609,13 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   </button>
                 </>
               )}
-              {mode === 'files' && !isDir && (
+              {mode === 'files' && (
                 <>
-                  <button className="ghost" onClick={duplicate}>
-                    Duplicate
-                  </button>
+                  {!isDir && (
+                    <button className="ghost" onClick={duplicate}>
+                      Duplicate
+                    </button>
+                  )}
                   <button className="ghost" onClick={remove}>
                     Delete
                   </button>
@@ -778,7 +781,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   mode === 'knowledge'
                     ? undefined
                     : (n) => {
-                        if (n.type === 'task') navigate(projectUrl(`/tasks/${n.id}`))
+                        if (n.type === 'task') navigate(projectUrl(`/tasks/${taskIdOf(n.id)}`))
                         else if (n.type === 'dir') onOpen(n.id)
                         else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
                       }

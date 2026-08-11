@@ -242,10 +242,10 @@ func TestGraphResolvesWikiLinksByAliasAndTitle(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	graph := decode[api.GraphData](t, rec)
 	assertPairs(t, graph, map[string]bool{
-		"knowledge/index->knowledge/notes/phase6":  true,
-		"knowledge->knowledge/index":               true,
-		"knowledge->knowledge/notes":               true,
-		"knowledge/notes->knowledge/notes/phase6":  true,
+		"knowledge/index->knowledge/notes/phase6": true,
+		"knowledge->knowledge/index":              true,
+		"knowledge->knowledge/notes":              true,
+		"knowledge/notes->knowledge/notes/phase6": true,
 	})
 	assertNodes(t, graph, []string{
 		"knowledge/index", "knowledge/notes/phase6", "knowledge", "knowledge/notes",
@@ -271,17 +271,50 @@ func TestGraphResolvesMarkdownLinksRelativeToNote(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	graph := decode[api.GraphData](t, rec)
 	assertPairs(t, graph, map[string]bool{
-		"knowledge/notes/guide->knowledge/notes/other":       true,
-		"knowledge/notes/guide->knowledge/notes/sub/detail":  true,
-		"knowledge/notes/other->knowledge/notes/guide":       true,
-		"knowledge/notes/sub/detail->knowledge/index":        true,
-		"knowledge/notes/sub/detail->knowledge/notes/guide":  true,
-		"knowledge->knowledge/index":                          true,
-		"knowledge->knowledge/notes":                          true,
-		"knowledge/notes->knowledge/notes/guide":              true,
-		"knowledge/notes->knowledge/notes/other":              true,
-		"knowledge/notes->knowledge/notes/sub":                true,
-		"knowledge/notes/sub->knowledge/notes/sub/detail":     true,
+		"knowledge/notes/guide->knowledge/notes/other":      true,
+		"knowledge/notes/guide->knowledge/notes/sub/detail": true,
+		"knowledge/notes/other->knowledge/notes/guide":      true,
+		"knowledge/notes/sub/detail->knowledge/index":       true,
+		"knowledge/notes/sub/detail->knowledge/notes/guide": true,
+		"knowledge->knowledge/index":                        true,
+		"knowledge->knowledge/notes":                        true,
+		"knowledge/notes->knowledge/notes/guide":            true,
+		"knowledge/notes->knowledge/notes/other":            true,
+		"knowledge/notes->knowledge/notes/sub":              true,
+		"knowledge/notes/sub->knowledge/notes/sub/detail":   true,
+	})
+}
+
+func TestGraphResolvesLinksToDirectoriesWithoutNotes(t *testing.T) {
+	s, app := newTestServer(t, false)
+	root := app.Project.Path
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "wsl1"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "xdgconfig"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "tasks", "20260811_t-net-call-for-cashback"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "wsl1", "README.md"), []byte("# WSL1\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "xdgconfig", "confrc"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "tasks", "20260811_t-net-call-for-cashback", "task.md"), []byte("---\nstatus: todo\n---\n# Task\n"), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "README.md"),
+		[]byte("# Home EX\n\n- [wsl1](./wsl1/)\n- [xdgconfig](./xdgconfig/)\n- [tasks](./tasks/)\n"),
+		0o644,
+	))
+
+	rec := do(t, s, http.MethodGet, "/api/graph", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	graph := decode[api.GraphData](t, rec)
+	assertPairs(t, graph, map[string]bool{
+		"README->wsl1":      true,
+		"README->xdgconfig": true,
+		"README->tasks":     true,
+		"tasks->tasks/20260811_t-net-call-for-cashback":                                       true,
+		"tasks/20260811_t-net-call-for-cashback->tasks/20260811_t-net-call-for-cashback/task": true,
+		"wsl1->wsl1/README": true,
+	})
+	assertNodes(t, graph, []string{
+		"README", "wsl1/README", "wsl1", "xdgconfig", "tasks",
+		"tasks/20260811_t-net-call-for-cashback",
+		"tasks/20260811_t-net-call-for-cashback/task",
 	})
 }
 
@@ -298,7 +331,7 @@ func TestGraphScopesByRootDirectory(t *testing.T) {
 	_, err = app.Knowledge.Create(ctx, "notes/phase6")
 	require.NoError(t, err)
 
-	// Project-wide graph includes root notes and skips task files.
+	// Project-wide graph includes root notes and task files.
 	rec := do(t, s, http.MethodGet, "/api/graph", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	graph := decode[api.GraphData](t, rec)
@@ -307,12 +340,12 @@ func TestGraphScopesByRootDirectory(t *testing.T) {
 		"docs", "knowledge", "knowledge/notes",
 	})
 	assertPairs(t, graph, map[string]bool{
-		"docs/guide->README":                          true,
-		"knowledge/index->knowledge/notes/phase6":     true,
-		"docs->docs/guide":                            true,
-		"knowledge->knowledge/index":                  true,
-		"knowledge->knowledge/notes":                  true,
-		"knowledge/notes->knowledge/notes/phase6":     true,
+		"docs/guide->README":                      true,
+		"knowledge/index->knowledge/notes/phase6": true,
+		"docs->docs/guide":                        true,
+		"knowledge->knowledge/index":              true,
+		"knowledge->knowledge/notes":              true,
+		"knowledge/notes->knowledge/notes/phase6": true,
 	})
 
 	// Scoped graph only contains nodes under the requested root.
@@ -323,10 +356,10 @@ func TestGraphScopesByRootDirectory(t *testing.T) {
 		"knowledge/index", "knowledge/notes/phase6", "knowledge", "knowledge/notes",
 	})
 	assertPairs(t, scoped, map[string]bool{
-		"knowledge/index->knowledge/notes/phase6":     true,
-		"knowledge->knowledge/index":                  true,
-		"knowledge->knowledge/notes":                  true,
-		"knowledge/notes->knowledge/notes/phase6":     true,
+		"knowledge/index->knowledge/notes/phase6": true,
+		"knowledge->knowledge/index":              true,
+		"knowledge->knowledge/notes":              true,
+		"knowledge/notes->knowledge/notes/phase6": true,
 	})
 
 	rec = do(t, s, http.MethodGet, "/api/graph?path=docs", nil)
@@ -473,7 +506,9 @@ func TestFiles(t *testing.T) {
 
 	rec = do(t, s, http.MethodPost, "/api/files/delete",
 		api.FilePathRequest{Path: "notes"})
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	_, err = os.Stat(filepath.Join(root, "notes"))
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestBasePath(t *testing.T) {

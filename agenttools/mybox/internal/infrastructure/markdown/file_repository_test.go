@@ -45,3 +45,14 @@ func TestFileRepositoryTreeStatusInvalidFrontMatter(t *testing.T) {
 	require.Len(t, entries, 1)
 	assert.Equal(t, "", entries[0].Status)
 }
+
+func TestFileRepositoryDeleteDir(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("# Guide\n"), 0o644))
+
+	repo := NewFileRepository(root)
+	require.NoError(t, repo.Delete(context.Background(), "docs"))
+	_, err := os.Stat(filepath.Join(root, "docs"))
+	assert.True(t, os.IsNotExist(err))
+}

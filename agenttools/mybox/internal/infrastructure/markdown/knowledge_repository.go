@@ -31,17 +31,18 @@ type knowledgeFields struct {
 }
 
 func (r *KnowledgeRepository) List(ctx context.Context) ([]domain.Knowledge, error) {
-	return r.walk(ctx, filepath.Join(r.root, "knowledge"), "", false)
+	return r.walk(ctx, filepath.Join(r.root, "knowledge"), "")
 }
 
 // ListScoped walks markdown notes under a scope directory and returns them with
 // project-root-relative paths. An empty scope walks the whole project root,
-// skipping hidden entries and the managed tasks/archives directories.
+// skipping hidden entries. Task files (task.md under tasks/ or archives/tasks/)
+// are included and marked with Type "task".
 func (r *KnowledgeRepository) ListScoped(ctx context.Context, scope string) ([]domain.Knowledge, error) {
 	if err := validateScope(scope); err != nil {
 		return nil, err
 	}
-	list, err := r.walk(ctx, r.root, "", scope == "")
+	list, err := r.walk(ctx, r.root, "")
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +58,7 @@ func (r *KnowledgeRepository) ListScoped(ctx context.Context, scope string) ([]d
 	return out, nil
 }
 
-func (r *KnowledgeRepository) walk(ctx context.Context, dir string, base string, skipManaged bool) ([]domain.Knowledge, error) {
+func (r *KnowledgeRepository) walk(ctx context.Context, dir string, base string) ([]domain.Knowledge, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -71,12 +72,9 @@ func (r *KnowledgeRepository) walk(ctx context.Context, dir string, base string,
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		if e.IsDir() && skipManaged && (name == "tasks" || name == "archives") {
-			continue
-		}
 		rel := filepath.ToSlash(filepath.Join(base, name))
 		if e.IsDir() {
-			sub, err := r.walk(ctx, filepath.Join(dir, name), rel, skipManaged)
+			sub, err := r.walk(ctx, filepath.Join(dir, name), rel)
 			if err != nil {
 				return nil, err
 			}
@@ -89,10 +87,17 @@ func (r *KnowledgeRepository) walk(ctx context.Context, dir string, base string,
 			if err != nil {
 				return nil, err
 			}
+			if isTaskFilePath(path) {
+				k.Type = "task"
+			}
 			knowledge = append(knowledge, *k)
 		}
 	}
 	return knowledge, nil
+}
+
+func isTaskFilePath(path string) bool {
+	return strings.HasPrefix(path, "tasks/") || strings.HasPrefix(path, "archives/tasks/")
 }
 
 func validateScope(scope string) error {

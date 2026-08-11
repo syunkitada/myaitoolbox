@@ -10,6 +10,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
+	"github.com/syunkitada/myaitoolbox/mybox/templates"
 )
 
 type TemplateRenderer struct {
@@ -76,40 +77,10 @@ func (r *TemplateRenderer) loadTemplate(rel string) (string, error) {
 }
 
 func builtinTemplate(rel string) (string, error) {
-	switch rel {
-	case "task/task.md":
-		return builtinTaskTemplate, nil
-	case "knowledge/knowledge.md":
-		return builtinKnowledgeTemplate, nil
+	name := strings.TrimSuffix(rel, ".md") + ".yaml"
+	b, err := templates.FS.ReadFile(name)
+	if err != nil {
+		return "", os.ErrNotExist
 	}
-	return "", os.ErrNotExist
+	return string(b), nil
 }
-
-const builtinTaskTemplate = `---
-title: {{.Name | yamlq}}
-status: todo
-priority: medium
-assignee: ""
-due: ""
-tags: []
----
-
-# {{.Name}}
-
-## 目的
-
-## やること
-
-- [ ]
-`
-
-const builtinKnowledgeTemplate = `---
-title: {{.Name | yamlq}}
-aliases: []
-tags: []
-created: {{.Created.Format "2006-01-02T15:04:05Z07:00"}}
-lastmod: {{.Created.Format "2006-01-02T15:04:05Z07:00"}}
----
-
-# {{.Name}}
-`

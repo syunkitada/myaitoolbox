@@ -1,0 +1,6 @@
+---
+title: {{.Name | yamlq}}
+aliases: []
+tags: []
+---
+

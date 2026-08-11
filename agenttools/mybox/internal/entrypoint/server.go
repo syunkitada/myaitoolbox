@@ -832,24 +832,22 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 		}
 		return p == scope || strings.HasPrefix(p, scope+"/")
 	}
-	// Collect project directories (scoped) that contain at least one graph
-	// note, so they are drawn as frames around their notes. Task/archive
-	// directories are excluded because their notes are not graphed.
-	allDirs := make(map[string]string)
+	// Collect project directories (scoped). Directories that contain at
+	// least one graph note (knowledge or task file) are drawn as frames
+	// around their notes. A note may still link to any directory in the tree
+	// (for example an xdgconfig folder without notes), which creates a plain
+	// directory node for the link target.
+	treeDirs := make(map[string]string)
 	for _, e := range tree {
 		if e.Kind != domain.FileKindDir || !inScope(e.Path) {
 			continue
 		}
-		if e.Path == "tasks" || e.Path == "archives" ||
-			strings.HasPrefix(e.Path, "tasks/") || strings.HasPrefix(e.Path, "archives/") {
-			continue
-		}
-		allDirs[e.Path] = e.Name
+		treeDirs[e.Path] = e.Name
 	}
 	dirs := make(map[string]bool)
 	for _, k := range list {
 		for d := parentDir(k.Path); d != ""; d = parentDir(d) {
-			if _, ok := allDirs[d]; ok {
+			if _, ok := treeDirs[d]; ok {
 				dirs[d] = true
 			}
 		}
@@ -863,23 +861,87 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 				index[rel] = k.Path
 			}
 		}
+		nodeType := k.Type
+		if nodeType == "" {
+			nodeType = "knowledge"
+		}
 		nodes = append(nodes, api.GraphNode{
 			Id:    k.Path,
 			Label: k.Title,
-			Type:  strPtr("knowledge"),
+			Type:  strPtr(nodeType),
 		})
 	}
-	for d, name := range allDirs {
+	dirIndex := make(map[string]string, len(treeDirs))
+	for d := range treeDirs {
+		dirIndex[strings.ToLower(d)] = d
+	}
+	// dirNodes tracks every directory rendered as a node: frame directories
+	// that contain notes, plus directories reached through links. Ancestors
+	// of a node are always included so the tree stays connected. Descendants
+	// are included for link targets so a linked folder (for example the
+	// tasks folder) also shows the directories nested underneath it.
+	dirNodes := make(map[string]bool, len(dirs))
+	for d := range dirs {
+		dirNodes[d] = true
+	}
+	activateDir := func(d string, includeDescendants bool) {
+		for dir := d; dir != ""; dir = parentDir(dir) {
+			if _, ok := treeDirs[dir]; ok {
+				dirNodes[dir] = true
+			}
+		}
+		if !includeDescendants {
+			return
+		}
+		for dir := range treeDirs {
+			if strings.HasPrefix(dir, d+"/") {
+				dirNodes[dir] = true
+			}
+		}
+	}
+	for d := range treeDirs {
 		if !dirs[d] {
 			continue
 		}
+		activateDir(d, false)
+	}
+	// Pre-scan links so directories that are linked to (for example the
+	// tasks folder) are activated before directory nodes are created. This
+	// keeps directory paths ahead of note titles in the resolution index.
+	for _, k := range list {
+		for _, link := range k.WikiLinks {
+			target := strings.ToLower(strings.TrimSuffix(link, ".md"))
+			if target == strings.ToLower(k.Path) {
+				continue
+			}
+			if _, ok := index[target]; ok {
+				continue
+			}
+			if d, ok := dirIndex[target]; ok {
+				activateDir(d, true)
+			}
+		}
+		for _, link := range k.MarkdownLinks {
+			target := strings.ToLower(link)
+			if target == strings.ToLower(k.Path) {
+				continue
+			}
+			if _, ok := index[target]; ok {
+				continue
+			}
+			if d, ok := dirIndex[target]; ok {
+				activateDir(d, true)
+			}
+		}
+	}
+	for d := range dirNodes {
 		if _, ok := index[strings.ToLower(d)]; ok {
 			continue
 		}
 		index[strings.ToLower(d)] = d
 		nodes = append(nodes, api.GraphNode{
 			Id:    d,
-			Label: name,
+			Label: treeDirs[d],
 			Type:  strPtr("dir"),
 		})
 	}
@@ -920,6 +982,10 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 			}
 			if resolved, ok := index[target]; ok {
 				addLink(k.Path, resolved)
+				continue
+			}
+			if d, ok := dirIndex[target]; ok {
+				addLink(k.Path, d)
 			}
 		}
 		for _, link := range k.MarkdownLinks {
@@ -929,15 +995,18 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 			}
 			if resolved, ok := index[target]; ok {
 				addLink(k.Path, resolved)
+				continue
+			}
+			if d, ok := dirIndex[target]; ok {
+				addLink(k.Path, d)
 			}
 		}
 	}
-	// Containment edges keep notes clustered inside their directory frames.
-	for d := range dirs {
-		if p := parentDir(d); p != "" {
-			if dirs[p] {
-				addLink(p, d)
-			}
+	// Containment edges keep notes clustered inside their directory frames
+	// and connect directory nodes to the directories nested beneath them.
+	for d := range dirNodes {
+		if p := parentDir(d); p != "" && dirNodes[p] {
+			addLink(p, d)
 		}
 	}
 	for _, k := range list {

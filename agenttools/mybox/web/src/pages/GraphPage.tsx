@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d'
 import { GraphData, api } from '../api/client'
-import { encodePath, projectUrl } from '../utils/routes'
+import { encodePath, projectUrl, taskIdOf } from '../utils/routes'
 import { installLabelCollision } from '../utils/graphCollision'
 
 interface Node extends Object {
@@ -92,7 +92,8 @@ export function GraphPage() {
               const node = n as Node
               if (node.type === 'dir')
                 navigate(projectUrl(`/dashboard/files/${encodePath(node.id)}`))
-              else if (node.type === 'task') navigate(projectUrl(`/tasks/${node.id}`))
+              else if (node.type === 'task')
+                navigate(projectUrl(`/tasks/${taskIdOf(node.id)}`))
               else
                 navigate(
                   projectUrl(

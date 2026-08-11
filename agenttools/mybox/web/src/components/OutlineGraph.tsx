@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d'
 import { GraphData, api } from '../api/client'
-import { encodePath, projectUrl } from '../utils/routes'
+import { encodePath, projectUrl, taskIdOf } from '../utils/routes'
 import { installLabelCollision } from '../utils/graphCollision'
 
 interface GraphNode {
@@ -124,7 +124,7 @@ export function OutlineGraph({
   const handleClick =
     onNodeClick ??
     ((n: GraphNode) => {
-      if (n.type === 'task') navigate(projectUrl(`/tasks/${n.id}`))
+      if (n.type === 'task') navigate(projectUrl(`/tasks/${taskIdOf(n.id)}`))
       else if (n.type === 'dir') navigate(projectUrl(`/dashboard/files/${encodePath(n.id)}`))
       else {
         const id = n.id.endsWith('.md') ? n.id : `${n.id}.md`

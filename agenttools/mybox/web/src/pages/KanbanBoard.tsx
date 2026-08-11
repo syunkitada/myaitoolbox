@@ -10,7 +10,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { Task, TaskStatus, api } from '../api/client'
-import { getProject, projectUrl } from '../utils/routes'
+import { encodePath, getBasePath, getProject, projectUrl } from '../utils/routes'
 
 const COLUMNS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
@@ -118,13 +118,16 @@ export function KanbanBoard() {
 
   const handleOpen = useCallback(
     (id: string, project?: string | null) => {
-      if (project) {
-        navigate(`/projects/${encodeURIComponent(project)}/tasks/${id}`)
+      const target = project || currentProject
+      if (!target) return
+      const filePath = `/dashboard/files/tasks/${encodePath(id)}/task.md`
+      if (target === currentProject) {
+        navigate(projectUrl(filePath))
       } else {
-        navigate(projectUrl(`/tasks/${id}`))
+        window.location.href = `${getBasePath()}/projects/${encodeURIComponent(target)}${filePath}`
       }
     },
-    [navigate],
+    [navigate, currentProject],
   )
 
   const byStatus = (s: TaskStatus) =>

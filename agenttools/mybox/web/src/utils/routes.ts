@@ -34,6 +34,13 @@ export function filesUrl(resolved: string): string {
   return appUrl(projectUrl(`/dashboard/files/${encodePath(resolved)}`))
 }
 
+// taskIdOf extracts the task id from a task graph node id, which is the task
+// file path without the extension (e.g. "tasks/20260811_x/task" -> "20260811_x").
+export function taskIdOf(nodeId: string): string {
+  const parts = nodeId.split('/')
+  return parts[parts.length - 2] ?? nodeId
+}
+
 export function setProject(project: string) {
   window.location.href =
     getBasePath() + '/projects/' + encodeURIComponent(project) + '/dashboard'

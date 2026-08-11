@@ -207,7 +207,7 @@ func (r *FileRepository) Delete(ctx context.Context, path string) error {
 		return err
 	}
 	if info.IsDir() {
-		return fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
+		return os.RemoveAll(file)
 	}
 	return os.Remove(file)
 }
