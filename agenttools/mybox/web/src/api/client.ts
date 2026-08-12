@@ -11,6 +11,8 @@ export interface Task {
   priority: TaskPriority
   assignee?: string | null
   due?: string | null
+  pending_until?: string | null
+  pending_reason?: string | null
   tags?: string[] | null
   project?: string | null
   created?: string | null
@@ -190,11 +192,7 @@ export const api = {
   moveKnowledge: (oldPath: string, newPath: string) =>
     request<void>('POST', '/api/knowledge/move', { old_path: oldPath, new_path: newPath }),
 
-  renameKnowledge: (oldPath: string, newName: string) =>
-    request<void>('POST', '/api/knowledge/rename', { old_path: oldPath, new_name: newName }),
-
   listFiles: () => request<FileEntry[]>('GET', '/api/files'),
-
   getFileContent: (path: string) =>
     request<FileContent>('GET', '/api/files/content' + qs({ path })),
 

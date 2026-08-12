@@ -22,12 +22,14 @@ func NewTaskRepository(root string) *TaskRepository {
 }
 
 type taskFields struct {
-	Title    string   `yaml:"title"`
-	Status   string   `yaml:"status"`
-	Priority string   `yaml:"priority"`
-	Assignee string   `yaml:"assignee"`
-	Due      string   `yaml:"due"`
-	Tags     []string `yaml:"tags"`
+	Title         string   `yaml:"title"`
+	Status        string   `yaml:"status"`
+	Priority      string   `yaml:"priority"`
+	Assignee      string   `yaml:"assignee"`
+	Due           string   `yaml:"due"`
+	PendingUntil  string   `yaml:"pending_until"`
+	PendingReason string   `yaml:"pending_reason"`
+	Tags          []string `yaml:"tags"`
 }
 
 func (r *TaskRepository) List(ctx context.Context) ([]domain.Task, error) {
@@ -85,16 +87,18 @@ func (r *TaskRepository) readTask(dir string, id string, archived bool) (*domain
 		f.Priority = string(domain.TaskPriorityMedium)
 	}
 	return &domain.Task{
-		ID:       id,
-		Title:    f.Title,
-		Status:   domain.TaskStatus(f.Status),
-		Priority: domain.TaskPriority(f.Priority),
-		Assignee: f.Assignee,
-		Due:      f.Due,
-		Tags:     f.Tags,
-		Created:  createdFromTaskID(id),
-		Body:     strings.TrimPrefix(body, "\n"),
-		Archived: archived,
+		ID:            id,
+		Title:         f.Title,
+		Status:        domain.TaskStatus(f.Status),
+		Priority:      domain.TaskPriority(f.Priority),
+		Assignee:      f.Assignee,
+		Due:           f.Due,
+		PendingUntil:  f.PendingUntil,
+		PendingReason: f.PendingReason,
+		Tags:          f.Tags,
+		Created:       createdFromTaskID(id),
+		Body:          strings.TrimPrefix(body, "\n"),
+		Archived:      archived,
 	}, nil
 }
 

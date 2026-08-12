@@ -93,7 +93,7 @@ export function GraphPage() {
               if (node.type === 'dir')
                 navigate(projectUrl(`/dashboard/files/${encodePath(node.id)}`))
               else if (node.type === 'task')
-                navigate(projectUrl(`/tasks/${taskIdOf(node.id)}`))
+                navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(node.id)}/task.md`))
               else
                 navigate(
                   projectUrl(

@@ -247,17 +247,19 @@ type SearchResultType string
 
 // Task defines model for Task.
 type Task struct {
-	Archived *bool        `json:"archived,omitempty"`
-	Assignee *string      `json:"assignee,omitempty"`
-	Body     *string      `json:"body,omitempty"`
-	Created  *time.Time   `json:"created,omitempty"`
-	Due      *string      `json:"due,omitempty"`
-	Id       string       `json:"id"`
-	Priority TaskPriority `json:"priority"`
-	Project  *string      `json:"project,omitempty"`
-	Status   TaskStatus   `json:"status"`
-	Tags     *[]string    `json:"tags,omitempty"`
-	Title    string       `json:"title"`
+	Archived      *bool        `json:"archived,omitempty"`
+	Assignee      *string      `json:"assignee,omitempty"`
+	Body          *string      `json:"body,omitempty"`
+	Created       *time.Time   `json:"created,omitempty"`
+	Due           *string      `json:"due,omitempty"`
+	Id            string       `json:"id"`
+	PendingReason *string      `json:"pending_reason,omitempty"`
+	PendingUntil  *string      `json:"pending_until,omitempty"`
+	Priority      TaskPriority `json:"priority"`
+	Project       *string      `json:"project,omitempty"`
+	Status        TaskStatus   `json:"status"`
+	Tags          *[]string    `json:"tags,omitempty"`
+	Title         string       `json:"title"`
 }
 
 // TaskPriority defines model for TaskPriority.

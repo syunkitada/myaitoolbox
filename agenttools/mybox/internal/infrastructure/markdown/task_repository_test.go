@@ -105,3 +105,24 @@ func TestTaskRepositoryPreservesCustomFrontMatter(t *testing.T) {
 	assert.Contains(t, string(data), "custom: keep-me")
 	assert.Contains(t, string(data), "status: done")
 }
+
+func TestTaskRepositoryReadsPendingFields(t *testing.T) {
+	root := t.TempDir()
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+	content := "---\nid: task1\ntitle: t1\nstatus: blocked\npriority: high\npending_until: 20260820\npending_reason: waiting for review\n---\n\nbody"
+	require.NoError(t, repo.Create(ctx, "task1", content))
+
+	task, err := repo.Find(ctx, "task1")
+	require.NoError(t, err)
+	assert.Equal(t, "20260820", task.PendingUntil)
+	assert.Equal(t, "waiting for review", task.PendingReason)
+
+	task.Status = domain.TaskStatusTodo
+	require.NoError(t, repo.Update(ctx, *task))
+
+	got, err := repo.Find(ctx, "task1")
+	require.NoError(t, err)
+	assert.Equal(t, "20260820", got.PendingUntil)
+	assert.Equal(t, "waiting for review", got.PendingReason)
+}

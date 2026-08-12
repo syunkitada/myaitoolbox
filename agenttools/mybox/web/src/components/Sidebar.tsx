@@ -66,10 +66,9 @@ export function Sidebar({ meta, navigate, open, onClose, project }: SidebarProps
             }}
           />
           <nav className="sidebar-nav">
-            <NavLink to={projectUrl('/dashboard')} end onClick={handleNav}>
+            <NavLink to={projectUrl('/dashboard')} onClick={handleNav}>
               Dashboard
             </NavLink>
-            <NavLink to={projectUrl('/tasks')} onClick={handleNav}>Tasks</NavLink>
             <NavLink to={projectUrl('/board')} onClick={handleNav}>Board</NavLink>
             <NavLink to={projectUrl('/graph')} onClick={handleNav}>Graph</NavLink>
           </nav>

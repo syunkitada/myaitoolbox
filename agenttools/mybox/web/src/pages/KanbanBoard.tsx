@@ -14,6 +14,19 @@ import { encodePath, getBasePath, getProject, projectUrl } from '../utils/routes
 
 const COLUMNS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
+function dueClass(due: string): string {
+  const d = new Date(due)
+  if (Number.isNaN(d.getTime())) return ''
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const dueDay = new Date(d)
+  dueDay.setHours(0, 0, 0, 0)
+  const days = Math.round((dueDay.getTime() - today.getTime()) / 86400000)
+  if (days < 0) return 'overdue'
+  if (days <= 7) return 'soon'
+  return 'far'
+}
+
 interface TaskCardProps {
   task: Task
   onOpen: (id: string, project?: string | null) => void
@@ -27,6 +40,7 @@ function TaskCard({ task, onOpen, showProject, readonly }: TaskCardProps) {
     data: { task },
     disabled: readonly,
   })
+  const isPending = Boolean(task.pending_until || task.pending_reason)
   const style = transform
     ? {
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
@@ -38,7 +52,7 @@ function TaskCard({ task, onOpen, showProject, readonly }: TaskCardProps) {
       style={style}
       {...listeners}
       {...attributes}
-      className={`board-card ${isDragging ? 'dragging' : ''}`}
+      className={`board-card${isDragging ? ' dragging' : ''}${isPending ? ' pending' : ''}`}
     >
       <button className="link-btn" onClick={() => onOpen(task.id, task.project)}>
         {task.title}
@@ -48,12 +62,25 @@ function TaskCard({ task, onOpen, showProject, readonly }: TaskCardProps) {
           <span className="badge project-badge">{task.project}</span>
         )}
         <span className={`badge priority-${task.priority}`}>{task.priority}</span>
+        {task.due && (
+          <span className={`badge due ${dueClass(task.due)}`}>{task.due}</span>
+        )}
         {(task.tags ?? []).slice(0, 3).map((t) => (
           <span key={t} className="badge tag">
             {t}
           </span>
         ))}
       </div>
+      {isPending && (
+        <div className="board-card-pending">
+          {task.pending_until && (
+            <span className="badge pending-until">{task.pending_until}</span>
+          )}
+          {task.pending_reason && (
+            <span className="muted pending-reason">{task.pending_reason}</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -142,11 +169,6 @@ export function KanbanBoard() {
             <p className="page-subtitle muted">全プロジェクト横断ビュー（読み取り専用）</p>
           )}
         </div>
-        {!isGlobal && (
-          <button className="ghost" onClick={() => navigate(projectUrl('/tasks'))}>
-            List view →
-          </button>
-        )}
       </div>
       {error && <div className="error-banner">{error}</div>}
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>

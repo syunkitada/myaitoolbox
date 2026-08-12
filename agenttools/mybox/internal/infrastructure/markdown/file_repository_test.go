@@ -56,3 +56,35 @@ func TestFileRepositoryDeleteDir(t *testing.T) {
 	_, err := os.Stat(filepath.Join(root, "docs"))
 	assert.True(t, os.IsNotExist(err))
 }
+
+func TestFileRepositoryMoveDir(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("# Guide\n"), 0o644))
+
+	repo := NewFileRepository(root)
+	require.NoError(t, repo.Move(context.Background(), "docs", "notes"))
+
+	_, err := os.Stat(filepath.Join(root, "docs"))
+	assert.True(t, os.IsNotExist(err))
+	data, err := os.ReadFile(filepath.Join(root, "notes", "guide.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# Guide\n", string(data))
+}
+
+func TestFileRepositoryCopyDir(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "sub"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("# Guide\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "sub", "deep.md"), []byte("# Deep\n"), 0o644))
+
+	repo := NewFileRepository(root)
+	require.NoError(t, repo.Copy(context.Background(), "docs", "docs-copy"))
+
+	data, err := os.ReadFile(filepath.Join(root, "docs-copy", "guide.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# Guide\n", string(data))
+	data, err = os.ReadFile(filepath.Join(root, "docs-copy", "sub", "deep.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# Deep\n", string(data))
+}

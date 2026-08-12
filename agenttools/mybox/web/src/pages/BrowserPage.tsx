@@ -242,15 +242,29 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
               : {})}
           >
             <button
-              className="knowledge-caret"
+              className={`knowledge-caret${open ? ' open' : ''}`}
               aria-label={open ? `Collapse ${node.name}` : `Expand ${node.name}`}
               onClick={() => toggle(node.dirPath)}
             >
-              {open ? '▾' : '▸'}
+              <svg
+                className="caret-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
             </button>
             <button
               className={`knowledge-dir${node.dirPath === selected ? ' active' : ''}`}
-              onClick={() => onSelect(node.dirPath)}
+              onClick={() => {
+                onSelect(node.dirPath)
+                if (!open) toggle(node.dirPath)
+              }}
             >
               {node.name}
             </button>
@@ -404,7 +418,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
 
   const readmePath = useMemo(() => {
     if (!isDir) return null
-    for (const name of ['README.md', 'README.markdown']) {
+    for (const name of ['README.md', 'README.markdown', 'task.md']) {
       const p = `${path}/${name}`
       if (byPath.has(normalizePath(p))) return p
     }
@@ -494,30 +508,6 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
 
   const baseOf = (p: string) => p.split('/').pop() ?? p
 
-  const rename = () => {
-    if (mode === 'knowledge') {
-      const name = window.prompt('New title', entry?.title ?? baseOf(path))
-      if (name && name.trim()) {
-        void api
-          .renameKnowledge(path, name.trim())
-          .then(() => onChanged())
-          .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      }
-      return
-    }
-    const name = window.prompt('New file name', baseOf(path))
-    if (!name || !name.trim() || name.trim() === baseOf(path)) return
-    const dir = dirOf(path)
-    const newPath = dir ? `${dir}/${name.trim()}` : name.trim()
-    void api
-      .moveFile(path, newPath)
-      .then(() => {
-        onChanged()
-        onOpen(newPath)
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }
-
   const move = () => {
     const newPath = window.prompt('New path', path)
     if (newPath && newPath.trim() && newPath.trim() !== path) {
@@ -540,7 +530,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
     const copyName = dot > 0 ? base.slice(0, dot) + '-copy' + base.slice(dot) : base + '-copy'
     const dir = dirOf(path)
     const defaultPath = dir ? `${dir}/${copyName}` : copyName
-    const newPath = window.prompt('New file path', defaultPath)
+    const newPath = window.prompt(isDir ? 'New directory path' : 'New file path', defaultPath)
     if (!newPath || !newPath.trim() || newPath.trim() === path) return
     void api
       .copyFile(path, newPath.trim())
@@ -586,10 +576,9 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
   }
 
   const links = useMemo(() => (mode === 'knowledge' ? extractWikiLinks(content) : []), [mode, content])
-  const fmTitle = useForm && typeof fmParsed.data.title === 'string' ? fmParsed.data.title : ''
-  const heading = entry?.title || fmTitle || (isDir && !path ? 'Files' : baseOf(path))
   const viewText = useForm ? fmSplit.body : content
   const viewRelativeTo = isDir && mode === 'files' ? readmePath ?? `${path}/` : path
+  const viewFileName = isDir && readmePath ? baseOf(readmePath) : null
 
   return (
     <div>
@@ -603,18 +592,16 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
               <button className={isFav ? 'ghost active' : 'ghost'} onClick={() => fav(!isFav)}>
                 {isFav ? '★ Favorite' : '☆ Favorite'}
               </button>
-              {!isDir && (
+              {mode === 'knowledge' && !isDir && (
+                <button className="ghost" onClick={move}>
+                  Move
+                </button>
+              )}
+              {mode === 'files' && (
                 <>
-                  <button className="ghost" onClick={rename}>
-                    Rename
-                  </button>
                   <button className="ghost" onClick={move}>
                     Move
                   </button>
-                </>
-              )}
-              {mode === 'files' && !isDir && (
-                <>
                   <button className="ghost" onClick={duplicate}>
                     Duplicate
                   </button>
@@ -645,6 +632,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                     const split = splitFrontmatter(content)
                     setDraftBody(split.body)
                     setDraftFm(parseFrontmatter(split.frontmatter).data)
+                    setEditing(false)
                   }}
                 >
                   Cancel
@@ -677,7 +665,6 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
             </div>
           ) : (
             <div className="card knowledge-view">
-              <h1>{heading}</h1>
               <div className="meta-line">
                 <span className="muted">{path}</span>
                 {tags.map((t) => (
@@ -686,6 +673,12 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   </span>
                 ))}
               </div>
+              {viewFileName && (
+                <>
+                  <hr className="view-separator" />
+                  <div className="view-file-name">{viewFileName}</div>
+                </>
+              )}
               {useForm && <FrontmatterSummary data={fmParsed.data} />}
               {isMarkdown ? (
                 <RichMarkdown
@@ -747,56 +740,55 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
             </div>
           )}
         </div>
-        {!editing && (
-          <aside className="outline">
-            <div className="outline-section">
-              <div className="outline-title">Content</div>
-              {extractOutline(viewText).map((h, i) => (
-                <a
-                  key={i}
-                  href={`#${h.id}`}
-                  className={`outline-link level-${h.level}`}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' })
-                  }}
-                >
-                  {h.text}
-                </a>
-              ))}
-            </div>
-            <div className="outline-section">
-              <div className="outline-title">Tags</div>
-              {tags.length === 0 ? (
-                <span className="muted outline-none">No tags</span>
-              ) : (
-                <div className="outline-tags">
-                  {tags.map((t) => (
-                    <span key={t} className="badge tag">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="outline-section">
-              <div className="outline-title">Graph</div>
-              <OutlineGraph
-                path={path}
-                root={mode === 'knowledge' ? root : ''}
-                onNodeClick={
-                  mode === 'knowledge'
-                    ? undefined
-                    : (n) => {
-                        if (n.type === 'task') navigate(projectUrl(`/tasks/${taskIdOf(n.id)}`))
+        <aside className="outline">
+          <div className="outline-section">
+            <div className="outline-title">Content</div>
+            {extractOutline(viewText).map((h, i) => (
+              <a
+                key={i}
+                href={`#${h.id}`}
+                className={`outline-link level-${h.level}`}
+                onClick={(e) => {
+                  e.preventDefault()
+                  document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' })
+                }}
+              >
+                {h.text}
+              </a>
+            ))}
+          </div>
+          <div className="outline-section">
+            <div className="outline-title">Tags</div>
+            {tags.length === 0 ? (
+              <span className="muted outline-none">No tags</span>
+            ) : (
+              <div className="outline-tags">
+                {tags.map((t) => (
+                  <span key={t} className="badge tag">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="outline-section">
+            <div className="outline-title">Graph</div>
+            <OutlineGraph
+              path={path}
+              root={mode === 'knowledge' ? root : ''}
+              onNodeClick={
+                mode === 'knowledge'
+                  ? undefined
+                  : (n) => {
+                        if (n.type === 'task')
+                          navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(n.id)}/task.md`))
                         else if (n.type === 'dir') onOpen(n.id)
-                        else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
-                      }
-                }
-              />
-            </div>
-          </aside>
-        )}
+                      else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
+                    }
+              }
+            />
+          </div>
+        </aside>
       </div>
     </div>
   )

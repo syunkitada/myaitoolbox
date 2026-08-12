@@ -1122,17 +1122,19 @@ func toAPITasks(tasks []domain.Task) []api.Task {
 
 func toAPITask(t domain.Task) api.Task {
 	return api.Task{
-		Id:       t.ID,
-		Title:    t.Title,
-		Status:   api.TaskStatus(t.Status),
-		Priority: api.TaskPriority(t.Priority),
-		Assignee: strPtr(t.Assignee),
-		Due:      strPtr(t.Due),
-		Tags:     &t.Tags,
-		Project:  strPtr(t.Project),
-		Created:  &t.Created,
-		Body:     strPtr(t.Body),
-		Archived: &t.Archived,
+		Id:            t.ID,
+		Title:         t.Title,
+		Status:        api.TaskStatus(t.Status),
+		Priority:      api.TaskPriority(t.Priority),
+		Assignee:      strPtr(t.Assignee),
+		Due:           strPtr(t.Due),
+		PendingUntil:  strPtr(t.PendingUntil),
+		PendingReason: strPtr(t.PendingReason),
+		Tags:          &t.Tags,
+		Project:       strPtr(t.Project),
+		Created:       &t.Created,
+		Body:          strPtr(t.Body),
+		Archived:      &t.Archived,
 	}
 }
 

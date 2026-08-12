@@ -522,6 +522,10 @@ components:
           type: string
         due:
           type: string
+        pending_until:
+          type: string
+        pending_reason:
+          type: string
         tags:
           type: array
           items:

@@ -22,15 +22,17 @@ const (
 )
 
 type Task struct {
-	ID       string
-	Title    string
-	Status   TaskStatus
-	Priority TaskPriority
-	Assignee string
-	Due      string
-	Tags     []string
-	Project  string
-	Created  time.Time
-	Body     string
-	Archived bool
+	ID            string
+	Title         string
+	Status        TaskStatus
+	Priority      TaskPriority
+	Assignee      string
+	Due           string
+	PendingUntil  string
+	PendingReason string
+	Tags          []string
+	Project       string
+	Created       time.Time
+	Body          string
+	Archived      bool
 }

@@ -51,8 +51,9 @@ test('dashboard opens a directory README from the explorer', async ({ page }) =>
   await expect(explorer.getByRole('button', { name: 'knowledge', exact: true })).toHaveClass(/active/)
   await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Rename' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Move' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Move' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Duplicate' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Delete' })).toBeVisible()
 })
 
 test('dashboard lists a directory that has no README', async ({ page }) => {
@@ -162,12 +163,12 @@ test('dashboard moves a file by dragging onto a directory', async ({ page }) => 
   await expect(list.getByRole('button', { name: 'knowledge/tasks.md' })).toBeVisible()
 })
 
-test('dashboard renames a file', async ({ page }) => {
-  page.on('dialog', (d) => d.accept('tasks2.md'))
+test('dashboard renames a file via Move', async ({ page }) => {
+  page.on('dialog', (d) => d.accept('knowledge/tasks2.md'))
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
-  await page.getByRole('button', { name: 'Rename' }).click()
+  await page.getByRole('button', { name: 'Move' }).click()
   await expect(page.getByText('knowledge/tasks2.md', { exact: true })).toBeVisible()
   await expect(explorer).toContainText('tasks2.md')
 })
@@ -193,49 +194,13 @@ test('dashboard deletes a file', async ({ page }) => {
   await expect(explorer).not.toContainText('tasks2-copy.md')
 })
 
-test('task list shows seeded tasks', async ({ page }) => {
-  await page.getByRole('link', { name: 'Tasks' }).click()
-  await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible()
-  await expect(page.getByText('Ship the web UI')).toBeVisible()
-  await expect(page.getByText('Write E2E tests')).toBeVisible()
-})
-
 test('clicking the mybox brand returns to the unselected projects page', async ({ page }) => {
-  await page.getByRole('link', { name: 'Tasks' }).click()
-  await expect(page.getByRole('heading', { name: 'Tasks' })).toBeVisible()
+  await page.getByRole('link', { name: 'Board' }).click()
+  await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()
   await page.getByRole('button', { name: 'Go to top' }).click()
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()
   await expect(page.locator('.sidebar-brand select')).toHaveValue('')
   await expect(page.locator('.sidebar-nav').getByRole('link', { name: 'Dashboard' })).toBeHidden()
-})
-
-test('edits a task status and assignee from the detail page', async ({ page }) => {
-  await page.getByRole('link', { name: 'Tasks' }).click()
-  await page.getByRole('button', { name: 'Ship the web UI' }).click()
-  await expect(page.getByRole('heading', { name: 'Ship the web UI' }).first()).toBeVisible()
-
-  await page.getByRole('button', { name: 'Edit' }).click()
-  await page.getByLabel('Status').selectOption('done')
-  await page.getByLabel('Assignee').fill('alice')
-  await page.getByRole('button', { name: 'Save' }).click()
-
-  await expect(page.locator('.badge.status-done')).toBeVisible()
-  await expect(page.getByText('assignee: alice')).toBeVisible()
-
-  const res = await page.request.get('/api/tasks')
-  const tasks = (await res.json()) as Array<{ id: string; title: string; status: string; assignee: string }>
-  const edited = tasks.find((t) => t.title === 'Ship the web UI')
-  expect(edited?.status).toBe('done')
-  expect(edited?.assignee).toBe('alice')
-})
-
-test('creates and opens a task', async ({ page }) => {
-  await page.getByRole('link', { name: 'Tasks' }).click()
-  page.once('dialog', (d) => d.accept('Newly created task'))
-  await page.getByRole('button', { name: 'New task' }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Newly created task' }).first(),
-  ).toBeVisible()
 })
 
 test('search finds knowledge and opens it in the dashboard', async ({ page }) => {

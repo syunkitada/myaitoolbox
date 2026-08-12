@@ -147,13 +147,11 @@ func (r *FileRepository) Move(ctx context.Context, oldPath string, newPath strin
 		return err
 	}
 	oldFile := filepath.Join(r.root, filepath.FromSlash(oldPath))
-	if info, err := os.Stat(oldFile); err != nil {
+	if _, err := os.Stat(oldFile); err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("%w: %s", domain.ErrNotFound, oldPath)
 		}
 		return err
-	} else if info.IsDir() {
-		return fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, oldPath)
 	}
 	target := filepath.Join(r.root, filepath.FromSlash(newPath))
 	if info, err := os.Stat(target); err == nil && info.IsDir() {
@@ -184,16 +182,15 @@ func (r *FileRepository) Copy(ctx context.Context, oldPath string, newPath strin
 		return err
 	}
 	oldFile := filepath.Join(r.root, filepath.FromSlash(oldPath))
-	if info, err := os.Stat(oldFile); err != nil {
+	info, err := os.Stat(oldFile)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("%w: %s", domain.ErrNotFound, oldPath)
 		}
 		return err
-	} else if info.IsDir() {
-		return fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, oldPath)
 	}
 	target := filepath.Join(r.root, filepath.FromSlash(newPath))
-	if info, err := os.Stat(target); err == nil && info.IsDir() {
+	if targetInfo, err := os.Stat(target); err == nil && targetInfo.IsDir() {
 		target = filepath.Join(target, filepath.Base(oldFile))
 	}
 	if target == oldFile {
@@ -205,11 +202,38 @@ func (r *FileRepository) Copy(ctx context.Context, oldPath string, newPath strin
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
+	if info.IsDir() {
+		return copyDir(oldFile, target)
+	}
 	data, err := os.ReadFile(oldFile)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(target, data, 0o644)
+}
+
+func copyDir(src string, dst string) error {
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, relErr := filepath.Rel(src, path)
+		if relErr != nil {
+			return relErr
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
 }
 
 func (r *FileRepository) Delete(ctx context.Context, path string) error {

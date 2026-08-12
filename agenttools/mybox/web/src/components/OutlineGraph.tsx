@@ -124,7 +124,8 @@ export function OutlineGraph({
   const handleClick =
     onNodeClick ??
     ((n: GraphNode) => {
-      if (n.type === 'task') navigate(projectUrl(`/tasks/${taskIdOf(n.id)}`))
+      if (n.type === 'task')
+        navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(n.id)}/task.md`))
       else if (n.type === 'dir') navigate(projectUrl(`/dashboard/files/${encodePath(n.id)}`))
       else {
         const id = n.id.endsWith('.md') ? n.id : `${n.id}.md`

@@ -12,6 +12,8 @@ const FIELD_ORDER = [
   'assignee',
   'due',
   'type',
+  'pending_until',
+  'pending_reason',
 ]
 
 const KNOWN = new Set(FIELD_ORDER)
@@ -106,6 +108,35 @@ function SelectField({ label, value, onChange, ariaLabel, options }: SelectField
   )
 }
 
+function toISODate(v: unknown): string {
+  if (typeof v !== 'string' || !v.trim()) return ''
+  const s = v.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  if (/^\d{8}$/.test(s)) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
+  }
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function DateField({ label, value, onChange, ariaLabel, compact }: FieldProps & { compact?: boolean }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        type="date"
+        value={toISODate(value)}
+        onChange={(e) => onChange(compact ? e.target.value.replace(/-/g, '') : e.target.value)}
+        aria-label={ariaLabel}
+      />
+    </label>
+  )
+}
+
 function ListField({ label, value, onChange, ariaLabel }: FieldProps) {
   const items = Array.isArray(value) ? value.map(String) : []
   return (
@@ -182,10 +213,25 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
       </div>
       <div className="field-row">
         <Field label="Assignee" value={value.assignee} onChange={(v) => setField('assignee', v)} ariaLabel="Metadata assignee" />
-        <Field label="Due" value={value.due} onChange={(v) => setField('due', v)} ariaLabel="Metadata due" />
+        <DateField label="Due" value={value.due} onChange={(v) => setField('due', v)} ariaLabel="Metadata due" />
       </div>
       <div className="field-row">
         <Field label="Type" value={value.type} onChange={(v) => setField('type', v)} ariaLabel="Metadata type" />
+      </div>
+      <div className="field-row">
+        <DateField
+          compact
+          label="Pending until"
+          value={value.pending_until}
+          onChange={(v) => setField('pending_until', v)}
+          ariaLabel="Metadata pending until"
+        />
+        <Field
+          label="Pending reason"
+          value={value.pending_reason}
+          onChange={(v) => setField('pending_reason', v)}
+          ariaLabel="Metadata pending reason"
+        />
       </div>
 
       {extraKeys.length > 0 && (
@@ -228,6 +274,8 @@ function order(key: string): number {
 }
 
 export function FrontmatterSummary({ data }: { data: Record<string, unknown> }) {
+  const URL_RE = /^(https?:\/\/|ftp:\/\/|mailto:)/i
+
   const entries = Object.entries(data)
     .filter(([, v]) => {
       if (v === undefined || v === null) return false
@@ -251,6 +299,14 @@ export function FrontmatterSummary({ data }: { data: Record<string, unknown> }) 
           {String(x)}
         </span>
       ))
+    }
+    if (typeof v === 'string' && URL_RE.test(v.trim())) {
+      const href = v.trim()
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer">
+          {href}
+        </a>
+      )
     }
     return String(v)
   }

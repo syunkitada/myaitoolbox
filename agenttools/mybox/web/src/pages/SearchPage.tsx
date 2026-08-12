@@ -49,7 +49,8 @@ export function SearchPage({ navigate }: SearchPageProps) {
             <button
               className="link-btn"
               onClick={() => {
-                if (r.type === 'task') navigate(projectUrl(`/tasks/${r.id ?? r.path}`))
+                if (r.type === 'task')
+                  navigate(projectUrl(`/dashboard/files/tasks/${encodePath(r.id ?? r.path)}/task.md`))
                 else navigate(projectUrl(`/dashboard/files/knowledge/${encodePath(r.path)}.md`))
               }}
             >
