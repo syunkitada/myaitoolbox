@@ -34,6 +34,20 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return self.renderToken(tokens, idx, options)
 }
 
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const src = tokens[idx].attrGet('src') ?? ''
+  const resolved = env?.imageUrl
+    ? resolveMarkdownLink(src, env?.relativeTo, env?.preserveExtension, {
+        resolveDirectories: false,
+        resolveAnyFile: true,
+      })
+    : null
+  if (resolved && env?.imageUrl) {
+    tokens[idx].attrSet('src', env.imageUrl(resolved))
+  }
+  return self.renderToken(tokens, idx, options)
+}
+
 export function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -60,6 +74,7 @@ export interface RichMarkdownProps {
   pathOf?: (target: string) => string | null
   relativeTo?: string
   linkUrl?: (resolved: string) => string
+  imageUrl?: (resolved: string) => string
   preserveExtension?: boolean
 }
 
@@ -85,7 +100,7 @@ function splitSegments(text: string): Segment[] {
   return segments
 }
 
-export function RichMarkdown({ text, pathOf, relativeTo, linkUrl, preserveExtension }: RichMarkdownProps) {
+export function RichMarkdown({ text, pathOf, relativeTo, linkUrl, imageUrl, preserveExtension }: RichMarkdownProps) {
   const segments = useMemo(() => splitSegments(text), [text])
 
   return (
@@ -95,7 +110,9 @@ export function RichMarkdown({ text, pathOf, relativeTo, linkUrl, preserveExtens
           return <Mermaid key={i} code={seg.content} />
         }
         const withLinks = pathOf ? renderWikiLinks(seg.content, pathOf) : seg.content
-        const html = DOMPurify.sanitize(md.render(withLinks, { relativeTo, linkUrl, preserveExtension }))
+        const html = DOMPurify.sanitize(
+          md.render(withLinks, { relativeTo, linkUrl, imageUrl, preserveExtension }),
+        )
         return <div key={i} dangerouslySetInnerHTML={{ __html: html }} />
       })}
     </div>

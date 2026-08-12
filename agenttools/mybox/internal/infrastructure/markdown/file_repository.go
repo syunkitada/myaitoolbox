@@ -107,6 +107,24 @@ func (r *FileRepository) Content(ctx context.Context, path string) (string, erro
 	return string(data), nil
 }
 
+func (r *FileRepository) Raw(ctx context.Context, path string) ([]byte, error) {
+	if err := validateFilePath(path); err != nil {
+		return nil, err
+	}
+	file := filepath.Join(r.root, filepath.FromSlash(path))
+	info, err := os.Stat(file)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%w: %s", domain.ErrNotFound, path)
+		}
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
+	}
+	return os.ReadFile(file)
+}
+
 func (r *FileRepository) Save(ctx context.Context, path string, content string) error {
 	if err := validateFilePath(path); err != nil {
 		return err

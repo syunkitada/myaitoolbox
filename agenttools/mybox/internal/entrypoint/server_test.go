@@ -436,6 +436,23 @@ func TestFiles(t *testing.T) {
 	rec = do(t, s, http.MethodGet, "/api/files/content?path=docs", nil)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "assets"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "assets", "logo.png"),
+		[]byte("\x89PNG\r\n\x1a\nfakepng"), 0o644))
+	rec = do(t, s, http.MethodGet, "/api/files/raw?path=assets%2Flogo.png", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "image/png", rec.Header().Get("Content-Type"))
+	assert.Equal(t, "\x89PNG\r\n\x1a\nfakepng", rec.Body.String())
+
+	rec = do(t, s, http.MethodGet, "/api/files/raw?path=assets%2Fmissing.png", nil)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/api/files/raw?path=..%2f..%2fetc%2fpasswd", nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/api/files/raw?path=docs", nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
 	rec = do(t, s, http.MethodPut, "/api/files/content",
 		api.FileContent{Path: "docs/guide.md", Content: "# Guide\n\nUpdated.\n"})
 	assert.Equal(t, http.StatusNoContent, rec.Code)
@@ -516,6 +533,13 @@ func TestBasePath(t *testing.T) {
 
 	rec := do(t, s, http.MethodGet, "/mybox/api/meta", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
+
+	root := s.apps["test"].Project.Path
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "assets"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "assets", "logo.png"), []byte("png"), 0o644))
+	rec = do(t, s, http.MethodGet, "/mybox/api/files/raw?path=assets%2Flogo.png", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "image/png", rec.Header().Get("Content-Type"))
 
 	rec = do(t, s, http.MethodGet, "/mybox/", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)

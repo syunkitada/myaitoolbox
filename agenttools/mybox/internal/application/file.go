@@ -36,6 +36,13 @@ func (u *FileUseCase) Content(ctx context.Context, path string) (string, error) 
 	return u.Files.Content(ctx, path)
 }
 
+func (u *FileUseCase) Raw(ctx context.Context, path string) ([]byte, error) {
+	if err := validatePath(path); err != nil {
+		return nil, err
+	}
+	return u.Files.Raw(ctx, path)
+}
+
 func (u *FileUseCase) Save(ctx context.Context, path string, content string) error {
 	if err := validatePath(path); err != nil {
 		return err

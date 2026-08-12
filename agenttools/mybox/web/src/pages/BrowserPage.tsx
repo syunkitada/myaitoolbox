@@ -5,7 +5,7 @@ import { SearchBar } from '../components/SearchBar'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { OutlineGraph } from '../components/OutlineGraph'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
-import { encodePath, filesUrl, projectUrl, taskIdOf } from '../utils/routes'
+import { encodePath, filesUrl, projectUrl, rawFileUrl, taskIdOf } from '../utils/routes'
 import {
   buildDirListing,
   buildMarkdown,
@@ -399,6 +399,9 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
 
   const isDir = entry?.kind === 'dir'
 
+  const isImage =
+    mode === 'files' && !isDir && /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(path)
+
   const readmePath = useMemo(() => {
     if (!isDir) return null
     for (const name of ['README.md', 'README.markdown']) {
@@ -423,6 +426,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
     setEditing(false)
     setSaved(false)
     setIsFav(favorites.includes(path))
+    if (isImage) return
     if (mode === 'files' && isDir) {
       if (readmePath) {
         void api
@@ -459,7 +463,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
       void api.recordRecent(path).then(() => void refreshMeta()).catch(() => undefined)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, isDir, readmePath, listing])
+  }, [path, isDir, isImage, readmePath, listing])
 
   const isMarkdown =
     isDir || (entry?.markdown ?? (mode === 'knowledge' || /\.(md|markdown)$/i.test(path)))
@@ -609,19 +613,17 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   </button>
                 </>
               )}
-              {mode === 'files' && (
+              {mode === 'files' && !isDir && (
                 <>
-                  {!isDir && (
-                    <button className="ghost" onClick={duplicate}>
-                      Duplicate
-                    </button>
-                  )}
+                  <button className="ghost" onClick={duplicate}>
+                    Duplicate
+                  </button>
                   <button className="ghost" onClick={remove}>
                     Delete
                   </button>
                 </>
               )}
-              {!isDir && !editing && (
+              {!isDir && !editing && !isImage && (
                 <button className="primary" onClick={() => setEditing(true)}>
                   Edit
                 </button>
@@ -691,8 +693,13 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   pathOf={mode === 'knowledge' ? pathOf : undefined}
                   relativeTo={viewRelativeTo}
                   linkUrl={mode === 'knowledge' ? undefined : filesUrl}
+                  imageUrl={rawFileUrl}
                   preserveExtension={mode === 'files'}
                 />
+              ) : isImage ? (
+                <div className="file-image">
+                  <img src={rawFileUrl(path)} alt={baseOf(path)} />
+                </div>
               ) : (
                 <pre className="file-raw">{viewText}</pre>
               )}

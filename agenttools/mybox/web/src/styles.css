@@ -700,6 +700,18 @@ button.active {
   line-height: 1.6;
 }
 
+.file-image {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.file-image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
 .mobile-back {
   display: none;
 }

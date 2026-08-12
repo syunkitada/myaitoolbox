@@ -95,13 +95,16 @@ func (s *Server) Handler() http.Handler {
 	e.Use(middleware.Recover())
 
 	apiHandler := api.HandlerWithOptions(s, api.StdHTTPServerOptions{BaseURL: s.basePath})
+	rawFile := echo.WrapHandler(http.HandlerFunc(s.GetFileRaw))
 	if s.basePath == "" {
+		e.GET("/api/files/raw", rawFile)
 		e.Any("/api/*", echo.WrapHandler(apiHandler))
 		e.Any("/api", echo.WrapHandler(apiHandler))
 		e.GET("/*", s.handleIndex)
 		return e
 	}
 	g := e.Group(s.basePath)
+	g.GET("/api/files/raw", rawFile)
 	g.Any("/api/*", echo.WrapHandler(apiHandler))
 	g.Any("/api", echo.WrapHandler(apiHandler))
 	g.GET("", s.handleIndex)
@@ -724,6 +727,38 @@ func (s *Server) GetFileContent(w http.ResponseWriter, r *http.Request, params a
 		return
 	}
 	writeJSONResponse(w, http.StatusOK, api.FileContent{Path: params.Path, Content: content})
+}
+
+// GetFileRaw streams a project file as raw bytes (used for image embeds in
+// markdown, where the browser cannot send the X-Project header).
+func (s *Server) GetFileRaw(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	path := q.Get("path")
+	project := q.Get("project")
+	var (
+		app *App
+		err error
+	)
+	if project != "" {
+		app, err = s.getAppByProject(r.Context(), project)
+	} else {
+		app, err = s.getApp(r)
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	data, err := app.Files.Raw(r.Context(), path)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	ctype := mime.TypeByExtension(filepath.Ext(path))
+	if ctype == "" {
+		ctype = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", ctype)
+	_, _ = w.Write(data)
 }
 
 func (s *Server) SaveFileContent(w http.ResponseWriter, r *http.Request) {

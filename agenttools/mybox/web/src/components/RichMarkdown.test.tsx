@@ -58,6 +58,32 @@ describe('RichMarkdown', () => {
     expect(hrefs).toContain('/projects/proj/dashboard/files/golang/logo.png')
   })
 
+  it('resolves relative image embeds to the raw file URL', () => {
+    const { container } = render(
+      <RichMarkdown
+        text="![kddi](assets/9433_kddi.png)"
+        relativeTo="golang/golang_architecture"
+        imageUrl={(resolved) => `/api/files/raw?path=${encodeURIComponent(resolved)}`}
+      />,
+    )
+    const img = container.querySelector('img')
+    expect(img?.getAttribute('src')).toBe(
+      '/api/files/raw?path=golang%2Fassets%2F9433_kddi.png',
+    )
+  })
+
+  it('keeps absolute and external image URLs unchanged', () => {
+    const { container } = render(
+      <RichMarkdown
+        text={'![ext](https://example.com/x.png)\n\n![root](/assets/y.png)'}
+        relativeTo="notes/foo"
+        imageUrl={(resolved) => `/api/files/raw?path=${resolved}`}
+      />,
+    )
+    const imgs = Array.from(container.querySelectorAll('img')).map((i) => i.getAttribute('src'))
+    expect(imgs).toEqual(['https://example.com/x.png', '/assets/y.png'])
+  })
+
   it('does not resolve directory links without a linkUrl', () => {
     const { container } = render(
       <RichMarkdown text="see [config](./xdgconfig/)" relativeTo="golang/golang_architecture" />,
