@@ -18,6 +18,9 @@ type ServerInterface interface {
 	// ListFiles List files in the project directory tree
 	// (GET /api/files)
 	ListFiles(w http.ResponseWriter, r *http.Request)
+	// CreateFile Create an empty file
+	// (POST /api/files)
+	CreateFile(w http.ResponseWriter, r *http.Request)
 	// GetFileContent Get file content
 	// (GET /api/files/content)
 	GetFileContent(w http.ResponseWriter, r *http.Request, params GetFileContentParams)
@@ -109,6 +112,20 @@ func (siw *ServerInterfaceWrapper) ListFiles(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListFiles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateFile operation middleware
+func (siw *ServerInterfaceWrapper) CreateFile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateFile(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -830,6 +847,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/meta/recent", wrapper.RecordRecent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/search", wrapper.Search)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files", wrapper.ListFiles)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files", wrapper.CreateFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/content", wrapper.GetFileContent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/files/content", wrapper.SaveFileContent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/move", wrapper.MoveFile)

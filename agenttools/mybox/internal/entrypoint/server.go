@@ -761,6 +761,26 @@ func (s *Server) GetFileRaw(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+func (s *Server) CreateFile(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req api.FilePathRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if err := app.Files.Create(r.Context(), req.Path); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) SaveFileContent(w http.ResponseWriter, r *http.Request) {
 	app, err := s.getApp(r)
 	if err != nil {
@@ -969,6 +989,28 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 			}
 		}
 	}
+	// Non-markdown files are rendered as plain leaf nodes attached only to
+	// their parent directory. They are not part of the note link network,
+	// so their paths are never registered in the resolution index. The
+	// parent directory (and its ancestors) are activated so every file node
+	// has a directory to attach to.
+	files := make(map[string]string)
+	for _, e := range tree {
+		if e.Kind != domain.FileKindFile || !inScope(e.Path) {
+			continue
+		}
+		if strings.HasSuffix(strings.ToLower(e.Path), ".md") {
+			continue
+		}
+		files[e.Path] = e.Name
+	}
+	for p := range files {
+		if d := parentDir(p); d != "" {
+			if _, ok := treeDirs[d]; ok {
+				activateDir(d, false)
+			}
+		}
+	}
 	for d := range dirNodes {
 		if _, ok := index[strings.ToLower(d)]; ok {
 			continue
@@ -978,6 +1020,34 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 			Id:    d,
 			Label: treeDirs[d],
 			Type:  strPtr("dir"),
+		})
+	}
+	// The full graph shows the project root as a directory node so it can
+	// serve as the reference point of the layout. It uses an empty id that
+	// matches the dashboard root path.
+	rootAdded := scope == "" && len(nodes) > 0
+	if rootAdded {
+		nodes = append(nodes, api.GraphNode{
+			Id:    "",
+			Label: app.Project.Name,
+			Type:  strPtr("dir"),
+		})
+	}
+	for p, name := range files {
+		if _, ok := index[strings.ToLower(p)]; ok {
+			continue
+		}
+		d := parentDir(p)
+		if d != "" && !dirNodes[d] {
+			continue
+		}
+		if d == "" && !rootAdded {
+			continue
+		}
+		nodes = append(nodes, api.GraphNode{
+			Id:    p,
+			Label: name,
+			Type:  strPtr("file"),
 		})
 	}
 	for _, k := range list {
@@ -1047,6 +1117,30 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 	for _, k := range list {
 		if p := parentDir(k.Path); p != "" && dirs[p] {
 			addLink(p, k.Path)
+		}
+	}
+	for p := range files {
+		if d := parentDir(p); d != "" && dirNodes[d] {
+			addLink(d, p)
+		}
+	}
+	// Root-level notes, files, and directories hang directly off the project
+	// root node, making it the base of the full graph.
+	if rootAdded {
+		for _, k := range list {
+			if parentDir(k.Path) == "" {
+				addLink("", k.Path)
+			}
+		}
+		for p := range files {
+			if parentDir(p) == "" {
+				addLink("", p)
+			}
+		}
+		for d := range dirNodes {
+			if parentDir(d) == "" {
+				addLink("", d)
+			}
 		}
 	}
 	writeJSONResponse(w, http.StatusOK, api.GraphData{Nodes: nodes, Links: links})

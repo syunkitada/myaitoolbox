@@ -146,6 +146,22 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/FileEntry"
+    post:
+      operationId: createFile
+      summary: Create an empty file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilePathRequest"
+      responses:
+        "204":
+          description: created
+        "400":
+          description: invalid path
+        "409":
+          description: already exists
   /api/files/content:
     get:
       operationId: getFileContent

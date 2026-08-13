@@ -126,7 +126,8 @@ export function OutlineGraph({
     ((n: GraphNode) => {
       if (n.type === 'task')
         navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(n.id)}/task.md`))
-      else if (n.type === 'dir') navigate(projectUrl(`/dashboard/files/${encodePath(n.id)}`))
+      else if (n.type === 'dir' || n.type === 'file')
+        navigate(projectUrl(`/dashboard/files/${encodePath(n.id)}`))
       else {
         const id = n.id.endsWith('.md') ? n.id : `${n.id}.md`
         navigate(projectUrl(`/dashboard/files/${encodePath(id)}`))
@@ -146,18 +147,23 @@ export function OutlineGraph({
           const node = n as GraphNode & { x: number; y: number }
           const isCurrent = node.id === graphData.current
           const isLinked = graphData.linked.has(node.id)
+          const isRoot = node.id === ''
           if (node.type === 'dir') {
-            const h = 18
-            ctx.font = '5px sans-serif'
-            const w = ctx.measureText(node.label).width + 12
+            const h = isRoot ? 22 : 18
+            ctx.font = isRoot ? '6px sans-serif' : '5px sans-serif'
+            const w = ctx.measureText(node.label).width + (isRoot ? 18 : 12)
             ctx.beginPath()
             ctx.rect(node.x - w / 2, node.y - h / 2, w, h)
-            ctx.fillStyle = isCurrent ? 'rgba(224, 83, 61, 0.08)' : 'rgba(74, 127, 212, 0.08)'
+            ctx.fillStyle = isCurrent
+              ? 'rgba(224, 83, 61, 0.08)'
+              : isRoot
+                ? 'rgba(74, 127, 212, 0.16)'
+                : 'rgba(74, 127, 212, 0.08)'
             ctx.fill()
-            ctx.strokeStyle = isCurrent ? '#e0533d' : '#8a9bb0'
-            ctx.lineWidth = 1
+            ctx.strokeStyle = isCurrent ? '#e0533d' : isRoot ? '#2e5f9e' : '#8a9bb0'
+            ctx.lineWidth = isRoot ? 1.5 : 1
             ctx.stroke()
-            if (isCurrent || isLinked) {
+            if (isCurrent || isLinked || isRoot) {
               ctx.fillStyle = '#6b7684'
               ctx.textAlign = 'center'
               ctx.fillText(node.label, node.x, node.y + 3)

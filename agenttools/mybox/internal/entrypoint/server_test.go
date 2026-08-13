@@ -246,9 +246,10 @@ func TestGraphResolvesWikiLinksByAliasAndTitle(t *testing.T) {
 		"knowledge->knowledge/index":              true,
 		"knowledge->knowledge/notes":              true,
 		"knowledge/notes->knowledge/notes/phase6": true,
+		"->knowledge": true,
 	})
 	assertNodes(t, graph, []string{
-		"knowledge/index", "knowledge/notes/phase6", "knowledge", "knowledge/notes",
+		"knowledge/index", "knowledge/notes/phase6", "knowledge", "knowledge/notes", "",
 	})
 }
 
@@ -282,6 +283,7 @@ func TestGraphResolvesMarkdownLinksRelativeToNote(t *testing.T) {
 		"knowledge/notes->knowledge/notes/other":            true,
 		"knowledge/notes->knowledge/notes/sub":              true,
 		"knowledge/notes/sub->knowledge/notes/sub/detail":   true,
+		"->knowledge": true,
 	})
 }
 
@@ -309,13 +311,60 @@ func TestGraphResolvesLinksToDirectoriesWithoutNotes(t *testing.T) {
 		"README->tasks":     true,
 		"tasks->tasks/20260811_t-net-call-for-cashback":                                       true,
 		"tasks/20260811_t-net-call-for-cashback->tasks/20260811_t-net-call-for-cashback/task": true,
-		"wsl1->wsl1/README": true,
+		"wsl1->wsl1/README":           true,
+		"xdgconfig->xdgconfig/confrc": true,
+		"->README":                    true,
+		"->tasks":                     true,
+		"->wsl1":                      true,
+		"->xdgconfig":                 true,
 	})
 	assertNodes(t, graph, []string{
 		"README", "wsl1/README", "wsl1", "xdgconfig", "tasks",
 		"tasks/20260811_t-net-call-for-cashback",
 		"tasks/20260811_t-net-call-for-cashback/task",
+		"xdgconfig/confrc",
+		"",
 	})
+}
+
+func TestGraphAddsNonMarkdownFilesAsLeafNodes(t *testing.T) {
+	s, app := newTestServer(t, false)
+	root := app.Project.Path
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "xdgconfig"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "images"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "xdgconfig", "confrc"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "images", "logo.png"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("see [[confrc]] and [logo](images/logo.png)"), 0o644))
+
+	rec := do(t, s, http.MethodGet, "/api/graph", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	graph := decode[api.GraphData](t, rec)
+	assertNodes(t, graph, []string{
+		"docs/guide", "docs", "docs/images", "xdgconfig",
+		"xdgconfig/confrc", "docs/images/logo.png", "",
+	})
+	assertPairs(t, graph, map[string]bool{
+		"docs->docs/guide":                  true,
+		"docs->docs/images":                 true,
+		"docs/images->docs/images/logo.png": true,
+		"xdgconfig->xdgconfig/confrc":       true,
+		"->docs":                            true,
+		"->xdgconfig":                       true,
+	})
+	// Non-markdown file nodes are leaves: they link only to their parent
+	// directory, never to notes or other files.
+	for _, n := range graph.Nodes {
+		if n.Type == nil || *n.Type != "file" {
+			continue
+		}
+		degree := 0
+		for _, l := range graph.Links {
+			if l.Source == n.Id || l.Target == n.Id {
+				degree++
+			}
+		}
+		assert.Equal(t, 1, degree, "file %s must link only to its directory", n.Id)
+	}
 }
 
 func TestGraphScopesByRootDirectory(t *testing.T) {
@@ -337,7 +386,7 @@ func TestGraphScopesByRootDirectory(t *testing.T) {
 	graph := decode[api.GraphData](t, rec)
 	assertNodes(t, graph, []string{
 		"README", "docs/guide", "knowledge/index", "knowledge/notes/phase6",
-		"docs", "knowledge", "knowledge/notes",
+		"docs", "knowledge", "knowledge/notes", "",
 	})
 	assertPairs(t, graph, map[string]bool{
 		"docs/guide->README":                      true,
@@ -346,6 +395,9 @@ func TestGraphScopesByRootDirectory(t *testing.T) {
 		"knowledge->knowledge/index":              true,
 		"knowledge->knowledge/notes":              true,
 		"knowledge/notes->knowledge/notes/phase6": true,
+		"->README":    true,
+		"->docs":      true,
+		"->knowledge": true,
 	})
 
 	// Scoped graph only contains nodes under the requested root.
@@ -526,6 +578,26 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	_, err = os.Stat(filepath.Join(root, "notes"))
 	assert.True(t, os.IsNotExist(err))
+}
+
+func TestCreateFile(t *testing.T) {
+	s, app := newTestServer(t, false)
+	root := app.Project.Path
+
+	rec := do(t, s, http.MethodPost, "/api/files", api.FilePathRequest{Path: "notes/idea.md"})
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	_, err := os.Stat(filepath.Join(root, "notes", "idea.md"))
+	require.NoError(t, err)
+
+	rec = do(t, s, http.MethodPost, "/api/files", api.FilePathRequest{Path: "notes/idea.md"})
+	assert.Equal(t, http.StatusConflict, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/files", api.FilePathRequest{Path: "../../etc/passwd"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+	rec = do(t, s, http.MethodPost, "/api/files", api.FilePathRequest{Path: "docs"})
+	assert.Equal(t, http.StatusConflict, rec.Code)
 }
 
 func TestBasePath(t *testing.T) {

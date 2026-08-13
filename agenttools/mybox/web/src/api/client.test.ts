@@ -54,4 +54,17 @@ describe('api client', () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, status: 204, json: async () => ({}) } as Response)
     await expect(api.archiveTask('x')).resolves.toBeUndefined()
   })
+
+  it('posts a create file request', async () => {
+    mockFetch(204, undefined)
+    await api.createFile('notes/idea.md')
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/files',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: 'notes/idea.md' }),
+      }),
+    )
+  })
 })

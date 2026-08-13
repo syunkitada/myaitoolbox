@@ -23,6 +23,17 @@ export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
     }
   }
 
+  const handleNewFile = (dir: string) => {
+    const prefix = dir ? `${dir}/` : ''
+    const name = window.prompt('New file path', prefix)
+    if (!name || !name.trim()) return
+    const path = name.trim()
+    void api
+      .createFile(path)
+      .then(() => navigate(projectUrl(`/dashboard/files/${encodePath(path)}`)))
+      .catch((e) => window.alert(e instanceof Error ? e.message : String(e)))
+  }
+
   return (
     <BrowserPage
       mode="files"
@@ -35,6 +46,7 @@ export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
       refreshMeta={refreshMeta}
       onNew={handleNewTask}
       newLabel="New task"
+      onNewFile={handleNewFile}
       defaultSelect={(entries) =>
         entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
       }

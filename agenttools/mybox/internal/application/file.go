@@ -50,6 +50,13 @@ func (u *FileUseCase) Save(ctx context.Context, path string, content string) err
 	return u.Files.Save(ctx, path, content)
 }
 
+func (u *FileUseCase) Create(ctx context.Context, path string) error {
+	if err := validatePath(path); err != nil {
+		return err
+	}
+	return u.Files.Create(ctx, path)
+}
+
 func (u *FileUseCase) Move(ctx context.Context, oldPath string, newPath string) error {
 	if err := validatePath(oldPath); err != nil {
 		return err

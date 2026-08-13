@@ -21,6 +21,7 @@ type FileRepository interface {
 	Content(ctx context.Context, path string) (string, error)
 	Raw(ctx context.Context, path string) ([]byte, error)
 	Save(ctx context.Context, path string, content string) error
+	Create(ctx context.Context, path string) error
 	Move(ctx context.Context, oldPath string, newPath string) error
 	Copy(ctx context.Context, oldPath string, newPath string) error
 	Delete(ctx context.Context, path string) error

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d'
 import { GraphData, api } from '../api/client'
@@ -11,10 +11,17 @@ interface Node extends Object {
   type?: string
 }
 
+interface PositionedNode extends Node {
+  x?: number
+  y?: number
+}
+
 interface Link {
   source: string | Node
   target: string | Node
 }
+
+const ROOT_ID = ''
 
 export function GraphPage() {
   const [data, setData] = useState<GraphData | null>(null)
@@ -29,6 +36,13 @@ export function GraphPage() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
 
+  const graphData = useMemo(() => {
+    if (!data) return null
+    const nodes = data.nodes.map((n) => ({ ...n })) as Node[]
+    const links: Link[] = (data.links ?? []).map((l) => ({ ...l }))
+    return { nodes, links }
+  }, [data])
+
   useEffect(() => {
     if (fgRef.current) {
       installLabelCollision(fgRef.current, {
@@ -38,13 +52,24 @@ export function GraphPage() {
       })
       fgRef.current.d3ReheatSimulation()
     }
-  }, [data])
+  }, [graphData])
+
+  useEffect(() => {
+    if (!graphData) return
+    const fg = fgRef.current
+    if (!fg) return
+    const t = window.setTimeout(() => {
+      const root = graphData.nodes.find((n) => n.id === ROOT_ID) as PositionedNode | undefined
+      if (root && typeof root.x === 'number' && typeof root.y === 'number') {
+        fg.centerAt(root.x, root.y, 400)
+      }
+    }, 500)
+    return () => window.clearTimeout(t)
+  }, [graphData])
 
   if (error) return <div className="page error-banner">{error}</div>
   if (!data) return <div className="page">Loading…</div>
-
-  const nodes = data.nodes.map((n) => ({ ...n }))
-  const links: Link[] = (data.links ?? []).map((l) => ({ ...l }))
+  if (!graphData) return null
 
   return (
     <div className="page">
@@ -55,26 +80,27 @@ export function GraphPage() {
         <div className="graph-container">
           <ForceGraph2D
             ref={fgRef}
-            graphData={{ nodes: nodes as Node[], links }}
+            graphData={graphData}
             nodeLabel={(n) => (n as Node).label}
             nodeColor={(n) => ((n as Node).type === 'task' ? '#4a6' : '#4a7fd4')}
             nodeCanvasObjectMode={() => 'replace'}
             nodeCanvasObject={(n, ctx) => {
-              const node = n as Node & { x: number; y: number }
+              const node = n as PositionedNode & { x: number; y: number }
+              const isRoot = node.id === ROOT_ID
               if (node.type === 'dir') {
-                const h = 24
-                ctx.font = '7px sans-serif'
-                const w = ctx.measureText(node.label).width + 16
+                const h = isRoot ? 30 : 24
+                ctx.font = isRoot ? '8px sans-serif' : '7px sans-serif'
+                const w = ctx.measureText(node.label).width + (isRoot ? 26 : 16)
                 ctx.beginPath()
                 ctx.rect(node.x - w / 2, node.y - h / 2, w, h)
-                ctx.fillStyle = 'rgba(74, 127, 212, 0.06)'
+                ctx.fillStyle = isRoot ? 'rgba(74, 127, 212, 0.16)' : 'rgba(74, 127, 212, 0.06)'
                 ctx.fill()
-                ctx.strokeStyle = '#8a9bb0'
-                ctx.lineWidth = 1.2
+                ctx.strokeStyle = isRoot ? '#2e5f9e' : '#8a9bb0'
+                ctx.lineWidth = isRoot ? 2 : 1.2
                 ctx.stroke()
-                ctx.fillStyle = '#333'
+                ctx.fillStyle = isRoot ? '#2e5f9e' : '#333'
                 ctx.textAlign = 'center'
-                ctx.fillText(node.label, node.x, node.y + 2.5)
+                ctx.fillText(node.label, node.x, node.y + (isRoot ? 3 : 2.5))
                 return
               }
               const size = 3.5
@@ -94,6 +120,8 @@ export function GraphPage() {
                 navigate(projectUrl(`/dashboard/files/${encodePath(node.id)}`))
               else if (node.type === 'task')
                 navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(node.id)}/task.md`))
+              else if (node.type === 'file')
+                navigate(projectUrl(`/dashboard/files/${encodePath(node.id)}`))
               else
                 navigate(
                   projectUrl(

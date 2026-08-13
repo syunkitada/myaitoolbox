@@ -43,6 +43,7 @@ interface BrowserPageProps {
   defaultSelect?: (entries: BrowserEntry[]) => string | undefined
   onNew?: () => void
   newLabel?: string
+  onNewFile?: (dir: string) => void
   onClose?: () => void
 }
 
@@ -137,11 +138,12 @@ interface ExplorerProps {
   mode: BrowserMode
   onNew?: () => void
   newLabel?: string
+  onNewFile?: (dir: string) => void
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 'New', onClose, onMoveFile }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 'New', onNewFile, onClose, onMoveFile }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -151,6 +153,14 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
     () => Array.from(new Set(entries.flatMap((e) => e.tags ?? []))).sort(),
     [entries],
   )
+
+  const newFileDir = useMemo(() => {
+    if (!selected) return ''
+    const entry = entries.find((e) => e.path === selected)
+    if (entry?.kind === 'dir') return selected
+    const idx = selected.lastIndexOf('/')
+    return idx > 0 ? selected.slice(0, idx) : ''
+  }, [entries, selected])
 
   const filtering = q.trim() !== '' || tag !== ''
 
@@ -315,11 +325,18 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
           </button>
         )}
         <h1>{title}</h1>
-        {onNew && (
-          <button className="primary" onClick={onNew}>
-            {newLabel}
-          </button>
-        )}
+        <div className="page-header-actions">
+          {onNewFile && (
+            <button className="ghost" onClick={() => onNewFile(newFileDir)}>
+              New file
+            </button>
+          )}
+          {onNew && (
+            <button className="primary" onClick={onNew}>
+              {newLabel}
+            </button>
+          )}
+        </div>
       </div>
       <div className="toolbar">
         <SearchBar value={q} onChange={setQ} onSubmit={() => undefined} placeholder="Filter…" />
@@ -782,8 +799,8 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   : (n) => {
                         if (n.type === 'task')
                           navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(n.id)}/task.md`))
-                        else if (n.type === 'dir') onOpen(n.id)
-                      else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
+                        else if (n.type === 'dir' || n.type === 'file') onOpen(n.id)
+                        else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
                     }
               }
             />
@@ -806,6 +823,7 @@ export function BrowserPage({
   defaultSelect,
   onNew,
   newLabel,
+  onNewFile,
   onClose,
 }: BrowserPageProps) {
   const [entries, setEntries] = useState<BrowserEntry[]>([])
@@ -885,9 +903,10 @@ export function BrowserPage({
           onSelect={onSelect}
           title={title}
           mode={mode}
-          onNew={onNew}
-          newLabel={newLabel}
-          onClose={onClose}
+  onNew={onNew}
+  newLabel={newLabel}
+  onNewFile={onNewFile}
+  onClose={onClose}
           onMoveFile={mode === 'files' ? handleMoveFile : undefined}
         />
         <div className="knowledge-pane">

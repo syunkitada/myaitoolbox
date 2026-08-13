@@ -193,6 +193,7 @@ export const api = {
     request<void>('POST', '/api/knowledge/move', { old_path: oldPath, new_path: newPath }),
 
   listFiles: () => request<FileEntry[]>('GET', '/api/files'),
+  createFile: (path: string) => request<void>('POST', '/api/files', { path }),
   getFileContent: (path: string) =>
     request<FileContent>('GET', '/api/files/content' + qs({ path })),
 
