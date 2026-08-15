@@ -195,7 +195,7 @@ test('dashboard deletes a file', async ({ page }) => {
 })
 
 test('clicking the mybox brand returns to the unselected projects page', async ({ page }) => {
-  await page.getByRole('link', { name: 'Board' }).click()
+  await page.getByRole('link', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()
   await page.getByRole('button', { name: 'Go to top' }).click()
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()

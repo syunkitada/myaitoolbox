@@ -36,6 +36,6 @@ export function Mermaid({ code }: MermaidProps) {
     }
   }, [code])
 
-  if (error) return <pre className="mermaid-error">{code}</pre>
-  return <div ref={hostRef} className="mermaid" />
+  if (error) return <pre className="mermaid-error my-3 font-mono text-red-600 whitespace-pre-wrap">{code}</pre>
+  return <div ref={hostRef} className="mermaid my-3" />
 }

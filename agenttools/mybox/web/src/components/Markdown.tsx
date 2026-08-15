@@ -20,5 +20,5 @@ export function Markdown({ text, pathOf, className }: MarkdownProps) {
     const withLinks = pathOf ? renderWikiLinks(text, pathOf) : text
     return DOMPurify.sanitize(md.render(withLinks))
   }, [text, pathOf])
-  return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />
+  return <div className={className ?? 'markdown-body'} dangerouslySetInnerHTML={{ __html: html }} />
 }

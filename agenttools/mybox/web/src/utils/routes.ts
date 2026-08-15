@@ -43,6 +43,19 @@ export function rawFileUrl(resolved: string): string {
   return appUrl(`/api/files/raw?${params.toString()}`)
 }
 
+// terminalWsUrl points at the WebSocket endpoint that hosts a shell for the
+// current project. The project is passed as a query parameter because the
+// X-Project header cannot be set on a WebSocket handshake.
+export function terminalWsUrl(): string {
+  const base = getBasePath()
+  const project = getProject()
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const params = new URLSearchParams()
+  if (project) params.set('project', project)
+  const query = params.toString()
+  return `${protocol}://${window.location.host}${base}/api/terminal${query ? `?${query}` : ''}`
+}
+
 // taskIdOf extracts the task id from a task graph node id, which is the task
 // file path without the extension (e.g. "tasks/20260811_x/task" -> "20260811_x").
 export function taskIdOf(nodeId: string): string {

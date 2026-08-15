@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, Project, setProject } from '../api/client'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 
 interface ProjectsPageProps {
   onChanged?: () => void
@@ -81,97 +84,115 @@ export function ProjectsPage({ onChanged }: ProjectsPageProps) {
   }
 
   return (
-    <div className="projects-page">
-      <h1>Projects</h1>
+    <div className="projects-page mx-auto max-w-[900px] p-6">
+      <h1 className="text-2xl font-bold">Projects</h1>
 
-      <section className="card projects-create">
-        <h2>New project</h2>
-        <p className="projects-create-hint">
-          Register an existing directory as a project. Candidates are real paths on this machine.
-        </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            void handleCreate()
-          }}
-        >
-          <div className="path-picker">
-            <input
-              aria-label="Project path"
-              placeholder="/path/to/project"
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              onFocus={() => setShowCandidates(true)}
-              onBlur={() => setTimeout(() => setShowCandidates(false), 150)}
-            />
-            {showCandidates && candidates.length > 0 && (
-              <ul className="path-candidates">
-                {candidates.map((c) => (
-                  <li key={c}>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        setPath(c.endsWith('/') ? c : c + '/')
-                      }}
-                    >
-                      {c}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <button type="submit" className="btn-primary" disabled={busy || !path.trim()}>
-            {busy ? 'Creating…' : 'Create project'}
-          </button>
-        </form>
-        {feedback && <p className="projects-feedback">{feedback}</p>}
-      </section>
+      <Card className="projects-create mt-4 gap-3">
+        <CardHeader className="px-6 py-0">
+          <CardTitle className="text-lg">New project</CardTitle>
+          <CardDescription>
+            Register an existing directory as a project. Candidates are real paths on this machine.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="px-6 pb-0 pt-0">
+          <form
+            className="flex items-start gap-2 max-sm:flex-col"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void handleCreate()
+            }}
+          >
+            <div className="path-picker relative flex-1 max-sm:w-full">
+              <Input
+                aria-label="Project path"
+                placeholder="/path/to/project"
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                onFocus={() => setShowCandidates(true)}
+                onBlur={() => setTimeout(() => setShowCandidates(false), 150)}
+              />
+              {showCandidates && candidates.length > 0 && (
+                <ul className="path-candidates absolute top-[calc(100%+4px)] right-0 left-0 z-30 m-0 max-h-60 list-none overflow-y-auto rounded-md border bg-card p-1 shadow-lg">
+                  {candidates.map((c) => (
+                    <li key={c}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          setPath(c.endsWith('/') ? c : c + '/')
+                        }}
+                      >
+                        {c}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <Button type="submit" disabled={busy || !path.trim()}>
+              {busy ? 'Creating…' : 'Create project'}
+            </Button>
+          </form>
+          {feedback && (
+            <p className={feedback.includes('Created') ? 'mt-2 text-sm text-muted-foreground' : 'mt-2 text-sm text-red-700'}>
+              {feedback}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
-      {error && <p className="error-text">{error}</p>}
+      {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
 
-      <section className="projects-list">
+      <section className="projects-list mt-4">
         {loading ? (
-          <p className="muted">Loading projects…</p>
+          <p className="muted text-sm text-muted-foreground">Loading projects…</p>
         ) : projects.length === 0 ? (
-          <p className="muted">No projects yet. Register a directory above to get started.</p>
+          <p className="muted text-sm text-muted-foreground">No projects yet. Register a directory above to get started.</p>
         ) : (
-          <table className="projects-table">
+          <table className="projects-table w-full border-collapse">
             <thead>
               <tr>
-                <th>Project</th>
-                <th>Path</th>
-                <th />
+                <th className="border-b p-2 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                  Project
+                </th>
+                <th className="border-b p-2 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                  Path
+                </th>
+                <th className="border-b p-2" />
               </tr>
             </thead>
             <tbody>
               {projects.map((p) => (
                 <tr key={p.name}>
-                  <td>
-                    <button
-                      className="link-btn project-name"
+                  <td className="border-b p-2">
+                    <Button
+                      variant="link"
+                      size="xs"
+                      className="project-name h-auto p-0 font-semibold"
                       onClick={() => openProject(p.name)}
                       title={`Open ${p.name}`}
                     >
                       {p.name}
-                    </button>
+                    </Button>
                   </td>
-                  <td className="project-path">{p.path}</td>
-                  <td className="projects-actions">
-                    <button
-                      className="btn-secondary"
-                      onClick={() => openProject(p.name)}
-                    >
-                      Open
-                    </button>
-                    <button
-                      className="btn-danger"
-                      disabled={busy}
-                      onClick={() => void handleDelete(p.name)}
-                    >
-                      Delete
-                    </button>
+                  <td className="project-path border-b p-2 text-[13px] break-all text-muted-foreground">{p.path}</td>
+                  <td className="projects-actions border-b p-2">
+                    <div className="flex justify-end gap-1.5">
+                      <Button size="sm" onClick={() => openProject(p.name)}>
+                        Open
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void handleDelete(p.name)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

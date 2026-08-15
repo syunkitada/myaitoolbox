@@ -119,7 +119,7 @@ export function OutlineGraph({
     return () => window.clearTimeout(t)
   }, [graphData])
 
-  if (!graphData) return <div className="outline-graph" />
+  if (!graphData) return <div className="outline-graph h-[220px] w-full overflow-hidden rounded-md border bg-card" />
 
   const handleClick =
     onNodeClick ??
@@ -135,7 +135,7 @@ export function OutlineGraph({
     })
 
   return (
-    <div className="outline-graph" ref={containerRef}>
+    <div className="outline-graph h-[220px] w-full overflow-hidden rounded-md border bg-card" ref={containerRef}>
       <ForceGraph2D
         ref={fgRef}
         graphData={{ nodes: graphData.nodes, links: graphData.links }}

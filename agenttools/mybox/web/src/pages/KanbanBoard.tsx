@@ -11,6 +11,9 @@ import {
 } from '@dnd-kit/core'
 import { Task, TaskStatus, api } from '../api/client'
 import { encodePath, getBasePath, getProject, projectUrl } from '../utils/routes'
+import { Button } from '../components/ui/button'
+import { cn } from '@/lib/utils'
+import { DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
 
 const COLUMNS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
@@ -52,33 +55,27 @@ function TaskCard({ task, onOpen, showProject, readonly }: TaskCardProps) {
       style={style}
       {...listeners}
       {...attributes}
-      className={`board-card${isDragging ? ' dragging' : ''}${isPending ? ' pending' : ''}`}
+      className={cn(
+        'board-card cursor-grab rounded-md border bg-card p-2.5 shadow-sm',
+        isDragging && 'dragging opacity-60 shadow-lg',
+        isPending && 'pending border-dashed opacity-55',
+      )}
     >
-      <button className="link-btn" onClick={() => onOpen(task.id, task.project)}>
+      <Button variant="link" size="xs" className="h-auto p-0 text-left" onClick={() => onOpen(task.id, task.project)}>
         {task.title}
-      </button>
-      <div className="board-card-meta">
-        {showProject && task.project && (
-          <span className="badge project-badge">{task.project}</span>
-        )}
-        <span className={`badge priority-${task.priority}`}>{task.priority}</span>
-        {task.due && (
-          <span className={`badge due ${dueClass(task.due)}`}>{task.due}</span>
-        )}
+      </Button>
+      <div className="board-card-meta mt-1.5 flex flex-wrap gap-1">
+        {showProject && task.project && <ProjectBadge>{task.project}</ProjectBadge>}
+        <PriorityBadge priority={task.priority} />
+        {task.due && <DueBadge due={task.due} dueClass={dueClass(task.due)} />}
         {(task.tags ?? []).slice(0, 3).map((t) => (
-          <span key={t} className="badge tag">
-            {t}
-          </span>
+          <TagBadge key={t}>{t}</TagBadge>
         ))}
       </div>
       {isPending && (
-        <div className="board-card-pending">
-          {task.pending_until && (
-            <span className="badge pending-until">{task.pending_until}</span>
-          )}
-          {task.pending_reason && (
-            <span className="muted pending-reason">{task.pending_reason}</span>
-          )}
+        <div className="board-card-pending mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+          {task.pending_until && <PendingBadge>{task.pending_until}</PendingBadge>}
+          {task.pending_reason && <span className="muted text-muted-foreground">{task.pending_reason}</span>}
         </div>
       )}
     </div>
@@ -96,16 +93,29 @@ interface ColumnProps {
 function Column({ status, tasks, onOpen, showProject, readonly }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status })
   return (
-    <div ref={setNodeRef} className={`board-column ${isOver ? 'over' : ''}`} data-status={status} data-testid={`column-${status}`}>
-      <h2 className="board-column-title">
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'board-column flex min-h-[60vh] flex-col rounded-lg border bg-card p-2',
+        isOver && 'over border-primary bg-blue-50',
+        'max-md:min-h-[40vh] max-md:min-w-[220px] max-md:shrink-0 max-sm:min-w-[180px]',
+      )}
+      data-status={status}
+      data-testid={`column-${status}`}
+    >
+      <h2 className="board-column-title mb-2.5 flex items-center justify-between border-b pb-2 text-sm font-semibold tracking-wider uppercase">
         {status}
-        <span className="muted">{tasks.length}</span>
+        <span className="muted text-muted-foreground">{tasks.length}</span>
       </h2>
-      <div className="board-column-body">
+      <div className="board-column-body flex flex-col gap-2">
         {tasks.map((t) => (
           <TaskCard key={`${t.project ?? ''}/${t.id}`} task={t} onOpen={onOpen} showProject={showProject} readonly={readonly} />
         ))}
-        {tasks.length === 0 && <div className="muted board-empty">{readonly ? 'no tasks' : 'drop here'}</div>}
+        {tasks.length === 0 && (
+          <div className="board-empty rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">
+            {readonly ? 'no tasks' : 'drop here'}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -161,18 +171,24 @@ export function KanbanBoard() {
     tasks.filter((t) => t.status === s && !t.archived)
 
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="page p-4 md:p-6">
+      <div className="page-header mb-3 flex items-center justify-between gap-3">
         <div>
-          <h1>Board</h1>
+          <h1 className="text-2xl font-bold">Board</h1>
           {isGlobal && (
-            <p className="page-subtitle muted">全プロジェクト横断ビュー（読み取り専用）</p>
+            <p className="page-subtitle mt-0.5 text-sm text-muted-foreground">
+              全プロジェクト横断ビュー（読み取り専用）
+            </p>
           )}
         </div>
       </div>
-      {error && <div className="error-banner">{error}</div>}
+      {error && (
+        <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+          {error}
+        </div>
+      )}
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        <div className="board">
+        <div className="board grid grid-cols-5 items-start gap-2.5 max-md:flex max-md:gap-3 max-md:overflow-x-auto max-md:pb-2">
           {COLUMNS.map((s) => (
             <Column
               key={s}

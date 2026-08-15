@@ -98,6 +98,7 @@ func (s *Server) Handler() http.Handler {
 	rawFile := echo.WrapHandler(http.HandlerFunc(s.GetFileRaw))
 	if s.basePath == "" {
 		e.GET("/api/files/raw", rawFile)
+		e.GET("/api/terminal", s.Terminal)
 		e.Any("/api/*", echo.WrapHandler(apiHandler))
 		e.Any("/api", echo.WrapHandler(apiHandler))
 		e.GET("/*", s.handleIndex)
@@ -105,6 +106,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	g := e.Group(s.basePath)
 	g.GET("/api/files/raw", rawFile)
+	g.GET("/api/terminal", s.Terminal)
 	g.Any("/api/*", echo.WrapHandler(apiHandler))
 	g.Any("/api", echo.WrapHandler(apiHandler))
 	g.GET("", s.handleIndex)

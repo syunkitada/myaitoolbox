@@ -1,4 +1,7 @@
 import { ReactNode } from 'react'
+import { Input } from './ui/input'
+import { Button } from './ui/button'
+import { PriorityBadge, StatusBadge, TagBadge } from './badges'
 
 export const STATUS_OPTIONS = ['todo', 'doing', 'blocked', 'review', 'done']
 export const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent']
@@ -17,6 +20,12 @@ const FIELD_ORDER = [
 ]
 
 const KNOWN = new Set(FIELD_ORDER)
+
+const fieldClasses =
+  'field flex min-w-[140px] flex-1 flex-col gap-1 text-[13px] font-semibold'
+
+const controlClasses =
+  'h-9 rounded-md border border-input bg-card px-3 text-sm font-normal text-foreground transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : ''
@@ -71,17 +80,24 @@ function Field({ label, value, onChange, ariaLabel, children }: FieldProps) {
   const input =
     children ??
     (typeof value === 'boolean' ? (
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} />
-    ) : (
       <input
+        type="checkbox"
+        className="h-4 w-4 rounded border border-input accent-primary"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        aria-label={ariaLabel}
+      />
+    ) : (
+      <Input
         type="text"
         value={typeof value === 'string' ? value : genericDisplay(value)}
         onChange={(e) => onChange(e.target.value)}
         aria-label={ariaLabel}
+        className="font-normal"
       />
     ))
   return (
-    <label className="field">
+    <label className={fieldClasses}>
       <span>{label}</span>
       {input}
     </label>
@@ -94,9 +110,9 @@ interface SelectFieldProps extends Omit<FieldProps, 'children'> {
 
 function SelectField({ label, value, onChange, ariaLabel, options }: SelectFieldProps) {
   return (
-    <label className="field">
+    <label className={fieldClasses}>
       <span>{label}</span>
-      <select value={str(value)} onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel}>
+      <select value={str(value)} onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel} className={controlClasses}>
         <option value="">—</option>
         {options.map((o) => (
           <option key={o} value={o}>
@@ -125,13 +141,14 @@ function toISODate(v: unknown): string {
 
 function DateField({ label, value, onChange, ariaLabel, compact }: FieldProps & { compact?: boolean }) {
   return (
-    <label className="field">
+    <label className={fieldClasses}>
       <span>{label}</span>
       <input
         type="date"
         value={toISODate(value)}
         onChange={(e) => onChange(compact ? e.target.value.replace(/-/g, '') : e.target.value)}
         aria-label={ariaLabel}
+        className={controlClasses}
       />
     </label>
   )
@@ -140,13 +157,14 @@ function DateField({ label, value, onChange, ariaLabel, compact }: FieldProps & 
 function ListField({ label, value, onChange, ariaLabel }: FieldProps) {
   const items = Array.isArray(value) ? value.map(String) : []
   return (
-    <label className="field">
+    <label className={fieldClasses}>
       <span>{label}</span>
-      <input
+      <Input
         type="text"
         value={joinList(items)}
         onChange={(e) => onChange(splitList(e.target.value))}
         aria-label={ariaLabel}
+        className="font-normal"
       />
     </label>
   )
@@ -184,8 +202,8 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
   const extraKeys = Object.keys(value).filter((k) => !KNOWN.has(k))
 
   return (
-    <div className="frontmatter-form">
-      <div className="field-row">
+    <div className="frontmatter-form flex flex-col gap-3">
+      <div className="field-row flex flex-wrap gap-3">
         <Field label="Title" value={value.title} onChange={(v) => setField('title', v)} ariaLabel="Metadata title" />
         <SelectField
           label="Status"
@@ -202,7 +220,7 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
           options={PRIORITY_OPTIONS}
         />
       </div>
-      <div className="field-row">
+      <div className="field-row flex flex-wrap gap-3">
         <ListField label="Tags" value={value.tags} onChange={(v) => setField('tags', v)} ariaLabel="Metadata tags" />
         <ListField
           label="Aliases"
@@ -211,14 +229,14 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
           ariaLabel="Metadata aliases"
         />
       </div>
-      <div className="field-row">
+      <div className="field-row flex flex-wrap gap-3">
         <Field label="Assignee" value={value.assignee} onChange={(v) => setField('assignee', v)} ariaLabel="Metadata assignee" />
         <DateField label="Due" value={value.due} onChange={(v) => setField('due', v)} ariaLabel="Metadata due" />
       </div>
-      <div className="field-row">
+      <div className="field-row flex flex-wrap gap-3">
         <Field label="Type" value={value.type} onChange={(v) => setField('type', v)} ariaLabel="Metadata type" />
       </div>
-      <div className="field-row">
+      <div className="field-row flex flex-wrap gap-3">
         <DateField
           compact
           label="Pending until"
@@ -235,12 +253,14 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
       </div>
 
       {extraKeys.length > 0 && (
-        <div className="extra-fields">
-          <h4>Other metadata</h4>
+        <div className="extra-fields mb-2.5 mt-1">
+          <h4 className="mb-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+            Other metadata
+          </h4>
           {extraKeys.map((k) => (
-            <div className="extra-field-row" key={k}>
-              <input
-                className="extra-key"
+            <div className="extra-field-row mb-1.5 flex gap-2" key={k}>
+              <Input
+                className="extra-key grow-0 basis-[160px] font-mono text-[13px]"
                 defaultValue={k}
                 aria-label="Metadata key"
                 onBlur={(e) => renameField(k, e.target.value)}
@@ -248,22 +268,28 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
                   if (e.key === 'Enter') e.currentTarget.blur()
                 }}
               />
-              <input
-                className="extra-value"
+              <Input
+                className="extra-value flex-1 font-mono text-[13px]"
                 value={genericDisplay(value[k])}
                 aria-label="Metadata value"
                 onChange={(e) => setField(k, genericParse(value[k], e.target.value))}
               />
-              <button type="button" className="ghost" onClick={() => removeField(k)} aria-label={`Remove metadata ${k}`}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => removeField(k)}
+                aria-label={`Remove metadata ${k}`}
+              >
                 ×
-              </button>
+              </Button>
             </div>
           ))}
         </div>
       )}
-      <button type="button" className="ghost" onClick={addField}>
+      <Button type="button" variant="ghost" size="sm" className="justify-start" onClick={addField}>
         + Add metadata
-      </button>
+      </Button>
     </div>
   )
 }
@@ -288,22 +314,20 @@ export function FrontmatterSummary({ data }: { data: Record<string, unknown> }) 
 
   const renderValue = (k: string, v: unknown): ReactNode => {
     if (k === 'status' && typeof v === 'string') {
-      return <span className={`badge status-${v}`}>{v}</span>
+      return <StatusBadge status={v} />
     }
     if (k === 'priority' && typeof v === 'string') {
-      return <span className={`badge priority-${v}`}>{v}</span>
+      return <PriorityBadge priority={v} />
     }
     if (Array.isArray(v)) {
       return v.map((x, i) => (
-        <span key={i} className="badge tag">
-          {String(x)}
-        </span>
+        <TagBadge key={i}>{String(x)}</TagBadge>
       ))
     }
     if (typeof v === 'string' && URL_RE.test(v.trim())) {
       const href = v.trim()
       return (
-        <a href={href} target="_blank" rel="noopener noreferrer">
+        <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-4">
           {href}
         </a>
       )
@@ -312,13 +336,13 @@ export function FrontmatterSummary({ data }: { data: Record<string, unknown> }) 
   }
 
   return (
-    <div className="frontmatter-card">
-      <h3>Metadata</h3>
-      <dl className="frontmatter-grid">
+    <div className="frontmatter-card mb-4 rounded-lg border bg-muted/40 p-3">
+      <h3 className="mb-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Metadata</h3>
+      <dl className="frontmatter-grid m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
         {entries.map(([k, v]) => (
-          <div className="frontmatter-row" key={k}>
-            <dt className="frontmatter-key">{k}</dt>
-            <dd className="frontmatter-value">{renderValue(k, v)}</dd>
+          <div className="frontmatter-row contents" key={k}>
+            <dt className="frontmatter-key text-xs font-semibold whitespace-nowrap text-muted-foreground">{k}</dt>
+            <dd className="frontmatter-value m-0 flex flex-wrap gap-1.5 text-[13px]">{renderValue(k, v)}</dd>
           </div>
         ))}
       </dl>

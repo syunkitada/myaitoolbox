@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { getBasePath } from './api/client'
 import App from './App'
-import './styles.css'
+import './globals.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

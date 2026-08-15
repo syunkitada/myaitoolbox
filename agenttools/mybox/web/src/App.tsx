@@ -8,6 +8,8 @@ import { GraphPage } from './pages/GraphPage'
 import { SearchPage } from './pages/SearchPage'
 import { KanbanBoard } from './pages/KanbanBoard'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { Button } from './components/ui/button'
+import { cn } from '@/lib/utils'
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null)
@@ -33,27 +35,36 @@ export default function App() {
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
 
   return (
-    <div className="app">
+    <div className="app flex min-h-screen">
       {/* Mobile overlay */}
-      {sidebarOpen && <div className="sidebar-overlay" onClick={closeSidebar} />}
+      {sidebarOpen && (
+        <div className="sidebar-overlay fixed inset-0 z-[199] bg-black/40 max-md:block" onClick={closeSidebar} />
+      )}
 
       {/* Hamburger button (mobile only) */}
       <button
-        className="hamburger"
+        className="hamburger fixed top-3 left-3 z-[300] hidden h-10 w-10 cursor-pointer flex-col items-center justify-between gap-0 rounded-lg border bg-card p-2 max-md:flex"
         aria-label="Toggle menu"
         onClick={() => setSidebarOpen((o) => !o)}
       >
-        <span />
-        <span />
-        <span />
+        <span className="block h-0.5 w-5 rounded bg-foreground transition-transform" />
+        <span className="block h-0.5 w-5 rounded bg-foreground transition-transform" />
+        <span className="block h-0.5 w-5 rounded bg-foreground transition-transform" />
       </button>
 
       <Sidebar meta={meta} navigate={navigate} open={sidebarOpen} onClose={closeSidebar} project={project} />
-      <main className="content">
+      <main className="content flex-1 max-md:pt-16">
         {error && (
-          <div className="error-banner">
+          <div className="error-banner m-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
             {error}
-            <button onClick={() => void refreshMeta()}>retry</button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void refreshMeta()}
+              className={cn('text-red-700 hover:bg-red-100 hover:text-red-800')}
+            >
+              retry
+            </Button>
           </div>
         )}
         <Routes>

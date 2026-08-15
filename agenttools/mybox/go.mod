@@ -3,7 +3,9 @@ module github.com/syunkitada/myaitoolbox/mybox
 go 1.25.7
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/goccy/go-yaml v1.19.2
+	github.com/gorilla/websocket v1.5.3
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/spf13/cobra v1.10.2

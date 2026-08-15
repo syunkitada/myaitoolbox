@@ -67,17 +67,25 @@ export function GraphPage() {
     return () => window.clearTimeout(t)
   }, [graphData])
 
-  if (error) return <div className="page error-banner">{error}</div>
-  if (!data) return <div className="page">Loading…</div>
+  if (error)
+    return (
+      <div className="error-banner m-4 rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+        {error}
+      </div>
+    )
+  if (!data)
+    return (
+      <div className="page p-4 text-muted-foreground md:p-6">Loading…</div>
+    )
   if (!graphData) return null
 
   return (
-    <div className="page">
-      <h1>Graph</h1>
+    <div className="page p-4 md:p-6">
+      <h1 className="mb-3 text-2xl font-bold">Graph</h1>
       {data.nodes.length === 0 ? (
-        <p className="muted">No files to graph yet.</p>
+        <p className="muted text-muted-foreground">No files to graph yet.</p>
       ) : (
-        <div className="graph-container">
+        <div className="graph-container h-[70vh] rounded-lg border bg-card max-md:h-[50vh]">
           <ForceGraph2D
             ref={fgRef}
             graphData={graphData}

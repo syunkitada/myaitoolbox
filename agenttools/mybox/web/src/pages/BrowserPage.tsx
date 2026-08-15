@@ -5,6 +5,14 @@ import { SearchBar } from '../components/SearchBar'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { OutlineGraph } from '../components/OutlineGraph'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
+import { Button } from '../components/ui/button'
+import { Card, CardContent } from '../components/ui/card'
+import { Textarea } from '../components/ui/textarea'
+import { Separator } from '../components/ui/separator'
+import { TagBadge, StatusBadge } from '../components/badges'
+import { TerminalTabs, TerminalTabData } from '../components/TerminalTabs'
+import { TerminalSquare } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { encodePath, filesUrl, projectUrl, rawFileUrl, taskIdOf } from '../utils/routes'
 import {
   buildDirListing,
@@ -64,9 +72,9 @@ interface TreeDir {
 
 type TreeNode = TreeFile | TreeDir
 
-function StatusBadge({ status }: { status?: string }) {
+function FileStatusBadge({ status }: { status?: string }) {
   if (!status) return null
-  return <span className={`badge status-${status} file-status`}>{status}</span>
+  return <StatusBadge status={status} className="file-status ml-auto" />
 }
 
 function toEntries(mode: BrowserMode, list: (FileEntry | Knowledge)[]): BrowserEntry[] {
@@ -139,11 +147,12 @@ interface ExplorerProps {
   onNew?: () => void
   newLabel?: string
   onNewFile?: (dir: string) => void
+  onNewTerminal?: () => void
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 'New', onNewFile, onClose, onMoveFile }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 'New', onNewFile, onNewTerminal, onClose, onMoveFile }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -230,7 +239,11 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
         items.push(
           <li
             key={`dir:${node.dirPath}`}
-            className={`knowledge-tree-row${draggable ? ' drop-target' : ''}${highlighted ? ' drag-over' : ''}`}
+            className={cn(
+              'knowledge-tree-row flex min-h-[26px] items-center gap-1 rounded-md px-1 leading-[1.4] hover:bg-muted',
+              draggable && 'drop-target cursor-copy',
+              highlighted && 'drag-over bg-primary text-white',
+            )}
             style={{ paddingLeft: pad }}
             {...(draggable
               ? {
@@ -252,12 +265,15 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
               : {})}
           >
             <button
-              className={`knowledge-caret${open ? ' open' : ''}`}
+              className={cn(
+                'knowledge-caret flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded p-0 text-muted-foreground hover:bg-muted hover:text-primary',
+                open && 'open',
+              )}
               aria-label={open ? `Collapse ${node.name}` : `Expand ${node.name}`}
               onClick={() => toggle(node.dirPath)}
             >
               <svg
-                className="caret-icon"
+                className={cn('caret-icon h-3 w-3 shrink-0 transition-transform', open && 'rotate-90')}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -270,7 +286,10 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
               </svg>
             </button>
             <button
-              className={`knowledge-dir${node.dirPath === selected ? ' active' : ''}`}
+              className={cn(
+                'knowledge-dir flex min-w-0 flex-1 cursor-pointer items-center self-stretch bg-transparent p-0 text-left text-sm font-semibold whitespace-nowrap text-foreground overflow-hidden text-ellipsis hover:text-primary',
+                node.dirPath === selected && 'active text-primary',
+              )}
               onClick={() => {
                 onSelect(node.dirPath)
                 if (!open) toggle(node.dirPath)
@@ -278,7 +297,7 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
             >
               {node.name}
             </button>
-            <StatusBadge status={node.status} />
+            <FileStatusBadge status={node.status} />
           </li>,
         )
         if (open) renderNodes(node.children, depth + 1, node)
@@ -286,7 +305,7 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
         items.push(
           <li
             key={`file:${node.path}`}
-            className="knowledge-tree-row"
+            className="knowledge-tree-row flex min-h-[26px] items-center gap-1 rounded-md px-1 leading-[1.4] hover:bg-muted"
             style={{ paddingLeft: pad + 20 }}
             {...(mode === 'files'
               ? {
@@ -301,12 +320,15 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
               : {})}
           >
             <button
-              className={`knowledge-file${node.path === selected ? ' active' : ''}`}
+              className={cn(
+                'knowledge-file flex min-w-0 flex-1 cursor-pointer items-center self-stretch bg-transparent p-0 text-left text-sm whitespace-nowrap text-foreground overflow-hidden text-ellipsis hover:text-primary',
+                node.path === selected && 'active text-primary font-semibold',
+              )}
               onClick={() => onSelect(node.path)}
             >
               {node.name}
             </button>
-            <StatusBadge status={parent?.status && node.name === 'task.md' ? undefined : node.status} />
+            <FileStatusBadge status={parent?.status && node.name === 'task.md' ? undefined : node.status} />
           </li>,
         )
       }
@@ -316,32 +338,60 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
 
   const fileMatches = filtered.filter((e) => e.kind === 'file')
 
+  const selectCls =
+    'h-9 rounded-md border border-input bg-card px-3 text-sm text-foreground transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
+
   return (
-    <aside className="knowledge-explorer">
-      <div className="page-header">
+    <aside
+      className={cn(
+        'knowledge-explorer sticky top-0 flex h-screen w-[280px] shrink-0 flex-col overflow-y-auto border-r bg-card p-2.5 self-stretch',
+        'max-xl:w-[220px]',
+        'max-lg:relative max-lg:h-auto max-lg:w-full max-lg:max-h-none max-lg:border-b max-lg:border-r-0',
+        selected && 'max-lg:hidden',
+      )}
+    >
+      <div className="page-header mb-1 flex flex-wrap items-center justify-between gap-3">
         {onClose && (
-          <button className="ghost mobile-close" onClick={onClose} aria-label="Close explorer">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mobile-close hidden max-lg:inline-flex"
+            onClick={onClose}
+            aria-label="Close explorer"
+          >
             ← Back
-          </button>
+          </Button>
         )}
-        <h1>{title}</h1>
-        <div className="page-header-actions">
+        <h1 className="text-lg font-bold">{title}</h1>
+        <div className="page-header-actions flex items-center gap-2">
+          {onNewTerminal && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="cursor-pointer"
+              onClick={onNewTerminal}
+              aria-label="Open terminal"
+              title="Open terminal"
+            >
+              <TerminalSquare />
+            </Button>
+          )}
           {onNewFile && (
-            <button className="ghost" onClick={() => onNewFile(newFileDir)}>
+            <Button variant="ghost" size="sm" onClick={() => onNewFile(newFileDir)}>
               New file
-            </button>
+            </Button>
           )}
           {onNew && (
-            <button className="primary" onClick={onNew}>
+            <Button size="sm" onClick={onNew}>
               {newLabel}
-            </button>
+            </Button>
           )}
         </div>
       </div>
-      <div className="toolbar">
+      <div className="toolbar my-3 flex flex-wrap gap-2">
         <SearchBar value={q} onChange={setQ} onSubmit={() => undefined} placeholder="Filter…" />
         {allTags.length > 0 && (
-          <select value={tag} onChange={(e) => setTag(e.target.value)} aria-label="Filter by tag">
+          <select value={tag} onChange={(e) => setTag(e.target.value)} aria-label="Filter by tag" className={selectCls}>
             <option value="">all tags</option>
             {allTags.map((t) => (
               <option key={t} value={t}>
@@ -352,25 +402,25 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
         )}
       </div>
       {entries.length === 0 ? (
-        <p className="muted">No files yet.</p>
+        <p className="muted text-sm text-muted-foreground">No files yet.</p>
       ) : filtering ? (
-        <ul className="file-list">
+        <ul className="file-list m-0 flex list-none flex-col gap-2 p-0">
           {fileMatches.map((e) => (
-            <li key={e.path}>
-              <button className="link-btn" onClick={() => onSelect(e.path)}>
+            <li key={e.path} className="flex flex-wrap items-center gap-2">
+              <Button variant="link" size="xs" onClick={() => onSelect(e.path)}>
                 {e.path}
-              </button>
-              <StatusBadge status={e.status} />
+              </Button>
+              <FileStatusBadge status={e.status} />
             </li>
           ))}
-          {fileMatches.length === 0 && <li className="muted">No matches.</li>}
+          {fileMatches.length === 0 && <li className="text-muted-foreground">No matches.</li>}
         </ul>
       ) : mode === 'files' && onMoveFile ? (
-        <ul className="knowledge-tree" onDragOver={(e) => e.preventDefault()} onDrop={rootDrop}>
+        <ul className="knowledge-tree m-0 mt-2 list-none p-0" onDragOver={(e) => e.preventDefault()} onDrop={rootDrop}>
           {items}
         </ul>
       ) : (
-        <ul className="knowledge-tree">{items}</ul>
+        <ul className="knowledge-tree m-0 mt-2 list-none p-0">{items}</ul>
       )}
     </aside>
   )
@@ -597,53 +647,64 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
   const viewRelativeTo = isDir && mode === 'files' ? readmePath ?? `${path}/` : path
   const viewFileName = isDir && readmePath ? baseOf(readmePath) : null
 
+  const sectionTitle = 'mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase'
+
   return (
     <div>
-      <div className="knowledge-body">
-        <div className="knowledge-main">
-          <div className="page-header note-toolbar">
-            <button className="ghost mobile-back" onClick={onBack}>
+      <div className="knowledge-body flex gap-4 max-md:flex-col">
+        <div className="knowledge-main min-w-0 flex-1">
+          <div className="page-header note-toolbar sticky top-0 z-20 mb-3 flex items-center justify-between gap-3 border-b bg-card/95 py-2 backdrop-blur">
+            <Button variant="ghost" size="sm" className="mobile-back hidden max-lg:inline-flex" onClick={onBack}>
               ← Files
-            </button>
-            <div className="actions">
-              <button className={isFav ? 'ghost active' : 'ghost'} onClick={() => fav(!isFav)}>
+            </Button>
+            <div className="actions flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm" className={isFav ? 'text-primary' : ''} onClick={() => fav(!isFav)}>
                 {isFav ? '★ Favorite' : '☆ Favorite'}
-              </button>
+              </Button>
               {mode === 'knowledge' && !isDir && (
-                <button className="ghost" onClick={move}>
+                <Button variant="ghost" size="sm" onClick={move}>
                   Move
-                </button>
+                </Button>
               )}
               {mode === 'files' && (
                 <>
-                  <button className="ghost" onClick={move}>
+                  <Button variant="ghost" size="sm" onClick={move}>
                     Move
-                  </button>
-                  <button className="ghost" onClick={duplicate}>
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={duplicate}>
                     Duplicate
-                  </button>
-                  <button className="ghost" onClick={remove}>
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={remove}>
                     Delete
-                  </button>
+                  </Button>
                 </>
               )}
               {!isDir && !editing && !isImage && (
-                <button className="primary" onClick={() => setEditing(true)}>
+                <Button size="sm" onClick={() => setEditing(true)}>
                   Edit
-                </button>
+                </Button>
               )}
             </div>
           </div>
-          {error && <div className="error-banner">{error}</div>}
-          {saved && <div className="notice">Saved.</div>}
+          {error && (
+            <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+          {saved && (
+            <div className="notice my-2 rounded-md border border-green-200 bg-green-50 px-3.5 py-2 text-sm text-green-700">
+              Saved.
+            </div>
+          )}
           {editing ? (
-            <div className="card">
-              <div className="actions">
-                <button className="primary" onClick={save}>
+            <Card className="gap-0 p-4">
+              <div className="actions mb-4 flex gap-2">
+                <Button size="sm" onClick={save}>
                   Save
-                </button>
-                <button
-                  className="ghost"
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setDraft(content)
                     const split = splitFrontmatter(content)
@@ -653,118 +714,134 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   }}
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
               {useForm ? (
                 <>
-                  <div className="card-section">
-                    <h3>Metadata</h3>
+                  <CardContent className="border-t px-0 pt-4">
+                    <h3 className={sectionTitle}>Metadata</h3>
                     <FrontmatterForm value={draftFm} onChange={setDraftFm} />
-                  </div>
-                  <div className="card-section">
-                    <h3>Body</h3>
-                    <textarea
-                      className="editor"
+                  </CardContent>
+                  <CardContent className="mt-4 border-t px-0 pt-4">
+                    <h3 className={sectionTitle}>Body</h3>
+                    <Textarea
+                      className="editor min-h-[60vh] w-full font-mono text-sm leading-6"
                       value={draftBody}
                       onChange={(e) => setDraftBody(e.target.value)}
                       aria-label="File editor"
                     />
-                  </div>
+                  </CardContent>
                 </>
               ) : (
-                <textarea
-                  className="editor"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  aria-label={mode === 'knowledge' ? 'Markdown editor' : 'File editor'}
-                />
+                <CardContent className="px-0 py-0">
+                  <Textarea
+                    className="editor min-h-[60vh] w-full font-mono text-sm leading-6"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    aria-label={mode === 'knowledge' ? 'Markdown editor' : 'File editor'}
+                  />
+                </CardContent>
               )}
-            </div>
+            </Card>
           ) : (
-            <div className="card knowledge-view">
-              <div className="meta-line">
-                <span className="muted">{path}</span>
-                {tags.map((t) => (
-                  <span key={t} className="badge tag">
-                    {t}
-                  </span>
-                ))}
-              </div>
-              {viewFileName && (
-                <>
-                  <hr className="view-separator" />
-                  <div className="view-file-name">{viewFileName}</div>
-                </>
-              )}
-              {useForm && <FrontmatterSummary data={fmParsed.data} />}
-              {isMarkdown ? (
-                <RichMarkdown
-                  text={viewText}
-                  pathOf={mode === 'knowledge' ? pathOf : undefined}
-                  relativeTo={viewRelativeTo}
-                  linkUrl={mode === 'knowledge' ? undefined : filesUrl}
-                  imageUrl={rawFileUrl}
-                  preserveExtension={mode === 'files'}
-                />
-              ) : isImage ? (
-                <div className="file-image">
-                  <img src={rawFileUrl(path)} alt={baseOf(path)} />
+            <Card className="gap-0 p-4">
+              <CardContent className="px-0 py-0">
+                <div className="meta-line my-2 flex flex-wrap items-center gap-2">
+                  <span className="muted text-sm text-muted-foreground">{path}</span>
+                  {tags.map((t) => (
+                    <TagBadge key={t}>{t}</TagBadge>
+                  ))}
                 </div>
-              ) : (
-                <pre className="file-raw">{viewText}</pre>
-              )}
-              {mode === 'knowledge' && links.length > 0 && (
-                <div className="card-section">
-                  <h3>Links</h3>
-                  <ul>
-                    {links.map((l) => {
-                      const resolved = pathOf(l.target)
-                      return (
-                        <li key={l.raw}>
-                          {resolved ? (
-                            <button
-                              className="link-btn"
-                              onClick={() => navigate(projectUrl(`/knowledge/${encodePath(resolved)}`))}
-                            >
-                              {l.alias ?? l.target}
-                            </button>
-                          ) : (
-                            <span className="broken-link">{l.alias ?? l.target}</span>
-                          )}
+                {viewFileName && (
+                  <>
+                    <Separator className="my-2" />
+                    <div className="view-file-name mb-2 text-sm font-semibold text-muted-foreground">{viewFileName}</div>
+                  </>
+                )}
+                {useForm && <FrontmatterSummary data={fmParsed.data} />}
+                {isMarkdown ? (
+                  <RichMarkdown
+                    text={viewText}
+                    pathOf={mode === 'knowledge' ? pathOf : undefined}
+                    relativeTo={viewRelativeTo}
+                    linkUrl={mode === 'knowledge' ? undefined : filesUrl}
+                    imageUrl={rawFileUrl}
+                    preserveExtension={mode === 'files'}
+                  />
+                ) : isImage ? (
+                  <div className="file-image flex justify-center py-3">
+                    <img src={rawFileUrl(path)} alt={baseOf(path)} className="max-w-full rounded-md" />
+                  </div>
+                ) : (
+                  <pre className="file-raw overflow-x-auto rounded-md bg-muted p-3 font-mono text-[13px] leading-6 whitespace-pre-wrap break-words">
+                    {viewText}
+                  </pre>
+                )}
+                {mode === 'knowledge' && links.length > 0 && (
+                  <div className="mt-4 border-t pt-3">
+                    <h3 className={sectionTitle}>Links</h3>
+                    <ul className="m-0 flex list-none flex-col gap-1 p-0">
+                      {links.map((l) => {
+                        const resolved = pathOf(l.target)
+                        return (
+                          <li key={l.raw}>
+                            {resolved ? (
+                              <Button
+                                variant="link"
+                                size="xs"
+                                onClick={() => navigate(projectUrl(`/knowledge/${encodePath(resolved)}`))}
+                              >
+                                {l.alias ?? l.target}
+                              </Button>
+                            ) : (
+                              <span className="broken-link text-muted-foreground italic">{l.alias ?? l.target}</span>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
+                {mode === 'knowledge' && backlinks.length > 0 && (
+                  <div className="mt-4 border-t pt-3">
+                    <h3 className={sectionTitle}>Backlinks</h3>
+                    <ul className="m-0 flex list-none flex-col gap-1 p-0">
+                      {backlinks.map((b) => (
+                        <li key={b.path}>
+                          <Button
+                            variant="link"
+                            size="xs"
+                            onClick={() => navigate(projectUrl(`/knowledge/${encodePath(b.path)}`))}
+                          >
+                            {b.path}
+                          </Button>
                         </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              )}
-              {mode === 'knowledge' && backlinks.length > 0 && (
-                <div className="card-section">
-                  <h3>Backlinks</h3>
-                  <ul>
-                    {backlinks.map((b) => (
-                      <li key={b.path}>
-                        <button
-                          className="link-btn"
-                          onClick={() => navigate(projectUrl(`/knowledge/${encodePath(b.path)}`))}
-                        >
-                          {b.path}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
         </div>
-        <aside className="outline">
-          <div className="outline-section">
-            <div className="outline-title">Content</div>
+        <aside
+          className={cn(
+            'outline sticky top-0 flex w-80 max-h-[calc(100vh-120px)] shrink-0 flex-col gap-1 self-start overflow-y-auto border-l border-border pl-3',
+            'max-md:static max-md:max-h-none max-md:w-full max-md:flex-row max-md:flex-wrap max-md:gap-2 max-md:border-l-0 max-md:border-t max-md:pl-0 max-md:pt-3',
+          )}
+        >
+          <div className="outline-section mb-3 flex flex-col gap-1 border-b pb-3 last:mb-0 last:border-b-0 last:pb-0 max-md:w-full">
+            <div className="outline-title text-xs font-semibold tracking-wider text-muted-foreground uppercase">Content</div>
             {extractOutline(viewText).map((h, i) => (
               <a
                 key={i}
                 href={`#${h.id}`}
-                className={`outline-link level-${h.level}`}
+                className={cn(
+                  'outline-link text-[13px] leading-[1.4] text-muted-foreground no-underline hover:text-primary',
+                  `level-${h.level}`,
+                  h.level === 1 && 'font-semibold',
+                  (h.level === 3 || h.level === 4) && 'pl-3',
+                )}
                 onClick={(e) => {
                   e.preventDefault()
                   document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' })
@@ -774,22 +851,20 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
               </a>
             ))}
           </div>
-          <div className="outline-section">
-            <div className="outline-title">Tags</div>
+          <div className="outline-section mb-3 flex flex-col gap-1 border-b pb-3 last:mb-0 last:border-b-0 last:pb-0 max-md:w-full">
+            <div className="outline-title text-xs font-semibold tracking-wider text-muted-foreground uppercase">Tags</div>
             {tags.length === 0 ? (
-              <span className="muted outline-none">No tags</span>
+              <span className="muted outline-none text-[13px] text-muted-foreground">No tags</span>
             ) : (
-              <div className="outline-tags">
+              <div className="outline-tags flex flex-wrap gap-1.5">
                 {tags.map((t) => (
-                  <span key={t} className="badge tag">
-                    {t}
-                  </span>
+                  <TagBadge key={t}>{t}</TagBadge>
                 ))}
               </div>
             )}
           </div>
-          <div className="outline-section">
-            <div className="outline-title">Graph</div>
+          <div className="outline-section mb-3 flex flex-col gap-1 border-b pb-3 last:mb-0 last:border-b-0 last:pb-0 max-md:w-full">
+            <div className="outline-title text-xs font-semibold tracking-wider text-muted-foreground uppercase">Graph</div>
             <OutlineGraph
               path={path}
               root={mode === 'knowledge' ? root : ''}
@@ -831,6 +906,44 @@ export function BrowserPage({
   const [error, setError] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
   const autoDefaulted = useRef(false)
+
+  const [terminals, setTerminals] = useState<TerminalTabData[]>([])
+  const [activeTerminal, setActiveTerminal] = useState<number | null>(null)
+  const [terminalMaximized, setTerminalMaximized] = useState(false)
+  const [terminalCollapsed, setTerminalCollapsed] = useState(false)
+  const terminalIdRef = useRef(0)
+
+  const addTerminal = useCallback(() => {
+    terminalIdRef.current += 1
+    const id = terminalIdRef.current
+    setTerminals((prev) => [...prev, { id, title: `Terminal ${id}` }])
+    setActiveTerminal(id)
+  }, [])
+
+  const closeTerminal = useCallback((id: number) => {
+    setTerminals((prev) => {
+      const next = prev.filter((t) => t.id !== id)
+      if (next.length === 0) {
+        setTerminalMaximized(false)
+        setTerminalCollapsed(false)
+      }
+      setActiveTerminal((current) => {
+        if (next.length === 0) return null
+        if (current === id) return next[next.length - 1].id
+        return current
+      })
+      return next
+    })
+  }, [])
+
+  const toggleMaximize = useCallback(() => {
+    setTerminalCollapsed(false)
+    setTerminalMaximized((m) => !m)
+  }, [])
+
+  const toggleCollapse = useCallback(() => setTerminalCollapsed((c) => !c), [])
+
+  const activateTerminal = useCallback((id: number) => setActiveTerminal(id), [])
 
   const load = useCallback(() => {
     const p = mode === 'knowledge' ? api.listKnowledge() : api.listFiles()
@@ -894,51 +1007,88 @@ export function BrowserPage({
 
   return (
     <div className="page">
-      {error && <div className="error-banner">{error}</div>}
-      {moveError && <div className="error-banner">{moveError}</div>}
-      <div className={`knowledge-layout${selected ? ' has-selection' : ''}`}>
+      {error && (
+        <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+      {moveError && (
+        <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+          {moveError}
+        </div>
+      )}
+      <div className={cn('knowledge-layout flex items-stretch max-lg:flex-col', selected && 'has-selection')}>
         <Explorer
           entries={entries}
           selected={selected}
           onSelect={onSelect}
           title={title}
           mode={mode}
-  onNew={onNew}
-  newLabel={newLabel}
-  onNewFile={onNewFile}
-  onClose={onClose}
+          onNew={onNew}
+          newLabel={newLabel}
+          onNewFile={onNewFile}
+          onNewTerminal={mode === 'files' ? addTerminal : undefined}
+          onClose={onClose}
           onMoveFile={mode === 'files' ? handleMoveFile : undefined}
         />
-        <div className="knowledge-pane">
-          {selected ? (
-            <Pane
-              mode={mode}
-              root={root}
-              path={selected}
-              entry={selectedEntry}
-              list={entries}
-              favorites={favorites}
-              refreshMeta={refreshMeta}
-              onChanged={load}
-              onOpen={onSelect}
-              onDeleted={onBack}
-              onBack={onBack}
-            />
-          ) : (
-            <div className="card knowledge-empty">
-              <h2>{title}</h2>
-              <p className="muted">
-                {mode === 'knowledge'
-                  ? 'Select a note from the explorer to view it here.'
-                  : 'Select a file from the explorer to view it here.'}
-              </p>
-              {loaded && entries.length === 0 && (
-                <p className="muted">
+        <div
+          className={cn(
+            'knowledge-pane min-w-0 flex-1 bg-card p-4',
+            'flex flex-col lg:max-h-screen lg:overflow-hidden',
+            !selected && terminals.length === 0 && 'max-lg:hidden',
+          )}
+        >
+          <div
+            className={cn(
+              'knowledge-files min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto',
+              terminalMaximized && !terminalCollapsed && 'hidden',
+            )}
+          >
+            {selected ? (
+              <Pane
+                mode={mode}
+                root={root}
+                path={selected}
+                entry={selectedEntry}
+                list={entries}
+                favorites={favorites}
+                refreshMeta={refreshMeta}
+                onChanged={load}
+                onOpen={onSelect}
+                onDeleted={onBack}
+                onBack={onBack}
+              />
+            ) : (
+              <Card className="knowledge-empty items-center justify-center gap-2 p-12 text-center">
+                <h2 className="text-xl font-bold">{title}</h2>
+                <p className="text-muted-foreground">
                   {mode === 'knowledge'
-                    ? 'No knowledge yet — create your first note.'
-                    : 'No files yet.'}
+                    ? 'Select a note from the explorer to view it here.'
+                    : 'Select a file from the explorer to view it here.'}
                 </p>
-              )}
+                {loaded && entries.length === 0 && (
+                  <p className="text-muted-foreground">
+                    {mode === 'knowledge'
+                      ? 'No knowledge yet — create your first note.'
+                      : 'No files yet.'}
+                  </p>
+                )}
+              </Card>
+            )}
+          </div>
+          {mode === 'files' && terminals.length > 0 && activeTerminal !== null && (
+            <div className={terminalMaximized && !terminalCollapsed ? 'min-h-0 flex-1' : 'shrink-0'}>
+              <TerminalTabs
+                tabs={terminals}
+                activeId={activeTerminal}
+                maximized={terminalMaximized}
+                collapsed={terminalCollapsed}
+                onAdd={addTerminal}
+                onClose={closeTerminal}
+                onActivate={activateTerminal}
+                onToggleMaximize={toggleMaximize}
+                onToggleCollapse={toggleCollapse}
+              />
             </div>
           )}
         </div>
