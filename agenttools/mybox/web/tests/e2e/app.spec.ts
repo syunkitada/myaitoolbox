@@ -104,6 +104,34 @@ test('dashboard shows a content outline for markdown files', async ({ page }) =>
   await expect(outline.getByRole('link', { name: 'Tasks' })).toBeVisible()
 })
 
+test('dashboard toggles the details sidebar', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
+  const pane = page.locator('.outline-pane')
+  await expect(pane).toHaveAttribute('data-outline-open', 'true')
+  await page.getByRole('button', { name: 'Toggle details' }).click()
+  await expect(pane).toHaveAttribute('data-outline-open', 'false')
+  await page.getByRole('button', { name: 'Toggle details' }).click()
+  await expect(pane).toHaveAttribute('data-outline-open', 'true')
+  await expect(page.locator('.outline')).toContainText('Content')
+})
+
+test('dashboard toggles the file explorer', async ({ page }) => {
+  const pane = page.locator('.explorer-pane')
+  await expect(pane).toHaveAttribute('data-explorer-open', 'true')
+  await page.getByRole('button', { name: 'Toggle file explorer' }).click()
+  await expect(pane).toHaveAttribute('data-explorer-open', 'false')
+  await page.getByRole('button', { name: 'Toggle file explorer' }).click()
+  await expect(pane).toHaveAttribute('data-explorer-open', 'true')
+})
+
+test('nav bar file actions open a terminal', async ({ page }) => {
+  await expect(page.getByRole('button', { name: 'New file' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  await expect(page.locator('.terminal-panel')).toBeVisible()
+})
+
 test('dashboard edits and saves a file', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'tasks.md', exact: true }).click()
@@ -240,6 +268,31 @@ test('board drag-and-drop changes task status and front matter', async ({ page }
   const tasks = (await res.json()) as Array<{ id: string; status: string }>
   const moved = tasks.find((t) => t.id === 'e2e-status-change-target')
   expect(moved?.status).toBe('done')
+})
+
+test.describe('mobile viewport', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/projects/proj/dashboard/files/tasks.md')
+  })
+
+  test('hides the details sidebar by default and opens it as a slide-over', async ({ page }) => {
+    await expect(page.locator('.outline')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Toggle details' }).click()
+    await expect(page.locator('.outline')).toContainText('Content')
+    await page.getByRole('button', { name: 'Close' }).click()
+    await expect(page.locator('.outline')).toHaveCount(0)
+  })
+
+  test('file explorer opens as a slide-over', async ({ page }) => {
+    await page.goto('/projects/proj/dashboard/files/README.md')
+    await expect(page.locator('.explorer')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Toggle file explorer' }).click()
+    await expect(page.locator('.explorer')).toBeVisible()
+    await page.locator('.explorer').getByRole('button', { name: 'README.md', exact: true }).click()
+    await expect(page.locator('.explorer')).toHaveCount(0)
+  })
 })
 
 test.describe('project selection at /', () => {

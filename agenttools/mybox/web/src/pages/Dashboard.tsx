@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { encodePath, projectUrl } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
 import { api } from '../api/client'
+import { subscribeNavActions } from '../lib/nav-actions'
 
 interface DashboardProps {
   refreshMeta: () => Promise<void>
@@ -34,6 +36,16 @@ export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
       .catch((e) => window.alert(e instanceof Error ? e.message : String(e)))
   }
 
+  useEffect(
+    () =>
+      subscribeNavActions((action) => {
+        if (action === 'new-task') handleNewTask()
+        else if (action === 'new-file') handleNewFile('')
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+
   return (
     <BrowserPage
       mode="files"
@@ -44,9 +56,6 @@ export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
       onBack={() => navigate(projectUrl('/dashboard'))}
       favorites={favorites}
       refreshMeta={refreshMeta}
-      onNew={handleNewTask}
-      newLabel="New task"
-      onNewFile={handleNewFile}
       defaultSelect={(entries) =>
         entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
       }

@@ -11,8 +11,11 @@ import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { TerminalTabs, TerminalTabData } from '../components/TerminalTabs'
-import { TerminalSquare } from 'lucide-react'
+import { ListTree, PanelLeftClose, PanelLeftOpen, PanelRight, Share2, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { subscribeNavActions } from '@/lib/nav-actions'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { encodePath, filesUrl, projectUrl, rawFileUrl, taskIdOf } from '../utils/routes'
 import {
   buildDirListing,
@@ -24,6 +27,9 @@ import {
   serializeFrontmatter,
   splitFrontmatter,
 } from '../utils/markdown'
+
+const OUTLINE_STORAGE_KEY = 'outline_open'
+const EXPLORER_STORAGE_KEY = 'explorer_open'
 
 export type BrowserMode = 'files' | 'knowledge'
 
@@ -49,9 +55,6 @@ interface BrowserPageProps {
   favorites: string[]
   refreshMeta: () => Promise<void>
   defaultSelect?: (entries: BrowserEntry[]) => string | undefined
-  onNew?: () => void
-  newLabel?: string
-  onNewFile?: (dir: string) => void
   onClose?: () => void
 }
 
@@ -144,15 +147,11 @@ interface ExplorerProps {
   onSelect: (path: string) => void
   title: string
   mode: BrowserMode
-  onNew?: () => void
-  newLabel?: string
-  onNewFile?: (dir: string) => void
-  onNewTerminal?: () => void
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 'New', onNewFile, onNewTerminal, onClose, onMoveFile }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, onClose, onMoveFile }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -162,14 +161,6 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
     () => Array.from(new Set(entries.flatMap((e) => e.tags ?? []))).sort(),
     [entries],
   )
-
-  const newFileDir = useMemo(() => {
-    if (!selected) return ''
-    const entry = entries.find((e) => e.path === selected)
-    if (entry?.kind === 'dir') return selected
-    const idx = selected.lastIndexOf('/')
-    return idx > 0 ? selected.slice(0, idx) : ''
-  }, [entries, selected])
 
   const filtering = q.trim() !== '' || tag !== ''
 
@@ -342,15 +333,8 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
     'h-9 rounded-md border border-input bg-card px-3 text-sm text-foreground transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
   return (
-    <aside
-      className={cn(
-        'knowledge-explorer sticky top-0 flex h-screen w-[280px] shrink-0 flex-col overflow-y-auto border-r bg-card p-2.5 self-stretch',
-        'max-xl:w-[220px]',
-        'max-lg:relative max-lg:h-auto max-lg:w-full max-lg:max-h-none max-lg:border-b max-lg:border-r-0',
-        selected && 'max-lg:hidden',
-      )}
-    >
-      <div className="page-header mb-1 flex flex-wrap items-center justify-between gap-3">
+    <div className="knowledge-explorer flex h-full min-h-0 w-full flex-col overflow-y-auto bg-card p-2.5">
+      <div className="page-header mb-1 flex flex-wrap items-center gap-3">
         {onClose && (
           <Button
             variant="ghost"
@@ -363,30 +347,6 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
           </Button>
         )}
         <h1 className="text-lg font-bold">{title}</h1>
-        <div className="page-header-actions flex items-center gap-2">
-          {onNewTerminal && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="cursor-pointer"
-              onClick={onNewTerminal}
-              aria-label="Open terminal"
-              title="Open terminal"
-            >
-              <TerminalSquare />
-            </Button>
-          )}
-          {onNewFile && (
-            <Button variant="ghost" size="sm" onClick={() => onNewFile(newFileDir)}>
-              New file
-            </Button>
-          )}
-          {onNew && (
-            <Button size="sm" onClick={onNew}>
-              {newLabel}
-            </Button>
-          )}
-        </div>
       </div>
       <div className="toolbar my-3 flex flex-wrap gap-2">
         <SearchBar value={q} onChange={setQ} onSubmit={() => undefined} placeholder="Filter…" />
@@ -422,7 +382,7 @@ function Explorer({ entries, selected, onSelect, title, mode, onNew, newLabel = 
       ) : (
         <ul className="knowledge-tree m-0 mt-2 list-none p-0">{items}</ul>
       )}
-    </aside>
+    </div>
   )
 }
 
@@ -437,10 +397,11 @@ interface PaneProps {
   onChanged: () => void
   onOpen: (path: string) => void
   onDeleted: () => void
-  onBack: () => void
+  explorerOpen: boolean
+  onToggleExplorer: () => void
 }
 
-function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged, onOpen, onDeleted, onBack }: PaneProps) {
+function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged, onOpen, onDeleted, explorerOpen, onToggleExplorer }: PaneProps) {
   const navigate = useNavigate()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
@@ -450,6 +411,17 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [isFav, setIsFav] = useState(false)
+  const [activeHeading, setActiveHeading] = useState<string | null>(null)
+  const isMobile = useIsMobile()
+  const [outlineOpen, setOutlineOpen] = useState<boolean>(() => {
+    const saved = window.localStorage.getItem(OUTLINE_STORAGE_KEY)
+    if (saved !== null) return saved === '1'
+    return window.innerWidth >= 768
+  })
+
+  useEffect(() => {
+    window.localStorage.setItem(OUTLINE_STORAGE_KEY, outlineOpen ? '1' : '0')
+  }, [outlineOpen])
 
   const byPath = useMemo(() => {
     const m = new Map<string, string>()
@@ -647,17 +619,136 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
   const viewRelativeTo = isDir && mode === 'files' ? readmePath ?? `${path}/` : path
   const viewFileName = isDir && readmePath ? baseOf(readmePath) : null
 
+  const outlineItems = useMemo(() => extractOutline(viewText), [viewText])
+
+  useEffect(() => {
+    const els = outlineItems
+      .map((h) => document.getElementById(h.id))
+      .filter((el): el is HTMLElement => el !== null)
+    if (els.length === 0) {
+      setActiveHeading(null)
+      return
+    }
+    const update = () => {
+      let current: string | null = null
+      for (const el of els) {
+        if (el.getBoundingClientRect().top <= 150) current = el.id
+      }
+      setActiveHeading(current)
+    }
+    update()
+    document.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      document.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [outlineItems])
+
   const sectionTitle = 'mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase'
+
+  const outlinePanel = (
+    <>
+      <div className="outline-header flex items-center gap-2.5 border-b border-border px-4 py-3 pr-10">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+          <PanelRight className="size-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold leading-tight">Details</div>
+          <div className="text-xs leading-tight text-muted-foreground">On this page</div>
+        </div>
+      </div>
+      <div className="outline-body min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div className="outline-section mb-4 flex flex-col gap-1 border-b border-border pb-4 last:mb-0 last:border-b-0 last:pb-0">
+          <div className="outline-title mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+            <ListTree className="size-3.5" />
+            Content
+          </div>
+          {outlineItems.map((h, i) => (
+            <a
+              key={i}
+              href={`#${h.id}`}
+              className={cn(
+                'outline-link rounded-sm px-1.5 py-0.5 text-[13px] leading-[1.4] text-muted-foreground no-underline transition-colors hover:bg-muted/60 hover:text-primary',
+                `level-${h.level}`,
+                h.level === 1 && 'font-semibold',
+                (h.level === 3 || h.level === 4) && 'pl-3',
+                activeHeading === h.id && 'bg-muted/70 text-primary',
+              )}
+              onClick={(e) => {
+                e.preventDefault()
+                document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' })
+              }}
+            >
+              {h.text}
+            </a>
+          ))}
+        </div>
+        <div className="outline-section mb-4 flex flex-col gap-1 border-b border-border pb-4 last:mb-0 last:border-b-0 last:pb-0">
+          <div className="outline-title mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+            <Tag className="size-3.5" />
+            Tags
+          </div>
+          {tags.length === 0 ? (
+            <span className="muted outline-none px-1.5 text-[13px] text-muted-foreground">No tags</span>
+          ) : (
+            <div className="outline-tags flex flex-wrap gap-1.5 px-1">
+              {tags.map((t) => (
+                <TagBadge key={t}>{t}</TagBadge>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="outline-section mb-4 flex flex-col gap-1 last:mb-0">
+          <div className="outline-title mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+            <Share2 className="size-3.5" />
+            Graph
+          </div>
+          <OutlineGraph
+            path={path}
+            root={mode === 'knowledge' ? root : ''}
+            onNodeClick={
+              mode === 'knowledge'
+                ? undefined
+                : (n) => {
+                      if (n.type === 'task')
+                        navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(n.id)}/task.md`))
+                      else if (n.type === 'dir' || n.type === 'file') onOpen(n.id)
+                      else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
+                  }
+            }
+          />
+        </div>
+      </div>
+    </>
+  )
 
   return (
     <div>
       <div className="knowledge-body flex gap-4 max-md:flex-col">
         <div className="knowledge-main min-w-0 flex-1">
           <div className="page-header note-toolbar sticky top-0 z-20 mb-3 flex items-center justify-between gap-3 border-b bg-card/95 py-2 backdrop-blur">
-            <Button variant="ghost" size="sm" className="mobile-back hidden max-lg:inline-flex" onClick={onBack}>
-              ← Files
-            </Button>
             <div className="actions flex flex-wrap gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Toggle file explorer"
+                title={explorerOpen ? 'Hide file explorer' : 'Show file explorer'}
+                onClick={onToggleExplorer}
+                className={cn(explorerOpen && 'text-primary')}
+              >
+                {explorerOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Toggle details"
+                title={outlineOpen ? 'Hide details' : 'Show details'}
+                onClick={() => setOutlineOpen((o) => !o)}
+                className={cn(outlineOpen && 'text-primary')}
+              >
+                <PanelRight />
+              </Button>
               <Button variant="ghost" size="sm" className={isFav ? 'text-primary' : ''} onClick={() => fav(!isFav)}>
                 {isFav ? '★ Favorite' : '☆ Favorite'}
               </Button>
@@ -824,64 +915,36 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
             </Card>
           )}
         </div>
-        <aside
-          className={cn(
-            'outline sticky top-0 flex w-80 max-h-[calc(100vh-120px)] shrink-0 flex-col gap-1 self-start overflow-y-auto border-l border-border pl-3',
-            'max-md:static max-md:max-h-none max-md:w-full max-md:flex-row max-md:flex-wrap max-md:gap-2 max-md:border-l-0 max-md:border-t max-md:pl-0 max-md:pt-3',
-          )}
-        >
-          <div className="outline-section mb-3 flex flex-col gap-1 border-b pb-3 last:mb-0 last:border-b-0 last:pb-0 max-md:w-full">
-            <div className="outline-title text-xs font-semibold tracking-wider text-muted-foreground uppercase">Content</div>
-            {extractOutline(viewText).map((h, i) => (
-              <a
-                key={i}
-                href={`#${h.id}`}
-                className={cn(
-                  'outline-link text-[13px] leading-[1.4] text-muted-foreground no-underline hover:text-primary',
-                  `level-${h.level}`,
-                  h.level === 1 && 'font-semibold',
-                  (h.level === 3 || h.level === 4) && 'pl-3',
-                )}
-                onClick={(e) => {
-                  e.preventDefault()
-                  document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' })
-                }}
-              >
-                {h.text}
-              </a>
-            ))}
-          </div>
-          <div className="outline-section mb-3 flex flex-col gap-1 border-b pb-3 last:mb-0 last:border-b-0 last:pb-0 max-md:w-full">
-            <div className="outline-title text-xs font-semibold tracking-wider text-muted-foreground uppercase">Tags</div>
-            {tags.length === 0 ? (
-              <span className="muted outline-none text-[13px] text-muted-foreground">No tags</span>
-            ) : (
-              <div className="outline-tags flex flex-wrap gap-1.5">
-                {tags.map((t) => (
-                  <TagBadge key={t}>{t}</TagBadge>
-                ))}
-              </div>
+        {!isMobile && (
+          <div
+            data-outline-open={outlineOpen ? 'true' : 'false'}
+            className={cn(
+              'outline-pane sticky top-0 hidden h-[calc(100svh-3.5rem)] shrink-0 self-start overflow-hidden transition-[width] duration-200 ease-linear md:block',
+              outlineOpen ? 'w-96' : 'w-0',
             )}
+          >
+            <aside
+              aria-hidden={!outlineOpen}
+              className={cn(
+                'outline absolute top-0 right-0 flex h-full w-96 flex-col overflow-hidden border-l border-border bg-card transition-transform duration-200 ease-linear',
+                outlineOpen ? 'translate-x-0' : 'translate-x-full',
+              )}
+            >
+              {outlinePanel}
+            </aside>
           </div>
-          <div className="outline-section mb-3 flex flex-col gap-1 border-b pb-3 last:mb-0 last:border-b-0 last:pb-0 max-md:w-full">
-            <div className="outline-title text-xs font-semibold tracking-wider text-muted-foreground uppercase">Graph</div>
-            <OutlineGraph
-              path={path}
-              root={mode === 'knowledge' ? root : ''}
-              onNodeClick={
-                mode === 'knowledge'
-                  ? undefined
-                  : (n) => {
-                        if (n.type === 'task')
-                          navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(n.id)}/task.md`))
-                        else if (n.type === 'dir' || n.type === 'file') onOpen(n.id)
-                        else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
-                    }
-              }
-            />
-          </div>
-        </aside>
+        )}
       </div>
+      {isMobile && (
+        <Sheet open={outlineOpen} onOpenChange={setOutlineOpen}>
+          <SheetContent
+            side="right"
+            className="outline w-[85vw] max-w-sm gap-0 border-l bg-card p-0 text-sidebar-foreground"
+          >
+            {outlinePanel}
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   )
 }
@@ -896,9 +959,6 @@ export function BrowserPage({
   favorites,
   refreshMeta,
   defaultSelect,
-  onNew,
-  newLabel,
-  onNewFile,
   onClose,
 }: BrowserPageProps) {
   const [entries, setEntries] = useState<BrowserEntry[]>([])
@@ -906,6 +966,31 @@ export function BrowserPage({
   const [error, setError] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
   const autoDefaulted = useRef(false)
+
+  const isMobile = useIsMobile()
+  const [explorerOpen, setExplorerOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    if (window.innerWidth < 768) return !selected
+    const saved = window.localStorage.getItem(EXPLORER_STORAGE_KEY)
+    if (saved !== null) return saved === '1'
+    return true
+  })
+
+  useEffect(() => {
+    if (!isMobile) window.localStorage.setItem(EXPLORER_STORAGE_KEY, explorerOpen ? '1' : '0')
+  }, [explorerOpen, isMobile])
+
+  useEffect(() => {
+    if (isMobile && !selected) setExplorerOpen(true)
+  }, [isMobile, selected])
+
+  const handleSelect = useCallback(
+    (p: string) => {
+      onSelect(p)
+      if (isMobile) setExplorerOpen(false)
+    },
+    [isMobile, onSelect],
+  )
 
   const [terminals, setTerminals] = useState<TerminalTabData[]>([])
   const [activeTerminal, setActiveTerminal] = useState<number | null>(null)
@@ -919,6 +1004,14 @@ export function BrowserPage({
     setTerminals((prev) => [...prev, { id, title: `Terminal ${id}` }])
     setActiveTerminal(id)
   }, [])
+
+  useEffect(
+    () =>
+      subscribeNavActions((action) => {
+        if (action === 'open-terminal') addTerminal()
+      }),
+    [addTerminal],
+  )
 
   const closeTerminal = useCallback((id: number) => {
     setTerminals((prev) => {
@@ -1017,25 +1110,57 @@ export function BrowserPage({
           {moveError}
         </div>
       )}
-      <div className={cn('knowledge-layout flex items-stretch max-lg:flex-col', selected && 'has-selection')}>
-        <Explorer
-          entries={entries}
-          selected={selected}
-          onSelect={onSelect}
-          title={title}
-          mode={mode}
-          onNew={onNew}
-          newLabel={newLabel}
-          onNewFile={onNewFile}
-          onNewTerminal={mode === 'files' ? addTerminal : undefined}
-          onClose={onClose}
-          onMoveFile={mode === 'files' ? handleMoveFile : undefined}
-        />
+      <div className={cn('knowledge-layout flex items-stretch max-md:flex-col', selected && 'has-selection')}>
+        {!isMobile && (
+          <div
+            data-explorer-open={explorerOpen ? 'true' : 'false'}
+            className={cn(
+              'explorer-pane sticky top-14 hidden h-[calc(100svh-3.5rem)] shrink-0 self-start overflow-hidden transition-[width] duration-200 ease-linear md:block',
+              explorerOpen ? 'w-[280px] max-xl:w-[220px]' : 'w-0',
+            )}
+          >
+            <aside
+              aria-hidden={!explorerOpen}
+              className={cn(
+                'absolute top-0 left-0 flex h-full w-[280px] max-w-[280px] flex-col overflow-hidden border-r border-border bg-card transition-transform duration-200 ease-linear max-xl:w-[220px] max-xl:max-w-[220px]',
+                explorerOpen ? 'translate-x-0' : '-translate-x-full',
+              )}
+            >
+              <Explorer
+                entries={entries}
+                selected={selected}
+                onSelect={handleSelect}
+                title={title}
+                mode={mode}
+                onClose={onClose}
+                onMoveFile={mode === 'files' ? handleMoveFile : undefined}
+              />
+            </aside>
+          </div>
+        )}
+        {isMobile && (
+          <Sheet open={explorerOpen} onOpenChange={setExplorerOpen}>
+            <SheetContent
+              side="left"
+              className="explorer w-[85vw] max-w-sm gap-0 border-r bg-card p-0 text-sidebar-foreground"
+            >
+              <Explorer
+                entries={entries}
+                selected={selected}
+                onSelect={handleSelect}
+                title={title}
+                mode={mode}
+                onClose={onClose}
+                onMoveFile={mode === 'files' ? handleMoveFile : undefined}
+              />
+            </SheetContent>
+          </Sheet>
+        )}
         <div
           className={cn(
             'knowledge-pane min-w-0 flex-1 bg-card p-4',
-            'flex flex-col lg:max-h-screen lg:overflow-hidden',
-            !selected && terminals.length === 0 && 'max-lg:hidden',
+            'flex flex-col lg:max-h-[calc(100svh-3.5rem)] lg:overflow-hidden',
+            !selected && terminals.length === 0 && 'max-md:hidden',
           )}
         >
           <div
@@ -1056,7 +1181,8 @@ export function BrowserPage({
                 onChanged={load}
                 onOpen={onSelect}
                 onDeleted={onBack}
-                onBack={onBack}
+                explorerOpen={explorerOpen}
+                onToggleExplorer={() => setExplorerOpen((o) => !o)}
               />
             ) : (
               <Card className="knowledge-empty items-center justify-center gap-2 p-12 text-center">
