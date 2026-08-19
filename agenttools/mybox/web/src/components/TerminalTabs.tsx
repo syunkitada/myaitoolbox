@@ -10,6 +10,7 @@ import { ChevronDown, ChevronUp, Maximize2, Minimize2 } from 'lucide-react'
 export interface TerminalTabData {
   id: number
   title: string
+  command?: string
 }
 
 interface TerminalTabsProps {
@@ -33,7 +34,7 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   error: 'Connection failed',
 }
 
-function TerminalView({ active, maximized }: { active: boolean; maximized: boolean }) {
+function TerminalView({ active, maximized, command }: { active: boolean; maximized: boolean; command?: string }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -63,7 +64,7 @@ function TerminalView({ active, maximized }: { active: boolean; maximized: boole
     fitRef.current = fit
     fit.fit()
 
-    const ws = new WebSocket(terminalWsUrl())
+    const ws = new WebSocket(terminalWsUrl(command))
     ws.binaryType = 'arraybuffer'
     wsRef.current = ws
 
@@ -115,7 +116,7 @@ function TerminalView({ active, maximized }: { active: boolean; maximized: boole
       fitRef.current = null
       wsRef.current = null
     }
-  }, [])
+  }, [command])
 
   // Re-fit when the tab becomes visible again.
   useEffect(() => {
@@ -237,7 +238,7 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
               maximized && t.id === activeId && 'min-h-0 flex-1',
             )}
           >
-            <TerminalView active={t.id === activeId} maximized={maximized} />
+            <TerminalView active={t.id === activeId} maximized={maximized} command={t.command} />
           </div>
         ))}
       </div>

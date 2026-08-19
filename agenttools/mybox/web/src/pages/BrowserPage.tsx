@@ -770,10 +770,31 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                   </Button>
                 </>
               )}
-              {!isDir && !editing && !isImage && (
-                <Button size="sm" onClick={() => setEditing(true)}>
-                  Edit
-                </Button>
+              {!isDir && !isImage && (
+                editing ? (
+                  <>
+                    <Button size="sm" onClick={save}>
+                      Save
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setDraft(content)
+                        const split = splitFrontmatter(content)
+                        setDraftBody(split.body)
+                        setDraftFm(parseFrontmatter(split.frontmatter).data)
+                        setEditing(false)
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="sm" onClick={() => setEditing(true)}>
+                    Edit
+                  </Button>
+                )
               )}
             </div>
           </div>
@@ -789,24 +810,6 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
           )}
           {editing ? (
             <Card className="gap-0 p-4">
-              <div className="actions mb-4 flex gap-2">
-                <Button size="sm" onClick={save}>
-                  Save
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setDraft(content)
-                    const split = splitFrontmatter(content)
-                    setDraftBody(split.body)
-                    setDraftFm(parseFrontmatter(split.frontmatter).data)
-                    setEditing(false)
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
               {useForm ? (
                 <>
                   <CardContent className="border-t px-0 pt-4">
@@ -998,10 +1001,10 @@ export function BrowserPage({
   const [terminalCollapsed, setTerminalCollapsed] = useState(false)
   const terminalIdRef = useRef(0)
 
-  const addTerminal = useCallback(() => {
+  const addTerminal = useCallback((title?: string, command?: string) => {
     terminalIdRef.current += 1
     const id = terminalIdRef.current
-    setTerminals((prev) => [...prev, { id, title: `Terminal ${id}` }])
+    setTerminals((prev) => [...prev, { id, title: title ?? `Terminal ${id}`, command }])
     setActiveTerminal(id)
   }, [])
 
@@ -1009,6 +1012,8 @@ export function BrowserPage({
     () =>
       subscribeNavActions((action) => {
         if (action === 'open-terminal') addTerminal()
+        if (action === 'open-chat-opencode') addTerminal('OpenCode', 'opencode')
+        if (action === 'open-chat-codex') addTerminal('Codex', 'codex')
       }),
     [addTerminal],
   )

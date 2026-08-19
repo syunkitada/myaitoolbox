@@ -61,7 +61,13 @@ func (s *Server) Terminal(c echo.Context) error {
 	if shell == "" {
 		shell = "/bin/bash"
 	}
-	cmd := exec.Command(shell)
+	command := c.QueryParam("command")
+	var cmd *exec.Cmd
+	if command != "" {
+		cmd = exec.Command(shell, "-c", command)
+	} else {
+		cmd = exec.Command(shell)
+	}
 	cmd.Dir = app.Project.Path
 	cmd.Env = os.Environ()
 

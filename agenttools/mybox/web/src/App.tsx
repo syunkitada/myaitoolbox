@@ -12,7 +12,8 @@ import { Button } from './components/ui/button'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from './components/ui/breadcrumb'
 import { Separator } from './components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar'
-import { FilePlus, ListPlus, TerminalSquare } from 'lucide-react'
+import { FilePlus, ListPlus, MessageSquare, TerminalSquare } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './components/ui/dropdown-menu'
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
 
@@ -66,6 +67,25 @@ export default function App() {
               >
                 <TerminalSquare />
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-accent hover:text-accent-foreground cursor-pointer has-[>svg]:px-2.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+                    aria-label="Open chat"
+                    title="Open chat"
+                  >
+                    <MessageSquare />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => dispatchNavAction('open-chat-opencode')}>
+                    OpenCode
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => dispatchNavAction('open-chat-codex')}>
+                    Codex
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="ghost"
                 size="sm"

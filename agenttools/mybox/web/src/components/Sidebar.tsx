@@ -1,8 +1,6 @@
-import { useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Meta } from '../api/client'
 import { clearProject, encodePath, projectUrl, setProject } from '../utils/routes'
-import { SearchBar } from './SearchBar'
 import {
   Sidebar,
   SidebarContent,
@@ -25,7 +23,6 @@ interface SidebarProps {
 }
 
 export function AppSidebar({ meta, project }: SidebarProps) {
-  const [q, setQ] = useState('')
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { state, setOpenMobile } = useSidebar()
@@ -39,11 +36,6 @@ export function AppSidebar({ meta, project }: SidebarProps) {
 
   const openFile = (p: string) => {
     navigate(projectUrl(`/dashboard/files/${encodePath(p)}`))
-    handleNav()
-  }
-
-  const submitSearch = (query: string) => {
-    navigate(projectUrl(`/search?q=${encodeURIComponent(query)}`))
     handleNav()
   }
 
@@ -84,12 +76,6 @@ export function AppSidebar({ meta, project }: SidebarProps) {
                 </option>
               ))}
             </select>
-          </div>
-        )}
-
-        {project && (
-          <div className="px-1 group-data-[collapsible=icon]:hidden">
-            <SearchBar value={q} onChange={setQ} onSubmit={submitSearch} />
           </div>
         )}
 

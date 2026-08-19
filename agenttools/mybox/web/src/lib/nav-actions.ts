@@ -1,4 +1,4 @@
-export type NavAction = 'open-terminal' | 'new-file' | 'new-task'
+export type NavAction = 'open-terminal' | 'new-file' | 'new-task' | 'open-chat-opencode' | 'open-chat-codex'
 
 const listeners = new Set<(action: NavAction) => void>()
 
