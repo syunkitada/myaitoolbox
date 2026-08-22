@@ -139,6 +139,7 @@ function TerminalView({ active, maximized, command }: { active: boolean; maximiz
     <div className={cn('relative', maximized && 'h-full')}>
       <div
         ref={hostRef}
+        onContextMenu={(e) => e.preventDefault()}
         className={cn(
           'terminal-xterm w-full',
           maximized ? 'h-[55vh] lg:h-full' : 'max-lg:h-[40vh] lg:h-64',

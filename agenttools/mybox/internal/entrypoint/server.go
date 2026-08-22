@@ -38,6 +38,7 @@ type Server struct {
 	readOnly       bool
 	defaultProject string
 	basePath       string
+	herdrRun       herdrRunFunc
 }
 
 func NewServer(cfg *domain.Config, defaultProject string, readOnly bool, basePath string) *Server {
@@ -266,9 +267,19 @@ func (s *Server) GetMeta(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	projects := make([]string, 0, len(app.Config.Projects))
-	for _, p := range app.Config.Projects {
+	cfgProjects, err := s.projects.List(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	projects := make([]string, 0, len(cfgProjects))
+	for _, p := range cfgProjects {
 		projects = append(projects, p.Name)
+	}
+	defaultProject, err := s.projects.Default(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
 	}
 	tags, err := s.collectTags(r.Context(), app)
 	if err != nil {
@@ -278,7 +289,7 @@ func (s *Server) GetMeta(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, api.Meta{
 		Project:        app.Project.Name,
 		Projects:       projects,
-		DefaultProject: app.Config.DefaultProject,
+		DefaultProject: defaultProject,
 		Tags:           tags,
 		Favorites:      state.Favorites,
 		RecentFiles:    state.RecentFiles,

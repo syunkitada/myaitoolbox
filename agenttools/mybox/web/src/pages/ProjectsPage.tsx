@@ -85,7 +85,7 @@ export function ProjectsPage({ onChanged }: ProjectsPageProps) {
 
   return (
     <div className="projects-page mx-auto max-w-[900px] p-6">
-      <h1 className="text-2xl font-bold">Projects</h1>
+      <h1 className="text-2xl font-bold">Workspaces</h1>
 
       <Card className="projects-create mt-4 gap-3">
         <CardHeader className="px-6 py-0">
@@ -150,7 +150,7 @@ export function ProjectsPage({ onChanged }: ProjectsPageProps) {
         {loading ? (
           <p className="muted text-sm text-muted-foreground">Loading projects…</p>
         ) : projects.length === 0 ? (
-          <p className="muted text-sm text-muted-foreground">No projects yet. Register a directory above to get started.</p>
+          <p className="muted text-sm text-muted-foreground">No workspaces yet. Register a directory above to get started.</p>
         ) : (
           <table className="projects-table w-full border-collapse">
             <thead>

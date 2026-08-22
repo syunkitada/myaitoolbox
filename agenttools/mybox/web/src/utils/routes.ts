@@ -15,8 +15,21 @@ export function getProject(): string {
 export function projectUrl(path: string): string {
   const project = getProject()
   if (!project) return '/projects'
+  return projectUrlFor(project, path)
+}
+
+// projectUrlFor builds a project-scoped URL for an explicit project, unlike
+// projectUrl which derives the project from the current location.
+export function projectUrlFor(project: string, path: string): string {
   const suffix = path.startsWith('/') ? path : `/${path}`
   return `/projects/${encodeURIComponent(project)}${suffix}`
+}
+
+// dirName returns the last path segment, or '' when unknown.
+export function dirName(path?: string | null): string {
+  if (!path) return ''
+  const parts = path.split('/').filter(Boolean)
+  return parts[parts.length - 1] ?? ''
 }
 
 export function appUrl(path: string): string {

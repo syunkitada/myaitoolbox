@@ -13,9 +13,14 @@ interface SearchPageProps {
 export function SearchPage({ navigate }: SearchPageProps) {
   const [params, setParams] = useSearchParams()
   const q = params.get('q') ?? ''
+  const [draft, setDraft] = useState(q)
   const [results, setResults] = useState<SearchResult[]>([])
   const [type, setType] = useState<'task' | 'knowledge' | ''>('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    setDraft(q)
+  }, [q])
 
   useEffect(() => {
     if (!q.trim()) {
@@ -30,14 +35,15 @@ export function SearchPage({ navigate }: SearchPageProps) {
   }, [q, type])
 
   const submit = (query: string) => {
-    setParams({ q: query })
+    const trimmed = query.trim()
+    if (trimmed) setParams({ q: trimmed })
   }
 
   return (
     <div className="page p-4 md:p-6">
       <h1 className="text-2xl font-bold">Search</h1>
       <div className="toolbar my-3 flex flex-wrap gap-2">
-        <SearchBar value={q} onChange={() => undefined} onSubmit={submit} autoFocus />
+        <SearchBar value={draft} onChange={setDraft} onSubmit={submit} autoFocus />
         <select
           value={type}
           onChange={(e) => setType(e.target.value as typeof type)}

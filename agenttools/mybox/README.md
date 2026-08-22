@@ -74,7 +74,9 @@ mybox knowledge edit --project proj notes/architecture
 mybox knowledge move --project proj notes/architecture docs/architecture
 mybox knowledge rename --project proj docs/architecture design
 ```
-
+$ herdr
+herdr: detached from server
+Run `herdr` to reattach
 ### 検索
 
 ```bash

@@ -1,13 +1,11 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Bot, Box, Boxes, SquareKanban } from 'lucide-react'
 import { Meta } from '../api/client'
-import { clearProject, encodePath, projectUrl, setProject } from '../utils/routes'
+import { clearProject, dirName, projectUrlFor, setProject } from '../utils/routes'
+import type { HerdrOverview } from '../api/client'
+import { statusDotClass } from './herdr-status'
 import {
   Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -15,28 +13,35 @@ import {
   SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { Box, Boxes, Clock, FolderHeart, LayoutDashboard, Network, Search, SquareKanban } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
 
 interface SidebarProps {
   meta: Meta | null
   project: string
+  herdr: HerdrOverview | null
 }
 
-export function AppSidebar({ meta, project }: SidebarProps) {
-  const navigate = useNavigate()
+export function AppSidebar({ meta, project, herdr }: SidebarProps) {
   const { pathname } = useLocation()
-  const { state, setOpenMobile } = useSidebar()
+  const navigate = useNavigate()
+  const { setOpenMobile, state } = useSidebar()
+  const collapsed = state === 'collapsed'
 
   const handleNav = () => {
     setOpenMobile(false)
   }
 
-  const activePath = (to: string) =>
-    pathname === to || pathname.startsWith(to.endsWith('/') ? to : to + '/')
+  const workspaceStatus = (name: string): string | null =>
+    herdr?.workspaces.find((w) => w.label === name)?.agent_status ?? null
 
-  const openFile = (p: string) => {
-    navigate(projectUrl(`/dashboard/files/${encodePath(p)}`))
+  // openAgent navigates to the Herdr tab of the current (or default) project
+  // with the agent's operation panel pre-opened.
+  const openAgent = (paneId: string, fallbackProject?: string) => {
     handleNav()
+    const target =
+      project || fallbackProject || meta?.default_project || meta?.projects?.[0] || ''
+    if (!target) return
+    navigate(`${projectUrlFor(target, '/herdr')}?agent=${encodeURIComponent(paneId)}`)
   }
 
   return (
@@ -59,151 +64,134 @@ export function AppSidebar({ meta, project }: SidebarProps) {
           </SidebarMenuItem>
         </SidebarMenu>
 
-        {meta && meta.projects.length > 0 && (
-          <div className="sidebar-brand px-1 group-data-[collapsible=icon]:hidden">
-            <select
-              value={project}
-              onChange={(e) => {
-                if (e.target.value) setProject(e.target.value)
-              }}
-              aria-label="Switch project"
-              className="h-8 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              {!project && <option value="">未選択</option>}
-              {meta.projects.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         <SidebarMenu className="sidebar-nav mt-1">
-          {project ? (
-            <>
-              {state === 'collapsed' && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Search">
-                    <NavLink to={projectUrl('/search')} onClick={handleNav}>
-                      <Search />
-                      <span>Search</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-              <SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Workspaces" isActive={pathname === '/projects'}>
+              <NavLink to="/projects" end onClick={handleNav}>
+                <Boxes />
+                <span>Workspaces</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Board" isActive={pathname === '/board'}>
+              <NavLink to="/board" end onClick={handleNav}>
+                <SquareKanban />
+                <span>Board</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
+        <Separator className="mx-2 my-1 group-data-[collapsible=icon]:mx-3" />
+
+        <SidebarMenu className="sidebar-projects mt-1 pb-2">
+          {(meta?.projects ?? []).map((p) => {
+            const status = workspaceStatus(p)
+            return (
+              <SidebarMenuItem key={p}>
                 <SidebarMenuButton
-                  asChild
-                  tooltip="Dashboard"
-                  isActive={activePath(projectUrl('/dashboard'))}
+                  onClick={() => {
+                    handleNav()
+                    if (p !== project) setProject(p)
+                  }}
+                  isActive={project === p}
+                  tooltip={status ? `${p} (${status})` : p}
+                  className="cursor-pointer"
                 >
-                  <NavLink to={projectUrl('/dashboard')} onClick={handleNav}>
-                    <LayoutDashboard />
-                    <span>Dashboard</span>
-                  </NavLink>
+                  <Box />
+                  <span className="truncate">{p}</span>
+                  {status && (
+                    <span
+                      className={`herdr-workspace-status ml-auto inline-block size-2 shrink-0 rounded-full ${statusDotClass(status)} ${status === 'working' ? 'animate-pulse' : ''}`}
+                      role="img"
+                      aria-label={`workspace status ${status}`}
+                    />
+                  )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Board" isActive={activePath(projectUrl('/board'))}>
-                  <NavLink to={projectUrl('/board')} onClick={handleNav}>
-                    <SquareKanban />
-                    <span>Board</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Graph" isActive={activePath(projectUrl('/graph'))}>
-                  <NavLink to={projectUrl('/graph')} onClick={handleNav}>
-                    <Network />
-                    <span>Graph</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </>
-          ) : (
-            <>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Projects" isActive={activePath('/projects')}>
-                  <NavLink to="/projects" end onClick={handleNav}>
-                    <Boxes />
-                    <span>Projects</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Board" isActive={activePath('/board')}>
-                  <NavLink to="/board" end onClick={handleNav}>
-                    <SquareKanban />
-                    <span>Board</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </>
+            )
+          })}
+          {!meta || meta.projects.length === 0 ? (
+            <p className="px-2 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
+              No workspaces yet.
+            </p>
+          ) : null}
+        </SidebarMenu>
+
+        <Separator className="mx-2 my-1 group-data-[collapsible=icon]:mx-3" />
+
+        <SidebarMenu className="sidebar-agents mt-1 pb-2">
+          {!collapsed && (
+            <li
+              className="sidebar-agents-label flex items-center gap-1.5 px-2 text-[11px] font-semibold tracking-wider text-sidebar-foreground/60 uppercase"
+              data-testid="sidebar-agents-label"
+            >
+              <Bot className="size-3.5" />
+              Agents
+              {herdr?.available === false && (
+                <span className="ml-auto text-[10px] normal-case opacity-60">offline</span>
+              )}
+            </li>
           )}
+          {(herdr?.agents ?? []).map((a) => {
+            const wsLabel = herdr?.workspaces.find((w) => w.workspace_id === a.workspace_id)?.label
+            const dir = dirName(a.cwd)
+            const tooltip = [
+              a.name,
+              a.status,
+              wsLabel,
+              a.cwd ?? dir,
+              a.title ?? '',
+            ]
+              .filter(Boolean)
+              .join(' · ')
+            return (
+              <SidebarMenuItem key={a.pane_id}>
+                <SidebarMenuButton
+                  onClick={() => openAgent(a.pane_id, wsLabel)}
+                  tooltip={tooltip}
+                  className="sidebar-agent-row cursor-pointer"
+                  data-testid={`sidebar-agent-${a.pane_id}`}
+                >
+                  <Bot />
+                  <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                    <span className="flex w-full items-center gap-1.5">
+                      <span className="truncate text-[13px] font-medium">{a.name}</span>
+                      <span
+                        className={`ml-auto inline-block size-2 shrink-0 rounded-full ${statusDotClass(a.status)} ${a.status === 'working' ? 'animate-pulse' : ''}`}
+                        role="img"
+                        aria-label={`agent status ${a.status}`}
+                      />
+                    </span>
+                    {!collapsed && (
+                      <span className="flex w-full min-w-0 items-center gap-1 truncate text-[11px] text-sidebar-foreground/60">
+                        {wsLabel && <span className="truncate">{wsLabel}</span>}
+                        {dir && (
+                          <span className="truncate" title={a.cwd ?? dir}>
+                            · {dir}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {!collapsed && a.title && (
+                      <span
+                        className="w-full text-[11px] leading-snug whitespace-normal break-words text-muted-foreground line-clamp-2"
+                        title={a.title}
+                      >
+                        {a.title}
+                      </span>
+                    )}
+                  </span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })}
+          {herdr && herdr.available && herdr.agents.length === 0 && !collapsed ? (
+            <p className="px-2 text-xs text-sidebar-foreground/60">No agents running.</p>
+          ) : null}
         </SidebarMenu>
       </SidebarHeader>
-
-      {project && (
-        <SidebarContent>
-          <SidebarGroup className="sidebar-section group-data-[collapsible=icon]:hidden">
-            <SidebarGroupLabel>Favorites</SidebarGroupLabel>
-            <SidebarGroupContent>
-              {(meta?.favorites ?? []).length === 0 ? (
-                <p className="px-2 text-xs text-sidebar-foreground/60">No favorites yet.</p>
-              ) : (
-                <SidebarMenu className="sidebar-list">
-                  {(meta?.favorites ?? []).map((p) => (
-                    <SidebarMenuItem key={p}>
-                      <SidebarMenuButton onClick={() => openFile(p)} tooltip={p} className="cursor-pointer">
-                        <FolderHeart className="text-sidebar-accent-foreground/70" />
-                        <span className="truncate">{p}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              )}
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          <SidebarGroup className="sidebar-section group-data-[collapsible=icon]:hidden">
-            <SidebarGroupLabel>Recent</SidebarGroupLabel>
-            <SidebarGroupContent>
-              {(meta?.recent_files ?? []).length === 0 ? (
-                <p className="px-2 text-xs text-sidebar-foreground/60">No recent files.</p>
-              ) : (
-                <SidebarMenu className="sidebar-list">
-                  {(meta?.recent_files ?? []).map((p) => (
-                    <SidebarMenuItem key={p}>
-                      <SidebarMenuButton onClick={() => openFile(p)} tooltip={p} className="cursor-pointer">
-                        <Clock className="text-sidebar-accent-foreground/70" />
-                        <span className="truncate">{p}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              )}
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-      )}
-
-      {project && (
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={clearProject}
-                tooltip="Projects"
-                className="cursor-pointer text-sidebar-foreground/80"
-              >
-                <Boxes />
-                <span>Projects</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-      )}
 
       <SidebarRail />
     </Sidebar>

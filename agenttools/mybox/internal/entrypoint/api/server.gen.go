@@ -39,6 +39,42 @@ type ServerInterface interface {
 	// GetGraph Get graph data for Graph View
 	// (GET /api/graph)
 	GetGraph(w http.ResponseWriter, r *http.Request, params GetGraphParams)
+	// PromptHerdrAgent Submit a prompt to an agent
+	// (POST /api/herdr/agents/prompt)
+	PromptHerdrAgent(w http.ResponseWriter, r *http.Request)
+	// ReadHerdrAgent Read agent terminal output
+	// (POST /api/herdr/agents/read)
+	ReadHerdrAgent(w http.ResponseWriter, r *http.Request)
+	// GetHerdrOverview Get herdr workspaces and agents overview
+	// (GET /api/herdr/overview)
+	GetHerdrOverview(w http.ResponseWriter, r *http.Request)
+	// CloseHerdrPane Close a herdr pane
+	// (POST /api/herdr/panes/close)
+	CloseHerdrPane(w http.ResponseWriter, r *http.Request)
+	// ReadHerdrPane Read herdr pane terminal output
+	// (POST /api/herdr/panes/read)
+	ReadHerdrPane(w http.ResponseWriter, r *http.Request)
+	// RenameHerdrPane Rename a herdr pane
+	// (POST /api/herdr/panes/rename)
+	RenameHerdrPane(w http.ResponseWriter, r *http.Request)
+	// SendKeysHerdrPane Send key presses to a herdr pane
+	// (POST /api/herdr/panes/send-keys)
+	SendKeysHerdrPane(w http.ResponseWriter, r *http.Request)
+	// SendTextHerdrPane Send literal text to a herdr pane
+	// (POST /api/herdr/panes/send-text)
+	SendTextHerdrPane(w http.ResponseWriter, r *http.Request)
+	// SplitHerdrPane Split a herdr pane
+	// (POST /api/herdr/panes/split)
+	SplitHerdrPane(w http.ResponseWriter, r *http.Request)
+	// CloseHerdrTab Close a herdr tab
+	// (POST /api/herdr/tabs/close)
+	CloseHerdrTab(w http.ResponseWriter, r *http.Request)
+	// CreateHerdrTab Create a herdr tab
+	// (POST /api/herdr/tabs/create)
+	CreateHerdrTab(w http.ResponseWriter, r *http.Request)
+	// RenameHerdrTab Rename a herdr tab
+	// (POST /api/herdr/tabs/rename)
+	RenameHerdrTab(w http.ResponseWriter, r *http.Request)
 	// ListKnowledge List knowledge
 	// (GET /api/knowledge)
 	ListKnowledge(w http.ResponseWriter, r *http.Request, params ListKnowledgeParams)
@@ -248,6 +284,174 @@ func (siw *ServerInterfaceWrapper) GetGraph(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetGraph(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PromptHerdrAgent operation middleware
+func (siw *ServerInterfaceWrapper) PromptHerdrAgent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PromptHerdrAgent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReadHerdrAgent operation middleware
+func (siw *ServerInterfaceWrapper) ReadHerdrAgent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReadHerdrAgent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHerdrOverview operation middleware
+func (siw *ServerInterfaceWrapper) GetHerdrOverview(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHerdrOverview(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseHerdrPane operation middleware
+func (siw *ServerInterfaceWrapper) CloseHerdrPane(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseHerdrPane(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReadHerdrPane operation middleware
+func (siw *ServerInterfaceWrapper) ReadHerdrPane(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReadHerdrPane(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameHerdrPane operation middleware
+func (siw *ServerInterfaceWrapper) RenameHerdrPane(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameHerdrPane(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendKeysHerdrPane operation middleware
+func (siw *ServerInterfaceWrapper) SendKeysHerdrPane(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendKeysHerdrPane(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendTextHerdrPane operation middleware
+func (siw *ServerInterfaceWrapper) SendTextHerdrPane(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendTextHerdrPane(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SplitHerdrPane operation middleware
+func (siw *ServerInterfaceWrapper) SplitHerdrPane(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SplitHerdrPane(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseHerdrTab operation middleware
+func (siw *ServerInterfaceWrapper) CloseHerdrTab(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseHerdrTab(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateHerdrTab operation middleware
+func (siw *ServerInterfaceWrapper) CreateHerdrTab(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateHerdrTab(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameHerdrTab operation middleware
+func (siw *ServerInterfaceWrapper) RenameHerdrTab(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameHerdrTab(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -865,6 +1069,18 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/knowledge/move", wrapper.MoveKnowledge)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/knowledge/rename", wrapper.RenameKnowledge)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/graph", wrapper.GetGraph)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/herdr/overview", wrapper.GetHerdrOverview)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/read", wrapper.ReadHerdrAgent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/prompt", wrapper.PromptHerdrAgent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/tabs/create", wrapper.CreateHerdrTab)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/tabs/rename", wrapper.RenameHerdrTab)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/tabs/close", wrapper.CloseHerdrTab)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/panes/split", wrapper.SplitHerdrPane)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/panes/rename", wrapper.RenameHerdrPane)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/panes/read", wrapper.ReadHerdrPane)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/panes/close", wrapper.CloseHerdrPane)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/panes/send-text", wrapper.SendTextHerdrPane)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/panes/send-keys", wrapper.SendKeysHerdrPane)
 
 	return m
 }

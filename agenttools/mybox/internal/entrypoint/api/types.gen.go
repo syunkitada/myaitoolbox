@@ -25,6 +25,24 @@ func (e FileEntryKind) Valid() bool {
 	}
 }
 
+// Defines values for HerdrPaneSplitRequestDirection.
+const (
+	Down  HerdrPaneSplitRequestDirection = "down"
+	Right HerdrPaneSplitRequestDirection = "right"
+)
+
+// Valid indicates whether the value is a known member of the HerdrPaneSplitRequestDirection enum.
+func (e HerdrPaneSplitRequestDirection) Valid() bool {
+	switch e {
+	case Down:
+		return true
+	case Right:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SearchResultType.
 const (
 	SearchResultTypeKnowledge SearchResultType = "knowledge"
@@ -173,6 +191,136 @@ type GraphNode struct {
 	Id    string  `json:"id"`
 	Label string  `json:"label"`
 	Type  *string `json:"type,omitempty"`
+}
+
+// HerdrAgent defines model for HerdrAgent.
+type HerdrAgent struct {
+	Cwd         *string `json:"cwd,omitempty"`
+	Focused     *bool   `json:"focused,omitempty"`
+	Name        string  `json:"name"`
+	PaneId      string  `json:"pane_id"`
+	Status      string  `json:"status"`
+	Title       *string `json:"title,omitempty"`
+	WorkspaceId string  `json:"workspace_id"`
+}
+
+// HerdrOpResponse defines model for HerdrOpResponse.
+type HerdrOpResponse struct {
+	Ok bool `json:"ok"`
+}
+
+// HerdrOverview defines model for HerdrOverview.
+type HerdrOverview struct {
+	Agents     []HerdrAgent     `json:"agents"`
+	Available  bool             `json:"available"`
+	Panes      []HerdrPane      `json:"panes"`
+	Tabs       []HerdrTab       `json:"tabs"`
+	Workspaces []HerdrWorkspace `json:"workspaces"`
+}
+
+// HerdrPane defines model for HerdrPane.
+type HerdrPane struct {
+	AgentStatus *string `json:"agent_status,omitempty"`
+	Cwd         *string `json:"cwd,omitempty"`
+	Focused     *bool   `json:"focused,omitempty"`
+	PaneId      string  `json:"pane_id"`
+	TabId       string  `json:"tab_id"`
+	Title       *string `json:"title,omitempty"`
+	WorkspaceId string  `json:"workspace_id"`
+}
+
+// HerdrPaneCloseRequest defines model for HerdrPaneCloseRequest.
+type HerdrPaneCloseRequest struct {
+	PaneId string `json:"pane_id"`
+}
+
+// HerdrPaneRenameRequest defines model for HerdrPaneRenameRequest.
+type HerdrPaneRenameRequest struct {
+	Label  string `json:"label"`
+	PaneId string `json:"pane_id"`
+}
+
+// HerdrPaneSendKeysRequest defines model for HerdrPaneSendKeysRequest.
+type HerdrPaneSendKeysRequest struct {
+	Keys   []string `json:"keys"`
+	PaneId string   `json:"pane_id"`
+}
+
+// HerdrPaneSendTextRequest defines model for HerdrPaneSendTextRequest.
+type HerdrPaneSendTextRequest struct {
+	PaneId string `json:"pane_id"`
+	Text   string `json:"text"`
+}
+
+// HerdrPaneSplitRequest defines model for HerdrPaneSplitRequest.
+type HerdrPaneSplitRequest struct {
+	Cwd       *string                        `json:"cwd,omitempty"`
+	Direction HerdrPaneSplitRequestDirection `json:"direction"`
+	PaneId    string                         `json:"pane_id"`
+}
+
+// HerdrPaneSplitRequestDirection defines model for HerdrPaneSplitRequest.Direction.
+type HerdrPaneSplitRequestDirection string
+
+// HerdrPromptRequest defines model for HerdrPromptRequest.
+type HerdrPromptRequest struct {
+	Target string `json:"target"`
+	Text   string `json:"text"`
+}
+
+// HerdrPromptResponse defines model for HerdrPromptResponse.
+type HerdrPromptResponse struct {
+	Ok bool `json:"ok"`
+}
+
+// HerdrReadRequest defines model for HerdrReadRequest.
+type HerdrReadRequest struct {
+	Target string `json:"target"`
+}
+
+// HerdrReadResponse defines model for HerdrReadResponse.
+type HerdrReadResponse struct {
+	Output string `json:"output"`
+}
+
+// HerdrTab defines model for HerdrTab.
+type HerdrTab struct {
+	AgentStatus *string `json:"agent_status,omitempty"`
+	Focused     *bool   `json:"focused,omitempty"`
+	Label       string  `json:"label"`
+	Number      *int    `json:"number,omitempty"`
+	PaneCount   *int    `json:"pane_count,omitempty"`
+	TabId       string  `json:"tab_id"`
+	WorkspaceId string  `json:"workspace_id"`
+}
+
+// HerdrTabCloseRequest defines model for HerdrTabCloseRequest.
+type HerdrTabCloseRequest struct {
+	TabId string `json:"tab_id"`
+}
+
+// HerdrTabCreateRequest defines model for HerdrTabCreateRequest.
+type HerdrTabCreateRequest struct {
+	Cwd         *string `json:"cwd,omitempty"`
+	Label       *string `json:"label,omitempty"`
+	WorkspaceId *string `json:"workspace_id,omitempty"`
+}
+
+// HerdrTabRenameRequest defines model for HerdrTabRenameRequest.
+type HerdrTabRenameRequest struct {
+	Label string `json:"label"`
+	TabId string `json:"tab_id"`
+}
+
+// HerdrWorkspace defines model for HerdrWorkspace.
+type HerdrWorkspace struct {
+	AgentStatus string `json:"agent_status"`
+	Focused     *bool  `json:"focused,omitempty"`
+	Label       string `json:"label"`
+	Number      *int   `json:"number,omitempty"`
+	PaneCount   *int   `json:"pane_count,omitempty"`
+	TabCount    *int   `json:"tab_count,omitempty"`
+	WorkspaceId string `json:"workspace_id"`
 }
 
 // Knowledge defines model for Knowledge.
@@ -341,6 +489,39 @@ type DeleteFileJSONRequestBody = FilePathRequest
 
 // MoveFileJSONRequestBody defines body for MoveFile for application/json ContentType.
 type MoveFileJSONRequestBody = MoveFileRequest
+
+// PromptHerdrAgentJSONRequestBody defines body for PromptHerdrAgent for application/json ContentType.
+type PromptHerdrAgentJSONRequestBody = HerdrPromptRequest
+
+// ReadHerdrAgentJSONRequestBody defines body for ReadHerdrAgent for application/json ContentType.
+type ReadHerdrAgentJSONRequestBody = HerdrReadRequest
+
+// CloseHerdrPaneJSONRequestBody defines body for CloseHerdrPane for application/json ContentType.
+type CloseHerdrPaneJSONRequestBody = HerdrPaneCloseRequest
+
+// ReadHerdrPaneJSONRequestBody defines body for ReadHerdrPane for application/json ContentType.
+type ReadHerdrPaneJSONRequestBody = HerdrReadRequest
+
+// RenameHerdrPaneJSONRequestBody defines body for RenameHerdrPane for application/json ContentType.
+type RenameHerdrPaneJSONRequestBody = HerdrPaneRenameRequest
+
+// SendKeysHerdrPaneJSONRequestBody defines body for SendKeysHerdrPane for application/json ContentType.
+type SendKeysHerdrPaneJSONRequestBody = HerdrPaneSendKeysRequest
+
+// SendTextHerdrPaneJSONRequestBody defines body for SendTextHerdrPane for application/json ContentType.
+type SendTextHerdrPaneJSONRequestBody = HerdrPaneSendTextRequest
+
+// SplitHerdrPaneJSONRequestBody defines body for SplitHerdrPane for application/json ContentType.
+type SplitHerdrPaneJSONRequestBody = HerdrPaneSplitRequest
+
+// CloseHerdrTabJSONRequestBody defines body for CloseHerdrTab for application/json ContentType.
+type CloseHerdrTabJSONRequestBody = HerdrTabCloseRequest
+
+// CreateHerdrTabJSONRequestBody defines body for CreateHerdrTab for application/json ContentType.
+type CreateHerdrTabJSONRequestBody = HerdrTabCreateRequest
+
+// RenameHerdrTabJSONRequestBody defines body for RenameHerdrTab for application/json ContentType.
+type RenameHerdrTabJSONRequestBody = HerdrTabRenameRequest
 
 // CreateKnowledgeJSONRequestBody defines body for CreateKnowledge for application/json ContentType.
 type CreateKnowledgeJSONRequestBody = CreateKnowledgeRequest

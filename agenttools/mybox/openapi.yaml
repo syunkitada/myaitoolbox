@@ -453,6 +453,204 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphData"
+  /api/herdr/overview:
+    get:
+      operationId: getHerdrOverview
+      summary: Get herdr workspaces and agents overview
+      responses:
+        "200":
+          description: herdr overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOverview"
+  /api/herdr/agents/read:
+    post:
+      operationId: readHerdrAgent
+      summary: Read agent terminal output
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrReadRequest"
+      responses:
+        "200":
+          description: agent terminal output
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrReadResponse"
+  /api/herdr/agents/prompt:
+    post:
+      operationId: promptHerdrAgent
+      summary: Submit a prompt to an agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPromptRequest"
+      responses:
+        "200":
+          description: accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrPromptResponse"
+  /api/herdr/tabs/create:
+    post:
+      operationId: createHerdrTab
+      summary: Create a herdr tab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrTabCreateRequest"
+      responses:
+        "200":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/tabs/rename:
+    post:
+      operationId: renameHerdrTab
+      summary: Rename a herdr tab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrTabRenameRequest"
+      responses:
+        "200":
+          description: renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/tabs/close:
+    post:
+      operationId: closeHerdrTab
+      summary: Close a herdr tab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrTabCloseRequest"
+      responses:
+        "200":
+          description: closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/split:
+    post:
+      operationId: splitHerdrPane
+      summary: Split a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneSplitRequest"
+      responses:
+        "200":
+          description: split
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/rename:
+    post:
+      operationId: renameHerdrPane
+      summary: Rename a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneRenameRequest"
+      responses:
+        "200":
+          description: renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/read:
+    post:
+      operationId: readHerdrPane
+      summary: Read herdr pane terminal output
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrReadRequest"
+      responses:
+        "200":
+          description: pane terminal output
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrReadResponse"
+  /api/herdr/panes/close:
+    post:
+      operationId: closeHerdrPane
+      summary: Close a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneCloseRequest"
+      responses:
+        "200":
+          description: closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/send-text:
+    post:
+      operationId: sendTextHerdrPane
+      summary: Send literal text to a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneSendTextRequest"
+      responses:
+        "200":
+          description: sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/send-keys:
+    post:
+      operationId: sendKeysHerdrPane
+      summary: Send key presses to a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneSendKeysRequest"
+      responses:
+        "200":
+          description: sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
 components:
   schemas:
     Project:
@@ -722,3 +920,195 @@ components:
           type: string
         target:
           type: string
+    HerdrOverview:
+      type: object
+      required: [available, workspaces, agents, tabs, panes]
+      properties:
+        available:
+          type: boolean
+        workspaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/HerdrWorkspace"
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/HerdrAgent"
+        tabs:
+          type: array
+          items:
+            $ref: "#/components/schemas/HerdrTab"
+        panes:
+          type: array
+          items:
+            $ref: "#/components/schemas/HerdrPane"
+    HerdrWorkspace:
+      type: object
+      required: [workspace_id, label, agent_status]
+      properties:
+        workspace_id:
+          type: string
+        label:
+          type: string
+        number:
+          type: integer
+        agent_status:
+          type: string
+        focused:
+          type: boolean
+        tab_count:
+          type: integer
+        pane_count:
+          type: integer
+    HerdrAgent:
+      type: object
+      required: [name, status, workspace_id, pane_id]
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        workspace_id:
+          type: string
+        cwd:
+          type: string
+        title:
+          type: string
+        focused:
+          type: boolean
+        pane_id:
+          type: string
+    HerdrReadRequest:
+      type: object
+      required: [target]
+      properties:
+        target:
+          type: string
+    HerdrReadResponse:
+      type: object
+      required: [output]
+      properties:
+        output:
+          type: string
+    HerdrPromptRequest:
+      type: object
+      required: [target, text]
+      properties:
+        target:
+          type: string
+        text:
+          type: string
+    HerdrPromptResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    HerdrOpResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    HerdrTab:
+      type: object
+      required: [tab_id, workspace_id, label]
+      properties:
+        tab_id:
+          type: string
+        workspace_id:
+          type: string
+        label:
+          type: string
+        number:
+          type: integer
+        agent_status:
+          type: string
+        focused:
+          type: boolean
+        pane_count:
+          type: integer
+    HerdrPane:
+      type: object
+      required: [pane_id, tab_id, workspace_id]
+      properties:
+        pane_id:
+          type: string
+        tab_id:
+          type: string
+        workspace_id:
+          type: string
+        cwd:
+          type: string
+        agent_status:
+          type: string
+        title:
+          type: string
+        focused:
+          type: boolean
+    HerdrTabCreateRequest:
+      type: object
+      properties:
+        workspace_id:
+          type: string
+        label:
+          type: string
+        cwd:
+          type: string
+    HerdrTabRenameRequest:
+      type: object
+      required: [tab_id, label]
+      properties:
+        tab_id:
+          type: string
+        label:
+          type: string
+    HerdrTabCloseRequest:
+      type: object
+      required: [tab_id]
+      properties:
+        tab_id:
+          type: string
+    HerdrPaneSplitRequest:
+      type: object
+      required: [pane_id, direction]
+      properties:
+        pane_id:
+          type: string
+        direction:
+          type: string
+          enum: [right, down]
+        cwd:
+          type: string
+    HerdrPaneRenameRequest:
+      type: object
+      required: [pane_id, label]
+      properties:
+        pane_id:
+          type: string
+        label:
+          type: string
+    HerdrPaneCloseRequest:
+      type: object
+      required: [pane_id]
+      properties:
+        pane_id:
+          type: string
+    HerdrPaneSendTextRequest:
+      type: object
+      required: [pane_id, text]
+      properties:
+        pane_id:
+          type: string
+        text:
+          type: string
+    HerdrPaneSendKeysRequest:
+      type: object
+      required: [pane_id, keys]
+      properties:
+        pane_id:
+          type: string
+        keys:
+          type: array
+          items:
+            type: string

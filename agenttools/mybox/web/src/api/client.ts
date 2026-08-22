@@ -100,6 +100,54 @@ export interface Project {
   path: string
 }
 
+export interface HerdrWorkspace {
+  workspace_id: string
+  label: string
+  number?: number | null
+  agent_status: string
+  focused?: boolean | null
+  tab_count?: number | null
+  pane_count?: number | null
+}
+
+export interface HerdrAgent {
+  name: string
+  status: string
+  workspace_id: string
+  cwd?: string | null
+  title?: string | null
+  focused?: boolean | null
+  pane_id: string
+}
+
+export interface HerdrTab {
+  tab_id: string
+  workspace_id: string
+  label: string
+  number?: number | null
+  agent_status?: string | null
+  focused?: boolean | null
+  pane_count?: number | null
+}
+
+export interface HerdrPane {
+  pane_id: string
+  tab_id: string
+  workspace_id: string
+  cwd?: string | null
+  agent_status?: string | null
+  title?: string | null
+  focused?: boolean | null
+}
+
+export interface HerdrOverview {
+  available: boolean
+  workspaces: HerdrWorkspace[]
+  agents: HerdrAgent[]
+  tabs: HerdrTab[]
+  panes: HerdrPane[]
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -110,7 +158,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const init: RequestInit = { method, headers: {} }
+  const init: RequestInit = { method, headers: {}, cache: 'no-store' }
   const currentProject = getProject()
   if (currentProject) {
     (init.headers as Record<string, string>)['X-Project'] = currentProject
@@ -196,6 +244,47 @@ export const api = {
   createFile: (path: string) => request<void>('POST', '/api/files', { path }),
   getFileContent: (path: string) =>
     request<FileContent>('GET', '/api/files/content' + qs({ path })),
+
+  getHerdrOverview: () => request<HerdrOverview>('GET', '/api/herdr/overview'),
+
+  readHerdrAgent: (target: string) =>
+    request<{ output: string }>('POST', '/api/herdr/agents/read', { target }),
+
+  promptHerdrAgent: (target: string, text: string) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/agents/prompt', { target, text }),
+
+  createHerdrTab: (workspaceId?: string, label?: string) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/tabs/create', {
+      workspace_id: workspaceId,
+      label,
+    }),
+
+  renameHerdrTab: (tabId: string, label: string) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/tabs/rename', { tab_id: tabId, label }),
+
+  closeHerdrTab: (tabId: string) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/tabs/close', { tab_id: tabId }),
+
+  splitHerdrPane: (paneId: string, direction: 'right' | 'down') =>
+    request<{ ok: boolean }>('POST', '/api/herdr/panes/split', {
+      pane_id: paneId,
+      direction,
+    }),
+
+  renameHerdrPane: (paneId: string, label: string) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/panes/rename', { pane_id: paneId, label }),
+
+  readHerdrPane: (paneId: string) =>
+    request<{ output: string }>('POST', '/api/herdr/panes/read', { target: paneId }),
+
+  closeHerdrPane: (paneId: string) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/panes/close', { pane_id: paneId }),
+
+  sendTextHerdrPane: (paneId: string, text: string) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/panes/send-text', { pane_id: paneId, text }),
+
+  sendKeysHerdrPane: (paneId: string, keys: string[]) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/panes/send-keys', { pane_id: paneId, keys }),
 
   saveFileContent: (path: string, content: string) =>
     request<void>('PUT', '/api/files/content', { path, content }),

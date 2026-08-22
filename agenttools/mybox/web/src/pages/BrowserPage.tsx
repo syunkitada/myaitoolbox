@@ -11,7 +11,7 @@ import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { TerminalTabs, TerminalTabData } from '../components/TerminalTabs'
-import { ListTree, PanelLeftClose, PanelLeftOpen, PanelRight, Share2, Tag } from 'lucide-react'
+import { Clock, FolderHeart, ListTree, PanelLeftClose, PanelLeftOpen, PanelRight, Share2, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { subscribeNavActions } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -53,6 +53,7 @@ interface BrowserPageProps {
   onSelect: (path: string) => void
   onBack: () => void
   favorites: string[]
+  recentFiles: string[]
   refreshMeta: () => Promise<void>
   defaultSelect?: (entries: BrowserEntry[]) => string | undefined
   onClose?: () => void
@@ -147,11 +148,49 @@ interface ExplorerProps {
   onSelect: (path: string) => void
   title: string
   mode: BrowserMode
+  favorites: string[]
+  recentFiles: string[]
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, onClose, onMoveFile }: ExplorerProps) {
+interface ExplorerSectionProps {
+  label: string
+  icon: ReactNode
+  items: string[]
+  emptyText: string
+  onSelect: (path: string) => void
+}
+
+function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSectionProps) {
+  return (
+    <div className="explorer-section mb-4 last:mb-0">
+      <h2 className="mb-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">{label}</h2>
+      {items.length === 0 ? (
+        <p className="px-1 text-xs text-muted-foreground">{emptyText}</p>
+      ) : (
+        <ul className="m-0 list-none p-0">
+          {items.map((p) => (
+            <li key={p} className="knowledge-tree-row flex min-h-[26px] items-center gap-1 rounded-md px-1 leading-[1.4] hover:bg-muted">
+              <button
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 self-stretch bg-transparent p-0 text-left text-sm whitespace-nowrap text-foreground overflow-hidden text-ellipsis hover:text-primary"
+                title={p}
+                onClick={() => onSelect(p)}
+              >
+                <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground [&_svg]:size-3.5">
+                  {icon}
+                </span>
+                <span className="truncate">{p}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, onClose, onMoveFile }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -177,6 +216,23 @@ function Explorer({ entries, selected, onSelect, title, mode, onClose, onMoveFil
   }, [entries, q, tag])
 
   const tree = useMemo(() => buildTree(entries), [entries])
+
+  const knownPaths = useMemo(() => {
+    const set = new Set<string>()
+    for (const e of entries) {
+      set.add(e.path)
+      const parts = e.path.split('/')
+      let prefix = ''
+      for (let i = 0; i < parts.length - 1; i++) {
+        prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+        set.add(prefix)
+      }
+    }
+    return set
+  }, [entries])
+
+  const visibleFavorites = useMemo(() => favorites.filter((p) => knownPaths.has(p)), [favorites, knownPaths])
+  const visibleRecents = useMemo(() => recentFiles.filter((p) => knownPaths.has(p)), [recentFiles, knownPaths])
 
   const toggle = (dirPath: string) => {
     setExpanded((prev) => {
@@ -382,6 +438,22 @@ function Explorer({ entries, selected, onSelect, title, mode, onClose, onMoveFil
       ) : (
         <ul className="knowledge-tree m-0 mt-2 list-none p-0">{items}</ul>
       )}
+      <div className="explorer-meta mt-3 border-t border-border pt-3">
+        <ExplorerSection
+          label="Favorites"
+          icon={<FolderHeart />}
+          items={visibleFavorites}
+          emptyText="No favorites yet."
+          onSelect={onSelect}
+        />
+        <ExplorerSection
+          label="Recent"
+          icon={<Clock />}
+          items={visibleRecents}
+          emptyText="No recent files."
+          onSelect={onSelect}
+        />
+      </div>
     </div>
   )
 }
@@ -512,9 +584,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
         setDraftFm(parseFrontmatter(split.frontmatter).data)
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-    if (mode === 'knowledge') {
-      void api.recordRecent(path).then(() => void refreshMeta()).catch(() => undefined)
-    }
+    void api.recordRecent(path).then(() => void refreshMeta()).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, isDir, isImage, readmePath, listing])
 
@@ -960,6 +1030,7 @@ export function BrowserPage({
   onSelect,
   onBack,
   favorites,
+  recentFiles,
   refreshMeta,
   defaultSelect,
   onClose,
@@ -1137,6 +1208,8 @@ export function BrowserPage({
                 onSelect={handleSelect}
                 title={title}
                 mode={mode}
+                favorites={favorites}
+                recentFiles={recentFiles}
                 onClose={onClose}
                 onMoveFile={mode === 'files' ? handleMoveFile : undefined}
               />
@@ -1155,6 +1228,8 @@ export function BrowserPage({
                 onSelect={handleSelect}
                 title={title}
                 mode={mode}
+                favorites={favorites}
+                recentFiles={recentFiles}
                 onClose={onClose}
                 onMoveFile={mode === 'files' ? handleMoveFile : undefined}
               />

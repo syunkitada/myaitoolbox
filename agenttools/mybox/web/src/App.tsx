@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
+import { Routes, Route, useLocation, useNavigate, Navigate, NavLink } from 'react-router-dom'
 import { api, Meta } from './api/client'
 import { getProject, projectUrl } from './utils/routes'
 import { AppSidebar } from './components/Sidebar'
@@ -8,11 +8,13 @@ import { GraphPage } from './pages/GraphPage'
 import { SearchPage } from './pages/SearchPage'
 import { KanbanBoard } from './pages/KanbanBoard'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { HerdrPage } from './pages/HerdrPage'
+import { useHerdrOverview } from './hooks/use-herdr'
 import { Button } from './components/ui/button'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from './components/ui/breadcrumb'
 import { Separator } from './components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar'
-import { FilePlus, ListPlus, MessageSquare, TerminalSquare } from 'lucide-react'
+import { FilePlus, ListPlus, MessageSquare, Search, TerminalSquare } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './components/ui/dropdown-menu'
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
@@ -23,6 +25,7 @@ export default function App() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const project = getProject()
+  const herdr = useHerdrOverview()
 
   const refreshMeta = useCallback(async () => {
     try {
@@ -37,9 +40,16 @@ export default function App() {
     void refreshMeta()
   }, [refreshMeta])
 
+  const projectTabs = [
+    { to: projectUrl('/dashboard'), label: 'Files', active: pathname.includes('/dashboard') },
+    { to: projectUrl('/board'), label: 'Board', active: pathname === projectUrl('/board') },
+    { to: projectUrl('/graph'), label: 'Graph', active: pathname === projectUrl('/graph') },
+    { to: projectUrl('/herdr'), label: 'Herdr', active: pathname === projectUrl('/herdr') },
+  ]
+
   return (
-    <SidebarProvider>
-      <AppSidebar meta={meta} project={project} />
+    <SidebarProvider style={{ '--sidebar-width': '20rem' } as React.CSSProperties}>
+      <AppSidebar meta={meta} project={project} herdr={herdr.overview} />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
           <div className="flex flex-1 items-center gap-2">
@@ -48,13 +58,42 @@ export default function App() {
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem>
-                  <BreadcrumbPage className="line-clamp-1 max-w-[70vw] truncate">
+                  <BreadcrumbPage className="line-clamp-1 max-w-[40vw] truncate">
                     {project ? project : 'Projects'}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
+            {project && (
+              <nav aria-label="Project sections" className="project-tabs ml-4 flex min-w-0 items-center gap-1 overflow-x-auto">
+                {projectTabs.map((t) => (
+                  <NavLink
+                    key={t.label}
+                    to={t.to}
+                    aria-current={t.active ? 'page' : undefined}
+                    className={cn(
+                      'inline-flex h-8 shrink-0 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                      t.active ? 'bg-accent text-primary' : 'text-muted-foreground',
+                    )}
+                  >
+                    {t.label}
+                  </NavLink>
+                ))}
+              </nav>
+            )}
           </div>
+          {project && !pathname.includes('/search') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => navigate(projectUrl('/search'))}
+              aria-label="Search"
+              title="Search"
+            >
+              <Search />
+            </Button>
+          )}
           {project && pathname.includes('/dashboard') && (
             <div className="nav-actions flex items-center gap-1">
               <Button
@@ -133,14 +172,37 @@ export default function App() {
               <>
                 <Route
                   path="/projects/:project/dashboard"
-                  element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
+                  element={
+                    <Dashboard
+                      refreshMeta={refreshMeta}
+                      favorites={meta?.favorites ?? []}
+                      recentFiles={meta?.recent_files ?? []}
+                    />
+                  }
                 />
                 <Route
                   path="/projects/:project/dashboard/files/*"
-                  element={<Dashboard refreshMeta={refreshMeta} favorites={meta?.favorites ?? []} />}
+                  element={
+                    <Dashboard
+                      refreshMeta={refreshMeta}
+                      favorites={meta?.favorites ?? []}
+                      recentFiles={meta?.recent_files ?? []}
+                    />
+                  }
                 />
                 <Route path="/projects/:project/board" element={<KanbanBoard />} />
                 <Route path="/projects/:project/graph" element={<GraphPage />} />
+                <Route
+                  path="/projects/:project/herdr"
+                  element={
+                    <HerdrPage
+                      overview={herdr.overview}
+                      error={herdr.error}
+                      loading={herdr.loading}
+                      refresh={() => herdr.refresh()}
+                    />
+                  }
+                />
                 <Route path="/projects/:project/search" element={<SearchPage navigate={navigate} />} />
                 <Route
                   path="/projects/:project"

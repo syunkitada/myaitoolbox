@@ -137,7 +137,13 @@ export function KanbanBoard() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
 
-  useEffect(load, [load])
+  // プロジェクトBoard ⇔ 全プロジェクト横断Board は同一コンポーネントの再利用になるため、
+  // currentProject の変化を監視して再取得する（さもないと前のスコープのタスクが残る）
+  useEffect(() => {
+    setTasks([])
+    setError(null)
+    load()
+  }, [load, currentProject])
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {

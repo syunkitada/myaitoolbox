@@ -8,9 +8,10 @@ import { subscribeNavActions } from '../lib/nav-actions'
 interface DashboardProps {
   refreshMeta: () => Promise<void>
   favorites: string[]
+  recentFiles: string[]
 }
 
-export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
+export function Dashboard({ refreshMeta, favorites, recentFiles }: DashboardProps) {
   const params = useParams()
   const selected = (params['*'] ?? '').trim()
   const navigate = useNavigate()
@@ -55,6 +56,7 @@ export function Dashboard({ refreshMeta, favorites }: DashboardProps) {
       onSelect={(path) => navigate(projectUrl(`/dashboard/files/${encodePath(path)}`))}
       onBack={() => navigate(projectUrl('/dashboard'))}
       favorites={favorites}
+      recentFiles={recentFiles}
       refreshMeta={refreshMeta}
       defaultSelect={(entries) =>
         entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
