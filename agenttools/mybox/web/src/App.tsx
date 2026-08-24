@@ -10,6 +10,7 @@ import { KanbanBoard } from './pages/KanbanBoard'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { HerdrPage } from './pages/HerdrPage'
 import { useHerdrOverview } from './hooks/use-herdr'
+import { useAgentFavicon } from './hooks/use-agent-favicon'
 import { Button } from './components/ui/button'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from './components/ui/breadcrumb'
 import { Separator } from './components/ui/separator'
@@ -26,6 +27,7 @@ export default function App() {
   const { pathname } = useLocation()
   const project = getProject()
   const herdr = useHerdrOverview()
+  useAgentFavicon(herdr.overview)
 
   const refreshMeta = useCallback(async () => {
     try {

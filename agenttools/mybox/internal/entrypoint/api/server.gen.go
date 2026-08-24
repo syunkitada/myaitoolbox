@@ -45,6 +45,9 @@ type ServerInterface interface {
 	// ReadHerdrAgent Read agent terminal output
 	// (POST /api/herdr/agents/read)
 	ReadHerdrAgent(w http.ResponseWriter, r *http.Request)
+	// SendKeysHerdrAgent Send key presses to a herdr agent
+	// (POST /api/herdr/agents/send-keys)
+	SendKeysHerdrAgent(w http.ResponseWriter, r *http.Request)
 	// GetHerdrOverview Get herdr workspaces and agents overview
 	// (GET /api/herdr/overview)
 	GetHerdrOverview(w http.ResponseWriter, r *http.Request)
@@ -312,6 +315,20 @@ func (siw *ServerInterfaceWrapper) ReadHerdrAgent(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReadHerdrAgent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendKeysHerdrAgent operation middleware
+func (siw *ServerInterfaceWrapper) SendKeysHerdrAgent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendKeysHerdrAgent(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1072,6 +1089,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/herdr/overview", wrapper.GetHerdrOverview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/read", wrapper.ReadHerdrAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/prompt", wrapper.PromptHerdrAgent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/send-keys", wrapper.SendKeysHerdrAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/tabs/create", wrapper.CreateHerdrTab)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/tabs/rename", wrapper.RenameHerdrTab)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/tabs/close", wrapper.CloseHerdrTab)

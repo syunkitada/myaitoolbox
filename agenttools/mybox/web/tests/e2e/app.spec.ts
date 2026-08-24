@@ -302,6 +302,25 @@ test('sidebar board shows tasks across projects', async ({ page }) => {
   await expect(cards.filter({ hasText: 'Ship the web UI' })).toBeVisible()
 })
 
+test('favicon mirrors the aggregated agent status and updates dynamically', async ({ page }) => {
+  await page.goto('/projects/proj/herdr')
+
+  // The stub agent reports "working"; the favicon becomes its blue dot PNG.
+  const favicon = page.locator('link[rel="icon"]')
+  await expect(favicon).toHaveAttribute('href', /data:image\/png/)
+  const workingHref = await favicon.getAttribute('href')
+  expect(workingHref).toBeTruthy()
+
+  // Once polled data flips the agent to "blocked" the favicon is redrawn.
+  await page.route('**/api/herdr/overview', async (route) => {
+    const res = await route.fetch()
+    const body = { ...(await res.json()) }
+    body.agents = [{ ...body.agents[0], status: 'blocked' }]
+    await route.fulfill({ response: res, json: body })
+  })
+  await expect(favicon).not.toHaveAttribute('href', workingHref!, { timeout: 10000 })
+})
+
 test('herdr tab shows workspaces and operates agents', async ({ page }) => {
   await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
   await expect(page.getByRole('heading', { name: 'Herdr', level: 1 })).toBeVisible()
@@ -312,6 +331,11 @@ test('herdr tab shows workspaces and operates agents', async ({ page }) => {
   const detail = page.locator('.herdr-agent-detail')
   await expect(detail).toBeVisible()
   await expect(detail.locator('pre')).toContainText('stub output for w7:p1')
+
+  // the focused agent polls its terminal output every second
+  const pre = detail.locator('pre')
+  const before = await pre.innerText()
+  await expect(pre).not.toHaveText(before, { timeout: 5000 })
 
   await page.getByTestId('herdr-prompt-input').fill('run the tests please')
   await detail.getByRole('button', { name: 'Send' }).click()
@@ -422,7 +446,6 @@ test('sidebar shows workspace status and herdr agents', async ({ page }) => {
   ).toBeVisible()
 
   const agents = page.locator('.sidebar-agents')
-  await expect(agents).toContainText('opencode')
   await expect(agents.locator('[aria-label="agent status working"]').first()).toBeVisible()
   // agent row details: workspace label, cwd directory name and terminal title
   const row = page.getByTestId('sidebar-agent-w7:p1')
@@ -442,6 +465,35 @@ test('clicking a sidebar agent opens its operation panel in the herdr tab', asyn
   await page.getByTestId('herdr-prompt-input').fill('hello from sidebar')
   await detail.getByRole('button', { name: 'Send' }).click()
   await expect(detail.locator('pre')).toContainText('last prompt: hello from sidebar')
+})
+
+test('herdr offers a new tab when no tabs or panes exist at all', async ({ page }) => {
+  await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
+
+  // close every visible tab; the last tab of a workspace also removes the
+  // workspace. (Workspaces of other projects are not shown on this page and
+  // do not count as tabs/panes of this project.)
+  for (const tabId of ['w7:t1', 'w7:t2']) {
+    const tab = page.getByTestId(`herdr-tab-${tabId}`)
+    page.once('dialog', (d) => d.accept())
+    await tab.hover()
+    await tab.getByRole('button', { name: `Close tab ${tabId}` }).click()
+    await expect(tab).toHaveCount(0)
+  }
+
+  // with nothing left, the empty state still offers tab creation
+  const empty = page.getByTestId('herdr-no-workspace')
+  await expect(empty).toContainText(`No herdr workspace found for project "proj"`)
+  await expect(page.getByTestId('herdr-create-first-tab')).toBeVisible()
+
+  page.once('dialog', (d) => d.accept('fresh'))
+  await page.getByTestId('herdr-create-first-tab').click()
+
+  // bootstrapping creates the project's first workspace with the named tab
+  const workspace = page.locator('[data-testid^="herdr-workspace-"]')
+  await expect(workspace).toHaveCount(1)
+  await expect(workspace).toContainText('proj')
+  await expect(page.locator('[data-testid^="herdr-tab-"]').filter({ hasText: 'fresh' })).toBeVisible()
 })
 
 test('graph renders knowledge nodes', async ({ page }) => {

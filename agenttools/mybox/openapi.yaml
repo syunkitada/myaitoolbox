@@ -498,10 +498,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HerdrPromptResponse"
+  /api/herdr/agents/send-keys:
+    post:
+      operationId: sendKeysHerdrAgent
+      summary: Send key presses to a herdr agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrAgentSendKeysRequest"
+      responses:
+        "200":
+          description: sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
   /api/herdr/tabs/create:
     post:
       operationId: createHerdrTab
       summary: Create a herdr tab
+      description: >
+        When the request names a project and no herdr workspace carries that
+        label yet (e.g. herdr holds no tabs/panes at all), the project's first
+        workspace is bootstrapped instead; its root tab becomes the new tab.
       requestBody:
         required: true
         content:
@@ -1055,6 +1076,12 @@ components:
           type: string
         cwd:
           type: string
+        project:
+          type: string
+          description: >-
+            Project name. When no herdr workspace has this label, the project's
+            first workspace (cwd of the project) is bootstrapped and its root
+            tab carries the requested label.
     HerdrTabRenameRequest:
       type: object
       required: [tab_id, label]
@@ -1107,6 +1134,16 @@ components:
       required: [pane_id, keys]
       properties:
         pane_id:
+          type: string
+        keys:
+          type: array
+          items:
+            type: string
+    HerdrAgentSendKeysRequest:
+      type: object
+      required: [target, keys]
+      properties:
+        target:
           type: string
         keys:
           type: array

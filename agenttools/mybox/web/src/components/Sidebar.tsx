@@ -138,7 +138,6 @@ export function AppSidebar({ meta, project, herdr }: SidebarProps) {
             const wsLabel = herdr?.workspaces.find((w) => w.workspace_id === a.workspace_id)?.label
             const dir = dirName(a.cwd)
             const tooltip = [
-              a.name,
               a.status,
               wsLabel,
               a.cwd ?? dir,
@@ -157,23 +156,23 @@ export function AppSidebar({ meta, project, herdr }: SidebarProps) {
                   <Bot />
                   <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
                     <span className="flex w-full items-center gap-1.5">
-                      <span className="truncate text-[13px] font-medium">{a.name}</span>
+                      {wsLabel && (
+                        <span className="truncate text-[13px] font-medium">{wsLabel}</span>
+                      )}
+                      {dir && (
+                        <span
+                          className="truncate text-[11px] text-sidebar-foreground/60"
+                          title={a.cwd ?? dir}
+                        >
+                          · {dir}
+                        </span>
+                      )}
                       <span
                         className={`ml-auto inline-block size-2 shrink-0 rounded-full ${statusDotClass(a.status)} ${a.status === 'working' ? 'animate-pulse' : ''}`}
                         role="img"
                         aria-label={`agent status ${a.status}`}
                       />
                     </span>
-                    {!collapsed && (
-                      <span className="flex w-full min-w-0 items-center gap-1 truncate text-[11px] text-sidebar-foreground/60">
-                        {wsLabel && <span className="truncate">{wsLabel}</span>}
-                        {dir && (
-                          <span className="truncate" title={a.cwd ?? dir}>
-                            · {dir}
-                          </span>
-                        )}
-                      </span>
-                    )}
                     {!collapsed && a.title && (
                       <span
                         className="w-full text-[11px] leading-snug whitespace-normal break-words text-muted-foreground line-clamp-2"

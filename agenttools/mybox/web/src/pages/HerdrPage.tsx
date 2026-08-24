@@ -17,28 +17,70 @@ interface HerdrPageProps {
 
 interface AgentDetailProps {
   agent: HerdrAgent
+  autoReload: boolean
 }
 
-function AgentDetail({ agent }: AgentDetailProps) {
+// Quick keys sent to the agent terminal via `herdr agent send-keys`.
+// Key names must be accepted by the herdr CLI (e.g. Enter, esc, C-c).
+const AGENT_QUICK_KEYS: { label: string; key: string }[] = [
+  { label: 'Enter', key: 'enter' },
+  { label: 'Esc', key: 'esc' },
+  { label: 'Ctrl+C', key: 'C-c' },
+  { label: 'Tab', key: 'Tab' },
+  { label: '↑', key: 'Up' },
+  { label: '↓', key: 'Down' },
+]
+
+function AgentDetail({ agent, autoReload }: AgentDetailProps) {
   const [output, setOutput] = useState<string | null>(null)
   const [outputError, setOutputError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [keySending, setKeySending] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const loadingRef = useRef(false)
+  const preRef = useRef<HTMLPreElement>(null)
+  // While true the viewport follows new output; scrolling up pauses the follow.
+  const pinnedRef = useRef(true)
 
-  const loadOutput = useCallback(async () => {
+  const handlePreScroll = useCallback(() => {
+    const el = preRef.current
+    if (!el) return
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32
+  }, [])
+
+  // Keep the terminal pinned to its latest output while auto reloading.
+  useEffect(() => {
+    const el = preRef.current
+    if (!el || !pinnedRef.current) return
+    el.scrollTop = el.scrollHeight
+  }, [output])
+
+  const loadOutput = useCallback(async (reportError = true) => {
+    // Skip if a reload is already in flight (e.g. the 1s focus poller).
+    if (loadingRef.current) return
+    loadingRef.current = true
     try {
       const res = await api.readHerdrAgent(agent.pane_id)
       setOutput(res.output)
       setOutputError(null)
     } catch (e) {
-      setOutputError(e instanceof Error ? e.message : String(e))
+      // Background polling stays silent; only manual reloads surface errors.
+      if (reportError) setOutputError(e instanceof Error ? e.message : String(e))
+    } finally {
+      loadingRef.current = false
     }
   }, [agent.pane_id])
 
   useEffect(() => {
     void loadOutput()
-  }, [loadOutput])
+    // The focused agent keeps its terminal output fresh by polling every second.
+    if (!autoReload) return
+    const id = setInterval(() => {
+      if (!document.hidden) void loadOutput(false)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [autoReload, loadOutput])
 
   const sendPrompt = useCallback(async () => {
     const text = draft.trim()
@@ -58,6 +100,22 @@ function AgentDetail({ agent }: AgentDetailProps) {
     }
   }, [draft, sending, agent.pane_id, loadOutput])
 
+  const sendKey = useCallback(async (label: string, key: string) => {
+    if (keySending) return
+    setKeySending(key)
+    setNotice(null)
+    try {
+      await api.sendKeysHerdrAgent(agent.pane_id, [key])
+      setNotice(`${label} sent`)
+      setTimeout(() => setNotice(null), 3000)
+      void loadOutput()
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e))
+    } finally {
+      setKeySending(null)
+    }
+  }, [keySending, agent.pane_id, loadOutput])
+
   return (
     <div className="herdr-agent-detail mt-2 rounded-md border bg-muted/40 p-3" data-testid={`agent-detail-${agent.pane_id}`}>
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -67,9 +125,33 @@ function AgentDetail({ agent }: AgentDetailProps) {
         </Button>
       </div>
       {outputError && <p className="mb-2 text-xs text-red-600">{outputError}</p>}
-      <pre className="max-h-64 overflow-auto rounded border bg-background p-2 text-xs whitespace-pre-wrap">
+      <pre
+        ref={preRef}
+        onScroll={handlePreScroll}
+        className="max-h-64 overflow-auto rounded border bg-background p-2 text-xs whitespace-pre-wrap"
+      >
         {output ?? 'loading...'}
       </pre>
+      <div
+        className="herdr-agent-keys mt-2 flex flex-wrap items-center gap-1"
+        data-testid={`agent-keys-${agent.pane_id}`}
+      >
+        {AGENT_QUICK_KEYS.map((k) => (
+          <Button
+            key={k.key}
+            variant="outline"
+            size="xs"
+            className="cursor-pointer px-1.5 font-mono text-[11px]"
+            title={`Press ${k.label} key`}
+            aria-label={`Press ${k.label} on ${agent.name}`}
+            data-testid={`agent-key-${agent.pane_id}-${k.label}`}
+            disabled={keySending !== null}
+            onClick={() => void sendKey(k.label, k.key)}
+          >
+            [{keySending === k.key ? '…' : k.label}]
+          </Button>
+        ))}
+      </div>
       <div className="mt-3 flex items-start gap-2">
         <textarea
           aria-label={`Prompt ${agent.name}`}
@@ -645,6 +727,18 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
     setTimeout(() => setOpError((cur) => (cur === message ? null : cur)), 6000)
   }, [])
 
+  // With no matching workspace the server bootstraps this project's first
+  // workspace, whose root tab becomes the requested new tab.
+  const createFirstTab = () => {
+    const label = window.prompt(`New tab for project "${project}" (optional name)`, '')
+    if (label === null) return
+    void runOp(
+      () => api.createHerdrTab(undefined, label.trim() || undefined, undefined, project),
+      onError,
+      refresh,
+    )
+  }
+
   // Auto-open the agent requested via ?agent=<pane_id> (sidebar deep link).
   useEffect(() => {
     if (!requestedAgent) return
@@ -708,9 +802,22 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
           Workspaces · Tabs · Panes
         </h2>
         {workspaces.filter((w) => w.label === project).length === 0 ? (
-          <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-            No herdr workspace found for project "{project}".
-          </p>
+          <div className="rounded-md border border-dashed p-4 text-center" data-testid="herdr-no-workspace">
+            <p className="text-xs text-muted-foreground">
+              No herdr workspace found for project "{project}".
+            </p>
+            {overview?.available && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 cursor-pointer"
+                onClick={createFirstTab}
+                data-testid="herdr-create-first-tab"
+              >
+                + New Tab
+              </Button>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col gap-3">
             {workspaces
@@ -784,7 +891,7 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
                         </span>
                       )}
                     </button>
-                    {openPane === a.pane_id && <AgentDetail agent={a} />}
+                    {openPane === a.pane_id && <AgentDetail agent={a} autoReload={autoReload} />}
                   </div>
                 )
               })}

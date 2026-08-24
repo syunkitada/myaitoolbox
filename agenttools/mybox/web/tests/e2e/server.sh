@@ -70,6 +70,31 @@ if cmd == "workspace" and args and args[0] == "list":
         w["pane_count"] = sum(1 for p in panes if p["workspace_id"] == w["workspace_id"])
         wss.append(w)
     out("cli:workspace:list", "workspace_list", "workspaces", wss)
+elif cmd == "workspace" and args and args[0] == "create":
+    # Mirrors the real CLI bootstrap used when herdr has no tabs/panes yet.
+    cwd = opt(args, "--cwd") or "/tmp/stub"
+    label = opt(args, "--label") or os.path.basename(cwd.rstrip("/")) or "workspace"
+    wss = load("workspaces.json", [])
+    num = max([int(w["workspace_id"][1:]) for w in wss], default=0) + 1
+    ws_id = f"w{num}"
+    tab_id = f"{ws_id}:t1"
+    pane_id = f"{ws_id}:p1"
+    ws = {"active_tab_id": tab_id, "agent_status": "unknown", "focused": True,
+          "label": label, "number": len(wss) + 1, "pane_count": 1, "tab_count": 1,
+          "workspace_id": ws_id}
+    wss.append(ws)
+    tabs = load("tabs.json", [])
+    tabs.append({"agent_status": "unknown", "focused": True, "label": "1", "number": 1,
+                 "pane_count": 1, "tab_id": tab_id, "workspace_id": ws_id})
+    panes = load("panes.json", [])
+    panes.append({"agent_status": "unknown", "cwd": cwd, "focused": True, "pane_id": pane_id,
+                  "tab_id": tab_id, "workspace_id": ws_id})
+    save("workspaces.json", wss)
+    save("tabs.json", tabs)
+    save("panes.json", panes)
+    print(json.dumps({"id": "cli:workspace:create", "result": {"type": "workspace_created",
+        "workspace": ws, "tab": {"tab_id": tab_id, "workspace_id": ws_id},
+        "root_pane": {"pane_id": pane_id}}}))
 elif cmd == "tab":
     sub = args.pop(0) if args else ""
     tabs = load("tabs.json", [])
@@ -79,7 +104,17 @@ elif cmd == "tab":
     if sub == "list":
         out("cli:tab:list", "tab_list", "tabs", tabs)
     elif sub == "create":
-        ws = opt(args, "--workspace") or "w7"
+        ws_arg = opt(args, "--workspace")
+        if ws_arg is None:
+            if not load("workspaces.json", []):
+                # Like the real CLI with no tabs/panes at all.
+                sys.stderr.write(json.dumps({"error": {"code": "workspace_not_found",
+                                                       "message": "no active workspace"},
+                                             "id": "cli:tab:create"}))
+                sys.exit(1)
+            ws = "w7"
+        else:
+            ws = ws_arg
         label = opt(args, "--label") or str(max([t["number"] for t in tabs if t["workspace_id"] == ws], default=0) + 1)
         num = max([t["number"] for t in tabs if t["workspace_id"] == ws], default=0) + 1
         panes = load("panes.json", [])
@@ -146,11 +181,14 @@ elif cmd == "agent":
                    "workspace_id": "w7"}]
         out("cli:agent:list", "agent_list", "agents", agents)
     elif sub == "read":
+        cnt = load("agent-read-count.json", {"n": 0})
+        cnt["n"] += 1
+        save("agent-read-count.json", cnt)
         last = ""
         lp = os.path.join(STATE, "last-prompt")
         if os.path.exists(lp):
             last = open(lp).read().strip()
-        print(f"stub output for {args[0]}")
+        print(f"stub output for {args[0]} (read {cnt['n']})")
         print(f"last prompt: {last}")
     elif sub == "prompt":
         with open(os.path.join(STATE, "last-prompt"), "w") as f:

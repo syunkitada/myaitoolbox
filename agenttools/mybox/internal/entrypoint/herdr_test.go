@@ -3,6 +3,7 @@ package entrypoint
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -117,7 +118,7 @@ func TestHerdrOverviewUnavailable(t *testing.T) {
 	rec := do(t, s, "GET", "/api/herdr/overview", nil)
 	require.Equal(t, 200, rec.Code)
 	res := decode[struct {
-		Available bool `json:"available"`
+		Available bool  `json:"available"`
 		Agents    []any `json:"agents"`
 	}](t, rec)
 	assert.False(t, res.Available)
@@ -171,6 +172,42 @@ func TestHerdrPromptAgentValidation(t *testing.T) {
 	}
 }
 
+func TestHerdrSendKeysAgent(t *testing.T) {
+	var gotArgs []string
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		gotArgs = args
+		return []byte("ok"), nil
+	})
+
+	rec := do(t, s, "POST", "/api/herdr/agents/send-keys", map[string]any{
+		"target": "w7:p1", "keys": []string{"Enter"},
+	})
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, []string{"agent", "send-keys", "w7:p1", "Enter"}, gotArgs)
+
+	rec = do(t, s, "POST", "/api/herdr/agents/send-keys", map[string]any{
+		"target": "w7:p1", "keys": []string{"esc", "C-c"},
+	})
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, []string{"agent", "send-keys", "w7:p1", "esc", "C-c"}, gotArgs)
+}
+
+func TestHerdrSendKeysAgentValidation(t *testing.T) {
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		return nil, errors.New("should not run")
+	})
+	for _, body := range []map[string]any{
+		{"target": "", "keys": []string{"Enter"}},
+		{"target": "bad;id", "keys": []string{"Enter"}},
+		{"target": "w7:p1", "keys": []string{}},
+		{"target": "w7:p1", "keys": []string{""}},
+		{"target": "w7:p1", "keys": []string{"--help"}},
+	} {
+		rec := do(t, s, "POST", "/api/herdr/agents/send-keys", body)
+		assert.NotEqual(t, 200, rec.Code, body)
+	}
+}
+
 func TestHerdrTabOperations(t *testing.T) {
 	var gotArgs []string
 	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
@@ -196,6 +233,98 @@ func TestHerdrTabOperations(t *testing.T) {
 	rec = do(t, s, "POST", "/api/herdr/tabs/close", map[string]string{"tab_id": "w7:t2"})
 	require.Equal(t, 200, rec.Code)
 	assert.Equal(t, []string{"tab", "close", "w7:t2"}, gotArgs)
+}
+
+// herdrNoActiveWorkspaceError mimics the CLI failure emitted when herdr holds
+// no tabs/panes at all (the JSON error arrives on stderr).
+func herdrNoActiveWorkspaceError() error {
+	return &exec.ExitError{Stderr: []byte(
+		`{"error":{"code":"workspace_not_found","message":"no active workspace"}}`,
+	)}
+}
+
+func TestHerdrCreateTabBootstrapsWorkspaceWhenEmpty(t *testing.T) {
+	var calls [][]string
+	s, app := newTestServer(t, false)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "tab" && args[1] == "create":
+			return nil, herdrNoActiveWorkspaceError()
+		case args[0] == "workspace" && args[1] == "create":
+			return []byte(`{"id":"cli:workspace:create","result":{"type":"workspace_created",` +
+				`"workspace":{"workspace_id":"w9","label":"test"},` +
+				`"tab":{"tab_id":"w9:t1","workspace_id":"w9"}}}`), nil
+		}
+		return []byte("ok"), nil
+	}
+
+	rec := do(t, s, "POST", "/api/herdr/tabs/create",
+		map[string]string{"label": "build"}, "X-Project", "test")
+	require.Equal(t, 200, rec.Code)
+
+	// The failed `tab create` is retried as a workspace bootstrap whose root
+	// tab inherits the requested label.
+	require.Len(t, calls, 3)
+	assert.Equal(t, []string{"tab", "create", "--label", "build"}, calls[0])
+	assert.Equal(t, []string{"workspace", "create", "--cwd", app.Project.Path}, calls[1])
+	assert.Equal(t, []string{"tab", "rename", "w9:t1", "build"}, calls[2])
+}
+
+func TestHerdrCreateTabKeepsWorkspaceFailureWithoutFallback(t *testing.T) {
+	var calls [][]string
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		return nil, herdrNoActiveWorkspaceError()
+	})
+
+	// An explicit workspace id must not silently bootstrap a new workspace.
+	rec := do(t, s, "POST", "/api/herdr/tabs/create",
+		map[string]string{"workspace_id": "w7"}, "X-Project", "test")
+	assert.Equal(t, 500, rec.Code)
+	require.Len(t, calls, 1)
+}
+
+func TestHerdrCreateTabWithProjectReusesMatchingWorkspace(t *testing.T) {
+	var calls [][]string
+	s := herdrTestServer(t, herdrStubRunner(&calls))
+
+	rec := do(t, s, "POST", "/api/herdr/tabs/create",
+		map[string]string{"project": "test", "label": "build"}, "X-Project", "test")
+	require.Equal(t, 200, rec.Code)
+	require.Len(t, calls, 2)
+	assert.Equal(t, []string{"workspace", "list"}, calls[0])
+	assert.Equal(t, []string{"tab", "create", "--workspace", "w7", "--label", "build"}, calls[1])
+}
+
+func TestHerdrCreateTabWithProjectBootstrapsWhenNoMatch(t *testing.T) {
+	var calls [][]string
+	s, app := newTestServer(t, false)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(`{"id":"cli:workspace:list","result":{"type":"workspace_list","workspaces":[` +
+				`{"active_tab_id":"w5:t1","agent_status":"unknown","focused":false,"label":"home_ex",` +
+				`"number":1,"pane_count":1,"tab_count":1,"workspace_id":"w5"}]}}`), nil
+		case args[0] == "workspace" && args[1] == "create":
+			return []byte(`{"id":"cli:workspace:create","result":{"type":"workspace_created",` +
+				`"workspace":{"workspace_id":"w9","label":"nosuch"},` +
+				`"tab":{"tab_id":"w9:t1","workspace_id":"w9"}}}`), nil
+		}
+		return []byte("ok"), nil
+	}
+
+	rec := do(t, s, "POST", "/api/herdr/tabs/create",
+		map[string]string{"project": "nosuch", "label": "build"}, "X-Project", "test")
+	require.Equal(t, 200, rec.Code)
+
+	// No workspace matches the project, so its first workspace is bootstrapped
+	// and the root tab inherits the requested label.
+	require.Len(t, calls, 3)
+	assert.Equal(t, []string{"workspace", "list"}, calls[0])
+	assert.Equal(t, []string{"workspace", "create", "--cwd", app.Project.Path}, calls[1])
+	assert.Equal(t, []string{"tab", "rename", "w9:t1", "build"}, calls[2])
 }
 
 func TestHerdrTabValidation(t *testing.T) {

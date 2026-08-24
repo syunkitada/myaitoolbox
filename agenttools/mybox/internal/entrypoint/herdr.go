@@ -3,6 +3,7 @@ package entrypoint
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -247,31 +248,92 @@ func (s *Server) PromptHerdrAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, api.HerdrPromptResponse{Ok: true})
 }
 
+// validHerdrKey reports whether key looks like a key name accepted by
+// `herdr send-keys` (e.g. Enter, esc, C-c, Tab). Empty and flag-like tokens
+// are rejected; a lone "-" is a literal key character.
+func validHerdrKey(key string) bool {
+	switch {
+	case key == "":
+		return false
+	case len(key) > 64:
+		return false
+	case strings.HasPrefix(key, "-") && key != "-":
+		return false
+	}
+	return true
+}
+
+// SendKeysHerdrAgent sends key presses (e.g. Enter, esc) to the target agent.
+func (s *Server) SendKeysHerdrAgent(w http.ResponseWriter, r *http.Request) {
+	var req api.HerdrAgentSendKeysRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	req.Target = strings.TrimSpace(req.Target)
+	if !herdrTargetPattern.MatchString(req.Target) {
+		writeError(w, fmt.Errorf("invalid agent target"))
+		return
+	}
+	if len(req.Keys) == 0 || len(req.Keys) > 16 {
+		writeError(w, fmt.Errorf("keys must contain between 1 and 16 entries"))
+		return
+	}
+	for _, key := range req.Keys {
+		if !validHerdrKey(key) {
+			writeError(w, fmt.Errorf("invalid key %q", key))
+			return
+		}
+	}
+	args := append([]string{"agent", "send-keys", req.Target}, req.Keys...)
+	if _, err := s.runHerdr(r.Context(), args...); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, api.HerdrOpResponse{Ok: true})
+}
+
 func validHerdrLabel(label string) (string, bool) {
 	label = strings.TrimSpace(label)
 	return label, label != "" && len(label) <= 80
 }
 
 // CreateHerdrTab creates a new tab in the given (or active) workspace.
+// When herdr holds no tabs/panes at all the CLI fails with "no active
+// workspace"; in that case the first workspace of the current project is
+// bootstrapped instead, which also creates the requested tab.
 func (s *Server) CreateHerdrTab(w http.ResponseWriter, r *http.Request) {
 	var req api.HerdrTabCreateRequest
 	if !decodeBody(w, r, &req) {
 		return
 	}
+	var label string
+	if req.Label != nil && *req.Label != "" {
+		l, ok := validHerdrLabel(*req.Label)
+		if !ok {
+			writeError(w, fmt.Errorf("label must be between 1 and 80 characters"))
+			return
+		}
+		label = l
+	}
 	args := []string{"tab", "create"}
+	wsRequested := false
 	if req.WorkspaceId != nil && *req.WorkspaceId != "" {
 		if !herdrTargetPattern.MatchString(*req.WorkspaceId) {
 			writeError(w, fmt.Errorf("invalid workspace id"))
 			return
 		}
+		wsRequested = true
 		args = append(args, "--workspace", *req.WorkspaceId)
-	}
-	if req.Label != nil && *req.Label != "" {
-		label, ok := validHerdrLabel(*req.Label)
-		if !ok {
-			writeError(w, fmt.Errorf("label must be between 1 and 80 characters"))
+	} else if project := strings.TrimSpace(reqProject(req)); project != "" {
+		// The tab belongs to a specific project; make sure a matching
+		// workspace exists before creating its tab.
+		wsID, handled := s.ensureHerdrProjectWorkspace(w, r, project, label, req.Cwd)
+		if handled {
 			return
 		}
+		args = append(args, "--workspace", wsID)
+	}
+	if label != "" {
 		args = append(args, "--label", label)
 	}
 	if req.Cwd != nil && *req.Cwd != "" {
@@ -279,10 +341,131 @@ func (s *Server) CreateHerdrTab(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--cwd", cwd)
 	}
 	if _, err := s.runHerdr(r.Context(), args...); err != nil {
+		if !wsRequested && herdrNoActiveWorkspace(err) {
+			if s.bootstrapHerdrWorkspace(w, r, label, req.Cwd) {
+				return
+			}
+		}
 		writeError(w, err)
 		return
 	}
 	writeJSONResponse(w, http.StatusOK, api.HerdrOpResponse{Ok: true})
+}
+
+// reqProject returns the optional project name of a create-tab request.
+func reqProject(req api.HerdrTabCreateRequest) string {
+	if req.Project == nil {
+		return ""
+	}
+	return *req.Project
+}
+
+// ensureHerdrProjectWorkspace makes sure a herdr workspace labelled after the
+// project exists and returns its id. When no workspace matches, the first
+// workspace of the project is bootstrapped (which also creates a tab) and the
+// response is written to the client (handled=true).
+func (s *Server) ensureHerdrProjectWorkspace(
+	w http.ResponseWriter,
+	r *http.Request,
+	project string,
+	label string,
+	cwd *string,
+) (string, bool) {
+	out, err := s.runHerdr(r.Context(), "workspace", "list")
+	if err != nil {
+		writeError(w, err)
+		return "", true
+	}
+	var env herdrEnvelope
+	if err := json.Unmarshal(out, &env); err != nil {
+		writeError(w, fmt.Errorf("unexpected herdr workspace list output"))
+		return "", true
+	}
+	var list herdrWorkspaceListResult
+	if err := json.Unmarshal(env.Result, &list); err != nil {
+		writeError(w, fmt.Errorf("unexpected herdr workspace list result"))
+		return "", true
+	}
+	for _, raw := range list.Workspaces {
+		if raw.Label != project {
+			continue
+		}
+		if !herdrTargetPattern.MatchString(raw.WorkspaceID) {
+			break
+		}
+		return raw.WorkspaceID, false
+	}
+	// No workspace carries the project label yet: bootstrap it so herdr ends
+	// up with the project's first tab instead of failing on an empty server.
+	s.bootstrapHerdrWorkspace(w, r, label, cwd)
+	return "", true
+}
+
+// herdrNoActiveWorkspace reports whether err is herdr's "no active workspace"
+// failure, which the CLI emits on stderr when no tabs/panes exist yet.
+func herdrNoActiveWorkspace(err error) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	msg := string(exitErr.Stderr)
+	return strings.Contains(msg, "workspace_not_found") ||
+		strings.Contains(msg, "no active workspace")
+}
+
+// bootstrapHerdrWorkspace creates herdr's first workspace for the current
+// project so that its initial tab+pane satisfy the create-tab request.
+// It reports whether a response has been written to the client.
+func (s *Server) bootstrapHerdrWorkspace(w http.ResponseWriter, r *http.Request, label string, cwd *string) bool {
+	wsArgs := []string{"workspace", "create"}
+	cwdArg := ""
+	if cwd != nil {
+		cwdArg = strings.TrimSpace(*cwd)
+	}
+	if cwdArg == "" {
+		if app, appErr := s.getApp(r); appErr == nil && app.Project != nil {
+			cwdArg = app.Project.Path
+		}
+	}
+	if cwdArg != "" {
+		wsArgs = append(wsArgs, "--cwd", cwdArg)
+	}
+	out, err := s.runHerdr(r.Context(), wsArgs...)
+	if err != nil {
+		writeError(w, err)
+		return true
+	}
+	// The bootstrap workspace ships with a numbered root tab; apply the
+	// requested tab label to it when one was given.
+	if label != "" {
+		if id := herdrCreatedTabID(out); id != "" {
+			if _, err := s.runHerdr(r.Context(), "tab", "rename", id, label); err != nil {
+				writeError(w, err)
+				return true
+			}
+		}
+	}
+	writeJSONResponse(w, http.StatusOK, api.HerdrOpResponse{Ok: true})
+	return true
+}
+
+// herdrCreatedTabID extracts the root tab id from `herdr workspace create`
+// output, or "" when it cannot be found.
+func herdrCreatedTabID(out []byte) string {
+	var env struct {
+		Result struct {
+			Tab struct {
+				TabID string `json:"tab_id"`
+			} `json:"tab"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out, &env); err != nil {
+		return ""
+	}
+	if !herdrTargetPattern.MatchString(env.Result.Tab.TabID) {
+		return ""
+	}
+	return env.Result.Tab.TabID
 }
 
 func herdrIDOp(w http.ResponseWriter, r *http.Request, kind string, id string, run func(ctx context.Context, args ...string) ([]byte, error), build func(id string) []string) {

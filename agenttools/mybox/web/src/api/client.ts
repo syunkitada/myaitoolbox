@@ -253,10 +253,15 @@ export const api = {
   promptHerdrAgent: (target: string, text: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/agents/prompt', { target, text }),
 
-  createHerdrTab: (workspaceId?: string, label?: string) =>
+  sendKeysHerdrAgent: (target: string, keys: string[]) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/agents/send-keys', { target, keys }),
+
+  createHerdrTab: (workspaceId?: string, label?: string, cwd?: string, project?: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/tabs/create', {
       workspace_id: workspaceId,
       label,
+      cwd,
+      project,
     }),
 
   renameHerdrTab: (tabId: string, label: string) =>

@@ -204,6 +204,12 @@ type HerdrAgent struct {
 	WorkspaceId string  `json:"workspace_id"`
 }
 
+// HerdrAgentSendKeysRequest defines model for HerdrAgentSendKeysRequest.
+type HerdrAgentSendKeysRequest struct {
+	Keys   []string `json:"keys"`
+	Target string   `json:"target"`
+}
+
 // HerdrOpResponse defines model for HerdrOpResponse.
 type HerdrOpResponse struct {
 	Ok bool `json:"ok"`
@@ -301,8 +307,11 @@ type HerdrTabCloseRequest struct {
 
 // HerdrTabCreateRequest defines model for HerdrTabCreateRequest.
 type HerdrTabCreateRequest struct {
-	Cwd         *string `json:"cwd,omitempty"`
-	Label       *string `json:"label,omitempty"`
+	Cwd   *string `json:"cwd,omitempty"`
+	Label *string `json:"label,omitempty"`
+
+	// Project Project name. When no herdr workspace has this label, the project's first workspace (cwd of the project) is bootstrapped and its root tab carries the requested label.
+	Project     *string `json:"project,omitempty"`
 	WorkspaceId *string `json:"workspace_id,omitempty"`
 }
 
@@ -495,6 +504,9 @@ type PromptHerdrAgentJSONRequestBody = HerdrPromptRequest
 
 // ReadHerdrAgentJSONRequestBody defines body for ReadHerdrAgent for application/json ContentType.
 type ReadHerdrAgentJSONRequestBody = HerdrReadRequest
+
+// SendKeysHerdrAgentJSONRequestBody defines body for SendKeysHerdrAgent for application/json ContentType.
+type SendKeysHerdrAgentJSONRequestBody = HerdrAgentSendKeysRequest
 
 // CloseHerdrPaneJSONRequestBody defines body for CloseHerdrPane for application/json ContentType.
 type CloseHerdrPaneJSONRequestBody = HerdrPaneCloseRequest
