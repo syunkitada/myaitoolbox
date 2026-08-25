@@ -1,6 +1,7 @@
 package entrypoint
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,8 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -233,6 +236,59 @@ func (s *Server) GetProjectPaths(w http.ResponseWriter, r *http.Request, params 
 		paths = []string{}
 	}
 	writeJSONResponse(w, http.StatusOK, paths)
+}
+
+func (s *Server) GetProjectGitStatus(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.projects.Config.Load(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	result := make(map[string]api.ProjectGitStatus, len(cfg.Projects))
+	for _, p := range cfg.Projects {
+		status := gitStatus(p.Path)
+		result[p.Name] = status
+	}
+	writeJSONResponse(w, http.StatusOK, result)
+}
+
+func isGitDir(dir string) bool {
+	if info, err := os.Stat(filepath.Join(dir, ".git")); err == nil && info.IsDir() {
+		return true
+	}
+	return false
+}
+
+func gitStatus(dir string) api.ProjectGitStatus {
+	if !isGitDir(dir) {
+		return api.ProjectGitStatus{}
+	}
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return api.ProjectGitStatus{}
+	}
+	var staged, modified, untracked int
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		if len(line) < 2 {
+			continue
+		}
+		x, y := line[0], line[1]
+		if x == '?' && y == '?' {
+			untracked++
+		} else {
+			if x != ' ' && x != '?' {
+				staged++
+			}
+			if y != ' ' && y != '?' {
+				modified++
+			}
+		}
+	}
+	dirty := staged+modified+untracked > 0
+	return api.ProjectGitStatus{Dirty: dirty, Modified: modified, Staged: staged, Untracked: untracked}
 }
 
 func (s *Server) GetMeta(w http.ResponseWriter, r *http.Request) {
@@ -872,6 +928,47 @@ func (s *Server) DeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) GetFileGitStatus(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	result := fileGitStatus(app.Project.Path)
+	writeJSONResponse(w, http.StatusOK, result)
+}
+
+func fileGitStatus(dir string) map[string]string {
+	if !isGitDir(dir) {
+		return map[string]string{}
+	}
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return map[string]string{}
+	}
+	result := make(map[string]string)
+	for _, line := range bytes.Split(out, []byte("\n")) {
+		if len(line) < 3 {
+			continue
+		}
+		x, y := line[0], line[1]
+		path := string(bytes.TrimLeft(line[2:], " "))
+		if x == '?' && y == '?' {
+			result[path] = "untracked"
+		} else if x == 'D' || y == 'D' {
+			result[path] = "deleted"
+		} else if x != ' ' && x != '?' {
+			result[path] = "staged"
+		} else if y != ' ' && y != '?' {
+			result[path] = "modified"
+		}
+	}
+	return result
 }
 
 func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.GetGraphParams) {

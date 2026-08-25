@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { encodePath, projectUrl } from '../utils/routes'
+import { encodePath, projectUrl, getProject } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
 import { api } from '../api/client'
 import { subscribeNavActions } from '../lib/nav-actions'
+
+const LAST_FILE_KEY = 'mybox_last_selected_file'
 
 interface DashboardProps {
   refreshMeta: () => Promise<void>
@@ -15,6 +17,37 @@ export function Dashboard({ refreshMeta, favorites, recentFiles }: DashboardProp
   const params = useParams()
   const selected = (params['*'] ?? '').trim()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!selected) {
+      const project = getProject()
+      const stored = localStorage.getItem(LAST_FILE_KEY)
+      if (stored) {
+        try {
+          const map = JSON.parse(stored) as Record<string, string>
+          if (project && map[project]) {
+            navigate(projectUrl(`/dashboard/files/${encodePath(map[project])}`), { replace: true })
+          }
+        } catch {
+          // ignore malformed storage
+        }
+      }
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const persistSelected = (path: string) => {
+    const project = getProject()
+    if (!project) return
+    try {
+      const stored = localStorage.getItem(LAST_FILE_KEY)
+      const map = stored ? (JSON.parse(stored) as Record<string, string>) : {}
+      map[project] = path
+      localStorage.setItem(LAST_FILE_KEY, JSON.stringify(map))
+    } catch {
+      // ignore
+    }
+    navigate(projectUrl(`/dashboard/files/${encodePath(path)}`))
+  }
 
   const handleNewTask = () => {
     const name = window.prompt('New task name')
@@ -53,7 +86,7 @@ export function Dashboard({ refreshMeta, favorites, recentFiles }: DashboardProp
       root=""
       title="Files"
       selected={selected}
-      onSelect={(path) => navigate(projectUrl(`/dashboard/files/${encodePath(path)}`))}
+      onSelect={persistSelected}
       onBack={() => navigate(projectUrl('/dashboard'))}
       favorites={favorites}
       recentFiles={recentFiles}

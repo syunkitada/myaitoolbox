@@ -33,6 +33,9 @@ type ServerInterface interface {
 	// DeleteFile Delete a file
 	// (POST /api/files/delete)
 	DeleteFile(w http.ResponseWriter, r *http.Request)
+	// GetFileGitStatus Get git status for each file in the project
+	// (GET /api/files/git-status)
+	GetFileGitStatus(w http.ResponseWriter, r *http.Request)
 	// MoveFile Move a file
 	// (POST /api/files/move)
 	MoveFile(w http.ResponseWriter, r *http.Request)
@@ -111,6 +114,9 @@ type ServerInterface interface {
 	// CreateProject Register a directory as a project
 	// (POST /api/projects)
 	CreateProject(w http.ResponseWriter, r *http.Request)
+	// GetProjectGitStatus Get git status summary for all projects
+	// (GET /api/projects/git-status)
+	GetProjectGitStatus(w http.ResponseWriter, r *http.Request)
 	// GetProjectPaths List existing directory paths for project path autocompletion
 	// (GET /api/projects/paths)
 	GetProjectPaths(w http.ResponseWriter, r *http.Request, params GetProjectPathsParams)
@@ -240,6 +246,20 @@ func (siw *ServerInterfaceWrapper) DeleteFile(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteFile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFileGitStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetFileGitStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFileGitStatus(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -683,6 +703,20 @@ func (siw *ServerInterfaceWrapper) CreateProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetProjectGitStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectGitStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectGitStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProjectPaths operation middleware
 func (siw *ServerInterfaceWrapper) GetProjectPaths(w http.ResponseWriter, r *http.Request) {
 
@@ -1063,6 +1097,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/projects", wrapper.CreateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects/paths", wrapper.GetProjectPaths)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/projects/{name}", wrapper.DeleteProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects/git-status", wrapper.GetProjectGitStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/meta", wrapper.GetMeta)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/meta/favorites", wrapper.UpdateFavorite)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/meta/recent", wrapper.RecordRecent)
@@ -1074,6 +1109,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/move", wrapper.MoveFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/copy", wrapper.CopyFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/delete", wrapper.DeleteFile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/git-status", wrapper.GetFileGitStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks", wrapper.CreateTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/{id}", wrapper.GetTask)

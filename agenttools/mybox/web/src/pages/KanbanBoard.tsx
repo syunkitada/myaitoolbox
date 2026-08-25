@@ -10,7 +10,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { Task, TaskStatus, api } from '../api/client'
-import { encodePath, getBasePath, getProject, projectUrl } from '../utils/routes'
+import { encodePath, getProject, projectUrl } from '../utils/routes'
 import { Button } from '../components/ui/button'
 import { cn } from '@/lib/utils'
 import { DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
@@ -167,7 +167,7 @@ export function KanbanBoard() {
       if (target === currentProject) {
         navigate(projectUrl(filePath))
       } else {
-        window.location.href = `${getBasePath()}/projects/${encodeURIComponent(target)}${filePath}`
+        navigate(`/projects/${encodeURIComponent(target)}${filePath}`)
       }
     },
     [navigate, currentProject],

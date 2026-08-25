@@ -34,7 +34,7 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   error: 'Connection failed',
 }
 
-function TerminalView({ active, maximized, command }: { active: boolean; maximized: boolean; command?: string }) {
+function TerminalView({ active, command }: { active: boolean; command?: string }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -136,14 +136,11 @@ function TerminalView({ active, maximized, command }: { active: boolean; maximiz
   }, [active])
 
   return (
-    <div className={cn('relative', maximized && 'h-full')}>
+    <div className="relative h-full">
       <div
         ref={hostRef}
         onContextMenu={(e) => e.preventDefault()}
-        className={cn(
-          'terminal-xterm w-full',
-          maximized ? 'h-[55vh] lg:h-full' : 'max-lg:h-[40vh] lg:h-64',
-        )}
+        className="terminal-xterm h-full w-full"
       />
       {status !== 'connected' && (
         <div className="pointer-events-none absolute top-2 right-3 rounded bg-black/60 px-2 py-0.5 text-xs text-red-300">
@@ -160,7 +157,7 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
       className={cn(
         'terminal-panel overflow-hidden rounded-md border border-border bg-[#0a0e17]',
         'max-lg:sticky max-lg:bottom-0 max-lg:z-20 max-lg:-m-4 max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0',
-        maximized && !collapsed ? 'flex flex-col lg:h-full' : 'mt-3',
+        maximized && !collapsed ? 'flex flex-col h-full' : 'mt-3 h-full',
       )}
     >
       <div className="terminal-tabbar flex items-center gap-0.5 border-b border-border/70 bg-card px-2 pt-1.5">
@@ -226,20 +223,19 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
       </div>
       <div
         className={cn(
-          'terminal-body',
+          'terminal-body flex-1 min-h-0',
           collapsed && 'hidden',
-          maximized && !collapsed && 'flex min-h-0 flex-1 flex-col',
+          !maximized && !collapsed && 'flex flex-col',
         )}
       >
         {tabs.map((t) => (
           <div
             key={t.id}
             className={cn(
-              t.id === activeId ? 'block' : 'hidden',
-              maximized && t.id === activeId && 'min-h-0 flex-1',
+              t.id === activeId ? 'block min-h-0 flex-1' : 'hidden',
             )}
           >
-            <TerminalView active={t.id === activeId} maximized={maximized} command={t.command} />
+            <TerminalView active={t.id === activeId} command={t.command} />
           </div>
         ))}
       </div>

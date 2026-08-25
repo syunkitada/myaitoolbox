@@ -379,6 +379,21 @@ type Project struct {
 	Path string `json:"path"`
 }
 
+// ProjectGitStatus defines model for ProjectGitStatus.
+type ProjectGitStatus struct {
+	// Dirty Whether the project has any uncommitted changes
+	Dirty bool `json:"dirty"`
+
+	// Modified Number of modified files
+	Modified int `json:"modified"`
+
+	// Staged Number of staged files
+	Staged int `json:"staged"`
+
+	// Untracked Number of untracked files
+	Untracked int `json:"untracked"`
+}
+
 // RecordRecentRequest defines model for RecordRecentRequest.
 type RecordRecentRequest struct {
 	Path string `json:"path"`

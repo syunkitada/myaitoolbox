@@ -11,9 +11,9 @@ import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { TerminalTabs, TerminalTabData } from '../components/TerminalTabs'
-import { Clock, FolderHeart, ListTree, PanelLeftClose, PanelLeftOpen, PanelRight, Share2, Tag } from 'lucide-react'
+import { Clock, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, PanelLeftClose, PanelLeftOpen, PanelRight, Share2, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { subscribeNavActions } from '@/lib/nav-actions'
+import { dispatchNavAction, subscribeNavActions } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { encodePath, filesUrl, projectUrl, rawFileUrl, taskIdOf } from '../utils/routes'
@@ -64,6 +64,7 @@ interface TreeFile {
   name: string
   path: string
   status?: string
+  gitStatus?: string
 }
 
 interface TreeDir {
@@ -72,6 +73,7 @@ interface TreeDir {
   dirPath: string
   children: TreeNode[]
   status?: string
+  gitStatus?: string
 }
 
 type TreeNode = TreeFile | TreeDir
@@ -79,6 +81,28 @@ type TreeNode = TreeFile | TreeDir
 function FileStatusBadge({ status }: { status?: string }) {
   if (!status) return null
   return <StatusBadge status={status} className="file-status ml-auto" />
+}
+
+const gitStatusColors: Record<string, string> = {
+  staged: 'text-green-500',
+  modified: 'text-amber-500',
+  untracked: 'text-blue-500',
+  deleted: 'text-red-500',
+}
+
+function GitFileBadge({ status }: { status?: string }) {
+  if (!status) return null
+  const color = gitStatusColors[status] ?? 'text-muted-foreground'
+  return (
+    <span
+      className={`git-file-status ml-auto flex shrink-0 items-center ${color}`}
+      role="img"
+      aria-label={`git: ${status}`}
+      title={`git: ${status}`}
+    >
+      <GitBranch className="size-3.5" />
+    </span>
+  )
 }
 
 function toEntries(mode: BrowserMode, list: (FileEntry | Knowledge)[]): BrowserEntry[] {
@@ -114,7 +138,31 @@ function applyDirStatus(nodes: TreeNode[]) {
   }
 }
 
-function buildTree(list: BrowserEntry[]): TreeNode[] {
+const gitStatusPriority = ['staged', 'modified', 'untracked', 'deleted']
+
+function applyDirGitStatus(nodes: TreeNode[]): boolean {
+  let hasDirty = false
+  for (const node of nodes) {
+    if (node.kind === 'file') {
+      if (node.gitStatus) {
+        hasDirty = true
+      }
+      continue
+    }
+    const childDirty = applyDirGitStatus(node.children)
+    if (childDirty) {
+      hasDirty = true
+      const best = node.children.reduce((acc, c) => {
+        if (c.kind !== 'dir' || !c.gitStatus) return acc
+        return gitStatusPriority.indexOf(c.gitStatus) < gitStatusPriority.indexOf(acc) ? c.gitStatus : acc
+      }, node.children.some((c) => c.kind === 'file' && c.gitStatus) ? 'modified' : 'modified')
+      node.gitStatus = best
+    }
+  }
+  return hasDirty
+}
+
+function buildTree(list: BrowserEntry[], gitStatus: Record<string, string>): TreeNode[] {
   const root: TreeNode[] = []
   const sorted = [...list].sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1
@@ -135,10 +183,11 @@ function buildTree(list: BrowserEntry[]): TreeNode[] {
       cur = dir.children
     }
     if (e.kind === 'file') {
-      cur.push({ kind: 'file', name: parts[parts.length - 1], path: e.path, status: e.status })
+      cur.push({ kind: 'file', name: parts[parts.length - 1], path: e.path, status: e.status, gitStatus: gitStatus[e.path] })
     }
   }
   applyDirStatus(root)
+  applyDirGitStatus(root)
   return root
 }
 
@@ -150,6 +199,7 @@ interface ExplorerProps {
   mode: BrowserMode
   favorites: string[]
   recentFiles: string[]
+  gitStatus?: Record<string, string>
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
 }
@@ -190,7 +240,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, onClose, onMoveFile }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -215,7 +265,7 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
     )
   }, [entries, q, tag])
 
-  const tree = useMemo(() => buildTree(entries), [entries])
+  const tree = useMemo(() => buildTree(entries, gitStatus ?? {}), [entries, gitStatus])
 
   const knownPaths = useMemo(() => {
     const set = new Set<string>()
@@ -344,6 +394,7 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
             >
               {node.name}
             </button>
+            <GitFileBadge status={node.gitStatus} />
             <FileStatusBadge status={node.status} />
           </li>,
         )
@@ -375,6 +426,7 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
             >
               {node.name}
             </button>
+            <GitFileBadge status={gitStatus?.[node.path]} />
             <FileStatusBadge status={parent?.status && node.name === 'task.md' ? undefined : node.status} />
           </li>,
         )
@@ -403,6 +455,32 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
           </Button>
         )}
         <h1 className="text-lg font-bold">{title}</h1>
+        {mode === 'files' && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => dispatchNavAction('new-file')}
+              aria-label="New file"
+              title="New file"
+            >
+              <FilePlus />
+              <span className="hidden sm:inline">File</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => dispatchNavAction('new-task')}
+              aria-label="New task"
+              title="New task"
+            >
+              <ListPlus />
+              <span className="hidden sm:inline">Task</span>
+            </Button>
+          </div>
+        )}
       </div>
       <div className="toolbar my-3 flex flex-wrap gap-2">
         <SearchBar value={q} onChange={setQ} onSubmit={() => undefined} placeholder="Filter…" />
@@ -1036,6 +1114,7 @@ export function BrowserPage({
   onClose,
 }: BrowserPageProps) {
   const [entries, setEntries] = useState<BrowserEntry[]>([])
+  const [gitStatus, setGitStatus] = useState<Record<string, string>>({})
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
@@ -1070,7 +1149,36 @@ export function BrowserPage({
   const [activeTerminal, setActiveTerminal] = useState<number | null>(null)
   const [terminalMaximized, setTerminalMaximized] = useState(false)
   const [terminalCollapsed, setTerminalCollapsed] = useState(false)
+  const [terminalHeight, setTerminalHeight] = useState(200)
   const terminalIdRef = useRef(0)
+  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null)
+
+  const handleTerminalDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    dragRef.current = { startY: clientY, startHeight: terminalHeight }
+
+    const onMove = (ev: MouseEvent | TouchEvent) => {
+      if (!dragRef.current) return
+      const y = 'touches' in ev ? ev.touches[0].clientY : ev.clientY
+      const delta = dragRef.current.startY - y
+      const newHeight = Math.min(Math.max(dragRef.current.startHeight + delta, 80), window.innerHeight * 0.7)
+      setTerminalHeight(newHeight)
+    }
+
+    const onUp = () => {
+      dragRef.current = null
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onUp)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onUp)
+  }, [terminalHeight])
 
   const addTerminal = useCallback((title?: string, command?: string) => {
     terminalIdRef.current += 1
@@ -1116,9 +1224,11 @@ export function BrowserPage({
 
   const load = useCallback(() => {
     const p = mode === 'knowledge' ? api.listKnowledge() : api.listFiles()
-    void p
-      .then((list) => {
+    const gs = mode === 'files' ? api.getFileGitStatus() : Promise.resolve({})
+    void Promise.all([p, gs])
+      .then(([list, gsResult]) => {
         setEntries(toEntries(mode, list as (FileEntry | Knowledge)[]))
+        setGitStatus(gsResult)
         setLoaded(true)
         setError(null)
       })
@@ -1186,104 +1296,109 @@ export function BrowserPage({
           {moveError}
         </div>
       )}
-      <div className={cn('knowledge-layout flex items-stretch max-md:flex-col', selected && 'has-selection')}>
-        {!isMobile && (
-          <div
-            data-explorer-open={explorerOpen ? 'true' : 'false'}
-            className={cn(
-              'explorer-pane sticky top-14 hidden h-[calc(100svh-3.5rem)] shrink-0 self-start overflow-hidden transition-[width] duration-200 ease-linear md:block',
-              explorerOpen ? 'w-[280px] max-xl:w-[220px]' : 'w-0',
-            )}
-          >
-            <aside
+      <div className={cn('knowledge-layout flex min-h-0 flex-col items-stretch overflow-hidden max-md:flex-col', selected && 'has-selection')} style={{ maxHeight: 'calc(100svh - 3.5rem)' }}>
+        <div className="flex min-h-0 flex-1 max-md:flex-col">
+          {!isMobile && (
+            <div
+              data-explorer-open={explorerOpen ? 'true' : 'false'}
               aria-hidden={!explorerOpen}
               className={cn(
-                'absolute top-0 left-0 flex h-full w-[280px] max-w-[280px] flex-col overflow-hidden border-r border-border bg-card transition-transform duration-200 ease-linear max-xl:w-[220px] max-xl:max-w-[220px]',
-                explorerOpen ? 'translate-x-0' : '-translate-x-full',
+                'explorer-pane hidden shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-200 ease-linear md:block',
+                explorerOpen ? 'w-[280px] max-xl:w-[220px]' : 'w-0',
               )}
             >
-              <Explorer
-                entries={entries}
-                selected={selected}
-                onSelect={handleSelect}
-                title={title}
-                mode={mode}
-                favorites={favorites}
-                recentFiles={recentFiles}
-                onClose={onClose}
-                onMoveFile={mode === 'files' ? handleMoveFile : undefined}
-              />
-            </aside>
-          </div>
-        )}
-        {isMobile && (
-          <Sheet open={explorerOpen} onOpenChange={setExplorerOpen}>
-            <SheetContent
-              side="left"
-              className="explorer w-[85vw] max-w-sm gap-0 border-r bg-card p-0 text-sidebar-foreground"
-            >
-              <Explorer
-                entries={entries}
-                selected={selected}
-                onSelect={handleSelect}
-                title={title}
-                mode={mode}
-                favorites={favorites}
-                recentFiles={recentFiles}
-                onClose={onClose}
-                onMoveFile={mode === 'files' ? handleMoveFile : undefined}
-              />
-            </SheetContent>
-          </Sheet>
-        )}
-        <div
-          className={cn(
-            'knowledge-pane min-w-0 flex-1 bg-card p-4',
-            'flex flex-col lg:max-h-[calc(100svh-3.5rem)] lg:overflow-hidden',
-            !selected && terminals.length === 0 && 'max-md:hidden',
+              <div className="flex h-full w-[280px] max-w-[280px] flex-col overflow-hidden max-xl:w-[220px] max-xl:max-w-[220px]">
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                  <Explorer
+                    entries={entries}
+                    selected={selected}
+                    onSelect={handleSelect}
+                    title={title}
+                    mode={mode}
+                    favorites={favorites}
+                    recentFiles={recentFiles}
+                    gitStatus={gitStatus}
+                    onClose={onClose}
+                    onMoveFile={mode === 'files' ? handleMoveFile : undefined}
+                  />
+                </div>
+              </div>
+            </div>
           )}
-        >
+          {isMobile && (
+            <Sheet open={explorerOpen} onOpenChange={setExplorerOpen}>
+              <SheetContent
+                side="left"
+                className="explorer w-[85vw] max-w-sm gap-0 border-r bg-card p-0 text-sidebar-foreground"
+              >
+                <Explorer
+                  entries={entries}
+                  selected={selected}
+                  onSelect={handleSelect}
+                  title={title}
+                  mode={mode}
+                  favorites={favorites}
+                  recentFiles={recentFiles}
+                  gitStatus={gitStatus}
+                  onClose={onClose}
+                  onMoveFile={mode === 'files' ? handleMoveFile : undefined}
+                />
+              </SheetContent>
+            </Sheet>
+          )}
           <div
             className={cn(
-              'knowledge-files min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto',
-              terminalMaximized && !terminalCollapsed && 'hidden',
+              'knowledge-pane min-w-0 min-h-0 flex-1 bg-card p-4',
+              'flex flex-col lg:overflow-hidden',
+              !selected && terminals.length === 0 && 'max-md:hidden',
             )}
           >
-            {selected ? (
-              <Pane
-                mode={mode}
-                root={root}
-                path={selected}
-                entry={selectedEntry}
-                list={entries}
-                favorites={favorites}
-                refreshMeta={refreshMeta}
-                onChanged={load}
-                onOpen={onSelect}
-                onDeleted={onBack}
-                explorerOpen={explorerOpen}
-                onToggleExplorer={() => setExplorerOpen((o) => !o)}
-              />
-            ) : (
-              <Card className="knowledge-empty items-center justify-center gap-2 p-12 text-center">
-                <h2 className="text-xl font-bold">{title}</h2>
-                <p className="text-muted-foreground">
-                  {mode === 'knowledge'
-                    ? 'Select a note from the explorer to view it here.'
-                    : 'Select a file from the explorer to view it here.'}
-                </p>
-                {loaded && entries.length === 0 && (
+            <div
+              className="knowledge-files min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto"
+            >
+              {selected ? (
+                <Pane
+                  mode={mode}
+                  root={root}
+                  path={selected}
+                  entry={selectedEntry}
+                  list={entries}
+                  favorites={favorites}
+                  refreshMeta={refreshMeta}
+                  onChanged={load}
+                  onOpen={onSelect}
+                  onDeleted={onBack}
+                  explorerOpen={explorerOpen}
+                  onToggleExplorer={() => setExplorerOpen((o) => !o)}
+                />
+              ) : (
+                <Card className="knowledge-empty items-center justify-center gap-2 p-12 text-center">
+                  <h2 className="text-xl font-bold">{title}</h2>
                   <p className="text-muted-foreground">
                     {mode === 'knowledge'
-                      ? 'No knowledge yet — create your first note.'
-                      : 'No files yet.'}
+                      ? 'Select a note from the explorer to view it here.'
+                      : 'Select a file from the explorer to view it here.'}
                   </p>
-                )}
-              </Card>
-            )}
+                  {loaded && entries.length === 0 && (
+                    <p className="text-muted-foreground">
+                      {mode === 'knowledge'
+                        ? 'No knowledge yet — create your first note.'
+                        : 'No files yet.'}
+                    </p>
+                  )}
+                </Card>
+              )}
+            </div>
           </div>
-          {mode === 'files' && terminals.length > 0 && activeTerminal !== null && (
-            <div className={terminalMaximized && !terminalCollapsed ? 'min-h-0 flex-1' : 'shrink-0'}>
+        </div>
+        {mode === 'files' && terminals.length > 0 && activeTerminal !== null && (
+          <>
+            <div
+              className="h-0.5 shrink-0 cursor-row-resize bg-border/50 transition-colors hover:bg-border hover:h-1"
+              onMouseDown={handleTerminalDragStart}
+              onTouchStart={handleTerminalDragStart}
+            />
+            <div className={cn('flex flex-col', terminalMaximized && !terminalCollapsed ? 'min-h-0 flex-1' : 'shrink-0 bg-card')} style={terminalMaximized && !terminalCollapsed ? undefined : { height: terminalHeight }}>
               <TerminalTabs
                 tabs={terminals}
                 activeId={activeTerminal}
@@ -1296,8 +1411,8 @@ export function BrowserPage({
                 onToggleCollapse={toggleCollapse}
               />
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   )

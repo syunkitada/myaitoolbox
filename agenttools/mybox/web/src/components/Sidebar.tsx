@@ -1,8 +1,8 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Bot, Box, Boxes, SquareKanban } from 'lucide-react'
+import { Bot, Box, Boxes, GitBranch, SquareKanban } from 'lucide-react'
 import { Meta } from '../api/client'
 import { clearProject, dirName, projectUrlFor, setProject } from '../utils/routes'
-import type { HerdrOverview } from '../api/client'
+import type { HerdrOverview, ProjectGitStatus } from '../api/client'
 import { statusDotClass } from './herdr-status'
 import {
   Sidebar,
@@ -19,9 +19,10 @@ interface SidebarProps {
   meta: Meta | null
   project: string
   herdr: HerdrOverview | null
+  gitStatus: Record<string, ProjectGitStatus>
 }
 
-export function AppSidebar({ meta, project, herdr }: SidebarProps) {
+export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { setOpenMobile, state } = useSidebar()
@@ -51,7 +52,7 @@ export function AppSidebar({ meta, project, herdr }: SidebarProps) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              onClick={clearProject}
+              onClick={() => clearProject(navigate)}
               aria-label="Go to top"
               tooltip="mybox"
               className="cursor-pointer"
@@ -88,12 +89,13 @@ export function AppSidebar({ meta, project, herdr }: SidebarProps) {
         <SidebarMenu className="sidebar-projects mt-1 pb-2">
           {(meta?.projects ?? []).map((p) => {
             const status = workspaceStatus(p)
+            const gs = gitStatus[p]
             return (
               <SidebarMenuItem key={p}>
                 <SidebarMenuButton
                   onClick={() => {
                     handleNav()
-                    if (p !== project) setProject(p)
+                    if (p !== project) setProject(p, navigate)
                   }}
                   isActive={project === p}
                   tooltip={status ? `${p} (${status})` : p}
@@ -101,13 +103,25 @@ export function AppSidebar({ meta, project, herdr }: SidebarProps) {
                 >
                   <Box />
                   <span className="truncate">{p}</span>
-                  {status && (
-                    <span
-                      className={`herdr-workspace-status ml-auto inline-block size-2 shrink-0 rounded-full ${statusDotClass(status)} ${status === 'working' ? 'animate-pulse' : ''}`}
-                      role="img"
-                      aria-label={`workspace status ${status}`}
-                    />
-                  )}
+                  <span className="ml-auto flex shrink-0 items-center gap-1">
+                    {gs?.dirty && (
+                      <span
+                        className="git-status flex items-center text-amber-500"
+                        role="img"
+                        aria-label={`git: ${gs.staged} staged, ${gs.modified} modified, ${gs.untracked} untracked`}
+                        title={`git: ${gs.staged} staged, ${gs.modified} modified, ${gs.untracked} untracked`}
+                      >
+                        <GitBranch className="size-3.5" />
+                      </span>
+                    )}
+                    {status && (
+                      <span
+                        className={`herdr-workspace-status inline-block size-2 shrink-0 rounded-full ${statusDotClass(status)} ${status === 'working' ? 'animate-pulse' : ''}`}
+                        role="img"
+                        aria-label={`workspace status ${status}`}
+                      />
+                    )}
+                  </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )

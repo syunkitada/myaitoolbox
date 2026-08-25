@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Routes, Route, useLocation, useNavigate, Navigate, NavLink } from 'react-router-dom'
-import { api, Meta } from './api/client'
+import { api, Meta, ProjectGitStatus } from './api/client'
 import { getProject, projectUrl } from './utils/routes'
 import { AppSidebar } from './components/Sidebar'
 import { Dashboard } from './pages/Dashboard'
@@ -12,16 +12,17 @@ import { HerdrPage } from './pages/HerdrPage'
 import { useHerdrOverview } from './hooks/use-herdr'
 import { useAgentFavicon } from './hooks/use-agent-favicon'
 import { Button } from './components/ui/button'
-import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from './components/ui/breadcrumb'
+
 import { Separator } from './components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar'
-import { FilePlus, ListPlus, MessageSquare, Search, TerminalSquare } from 'lucide-react'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './components/ui/dropdown-menu'
+import { TerminalSquare } from 'lucide-react'
+
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null)
+  const [gitStatus, setGitStatus] = useState<Record<string, ProjectGitStatus>>({})
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -31,7 +32,9 @@ export default function App() {
 
   const refreshMeta = useCallback(async () => {
     try {
-      setMeta(await api.getMeta())
+      const [m, gs] = await Promise.all([api.getMeta(), api.getProjectGitStatus()])
+      setMeta(m)
+      setGitStatus(gs)
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -40,7 +43,7 @@ export default function App() {
 
   useEffect(() => {
     void refreshMeta()
-  }, [refreshMeta])
+  }, [refreshMeta, project])
 
   const projectTabs = [
     { to: projectUrl('/dashboard'), label: 'Files', active: pathname.includes('/dashboard') },
@@ -51,21 +54,12 @@ export default function App() {
 
   return (
     <SidebarProvider style={{ '--sidebar-width': '20rem' } as React.CSSProperties}>
-      <AppSidebar meta={meta} project={project} herdr={herdr.overview} />
+      <AppSidebar meta={meta} project={project} herdr={herdr.overview} gitStatus={gitStatus} />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
           <div className="flex flex-1 items-center gap-2">
             <SidebarTrigger />
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="line-clamp-1 max-w-[40vw] truncate">
-                    {project ? project : 'Projects'}
-                  </BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
             {project && (
               <nav aria-label="Project sections" className="project-tabs ml-4 flex min-w-0 items-center gap-1 overflow-x-auto">
                 {projectTabs.map((t) => (
@@ -83,21 +77,7 @@ export default function App() {
                 ))}
               </nav>
             )}
-          </div>
-          {project && !pathname.includes('/search') && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="cursor-pointer"
-              onClick={() => navigate(projectUrl('/search'))}
-              aria-label="Search"
-              title="Search"
-            >
-              <Search />
-            </Button>
-          )}
-          {project && pathname.includes('/dashboard') && (
-            <div className="nav-actions flex items-center gap-1">
+            {project && pathname.includes('/dashboard') && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -108,51 +88,8 @@ export default function App() {
               >
                 <TerminalSquare />
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-accent hover:text-accent-foreground cursor-pointer has-[>svg]:px-2.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-                    aria-label="Open chat"
-                    title="Open chat"
-                  >
-                    <MessageSquare />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => dispatchNavAction('open-chat-opencode')}>
-                    OpenCode
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => dispatchNavAction('open-chat-codex')}>
-                    Codex
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="cursor-pointer"
-                onClick={() => dispatchNavAction('new-file')}
-                aria-label="New file"
-                title="New file"
-              >
-                <FilePlus />
-                <span className="hidden sm:inline">New file</span>
-                <span className="sm:hidden">File</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="cursor-pointer"
-                onClick={() => dispatchNavAction('new-task')}
-                aria-label="New task"
-                title="New task"
-              >
-                <ListPlus />
-                <span className="hidden sm:inline">New task</span>
-                <span className="sm:hidden">Task</span>
-              </Button>
-            </div>
-          )}
+            )}
+          </div>
         </header>
         <div className="flex-1">
           {error && (
@@ -176,6 +113,7 @@ export default function App() {
                   path="/projects/:project/dashboard"
                   element={
                     <Dashboard
+                      key={project}
                       refreshMeta={refreshMeta}
                       favorites={meta?.favorites ?? []}
                       recentFiles={meta?.recent_files ?? []}
@@ -186,18 +124,20 @@ export default function App() {
                   path="/projects/:project/dashboard/files/*"
                   element={
                     <Dashboard
+                      key={project}
                       refreshMeta={refreshMeta}
                       favorites={meta?.favorites ?? []}
                       recentFiles={meta?.recent_files ?? []}
                     />
                   }
                 />
-                <Route path="/projects/:project/board" element={<KanbanBoard />} />
-                <Route path="/projects/:project/graph" element={<GraphPage />} />
+                <Route path="/projects/:project/board" element={<KanbanBoard key={project} />} />
+                <Route path="/projects/:project/graph" element={<GraphPage key={project} />} />
                 <Route
                   path="/projects/:project/herdr"
                   element={
                     <HerdrPage
+                      key={project}
                       overview={herdr.overview}
                       error={herdr.error}
                       loading={herdr.loading}
@@ -205,7 +145,7 @@ export default function App() {
                     />
                   }
                 />
-                <Route path="/projects/:project/search" element={<SearchPage navigate={navigate} />} />
+                <Route path="/projects/:project/search" element={<SearchPage key={project} navigate={navigate} />} />
                 <Route
                   path="/projects/:project"
                   element={<Navigate to={projectUrl('/dashboard')} replace />}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api, Project, setProject } from '../api/client'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -9,6 +10,7 @@ interface ProjectsPageProps {
 }
 
 export function ProjectsPage({ onChanged }: ProjectsPageProps) {
+  const navigate = useNavigate()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -66,7 +68,7 @@ export function ProjectsPage({ onChanged }: ProjectsPageProps) {
   }
 
   const openProject = (name: string) => {
-    setProject(name)
+    setProject(name, navigate)
   }
 
   const handleDelete = async (name: string) => {

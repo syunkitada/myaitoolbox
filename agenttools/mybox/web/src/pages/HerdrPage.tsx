@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { RefreshCw, Send } from 'lucide-react'
 import { dirName, getProject } from '../utils/routes'
 import type { HerdrAgent, HerdrOverview, HerdrPane, HerdrTab, HerdrWorkspace } from '../api/client'
 import { api } from '../api/client'
 import { StatusBadge, StatusDot } from '../components/herdr-status'
 import { Button } from '../components/ui/button'
-import { RefreshCw, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface HerdrPageProps {

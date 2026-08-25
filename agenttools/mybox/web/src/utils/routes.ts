@@ -77,11 +77,10 @@ export function taskIdOf(nodeId: string): string {
   return parts[parts.length - 2] ?? nodeId
 }
 
-export function setProject(project: string) {
-  window.location.href =
-    getBasePath() + '/projects/' + encodeURIComponent(project) + '/dashboard'
+export function setProject(project: string, navigate: (to: string) => void) {
+  navigate('/projects/' + encodeURIComponent(project) + '/dashboard')
 }
 
-export function clearProject() {
-  window.location.href = getBasePath() + '/projects'
+export function clearProject(navigate: (to: string) => void) {
+  navigate('/projects')
 }

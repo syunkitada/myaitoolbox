@@ -100,6 +100,13 @@ export interface Project {
   path: string
 }
 
+export interface ProjectGitStatus {
+  dirty: boolean
+  modified: number
+  staged: number
+  untracked: number
+}
+
 export interface HerdrWorkspace {
   workspace_id: string
   label: string
@@ -203,6 +210,9 @@ export const api = {
   getProjectPaths: (prefix: string) =>
     request<string[]>('GET', '/api/projects/paths' + qs({ prefix })),
 
+  getProjectGitStatus: () =>
+    request<Record<string, ProjectGitStatus>>('GET', '/api/projects/git-status'),
+
   setFavorite: (path: string, enabled: boolean) =>
     request<void>('PUT', '/api/meta/favorites', { path, enabled }),
 
@@ -241,6 +251,7 @@ export const api = {
     request<void>('POST', '/api/knowledge/move', { old_path: oldPath, new_path: newPath }),
 
   listFiles: () => request<FileEntry[]>('GET', '/api/files'),
+  getFileGitStatus: () => request<Record<string, string>>('GET', '/api/files/git-status'),
   createFile: (path: string) => request<void>('POST', '/api/files', { path }),
   getFileContent: (path: string) =>
     request<FileContent>('GET', '/api/files/content' + qs({ path })),

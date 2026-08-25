@@ -71,6 +71,19 @@ paths:
           description: removed
         "404":
           description: project not found
+  /api/projects/git-status:
+    get:
+      operationId: getProjectGitStatus
+      summary: Get git status summary for all projects
+      responses:
+        "200":
+          description: git status per project
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/ProjectGitStatus"
   /api/meta:
     get:
       operationId: getMeta
@@ -246,6 +259,20 @@ paths:
           description: invalid path
         "404":
           description: not found
+  /api/files/git-status:
+    get:
+      operationId: getFileGitStatus
+      summary: Get git status for each file in the project
+      responses:
+        "200":
+          description: per-file git status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  description: Git status code (staged, modified, untracked, deleted)
   /api/tasks:
     get:
       operationId: listTasks
@@ -712,6 +739,22 @@ components:
           type: array
           items:
             type: string
+    ProjectGitStatus:
+      type: object
+      required: [dirty, modified, staged, untracked]
+      properties:
+        dirty:
+          type: boolean
+          description: Whether the project has any uncommitted changes
+        modified:
+          type: integer
+          description: Number of modified files
+        staged:
+          type: integer
+          description: Number of staged files
+        untracked:
+          type: integer
+          description: Number of untracked files
     UpdateFavoriteRequest:
       type: object
       required: [path, enabled]
