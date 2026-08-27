@@ -10,10 +10,9 @@ import { Card, CardContent } from '../components/ui/card'
 import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { TerminalTabs, TerminalTabData } from '../components/TerminalTabs'
 import { Clock, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, PanelLeftClose, PanelLeftOpen, PanelRight, Share2, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { dispatchNavAction, subscribeNavActions } from '@/lib/nav-actions'
+import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { encodePath, filesUrl, projectUrl, rawFileUrl, taskIdOf } from '../utils/routes'
@@ -1123,7 +1122,7 @@ export function BrowserPage({
   const isMobile = useIsMobile()
   const [explorerOpen, setExplorerOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true
-    if (window.innerWidth < 768) return !selected
+    if (window.innerWidth < 768) return false
     const saved = window.localStorage.getItem(EXPLORER_STORAGE_KEY)
     if (saved !== null) return saved === '1'
     return true
@@ -1133,10 +1132,6 @@ export function BrowserPage({
     if (!isMobile) window.localStorage.setItem(EXPLORER_STORAGE_KEY, explorerOpen ? '1' : '0')
   }, [explorerOpen, isMobile])
 
-  useEffect(() => {
-    if (isMobile && !selected) setExplorerOpen(true)
-  }, [isMobile, selected])
-
   const handleSelect = useCallback(
     (p: string) => {
       onSelect(p)
@@ -1144,83 +1139,6 @@ export function BrowserPage({
     },
     [isMobile, onSelect],
   )
-
-  const [terminals, setTerminals] = useState<TerminalTabData[]>([])
-  const [activeTerminal, setActiveTerminal] = useState<number | null>(null)
-  const [terminalMaximized, setTerminalMaximized] = useState(false)
-  const [terminalCollapsed, setTerminalCollapsed] = useState(false)
-  const [terminalHeight, setTerminalHeight] = useState(200)
-  const terminalIdRef = useRef(0)
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null)
-
-  const handleTerminalDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault()
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    dragRef.current = { startY: clientY, startHeight: terminalHeight }
-
-    const onMove = (ev: MouseEvent | TouchEvent) => {
-      if (!dragRef.current) return
-      const y = 'touches' in ev ? ev.touches[0].clientY : ev.clientY
-      const delta = dragRef.current.startY - y
-      const newHeight = Math.min(Math.max(dragRef.current.startHeight + delta, 80), window.innerHeight * 0.7)
-      setTerminalHeight(newHeight)
-    }
-
-    const onUp = () => {
-      dragRef.current = null
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-      document.removeEventListener('touchmove', onMove)
-      document.removeEventListener('touchend', onUp)
-    }
-
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    document.addEventListener('touchmove', onMove, { passive: false })
-    document.addEventListener('touchend', onUp)
-  }, [terminalHeight])
-
-  const addTerminal = useCallback((title?: string, command?: string) => {
-    terminalIdRef.current += 1
-    const id = terminalIdRef.current
-    setTerminals((prev) => [...prev, { id, title: title ?? `Terminal ${id}`, command }])
-    setActiveTerminal(id)
-  }, [])
-
-  useEffect(
-    () =>
-      subscribeNavActions((action) => {
-        if (action === 'open-terminal') addTerminal()
-        if (action === 'open-chat-opencode') addTerminal('OpenCode', 'opencode')
-        if (action === 'open-chat-codex') addTerminal('Codex', 'codex')
-      }),
-    [addTerminal],
-  )
-
-  const closeTerminal = useCallback((id: number) => {
-    setTerminals((prev) => {
-      const next = prev.filter((t) => t.id !== id)
-      if (next.length === 0) {
-        setTerminalMaximized(false)
-        setTerminalCollapsed(false)
-      }
-      setActiveTerminal((current) => {
-        if (next.length === 0) return null
-        if (current === id) return next[next.length - 1].id
-        return current
-      })
-      return next
-    })
-  }, [])
-
-  const toggleMaximize = useCallback(() => {
-    setTerminalCollapsed(false)
-    setTerminalMaximized((m) => !m)
-  }, [])
-
-  const toggleCollapse = useCallback(() => setTerminalCollapsed((c) => !c), [])
-
-  const activateTerminal = useCallback((id: number) => setActiveTerminal(id), [])
 
   const load = useCallback(() => {
     const p = mode === 'knowledge' ? api.listKnowledge() : api.listFiles()
@@ -1285,7 +1203,7 @@ export function BrowserPage({
   }
 
   return (
-    <div className="page">
+    <div className="page h-full min-h-0">
       {error && (
         <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
           {error}
@@ -1296,7 +1214,7 @@ export function BrowserPage({
           {moveError}
         </div>
       )}
-      <div className={cn('knowledge-layout flex min-h-0 flex-col items-stretch overflow-hidden max-md:flex-col', selected && 'has-selection')} style={{ maxHeight: 'calc(100svh - 3.5rem)' }}>
+      <div className={cn('knowledge-layout flex h-full min-h-0 flex-col items-stretch overflow-hidden max-md:flex-col', selected && 'has-selection')}>
         <div className="flex min-h-0 flex-1 max-md:flex-col">
           {!isMobile && (
             <div
@@ -1350,11 +1268,10 @@ export function BrowserPage({
             className={cn(
               'knowledge-pane min-w-0 min-h-0 flex-1 bg-card p-4',
               'flex flex-col lg:overflow-hidden',
-              !selected && terminals.length === 0 && 'max-md:hidden',
             )}
           >
             <div
-              className="knowledge-files min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto"
+              className="knowledge-files min-w-0 flex-1 overflow-y-auto"
             >
               {selected ? (
                 <Pane
@@ -1386,33 +1303,20 @@ export function BrowserPage({
                         : 'No files yet.'}
                     </p>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="cursor-pointer"
+                    onClick={() => setExplorerOpen(true)}
+                  >
+                    <PanelLeftOpen />
+                    Open file explorer
+                  </Button>
                 </Card>
               )}
             </div>
           </div>
         </div>
-        {mode === 'files' && terminals.length > 0 && activeTerminal !== null && (
-          <>
-            <div
-              className="h-0.5 shrink-0 cursor-row-resize bg-border/50 transition-colors hover:bg-border hover:h-1"
-              onMouseDown={handleTerminalDragStart}
-              onTouchStart={handleTerminalDragStart}
-            />
-            <div className={cn('flex flex-col', terminalMaximized && !terminalCollapsed ? 'min-h-0 flex-1' : 'shrink-0 bg-card')} style={terminalMaximized && !terminalCollapsed ? undefined : { height: terminalHeight }}>
-              <TerminalTabs
-                tabs={terminals}
-                activeId={activeTerminal}
-                maximized={terminalMaximized}
-                collapsed={terminalCollapsed}
-                onAdd={addTerminal}
-                onClose={closeTerminal}
-                onActivate={activateTerminal}
-                onToggleMaximize={toggleMaximize}
-                onToggleCollapse={toggleCollapse}
-              />
-            </div>
-          </>
-        )}
       </div>
     </div>
   )

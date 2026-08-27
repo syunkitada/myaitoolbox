@@ -3,6 +3,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 :root {
   --radius: 0.5rem;
   --background: oklch(0.979 0.003 264.5);
@@ -214,5 +220,17 @@
 
   .markdown-body hr {
     @apply my-6;
+  }
+}
+
+/* On small screens use overlay scrollbars so the terminal fits the full
+   available width (xterm reserves ~16px for a layout scrollbar otherwise). */
+@media (max-width: 767px) {
+  .terminal-panel .xterm .xterm-viewport {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .terminal-panel .xterm .xterm-viewport::-webkit-scrollbar {
+    display: none;
   }
 }

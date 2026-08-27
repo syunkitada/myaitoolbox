@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css'
 import { terminalWsUrl } from '../utils/routes'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
-import { ChevronDown, ChevronUp, Maximize2, Minimize2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Maximize2, Minimize2, X } from 'lucide-react'
 
 export interface TerminalTabData {
   id: number
@@ -20,6 +20,7 @@ interface TerminalTabsProps {
   collapsed: boolean
   onAdd: () => void
   onClose: (id: number) => void
+  onCloseAll: () => void
   onActivate: (id: number) => void
   onToggleMaximize: () => void
   onToggleCollapse: () => void
@@ -62,7 +63,15 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
     term.open(host)
     termRef.current = term
     fitRef.current = fit
-    fit.fit()
+
+    const fitToWidth = () => {
+      const core = (term as unknown as { _core?: { viewport?: { scrollBarWidth?: number } } })._core
+      if (window.innerWidth < 768 && core?.viewport) {
+        core.viewport.scrollBarWidth = 0
+      }
+      fit.fit()
+    }
+    fitToWidth()
 
     const ws = new WebSocket(terminalWsUrl(command))
     ws.binaryType = 'arraybuffer'
@@ -103,7 +112,7 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
     const ro = new ResizeObserver(() => {
       if (!termRef.current) return
       if (!hostVisible()) return
-      fit.fit()
+      fitToWidth()
       sendResize()
     })
     ro.observe(host)
@@ -151,12 +160,12 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
   )
 }
 
-export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onClose, onActivate, onToggleMaximize, onToggleCollapse }: TerminalTabsProps) {
+export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onClose, onCloseAll, onActivate, onToggleMaximize, onToggleCollapse }: TerminalTabsProps) {
   return (
     <div
       className={cn(
         'terminal-panel overflow-hidden rounded-md border border-border bg-[#0a0e17]',
-        'max-lg:sticky max-lg:bottom-0 max-lg:z-20 max-lg:-m-4 max-lg:rounded-none max-lg:border-x-0 max-lg:border-b-0',
+        'max-lg:flex max-lg:mt-0 max-lg:h-full max-lg:flex-1 max-lg:flex-col max-lg:rounded-none max-lg:border-0',
         maximized && !collapsed ? 'flex flex-col h-full' : 'mt-3 h-full',
       )}
     >
@@ -194,7 +203,7 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
           variant="ghost"
           size="icon-xs"
           className="ml-1 h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
-          onClick={onAdd}
+          onClick={() => onAdd()}
           aria-label="New terminal"
           title="New terminal"
         >
@@ -203,7 +212,7 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
         <Button
           variant="ghost"
           size="icon-xs"
-          className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
+          className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground max-lg:hidden"
           onClick={onToggleCollapse}
           aria-label={collapsed ? 'Expand terminal' : 'Collapse terminal'}
           title={collapsed ? 'Expand terminal' : 'Collapse terminal'}
@@ -213,12 +222,22 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
         <Button
           variant="ghost"
           size="icon-xs"
-          className="ml-auto h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
+          className="ml-auto h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground max-lg:hidden"
           onClick={onToggleMaximize}
           aria-label={maximized ? 'Restore terminal' : 'Maximize terminal'}
           title={maximized ? 'Restore terminal' : 'Maximize terminal'}
         >
           {maximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="ml-auto h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground lg:hidden"
+          onClick={onCloseAll}
+          aria-label="Close terminal"
+          title="Close terminal"
+        >
+          <X className="h-4 w-4" />
         </Button>
       </div>
       <div

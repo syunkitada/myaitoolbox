@@ -15,6 +15,7 @@ import { Button } from './components/ui/button'
 
 import { Separator } from './components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar'
+import { TerminalPanel } from './components/TerminalPanel'
 import { TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
@@ -77,7 +78,7 @@ export default function App() {
                 ))}
               </nav>
             )}
-            {project && pathname.includes('/dashboard') && (
+            {project && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -91,7 +92,7 @@ export default function App() {
             )}
           </div>
         </header>
-        <div className="flex-1">
+        <div className="flex min-h-0 flex-col" style={{ maxHeight: 'calc(100svh - 3.5rem)' }}>
           {error && (
             <div className="error-banner m-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
               {error}
@@ -105,60 +106,63 @@ export default function App() {
               </Button>
             </div>
           )}
-          <Routes>
-            <Route path="/projects" element={<ProjectsPage onChanged={refreshMeta} />} />
-            {project ? (
-              <>
-                <Route
-                  path="/projects/:project/dashboard"
-                  element={
-                    <Dashboard
-                      key={project}
-                      refreshMeta={refreshMeta}
-                      favorites={meta?.favorites ?? []}
-                      recentFiles={meta?.recent_files ?? []}
-                    />
-                  }
-                />
-                <Route
-                  path="/projects/:project/dashboard/files/*"
-                  element={
-                    <Dashboard
-                      key={project}
-                      refreshMeta={refreshMeta}
-                      favorites={meta?.favorites ?? []}
-                      recentFiles={meta?.recent_files ?? []}
-                    />
-                  }
-                />
-                <Route path="/projects/:project/board" element={<KanbanBoard key={project} />} />
-                <Route path="/projects/:project/graph" element={<GraphPage key={project} />} />
-                <Route
-                  path="/projects/:project/herdr"
-                  element={
-                    <HerdrPage
-                      key={project}
-                      overview={herdr.overview}
-                      error={herdr.error}
-                      loading={herdr.loading}
-                      refresh={() => herdr.refresh()}
-                    />
-                  }
-                />
-                <Route path="/projects/:project/search" element={<SearchPage key={project} navigate={navigate} />} />
-                <Route
-                  path="/projects/:project"
-                  element={<Navigate to={projectUrl('/dashboard')} replace />}
-                />
-                <Route path="*" element={<Navigate to={projectUrl('/dashboard')} replace />} />
-              </>
-            ) : (
-              <>
-                <Route path="/board" element={<KanbanBoard />} />
-                <Route path="*" element={<Navigate to="/projects" replace />} />
-              </>
-            )}
-          </Routes>
+          <div className="min-h-0 flex-1">
+            <Routes>
+              <Route path="/projects" element={<ProjectsPage onChanged={refreshMeta} />} />
+              {project ? (
+                <>
+                  <Route
+                    path="/projects/:project/dashboard"
+                    element={
+                      <Dashboard
+                        key={project}
+                        refreshMeta={refreshMeta}
+                        favorites={meta?.favorites ?? []}
+                        recentFiles={meta?.recent_files ?? []}
+                      />
+                    }
+                  />
+                  <Route
+                    path="/projects/:project/dashboard/files/*"
+                    element={
+                      <Dashboard
+                        key={project}
+                        refreshMeta={refreshMeta}
+                        favorites={meta?.favorites ?? []}
+                        recentFiles={meta?.recent_files ?? []}
+                      />
+                    }
+                  />
+                  <Route path="/projects/:project/board" element={<KanbanBoard key={project} />} />
+                  <Route path="/projects/:project/graph" element={<GraphPage key={project} />} />
+                  <Route
+                    path="/projects/:project/herdr"
+                    element={
+                      <HerdrPage
+                        key={project}
+                        overview={herdr.overview}
+                        error={herdr.error}
+                        loading={herdr.loading}
+                        refresh={() => herdr.refresh()}
+                      />
+                    }
+                  />
+                  <Route path="/projects/:project/search" element={<SearchPage key={project} navigate={navigate} />} />
+                  <Route
+                    path="/projects/:project"
+                    element={<Navigate to={projectUrl('/dashboard')} replace />}
+                  />
+                  <Route path="*" element={<Navigate to={projectUrl('/dashboard')} replace />} />
+                </>
+              ) : (
+                <>
+                  <Route path="/board" element={<KanbanBoard />} />
+                  <Route path="*" element={<Navigate to="/projects" replace />} />
+                </>
+              )}
+            </Routes>
+          </div>
+          {project && <TerminalPanel />}
         </div>
       </SidebarInset>
     </SidebarProvider>
