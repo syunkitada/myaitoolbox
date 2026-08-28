@@ -9,6 +9,7 @@ import { SearchPage } from './pages/SearchPage'
 import { KanbanBoard } from './pages/KanbanBoard'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { HerdrPage } from './pages/HerdrPage'
+import { GitPage } from './pages/GitPage'
 import { useHerdrOverview } from './hooks/use-herdr'
 import { useAgentFavicon } from './hooks/use-agent-favicon'
 import { Button } from './components/ui/button'
@@ -16,7 +17,7 @@ import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
-import { TerminalSquare } from 'lucide-react'
+import { Folder, GitBranch, Network, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
@@ -47,10 +48,11 @@ export default function App() {
   }, [refreshMeta, project])
 
   const projectTabs = [
-    { to: projectUrl('/dashboard'), label: 'Files', active: pathname.includes('/dashboard') },
-    { to: projectUrl('/board'), label: 'Board', active: pathname === projectUrl('/board') },
-    { to: projectUrl('/graph'), label: 'Graph', active: pathname === projectUrl('/graph') },
-    { to: projectUrl('/herdr'), label: 'Herdr', active: pathname === projectUrl('/herdr') },
+    { to: projectUrl('/dashboard'), label: 'Files', icon: Folder, active: pathname.includes('/dashboard') },
+    { to: projectUrl('/board'), label: 'Board', icon: SquareKanban, active: pathname === projectUrl('/board') },
+    { to: projectUrl('/graph'), label: 'Graph', icon: Network, active: pathname === projectUrl('/graph') },
+    { to: projectUrl('/git'), label: 'Git', icon: GitBranch, active: pathname === projectUrl('/git') },
+    { to: projectUrl('/herdr'), label: 'Herdr', icon: PanelsTopLeft, active: pathname === projectUrl('/herdr') },
   ]
 
   return (
@@ -67,13 +69,15 @@ export default function App() {
                   <NavLink
                     key={t.label}
                     to={t.to}
+                    aria-label={t.label}
+                    title={t.label}
                     aria-current={t.active ? 'page' : undefined}
                     className={cn(
-                      'inline-flex h-8 shrink-0 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                      'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
                       t.active ? 'bg-accent text-primary' : 'text-muted-foreground',
                     )}
                   >
-                    {t.label}
+                    <t.icon className="size-4" />
                   </NavLink>
                 ))}
               </nav>
@@ -135,6 +139,10 @@ export default function App() {
                   />
                   <Route path="/projects/:project/board" element={<KanbanBoard key={project} />} />
                   <Route path="/projects/:project/graph" element={<GraphPage key={project} />} />
+                  <Route
+                    path="/projects/:project/git"
+                    element={<GitPage key={project} refreshMeta={refreshMeta} />}
+                  />
                   <Route
                     path="/projects/:project/herdr"
                     element={

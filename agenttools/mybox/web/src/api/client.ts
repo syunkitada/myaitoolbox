@@ -107,6 +107,32 @@ export interface ProjectGitStatus {
   untracked: number
 }
 
+export type GitFileStatus = 'staged' | 'unstaged' | 'untracked'
+
+export interface GitFile {
+  path: string
+  status: GitFileStatus
+  code: string
+  diff: string
+}
+
+export interface GitDetail {
+  is_repo: boolean
+  branch: string
+  remote: string
+  ahead: number
+  behind: number
+  last_commit_message: string
+  staged: GitFile[]
+  unstaged: GitFile[]
+  untracked: GitFile[]
+}
+
+export interface GitResult {
+  ok: boolean
+  output?: string
+}
+
 export interface HerdrWorkspace {
   workspace_id: string
   label: string
@@ -312,6 +338,22 @@ export const api = {
     request<void>('POST', '/api/files/copy', { old_path: oldPath, new_path: newPath }),
 
   deleteFile: (path: string) => request<void>('POST', '/api/files/delete', { path }),
+  destroyTerminal: (session: string) =>
+    request<void>('DELETE', '/api/terminal/destroy' + qs({ session })),
+
+  getGitStatus: () => request<GitDetail>('GET', '/api/git/status'),
+  gitInit: () => request<GitResult>('POST', '/api/git/init'),
+  gitCommit: (message: string, stagedOnly?: boolean, amend?: boolean) =>
+    request<GitResult>('POST', '/api/git/commit', {
+      message,
+      staged_only: stagedOnly ?? false,
+      amend: amend ?? false,
+    }),
+  gitPull: () => request<GitResult>('POST', '/api/git/pull'),
+  gitPush: () => request<GitResult>('POST', '/api/git/push'),
+  gitStage: (paths: string[]) => request<GitResult>('POST', '/api/git/stage', { paths }),
+  gitUnstage: (paths: string[]) => request<GitResult>('POST', '/api/git/unstage', { paths }),
+  gitDiscard: (paths: string[]) => request<GitResult>('POST', '/api/git/discard', { paths }),
 
   getGraph: (path?: string) =>
     request<GraphData>('GET', '/api/graph' + qs({ path })),

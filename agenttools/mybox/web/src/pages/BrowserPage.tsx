@@ -3,19 +3,18 @@ import { useNavigate } from 'react-router-dom'
 import { FileEntry, Knowledge, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
-import { OutlineGraph } from '../components/OutlineGraph'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
 import { Button } from '../components/ui/button'
 import { Card, CardContent } from '../components/ui/card'
 import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { Clock, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Share2, Tag } from 'lucide-react'
+import { Clock, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { encodePath, filesUrl, projectUrl, rawFileUrl, taskIdOf } from '../utils/routes'
+import { encodePath, filesUrl, projectUrl, rawFileUrl } from '../utils/routes'
 import {
   buildDirListing,
   buildMarkdown,
@@ -46,7 +45,6 @@ export interface BrowserEntry {
 
 interface BrowserPageProps {
   mode: BrowserMode
-  root: string
   title: string
   selected: string
   onSelect: (path: string) => void
@@ -537,7 +535,6 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
 
 interface PaneProps {
   mode: BrowserMode
-  root: string
   path: string
   entry?: BrowserEntry
   list: BrowserEntry[]
@@ -550,7 +547,7 @@ interface PaneProps {
   onToggleExplorer: () => void
 }
 
-function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged, onOpen, onDeleted, explorerOpen, onToggleExplorer }: PaneProps) {
+function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOpen, onDeleted, explorerOpen, onToggleExplorer }: PaneProps) {
   const navigate = useNavigate()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
@@ -861,26 +858,6 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
             </div>
           )}
         </div>
-        <div className="outline-section mb-4 flex flex-col gap-1 last:mb-0">
-          <div className="outline-title mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            <Share2 className="size-3.5" />
-            Graph
-          </div>
-          <OutlineGraph
-            path={path}
-            root={mode === 'knowledge' ? root : ''}
-            onNodeClick={
-              mode === 'knowledge'
-                ? undefined
-                : (n) => {
-                      if (n.type === 'task')
-                        navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(n.id)}/task.md`))
-                      else if (n.type === 'dir' || n.type === 'file') onOpen(n.id)
-                      else onOpen(n.id.endsWith('.md') ? n.id : `${n.id}.md`)
-                  }
-            }
-          />
-        </div>
       </div>
     </>
   )
@@ -888,7 +865,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
   return (
     <div>
       <div className="knowledge-body flex gap-4 max-md:flex-col">
-        <div className="knowledge-main min-w-0 flex-1">
+        <div className={cn('knowledge-main min-w-0 flex-1 md:transition-[margin]', outlineOpen && 'md:mr-96')}>
           <div className="page-header note-toolbar sticky top-0 z-20 mb-3 flex items-center justify-between gap-3 border-b bg-card/95 py-2 backdrop-blur">
             <div className="actions flex flex-wrap gap-2">
               <Button
@@ -1107,7 +1084,7 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
           <div
             data-outline-open={outlineOpen ? 'true' : 'false'}
             className={cn(
-              'outline-pane sticky top-0 hidden h-[calc(100svh-3.5rem)] shrink-0 self-start overflow-hidden transition-[width] duration-200 ease-linear md:block',
+              'outline-pane absolute right-0 top-0 bottom-0 z-40 hidden overflow-hidden transition-[width] duration-200 ease-linear md:block',
               outlineOpen ? 'w-96' : 'w-0',
             )}
           >
@@ -1139,7 +1116,6 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
 
 export function BrowserPage({
   mode,
-  root,
   title,
   selected,
   onSelect,
@@ -1241,7 +1217,7 @@ export function BrowserPage({
   }
 
   return (
-    <div className="page h-full min-h-0">
+    <div className="page relative h-full min-h-0">
       {error && (
         <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
           {error}
@@ -1314,7 +1290,6 @@ export function BrowserPage({
               {selected ? (
                 <Pane
                   mode={mode}
-                  root={root}
                   path={selected}
                   entry={selectedEntry}
                   list={entries}

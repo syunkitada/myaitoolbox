@@ -42,6 +42,7 @@ type Server struct {
 	defaultProject string
 	basePath       string
 	herdrRun       herdrRunFunc
+	terminals      *terminalHub
 }
 
 func NewServer(cfg *domain.Config, defaultProject string, readOnly bool, basePath string) *Server {
@@ -56,6 +57,7 @@ func NewServer(cfg *domain.Config, defaultProject string, readOnly bool, basePat
 		readOnly:       readOnly,
 		defaultProject: defaultProject,
 		basePath:       basePath,
+		terminals:      newTerminalHub(),
 	}
 }
 
@@ -103,6 +105,8 @@ func (s *Server) Handler() http.Handler {
 	if s.basePath == "" {
 		e.GET("/api/files/raw", rawFile)
 		e.GET("/api/terminal", s.Terminal)
+		e.DELETE("/api/terminal/destroy", s.DestroyTerminal)
+		s.registerGitRoutes(e, "")
 		e.Any("/api/*", echo.WrapHandler(apiHandler))
 		e.Any("/api", echo.WrapHandler(apiHandler))
 		e.GET("/*", s.handleIndex)
@@ -111,6 +115,8 @@ func (s *Server) Handler() http.Handler {
 	g := e.Group(s.basePath)
 	g.GET("/api/files/raw", rawFile)
 	g.GET("/api/terminal", s.Terminal)
+	g.DELETE("/api/terminal/destroy", s.DestroyTerminal)
+	s.registerGitRoutes(e, s.basePath)
 	g.Any("/api/*", echo.WrapHandler(apiHandler))
 	g.Any("/api", echo.WrapHandler(apiHandler))
 	g.GET("", s.handleIndex)

@@ -225,6 +225,67 @@ mkdir -p "$PROJ/knowledge/docs/recipes"
 printf '# Guide\n\nDeep docs.\n' >"$PROJ/knowledge/docs/guide.md"
 printf '# Pizza\n\nMargherita.\n' >"$PROJ/knowledge/docs/recipes/pizza.md"
 printf '# Phase 6\n\n## Overview\n\nThe HTTP API is done.\n\n## Diagram\n\n```mermaid\ngraph LR\n  A[API] --> B[UI]\n```\n' >"$PROJ/knowledge/notes/phase6.md"
-printf '# Tasks\n\nTask tracking lives here.\n' >"$PROJ/tasks.md"
+cat >"$PROJ/tasks.md" <<'EOF'
+# Tasks
+
+Task tracking lives here.
+
+## Getting started
+
+To get started open the task list and pick something small. Keep the board
+updated as you move between lanes so the whole team sees progress at a glance.
+
+## Non-goals
+
+A few things we are deliberately not doing right now:
+
+- No notifications yet.
+- No offline mode.
+- No mobile client.
+
+## Release checklist
+
+The steps below are repeated for every release so they are written down once.
+
+### Create the tag
+
+Tag the current commit and push it. Then start the release build.
+
+### Run the smoke tests
+
+Smoke tests run against a fresh checkout so nothing is left over.
+
+### Publish the bundle
+
+Upload the artifact and verify the checksums match the signed manifest.
+
+## Operations
+
+Everything in this section is about keeping the service healthy in production.
+
+### Backups
+
+Backups run nightly and are kept for thirty days. Restore is tested monthly.
+
+### Alerts
+
+On-call is paged on failed deploys and saturated queues.
+
+## Outage post-mortems
+
+Each incident gets a short write-up so the same mistake is not made twice.
+
+### Incident summary
+
+What happened, when it happened, and whom it affected.
+
+### Timeline
+
+A minute-by-minute reconstruction of the incident.
+
+### Actions
+
+The follow-up items that were agreed upon in the review.
+EOF
 
 exec "$ROOT/mybox" serve --project proj --port 19090 --no-browser

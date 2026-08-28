@@ -106,6 +106,27 @@ test('dashboard shows a content outline for markdown files', async ({ page }) =>
   const outline = page.locator('.outline')
   await expect(outline).toContainText('Content')
   await expect(outline.getByRole('link', { name: 'Tasks' })).toBeVisible()
+  await expect(outline.getByText('Graph')).toHaveCount(0)
+})
+
+test('the details pane stays visible while the file content scrolls', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  await treeButton(explorer, 'tasks.md').click()
+  const outlineHeader = page.locator('.outline-header')
+  await expect(outlineHeader).toBeVisible()
+  const scroller = page.locator('.knowledge-files')
+  const before = await outlineHeader.boundingBox()
+  expect(before).not.toBeNull()
+
+  await scroller.evaluate((el) => el.scrollBy(0, 600))
+
+  // Confirm the file view really scrolled, so the assertion below is meaningful.
+  const scrolled = await scroller.evaluate((el) => el.scrollTop)
+  expect(scrolled).toBeGreaterThan(0)
+
+  const after = await outlineHeader.boundingBox()
+  expect(after).not.toBeNull()
+  expect(after!.y).toBeCloseTo(before!.y, 0)
 })
 
 test('dashboard toggles the details sidebar', async ({ page }) => {
@@ -134,6 +155,117 @@ test('nav bar file actions open a terminal', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
   await page.getByRole('button', { name: 'Open terminal' }).click()
   await expect(page.locator('.terminal-panel')).toBeVisible()
+})
+
+test('terminal button toggles show/hide without creating new terminals', async ({ page }) => {
+  const btn = page.getByRole('button', { name: 'Open terminal' })
+  const panel = page.locator('.terminal-panel')
+  await btn.click()
+  await expect(panel).toBeVisible()
+
+  // Hide: the entire panel disappears from the screen.
+  await btn.click()
+  await expect(panel).toBeHidden()
+
+  // Show again; still one session, not another new terminal.
+  await btn.click()
+  await expect(panel).toBeVisible()
+
+  const tabs = await page.evaluate(() => {
+    const m = JSON.parse(window.localStorage.getItem('mybox_terminals_v1') || '{}')
+    const first = Object.values(m)[0] as { tabs?: unknown[] } | undefined
+    return first?.tabs?.length ?? 0
+  })
+  expect(tabs).toBe(1)
+})
+
+test('the tab bar hide button hides the terminal panel', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  const panel = page.locator('.terminal-panel')
+  await expect(panel).toBeVisible()
+
+  await page.getByRole('button', { name: 'Hide terminal' }).click()
+  await expect(panel).toBeHidden()
+})
+
+test('the tab bar maximize button makes the terminal fill the screen', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  const panel = page.locator('.terminal-panel')
+  await expect(panel).toBeVisible()
+
+  const rectBefore = await panel.boundingBox()
+  expect(rectBefore).not.toBeNull()
+
+  await page.getByRole('button', { name: 'Maximize terminal' }).click()
+  const maximized = await panel.boundingBox()
+  expect(maximized).not.toBeNull()
+  const vw = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  expect(maximized!.x).toBeLessThanOrEqual(2)
+  expect(maximized!.y).toBeLessThanOrEqual(2)
+  expect(maximized!.width).toBeGreaterThanOrEqual(vw.w - 4)
+  expect(maximized!.height).toBeGreaterThanOrEqual(vw.h - 4)
+
+  await page.getByRole('button', { name: 'Restore terminal' }).click()
+  await expect(panel).toBeVisible()
+  const restored = await panel.boundingBox()
+  expect(restored).not.toBeNull()
+  expect(restored!.height).toBeLessThan(vw.h - 4)
+})
+
+test('dragging the resize handle grows the internal terminal', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  const panel = page.locator('.terminal-panel')
+  await expect(panel).toBeVisible()
+
+  const xterm = page.locator('.terminal-xterm')
+  await expect(xterm).toBeVisible()
+  const heightBefore = await xterm.evaluate((el) => el.clientHeight)
+  expect(heightBefore).toBeGreaterThan(100)
+
+  const handle = page.locator('[data-testid="terminal-resize-handle"]')
+  const box = await handle.boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + 20, box!.y - 140, { steps: 8 })
+  await page.mouse.up()
+
+  await expect
+    .poll(async () => page.locator('.terminal-xterm').evaluate((el) => el.clientHeight))
+    .toBeGreaterThan(heightBefore + 100)
+})
+
+test('terminal session persists across a browser reload', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  const panel = page.locator('.terminal-panel')
+  await expect(panel).toBeVisible()
+
+  // Focus the terminal and run a command whose echoed output can be verified
+  // as replayed history after reconnecting to the same session on reload.
+  await page.locator('.terminal-xterm').click()
+  await page.keyboard.type('echo PERSIST_RELOAD_99')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.terminal-xterm')).toContainText('PERSIST_RELOAD_99')
+
+  const sessionIdBefore = await page.evaluate(() => {
+    const m = JSON.parse(window.localStorage.getItem('mybox_terminals_v1') || '{}')
+    const first = Object.values(m)[0] as { tabs?: { sessionId?: string }[] } | undefined
+    return first?.tabs?.[0]?.sessionId ?? null
+  })
+  expect(sessionIdBefore).toBeTruthy()
+
+  await page.reload()
+  await expect(page.locator('.terminal-panel')).toBeVisible()
+
+  const sessionIdAfter = await page.evaluate(() => {
+    const m = JSON.parse(window.localStorage.getItem('mybox_terminals_v1') || '{}')
+    const first = Object.values(m)[0] as { tabs?: { sessionId?: string }[] } | undefined
+    return first?.tabs?.[0]?.sessionId ?? null
+  })
+  expect(sessionIdAfter).toBe(sessionIdBefore)
+
+  // Reattached to the same server-side session: historical output is replayed.
+  await expect(page.locator('.terminal-xterm')).toContainText('PERSIST_RELOAD_99')
 })
 
 test('dashboard edits and saves a file', async ({ page }) => {
@@ -255,6 +387,9 @@ test('project tabs switch between files, board and graph', async ({ page }) => {
   await tabs.getByRole('link', { name: 'Graph' }).click()
   await expect(page).toHaveURL(/\/projects\/proj\/graph$/)
   await expect(page.getByRole('heading', { name: 'Graph' })).toBeVisible()
+  await tabs.getByRole('link', { name: 'Git' }).click()
+  await expect(page).toHaveURL(/\/projects\/proj\/git$/)
+  await expect(page.getByRole('heading', { name: 'No git repository' })).toBeVisible()
   await tabs.getByRole('link', { name: 'Files' }).click()
   await expect(page).toHaveURL(/\/projects\/proj\/dashboard/)
   await expect(tabs.getByRole('link', { name: 'Files' })).toHaveClass(/bg-accent/)
@@ -552,6 +687,116 @@ test.describe('mobile viewport', () => {
     await expect(page.locator('.explorer')).toBeVisible()
     await treeButton(page.locator('.explorer'), 'README.md').click()
     await expect(page.locator('.explorer')).toHaveCount(0)
+  })
+
+  test('terminal tab bar can hide the terminal on mobile', async ({ page }) => {
+    await page.getByRole('button', { name: 'Open terminal' }).click()
+    const panel = page.locator('.terminal-panel')
+    await expect(panel).toBeVisible()
+
+    await page.getByRole('button', { name: 'Hide terminal' }).click()
+    await expect(panel).toBeHidden()
+  })
+})
+
+test.describe('git tab', () => {
+  test('initializes a repository, lists files, and commits the workspace', async ({ page }) => {
+    await page.goto('/projects/proj/git')
+    await expect(page.getByRole('heading', { name: 'No git repository' })).toBeVisible()
+    await page.getByRole('button', { name: 'Initialize repository' }).click()
+    await expect(page.getByRole('heading', { name: 'Git', level: 1 })).toBeVisible()
+
+    // Seed files are now visible as untracked (basenames; README.md appears
+    // at the root and under knowledge/).
+    await expect(page.locator('.knowledge-tree').getByRole('button', { name: 'README.md' })).toHaveCount(2)
+    await expect(page.locator('.knowledge-tree').getByRole('button', { name: 'index.md' })).toHaveCount(1)
+
+    // The commit box is disabled until a message is entered; committing with
+    // "Stage all before commit" enabled captures the whole workspace.
+    const commit = page.getByRole('button', { name: 'Commit', exact: true })
+    await expect(commit).toBeDisabled()
+    await page.getByTestId('git-commit-message').fill('Initial commit')
+    await commit.click()
+    await expect(page.getByTestId('git-output')).toContainText('Initial commit')
+    await expect(page.getByText('Working tree is clean.')).toBeVisible()
+  })
+
+  test('amend rewrites the most recent commit message', async ({ page }) => {
+    await page.goto('/projects/proj/git')
+    const noRepo = page.getByRole('heading', { name: 'No git repository' })
+    try {
+      // Tolerate running this test on its own: seed a repository and a first
+      // commit when the suite has not done so already.
+      await noRepo.waitFor({ state: 'visible', timeout: 2000 })
+      await page.getByRole('button', { name: 'Initialize repository' }).click()
+      await expect(page.getByRole('heading', { name: 'Git', level: 1 })).toBeVisible()
+      await page.getByTestId('git-commit-message').fill('initial')
+      await page.getByRole('button', { name: 'Commit', exact: true }).click()
+      await expect(page.getByText('Working tree is clean.')).toBeVisible()
+    } catch {
+      // A repository (and commit) already exists.
+    }
+
+    page.once('dialog', (d) => d.accept())
+    await page.getByTestId('git-commit-message').fill('amended subject')
+    await page.getByRole('button', { name: 'Amend' }).click()
+    await expect(page.getByTestId('git-output')).toContainText('amended subject')
+    await expect(page.getByText('Working tree is clean.')).toBeVisible()
+  })
+
+  test('reports pull and push failures when there is no remote', async ({ page }) => {
+    await page.goto('/projects/proj/git')
+    // Initialize if this test ran without the initialization test; each test
+    // must be runnable on its own, so tolerate either state.
+    const noRepo = page.getByRole('heading', { name: 'No git repository' })
+    try {
+      await noRepo.waitFor({ state: 'visible', timeout: 2000 })
+      await page.getByRole('button', { name: 'Initialize repository' }).click()
+      await expect(page.getByRole('heading', { name: 'Git', level: 1 })).toBeVisible()
+    } catch {
+      // The repository already exists from the previous test.
+    }
+    await page.getByRole('button', { name: 'Pull' }).click()
+    await expect(page.getByTestId('git-output')).toContainText('no tracking information')
+    await page.getByRole('button', { name: 'Push' }).click()
+    await expect(page.getByTestId('git-output')).toContainText('No configured push destination')
+  })
+})
+
+test.describe('git tab on a mobile viewport', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test('working tree opens as a slide-over and stays reachable after selecting a file', async ({ page }) => {
+    await page.request.post('/api/files', { data: { path: 'tmp-untracked.md' } })
+    try {
+      await page.goto('/projects/proj/git')
+      // Initialize if this tested in isolation; otherwise a repo already exists.
+      const noRepo = page.getByRole('heading', { name: 'No git repository' })
+      try {
+        await noRepo.waitFor({ state: 'visible', timeout: 2000 })
+        await page.getByRole('button', { name: 'Initialize repository' }).click()
+        await expect(page.getByRole('heading', { name: 'Git', level: 1 })).toBeVisible()
+      } catch {
+        // The repository already exists from the git tab suite.
+      }
+
+      // On mobile the working tree is a slide-over, hidden by default.
+      await expect(page.locator('.explorer')).toHaveCount(0)
+      await page.getByRole('button', { name: 'Toggle file explorer' }).click()
+      await expect(page.locator('.explorer')).toBeVisible()
+
+      // Picking a file closes the slide-over and fills the pane with its diff.
+      await treeButton(page.locator('.explorer'), 'tmp-untracked.md').click()
+      await expect(page.getByTestId('git-selected-file')).toHaveText('tmp-untracked.md')
+      await expect(page.locator('.explorer')).toHaveCount(0)
+
+      // The toggle in the diff toolbar brings the working tree back.
+      await page.getByRole('button', { name: 'Toggle file explorer' }).click()
+      await expect(page.locator('.explorer')).toBeVisible()
+      await expect(treeButton(page.locator('.explorer'), 'tmp-untracked.md')).toHaveClass(/active/)
+    } finally {
+      await page.request.post('/api/files/delete', { data: { path: 'tmp-untracked.md' } })
+    }
   })
 })
 

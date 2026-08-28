@@ -91,4 +91,20 @@ describe('RichMarkdown', () => {
     const link = container.querySelector('a')
     expect(link?.getAttribute('href')).toBe('./xdgconfig/')
   })
+
+  it.each([
+    ['```', '```\n## Not a heading\n```'],
+    ['~~~', '~~~\n### Also not a heading\n~~~'],
+  ])('extractOutline skips headings inside %s fences', (_label, fenced) => {
+    const outline = extractOutline(`# Real heading\n\n${fenced}\n\n## Another real heading\n`)
+    expect(outline.map((h) => h.text)).toEqual(['Real heading', 'Another real heading'])
+  })
+
+  it('extractOutline resumes after a fenced block closes', () => {
+    const outline = extractOutline('# A\n\n```\n# B\n```\n\n## C\n')
+    expect(outline.map((h) => ({ level: h.level, text: h.text }))).toEqual([
+      { level: 1, text: 'A' },
+      { level: 2, text: 'C' },
+    ])
+  })
 })

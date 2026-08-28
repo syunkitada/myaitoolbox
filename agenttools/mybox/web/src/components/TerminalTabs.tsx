@@ -6,12 +6,13 @@ import '@xterm/xterm/css/xterm.css'
 import { terminalWsUrl } from '../utils/routes'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
-import { ChevronDown, ChevronUp, Maximize2, Minimize2, X } from 'lucide-react'
+import { Maximize2, Minimize2, PanelTopClose } from 'lucide-react'
 
 export interface TerminalTabData {
   id: number
   title: string
   command?: string
+  sessionId?: string
 }
 
 interface TerminalTabsProps {
@@ -21,10 +22,9 @@ interface TerminalTabsProps {
   collapsed: boolean
   onAdd: () => void
   onClose: (id: number) => void
-  onCloseAll: () => void
   onActivate: (id: number) => void
   onToggleMaximize: () => void
-  onToggleCollapse: () => void
+  onToggleVisible: () => void
 }
 
 type ConnStatus = 'connecting' | 'connected' | 'closed' | 'error'
@@ -36,7 +36,7 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   error: 'Connection failed',
 }
 
-function TerminalView({ active, command }: { active: boolean; command?: string }) {
+function TerminalView({ active, command, sessionId }: { active: boolean; command?: string; sessionId?: string }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -169,7 +169,7 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
     }
     fitToWidth()
 
-    const ws = new WebSocket(terminalWsUrl(command))
+    const ws = new WebSocket(terminalWsUrl(command, sessionId))
     ws.binaryType = 'arraybuffer'
     wsRef.current = ws
 
@@ -250,8 +250,7 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
       fitRef.current = null
       wsRef.current = null
     }
-  }, [command])
-
+  }, [command, sessionId])
   // Re-fit when the tab becomes visible again.
   useEffect(() => {
     if (!active) return
@@ -300,13 +299,13 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
   )
 }
 
-export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onClose, onCloseAll, onActivate, onToggleMaximize, onToggleCollapse }: TerminalTabsProps) {
+export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onClose, onActivate, onToggleMaximize, onToggleVisible }: TerminalTabsProps) {
   return (
     <div
       className={cn(
-        'terminal-panel overflow-hidden rounded-md border border-border bg-[#0a0e17]',
-        'max-lg:flex max-lg:mt-0 max-lg:h-full max-lg:flex-1 max-lg:flex-col max-lg:rounded-none max-lg:border-0',
-        maximized && !collapsed ? 'flex flex-col h-full' : 'mt-3 h-full',
+        'terminal-panel flex h-full flex-col overflow-hidden rounded-md border border-border bg-[#0a0e17]',
+        maximized ? 'max-lg:mt-0' : 'mt-3',
+        'max-lg:h-full max-lg:flex-1 max-lg:rounded-none max-lg:border-0 max-lg:mt-0',
       )}
     >
       <div className="terminal-tabbar flex items-center gap-0.5 border-b border-border/70 bg-card px-2 pt-1.5">
@@ -339,52 +338,43 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
             </div>
           )
         })}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="ml-1 h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
-          onClick={() => onAdd()}
-          aria-label="New terminal"
-          title="New terminal"
-        >
-          +
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground max-lg:hidden"
-          onClick={onToggleCollapse}
-          aria-label={collapsed ? 'Expand terminal' : 'Collapse terminal'}
-          title={collapsed ? 'Expand terminal' : 'Collapse terminal'}
-        >
-          {collapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="ml-auto h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground max-lg:hidden"
-          onClick={onToggleMaximize}
-          aria-label={maximized ? 'Restore terminal' : 'Maximize terminal'}
-          title={maximized ? 'Restore terminal' : 'Maximize terminal'}
-        >
-          {maximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="ml-auto h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground lg:hidden"
-          onClick={onCloseAll}
-          aria-label="Close terminal"
-          title="Close terminal"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
+            onClick={() => onAdd()}
+            aria-label="New terminal"
+            title="New terminal"
+          >
+            +
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground max-lg:hidden"
+            onClick={onToggleMaximize}
+            aria-label={maximized ? 'Restore terminal' : 'Maximize terminal'}
+            title={maximized ? 'Restore terminal' : 'Maximize terminal'}
+          >
+            {maximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
+            onClick={onToggleVisible}
+            aria-label="Hide terminal"
+            title="Hide terminal"
+          >
+            <PanelTopClose className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
       <div
         className={cn(
-          'terminal-body flex-1 min-h-0',
+          'terminal-body flex min-h-0 flex-1 flex-col',
           collapsed && 'hidden',
-          !maximized && !collapsed && 'flex flex-col',
         )}
       >
         {tabs.map((t) => (
@@ -394,7 +384,7 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
               t.id === activeId ? 'block min-h-0 flex-1' : 'hidden',
             )}
           >
-            <TerminalView active={t.id === activeId} command={t.command} />
+            <TerminalView active={t.id === activeId} command={t.command} sessionId={t.sessionId} />
           </div>
         ))}
       </div>

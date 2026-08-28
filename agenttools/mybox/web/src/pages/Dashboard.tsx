@@ -83,7 +83,6 @@ export function Dashboard({ refreshMeta, favorites, recentFiles }: DashboardProp
   return (
     <BrowserPage
       mode="files"
-      root=""
       title="Files"
       selected={selected}
       onSelect={persistSelected}

@@ -58,14 +58,16 @@ export function rawFileUrl(resolved: string): string {
 
 // terminalWsUrl points at the WebSocket endpoint that hosts a shell for the
 // current project. The project is passed as a query parameter because the
-// X-Project header cannot be set on a WebSocket handshake.
-export function terminalWsUrl(command?: string): string {
+// X-Project header cannot be set on a WebSocket handshake. A persistent
+// session id lets a reconnect resume the same server-side shell.
+export function terminalWsUrl(command?: string, session?: string): string {
   const base = getBasePath()
   const project = getProject()
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const params = new URLSearchParams()
   if (project) params.set('project', project)
   if (command) params.set('command', command)
+  if (session) params.set('session', session)
   const query = params.toString()
   return `${protocol}://${window.location.host}${base}/api/terminal${query ? `?${query}` : ''}`
 }

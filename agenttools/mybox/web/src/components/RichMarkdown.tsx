@@ -59,7 +59,20 @@ export function slugify(text: string): string {
 
 export function extractOutline(text: string): Array<{ level: number; id: string; text: string }> {
   const outline: Array<{ level: number; id: string; text: string }> = []
+  let fence: string | null = null
   for (const line of text.split('\n')) {
+    // Track fenced code blocks (``` or ~~~) so lines inside them are skipped.
+    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line)
+    if (fenceMatch) {
+      const marker: string = fenceMatch[1][0]
+      if (fence === marker) {
+        fence = null
+      } else if (fence === null) {
+        fence = marker
+      }
+      continue
+    }
+    if (fence) continue
     const m = /^(#{1,4})\s+(.+)$/.exec(line)
     if (!m) continue
     const raw = m[2]
