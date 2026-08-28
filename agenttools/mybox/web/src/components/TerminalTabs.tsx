@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { ClipboardAddon } from '@xterm/addon-clipboard'
 import '@xterm/xterm/css/xterm.css'
 import { terminalWsUrl } from '../utils/routes'
 import { Button } from './ui/button'
@@ -40,7 +41,100 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const hiddenInputRef = useRef<HTMLTextAreaElement>(null)
   const [status, setStatus] = useState<ConnStatus>('connecting')
+  const [notice, setNotice] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
+
+  const showNotice = (text: string, kind: 'ok' | 'err' = 'ok') => {
+    setNotice({ text, kind })
+    window.setTimeout(() => setNotice((n) => (n?.text === text ? null : n)), 1800)
+  }
+
+  const copyText = async (text: string): Promise<boolean> => {
+    if (!text) return false
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text)
+        return true
+      } catch {
+        /* fall through to textarea fallback */
+      }
+    }
+    const ta = hiddenInputRef.current
+    if (ta) {
+      ta.value = text
+      ta.focus()
+      ta.select()
+      ta.setSelectionRange(0, text.length)
+      try {
+        return document.execCommand('copy')
+      } catch {
+        return false
+      }
+    }
+    return false
+  }
+
+  const readClipboard = (): Promise<string> =>
+    new Promise((resolve) => {
+      if (navigator.clipboard?.readText) {
+        navigator.clipboard.readText().then(resolve).catch(() => readViaPasteEvent(resolve))
+        return
+      }
+      readViaPasteEvent(resolve)
+    })
+
+  // Triggers a real browser paste event on the hidden textarea. In a genuine
+  // paste event the browser fills clipboardData with the OS clipboard content
+  // without requiring the clipboard-read permission.
+  const readViaPasteEvent = (resolve: (text: string) => void) => {
+    const ta = hiddenInputRef.current
+    if (!ta) return
+    let settled = false
+    const onPaste = (e: ClipboardEvent) => {
+      if (settled) return
+      settled = true
+      ta.removeEventListener('paste', onPaste)
+      resolve(e.clipboardData?.getData('text') ?? '')
+    }
+    ta.addEventListener('paste', onPaste)
+    ta.value = ''
+    ta.focus()
+    ta.select()
+    try {
+      document.execCommand('paste')
+    } catch {
+      /* the paste event may not have fired */
+    }
+    window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      ta.removeEventListener('paste', onPaste)
+      resolve(ta.value)
+    }, 60)
+  }
+
+  const copySelection = async (sel?: string) => {
+    const text = sel ?? termRef.current?.getSelection() ?? ''
+    const ok = await copyText(text)
+    showNotice(ok ? 'Copied' : 'Nothing to copy', ok ? 'ok' : 'err')
+  }
+
+  const pasteClipboard = async () => {
+    const term = termRef.current
+    if (!term) return
+    const text = await readClipboard()
+    term.focus()
+    if (text) {
+      term.paste(text)
+      showNotice('Pasted')
+    } else {
+      showNotice(
+        'Cannot read clipboard. Use long-press / right-click to paste',
+        'err',
+      )
+    }
+  }
 
   useEffect(() => {
     const host = hostRef.current
@@ -59,7 +153,9 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
       },
     })
     const fit = new FitAddon()
+    const clipboard = new ClipboardAddon()
     term.loadAddon(fit)
+    term.loadAddon(clipboard)
     term.open(host)
     termRef.current = term
     fitRef.current = fit
@@ -93,6 +189,34 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
 
     term.onData((data) => send({ type: 'input', data }))
 
+    term.attachCustomKeyEventHandler((ev) => {
+      const mod = ev.ctrlKey || ev.metaKey
+      if (mod && !ev.shiftKey && ev.code === 'KeyV') {
+        pasteClipboard()
+        return false
+      }
+      if (mod && ev.shiftKey && ev.code === 'KeyC') {
+        copySelection()
+        return false
+      }
+      if (mod && ev.shiftKey && ev.code === 'KeyV') {
+        pasteClipboard()
+        return false
+      }
+      return true
+    })
+
+    // Copy the selection to the OS clipboard automatically when text is selected.
+    let selectionTimer: number | undefined
+    term.onSelectionChange(() => {
+      if (!term.getSelection()) return
+      window.clearTimeout(selectionTimer)
+      selectionTimer = window.setTimeout(() => {
+        const sel = term.getSelection()
+        if (sel) void copyText(sel)
+      }, 150)
+    })
+
     ws.onopen = () => {
       setStatus('connected')
       if (hostVisible()) {
@@ -118,6 +242,7 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
     ro.observe(host)
 
     return () => {
+      window.clearTimeout(selectionTimer)
       ro.disconnect()
       ws.close()
       term.dispose()
@@ -146,14 +271,29 @@ function TerminalView({ active, command }: { active: boolean; command?: string }
 
   return (
     <div className="relative h-full">
+      <textarea
+        ref={hiddenInputRef}
+        tabIndex={-1}
+        aria-hidden="true"
+        className="absolute h-px w-px -left-[9999px] top-0 opacity-0"
+      />
       <div
         ref={hostRef}
-        onContextMenu={(e) => e.preventDefault()}
         className="terminal-xterm h-full w-full"
       />
       {status !== 'connected' && (
         <div className="pointer-events-none absolute top-2 right-3 rounded bg-black/60 px-2 py-0.5 text-xs text-red-300">
           {STATUS_LABEL[status]}
+        </div>
+      )}
+      {notice && (
+        <div
+          className={cn(
+            'pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded bg-black/70 px-3 py-1 text-xs',
+            notice.kind === 'err' ? 'text-red-300' : 'text-green-300',
+          )}
+        >
+          {notice.text}
         </div>
       )}
     </div>

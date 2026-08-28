@@ -10,7 +10,7 @@ import { Card, CardContent } from '../components/ui/card'
 import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { Clock, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, PanelLeftClose, PanelLeftOpen, PanelRight, Share2, Tag } from 'lucide-react'
+import { Clock, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Share2, Tag } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -560,6 +560,21 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [isFav, setIsFav] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (menuOpen && !menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [menuOpen])
+
+  const runAction = (fn: () => void) => {
+    setMenuOpen(false)
+    fn()
+  }
   const [activeHeading, setActiveHeading] = useState<string | null>(null)
   const isMobile = useIsMobile()
   const [outlineOpen, setOutlineOpen] = useState<boolean>(() => {
@@ -905,17 +920,40 @@ function Pane({ mode, root, path, entry, list, favorites, refreshMeta, onChanged
                 </Button>
               )}
               {mode === 'files' && (
-                <>
-                  <Button variant="ghost" size="sm" onClick={move}>
-                    Move
+                <div className="file-actions relative" ref={menuRef}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="File actions"
+                    aria-expanded={menuOpen}
+                    title="File actions"
+                    onClick={() => setMenuOpen((o) => !o)}
+                  >
+                    <MoreHorizontal className="size-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={duplicate}>
-                    Duplicate
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={remove}>
-                    Delete
-                  </Button>
-                </>
+                  {menuOpen && (
+                    <div
+                      role="menu"
+                      aria-label="File actions"
+                      className="absolute right-0 top-full z-50 mt-1 min-w-40 origin-top rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                    >
+                      <button role="menuitem" className="file-action-item" onClick={() => runAction(move)}>
+                        Move
+                      </button>
+                      <button role="menuitem" className="file-action-item" onClick={() => runAction(duplicate)}>
+                        Duplicate
+                      </button>
+                      <div className="my-1 h-px bg-border" />
+                      <button
+                        role="menuitem"
+                        className="file-action-item text-destructive"
+                        onClick={() => runAction(remove)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
               {!isDir && !isImage && (
                 editing ? (

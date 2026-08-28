@@ -54,9 +54,10 @@ test('dashboard opens a directory README from the explorer', async ({ page }) =>
   await expect(treeButton(explorer, 'knowledge')).toHaveClass(/active/)
   await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Rename' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Move' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Duplicate' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Delete' })).toBeVisible()
+  await page.getByRole('button', { name: 'File actions' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Move' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Duplicate' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Delete' })).toBeVisible()
 })
 
 test('dashboard lists a directory that has no README', async ({ page }) => {
@@ -205,7 +206,8 @@ test('dashboard renames a file via Move', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks.md').click()
-  await page.getByRole('button', { name: 'Move' }).click()
+  await page.getByRole('button', { name: 'File actions' }).click()
+  await page.getByRole('menuitem', { name: 'Move' }).click({ force: true })
   await expect(page.getByText('knowledge/tasks2.md', { exact: true })).toBeVisible()
   await expect(explorer).toContainText('tasks2.md')
 })
@@ -215,7 +217,8 @@ test('dashboard duplicates a file', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks2.md').click()
-  await page.getByRole('button', { name: 'Duplicate' }).click()
+  await page.getByRole('button', { name: 'File actions' }).click()
+  await page.getByRole('menuitem', { name: 'Duplicate' }).click({ force: true })
   // Scope to the tree: the opened viewer's meta line shows the same path.
   await expect(treeButton(explorer, 'tasks2-copy.md')).toBeVisible()
 })
@@ -225,7 +228,8 @@ test('dashboard deletes a file', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks2-copy.md').click()
-  await page.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'File actions' }).click()
+  await page.getByRole('menuitem', { name: 'Delete' }).click({ force: true })
   await expect(
     page.getByText('Select a file from the explorer to view it here.', { exact: true }),
   ).toBeVisible()

@@ -221,6 +221,11 @@ body,
   .markdown-body hr {
     @apply my-6;
   }
+
+  /* File action dropdown menu items (BrowserPage) */
+  .file-action-item {
+    @apply flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground;
+  }
 }
 
 /* On small screens use overlay scrollbars so the terminal fits the full
