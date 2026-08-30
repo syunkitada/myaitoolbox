@@ -21,6 +21,24 @@ type herdrRunFunc func(ctx context.Context, args ...string) ([]byte, error)
 
 var herdrTargetPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$`)
 
+func herdrErrorMessage(out []byte, err error) error {
+	var env struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if len(out) > 0 && json.Unmarshal(out, &env) == nil && env.Error.Message != "" {
+		return errors.New(env.Error.Message)
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+		if json.Unmarshal(exitErr.Stderr, &env) == nil && env.Error.Message != "" {
+			return errors.New(env.Error.Message)
+		}
+	}
+	return err
+}
+
 func defaultHerdrRun(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, herdrTimeout)
 	defer cancel()
@@ -30,6 +48,9 @@ func defaultHerdrRun(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	out, err := exec.CommandContext(ctx, bin, args...).Output()
 	if err != nil {
+		if errMsg := herdrErrorMessage(out, err); errMsg != err {
+			return nil, errMsg
+		}
 		return nil, fmt.Errorf("herdr %s failed: %w", strings.Join(args, " "), err)
 	}
 	return out, nil
@@ -62,6 +83,7 @@ type herdrWorkspaceListResult struct {
 
 type herdrAgentRaw struct {
 	Agent       string `json:"agent"`
+	Name        string `json:"name"`
 	AgentStatus string `json:"agent_status"`
 	Cwd         string `json:"cwd"`
 	Focused     bool   `json:"focused"`
@@ -142,13 +164,21 @@ func (s *Server) GetHerdrOverview(w http.ResponseWriter, r *http.Request) {
 			var list herdrAgentListResult
 			if err := json.Unmarshal(agEnv.Result, &list); err == nil {
 				for _, raw := range list.Agents {
+					name := raw.Name
+					if name == "" {
+						name = raw.Agent
+					}
 					agent := api.HerdrAgent{
-						Name:        raw.Agent,
+						Name:        name,
 						Status:      raw.AgentStatus,
 						WorkspaceId: raw.WorkspaceID,
 						Cwd:         &raw.Cwd,
 						Focused:     &raw.Focused,
 						PaneId:      raw.PaneID,
+					}
+					if raw.Name != "" {
+						customName := raw.Name
+						agent.CustomName = &customName
 					}
 					if title := strings.TrimSpace(raw.Title); title != "" {
 						agent.Title = &title
@@ -285,6 +315,37 @@ func (s *Server) SendKeysHerdrAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	args := append([]string{"agent", "send-keys", req.Target}, req.Keys...)
+	if _, err := s.runHerdr(r.Context(), args...); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, api.HerdrOpResponse{Ok: true})
+}
+
+// RenameHerdrAgent renames an agent or clears its custom name.
+func (s *Server) RenameHerdrAgent(w http.ResponseWriter, r *http.Request) {
+	var req api.HerdrAgentRenameRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	req.Target = strings.TrimSpace(req.Target)
+	if !herdrTargetPattern.MatchString(req.Target) {
+		writeError(w, fmt.Errorf("invalid agent target"))
+		return
+	}
+	var args []string
+	if req.Clear != nil && *req.Clear {
+		args = []string{"agent", "rename", req.Target, "--clear"}
+	} else if req.Name != nil && strings.TrimSpace(*req.Name) != "" {
+		name, ok := validHerdrLabel(*req.Name)
+		if !ok {
+			writeError(w, fmt.Errorf("name must be between 1 and 80 characters"))
+			return
+		}
+		args = []string{"agent", "rename", req.Target, name}
+	} else {
+		args = []string{"agent", "rename", req.Target, "--clear"}
+	}
 	if _, err := s.runHerdr(r.Context(), args...); err != nil {
 		writeError(w, err)
 		return

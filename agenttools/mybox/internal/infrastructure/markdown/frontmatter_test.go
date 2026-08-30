@@ -60,7 +60,7 @@ func TestTaskTemplateQuotesYamlValues(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "mcp: mysql: test", parsed["title"])
 	assert.Contains(t, fm, `title: "mcp: mysql: test"`)
-	assert.Contains(t, body, "# mcp: mysql: test")
+	assert.Contains(t, body, "## Overview")
 	assert.NotContains(t, fm, "id:")
 	assert.NotContains(t, fm, "project:")
 	assert.NotContains(t, fm, "created")

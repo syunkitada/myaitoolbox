@@ -542,6 +542,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/agents/rename:
+    post:
+      operationId: renameHerdrAgent
+      summary: Rename a herdr agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrAgentRenameRequest"
+      responses:
+        "200":
+          description: renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
   /api/herdr/tabs/create:
     post:
       operationId: createHerdrTab
@@ -1030,6 +1047,8 @@ components:
       properties:
         name:
           type: string
+        custom_name:
+          type: string
         status:
           type: string
         workspace_id:
@@ -1192,3 +1211,14 @@ components:
           type: array
           items:
             type: string
+    HerdrAgentRenameRequest:
+      type: object
+      required: [target]
+      properties:
+        target:
+          type: string
+        name:
+          type: string
+        clear:
+          type: boolean
+

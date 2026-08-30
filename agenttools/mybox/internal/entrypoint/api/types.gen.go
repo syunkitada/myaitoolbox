@@ -195,6 +195,7 @@ type GraphNode struct {
 
 // HerdrAgent defines model for HerdrAgent.
 type HerdrAgent struct {
+	CustomName  *string `json:"custom_name,omitempty"`
 	Cwd         *string `json:"cwd,omitempty"`
 	Focused     *bool   `json:"focused,omitempty"`
 	Name        string  `json:"name"`
@@ -202,6 +203,13 @@ type HerdrAgent struct {
 	Status      string  `json:"status"`
 	Title       *string `json:"title,omitempty"`
 	WorkspaceId string  `json:"workspace_id"`
+}
+
+// HerdrAgentRenameRequest defines model for HerdrAgentRenameRequest.
+type HerdrAgentRenameRequest struct {
+	Clear  *bool   `json:"clear,omitempty"`
+	Name   *string `json:"name,omitempty"`
+	Target string  `json:"target"`
 }
 
 // HerdrAgentSendKeysRequest defines model for HerdrAgentSendKeysRequest.
@@ -519,6 +527,9 @@ type PromptHerdrAgentJSONRequestBody = HerdrPromptRequest
 
 // ReadHerdrAgentJSONRequestBody defines body for ReadHerdrAgent for application/json ContentType.
 type ReadHerdrAgentJSONRequestBody = HerdrReadRequest
+
+// RenameHerdrAgentJSONRequestBody defines body for RenameHerdrAgent for application/json ContentType.
+type RenameHerdrAgentJSONRequestBody = HerdrAgentRenameRequest
 
 // SendKeysHerdrAgentJSONRequestBody defines body for SendKeysHerdrAgent for application/json ContentType.
 type SendKeysHerdrAgentJSONRequestBody = HerdrAgentSendKeysRequest

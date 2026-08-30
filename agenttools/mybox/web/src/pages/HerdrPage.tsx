@@ -18,6 +18,7 @@ interface HerdrPageProps {
 interface AgentDetailProps {
   agent: HerdrAgent
   autoReload: boolean
+  onRename?: () => void
 }
 
 // Quick keys sent to the agent terminal via `herdr agent send-keys`.
@@ -31,7 +32,7 @@ const AGENT_QUICK_KEYS: { label: string; key: string }[] = [
   { label: '↓', key: 'Down' },
 ]
 
-function AgentDetail({ agent, autoReload }: AgentDetailProps) {
+function AgentDetail({ agent, autoReload, onRename }: AgentDetailProps) {
   const [output, setOutput] = useState<string | null>(null)
   const [outputError, setOutputError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -120,9 +121,16 @@ function AgentDetail({ agent, autoReload }: AgentDetailProps) {
     <div className="herdr-agent-detail mt-2 rounded-md border bg-muted/40 p-3" data-testid={`agent-detail-${agent.pane_id}`}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Terminal output</span>
-        <Button variant="ghost" size="xs" className="cursor-pointer" onClick={() => void loadOutput()}>
-          Reload output
-        </Button>
+        <div className="flex items-center gap-1">
+          {onRename && (
+            <Button variant="ghost" size="xs" className="cursor-pointer" onClick={onRename}>
+              Rename agent
+            </Button>
+          )}
+          <Button variant="ghost" size="xs" className="cursor-pointer" onClick={() => void loadOutput()}>
+            Reload output
+          </Button>
+        </div>
       </div>
       {outputError && <p className="mb-2 text-xs text-red-600">{outputError}</p>}
       <pre
@@ -739,6 +747,21 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
     )
   }
 
+  const renameAgent = (agent: HerdrAgent, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    const nextName = window.prompt(
+      `Rename agent "${agent.name}" (leave empty to reset to default)`,
+      agent.name,
+    )
+    if (nextName === null) return
+    const trimmed = nextName.trim()
+    void runOp(
+      () => api.renameHerdrAgent(agent.pane_id, trimmed || undefined, !trimmed),
+      onError,
+      refresh,
+    )
+  }
+
   // Auto-open the agent requested via ?agent=<pane_id> (sidebar deep link).
   useEffect(() => {
     if (!requestedAgent) return
@@ -871,27 +894,42 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
                     )}
                     data-testid={`herdr-agent-${a.pane_id}`}
                   >
-                    <button
-                      type="button"
-                      className="herdr-agent-row flex w-full cursor-pointer flex-wrap items-center gap-2 text-left"
-                      onClick={() => setOpenPane(openPane === a.pane_id ? null : a.pane_id)}
-                      aria-expanded={openPane === a.pane_id}
-                    >
-                      <StatusDot status={a.status} />
-                      <span className="font-semibold">{a.name}</span>
-                      <StatusBadge status={a.status} />
-                      {ws && <span className="text-xs text-muted-foreground">in {ws.label}</span>}
-                      {a.focused && <span className="text-xs text-muted-foreground">· focused</span>}
-                      <span className="ml-auto truncate font-mono text-xs text-muted-foreground">
-                        {a.pane_id}
-                      </span>
-                      {a.title && (
-                        <span className="herdr-agent-title w-full truncate text-xs text-muted-foreground">
-                          {a.title}
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        className="herdr-agent-row flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2 text-left"
+                        onClick={() => setOpenPane(openPane === a.pane_id ? null : a.pane_id)}
+                        aria-expanded={openPane === a.pane_id}
+                      >
+                        <StatusDot status={a.status} />
+                        <span className="font-semibold">{a.name}</span>
+                        <StatusBadge status={a.status} />
+                        {ws && <span className="text-xs text-muted-foreground">in {ws.label}</span>}
+                        {a.focused && <span className="text-xs text-muted-foreground">· focused</span>}
+                        <span className="truncate font-mono text-xs text-muted-foreground">
+                          {a.pane_id}
                         </span>
-                      )}
-                    </button>
-                    {openPane === a.pane_id && <AgentDetail agent={a} autoReload={autoReload} />}
+                        {a.title && (
+                          <span className="herdr-agent-title w-full truncate text-xs text-muted-foreground">
+                            {a.title}
+                          </span>
+                        )}
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className="h-6 shrink-0 cursor-pointer px-1.5 text-[11px]"
+                        onClick={(e) => renameAgent(a, e)}
+                        title="Rename agent"
+                        aria-label={`Rename agent ${a.name}`}
+                        data-testid={`agent-rename-${a.pane_id}`}
+                      >
+                        Rename
+                      </Button>
+                    </div>
+                    {openPane === a.pane_id && (
+                      <AgentDetail agent={a} autoReload={autoReload} onRename={() => renameAgent(a)} />
+                    )}
                   </div>
                 )
               })}

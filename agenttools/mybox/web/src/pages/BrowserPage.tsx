@@ -6,10 +6,11 @@ import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
 import { Button } from '../components/ui/button'
 import { Card, CardContent } from '../components/ui/card'
-import { Textarea } from '../components/ui/textarea'
 import { Separator } from '../components/ui/separator'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible'
+import MonacoEditor from '../components/MonacoEditor'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { Clock, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Tag } from 'lucide-react'
+import { ChevronDown, Clock, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Tag, Text } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -28,6 +29,16 @@ import {
 
 const OUTLINE_STORAGE_KEY = 'outline_open'
 const EXPLORER_STORAGE_KEY = 'explorer_open'
+
+function computeViewStartLine(viewText: string): number {
+  const scroller = document.querySelector<HTMLElement>('.knowledge-files')
+  const totalLines = viewText.split('\n').length
+  if (!scroller || scroller.scrollHeight <= scroller.clientHeight || totalLines <= 1) return 1
+  const maxScroll = scroller.scrollHeight - scroller.clientHeight
+  const fraction = Math.min(1, Math.max(0, scroller.scrollTop / maxScroll))
+  const line = Math.round(fraction * (totalLines - 1)) + 1
+  return Math.max(1, line)
+}
 
 export type BrowserMode = 'files' | 'knowledge'
 
@@ -541,24 +552,27 @@ interface PaneProps {
   favorites: string[]
   refreshMeta: () => Promise<void>
   onChanged: () => void
+  onGitStatusChange: () => void
   onOpen: (path: string) => void
   onDeleted: () => void
   explorerOpen: boolean
   onToggleExplorer: () => void
 }
 
-function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOpen, onDeleted, explorerOpen, onToggleExplorer }: PaneProps) {
+function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer }: PaneProps) {
   const navigate = useNavigate()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
   const [draftFm, setDraftFm] = useState<Record<string, unknown>>({})
   const [draftBody, setDraftBody] = useState('')
   const [editing, setEditing] = useState(false)
+  const [showDiff, setShowDiff] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [isFav, setIsFav] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const editStartLine = useRef<number | null>(null)
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -638,7 +652,9 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOp
   useEffect(() => {
     setError(null)
     setEditing(false)
+    setShowDiff(false)
     setSaved(false)
+    editStartLine.current = null
     setIsFav(favorites.includes(path))
     if (isImage) return
     if (mode === 'files' && isDir) {
@@ -716,6 +732,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOp
       void p
         .then(() => {
           onChanged()
+          onGitStatusChange()
           onOpen(newPath.trim())
         })
         .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -734,6 +751,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOp
       .copyFile(path, newPath.trim())
       .then(() => {
         onChanged()
+        onGitStatusChange()
         onOpen(newPath.trim())
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -746,6 +764,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOp
       .deleteFile(path)
       .then(() => {
         onChanged()
+        onGitStatusChange()
         onDeleted()
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -766,8 +785,10 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOp
         setDraftBody(split.body)
         setDraftFm(parseFrontmatter(split.frontmatter).data)
         setEditing(false)
+        setShowDiff(false)
         setSaved(true)
         onChanged()
+        onGitStatusChange()
         setTimeout(() => setSaved(false), 2000)
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -777,6 +798,19 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOp
   const viewText = useForm ? fmSplit.body : content
   const viewRelativeTo = isDir && mode === 'files' ? readmePath ?? `${path}/` : path
   const viewFileName = isDir && readmePath ? baseOf(readmePath) : null
+
+  const diffModified = useMemo(
+    () => (useForm ? buildMarkdown(serializeFrontmatter(draftFm), draftBody) : draft),
+    [useForm, draftFm, draftBody, draft],
+  )
+  const diffOriginal = content
+  const diffOriginalBody = fmSplit.body
+  const hasUnsavedChanges = diffOriginal !== diffModified
+  const startEdit = () => {
+    editStartLine.current = computeViewStartLine(viewText)
+    setShowDiff(true)
+    setEditing(true)
+  }
 
   const outlineItems = useMemo(() => extractOutline(viewText), [viewText])
 
@@ -935,6 +969,20 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOp
               {!isDir && !isImage && (
                 editing ? (
                   <>
+                    <Button
+                      variant={showDiff ? 'default' : 'ghost'}
+                      size="sm"
+                      aria-label={showDiff ? 'Switch to editor mode' : 'Switch to diff mode'}
+                      title={showDiff ? 'Show editor' : 'Show unsaved diff'}
+                      onClick={() => setShowDiff((d) => !d)}
+                    >
+                      {showDiff ? (
+                        <Text className="size-4" />
+                      ) : (
+                        <FileDiff className="size-4" />
+                      )}
+                      <span className="sr-only">{showDiff ? 'Editor' : 'Diff'}</span>
+                    </Button>
                     <Button size="sm" onClick={save}>
                       Save
                     </Button>
@@ -947,13 +995,14 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOp
                         setDraftBody(split.body)
                         setDraftFm(parseFrontmatter(split.frontmatter).data)
                         setEditing(false)
+                        setShowDiff(false)
                       }}
                     >
                       Cancel
                     </Button>
                   </>
                 ) : (
-                  <Button size="sm" onClick={() => setEditing(true)}>
+                  <Button size="sm" onClick={startEdit}>
                     Edit
                   </Button>
                 )
@@ -975,27 +1024,81 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onOp
               {useForm ? (
                 <>
                   <CardContent className="border-t px-0 pt-4">
-                    <h3 className={sectionTitle}>Metadata</h3>
-                    <FrontmatterForm value={draftFm} onChange={setDraftFm} />
+                    <Collapsible defaultOpen={false}>
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="group flex w-full items-center gap-1.5 text-left"
+                        >
+                          <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                          <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                            Metadata
+                          </h3>
+                          {Object.keys(draftFm).length > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {Object.keys(draftFm).length}
+                            </span>
+                          )}
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="mt-3">
+                          <FrontmatterForm value={draftFm} onChange={setDraftFm} />
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </CardContent>
                   <CardContent className="mt-4 border-t px-0 pt-4">
                     <h3 className={sectionTitle}>Body</h3>
-                    <Textarea
-                      className="editor min-h-[60vh] w-full font-mono text-sm leading-6"
-                      value={draftBody}
-                      onChange={(e) => setDraftBody(e.target.value)}
-                      aria-label="File editor"
-                    />
+                    {showDiff ? (
+                      <MonacoEditor
+                        className="editor mt-1"
+                        value={draftBody}
+                        onChange={setDraftBody}
+                        path={path}
+                        language="markdown"
+                        ariaLabel="File editor"
+                        original={diffOriginalBody}
+                      />
+                    ) : (
+                      <MonacoEditor
+                        className="editor mt-1"
+                        value={draftBody}
+                        onChange={setDraftBody}
+                        path={path}
+                        language="markdown"
+                        ariaLabel="File editor"
+                        initialLine={editStartLine.current ?? undefined}
+                      />
+                    )}
                   </CardContent>
                 </>
               ) : (
                 <CardContent className="px-0 py-0">
-                  <Textarea
-                    className="editor min-h-[60vh] w-full font-mono text-sm leading-6"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    aria-label={mode === 'knowledge' ? 'Markdown editor' : 'File editor'}
-                  />
+                  {showDiff ? (
+                    <MonacoEditor
+                      className="editor"
+                      value={draft}
+                      onChange={setDraft}
+                      path={path}
+                      ariaLabel={mode === 'knowledge' ? 'Markdown editor' : 'File editor'}
+                      original={diffOriginal}
+                    />
+                  ) : (
+                    <MonacoEditor
+                      className="editor"
+                      value={draft}
+                      onChange={setDraft}
+                      path={path}
+                      ariaLabel={mode === 'knowledge' ? 'Markdown editor' : 'File editor'}
+                      initialLine={editStartLine.current ?? undefined}
+                    />
+                  )}
+                </CardContent>
+              )}
+              {showDiff && !hasUnsavedChanges && (
+                <CardContent className="px-0 py-0">
+                  <p className="text-sm text-muted-foreground">No unsaved changes.</p>
                 </CardContent>
               )}
             </Card>
@@ -1170,6 +1273,14 @@ export function BrowserPage({
       })
   }, [mode])
 
+  const refreshGitStatus = useCallback(() => {
+    if (mode !== 'files') return
+    void api
+      .getFileGitStatus()
+      .then(setGitStatus)
+      .catch(() => undefined)
+  }, [mode])
+
   useEffect(() => {
     load()
   }, [load])
@@ -1296,6 +1407,7 @@ export function BrowserPage({
                   favorites={favorites}
                   refreshMeta={refreshMeta}
                   onChanged={load}
+                  onGitStatusChange={refreshGitStatus}
                   onOpen={onSelect}
                   onDeleted={onBack}
                   explorerOpen={explorerOpen}

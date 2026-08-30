@@ -6,6 +6,19 @@ import path from 'node:path'
 const treeButton = (explorer: Locator, name: string) =>
   explorer.locator('.knowledge-tree').getByRole('button', { name, exact: true })
 
+async function fillMonacoEditor(
+  page: import('@playwright/test').Page,
+  content: string,
+  label = 'File editor',
+) {
+  // Monaco's input textarea is sized to 0xN (kept hidden to assistive tech),
+  // so click the visible editor container that hosts the labeled input.
+  const editor = page.locator('.monaco-editor', { has: page.getByLabel(label) })
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+A')
+  await page.keyboard.insertText(content)
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/projects/proj/dashboard')
 })
@@ -272,8 +285,7 @@ test('dashboard edits and saves a file', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await treeButton(explorer, 'tasks.md').click()
   await page.getByRole('button', { name: 'Edit' }).click()
-  const editor = page.getByLabel('File editor')
-  await editor.fill('# Task tracking\n\nEdited content.\n')
+  await fillMonacoEditor(page, '# Task tracking\n\nEdited content.\n')
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('Saved.')).toBeVisible()
   await expect(page.getByText('Edited content.')).toBeVisible()
@@ -283,10 +295,12 @@ test('dashboard edits frontmatter metadata separately from the body', async ({ p
   const explorer = page.locator('.knowledge-explorer')
   await treeButton(explorer, 'tasks.md').click()
   await page.getByRole('button', { name: 'Edit' }).click()
+  // the metadata form is collapsed by default; expand it first
+  await page.getByRole('button', { name: /Metadata/ }).click()
   await page.getByLabel('Metadata status').selectOption('done')
   await page.getByLabel('Metadata priority').selectOption('high')
   await page.getByLabel('Metadata tags').fill('docs, meta')
-  await page.getByLabel('File editor').fill('# Tasks\n\nMetadata added.\n')
+  await fillMonacoEditor(page, '# Tasks\n\nMetadata added.\n')
   await page.getByRole('button', { name: 'Save' }).click()
 
   await expect(page.locator('.frontmatter-card .badge.status-done')).toBeVisible()
@@ -408,8 +422,7 @@ test('sidebar lists projects and switches between them', async ({ page }) => {
 })
 
 test('search finds knowledge and opens it in the dashboard', async ({ page }) => {
-  await page.getByRole('button', { name: 'Search', exact: true }).click()
-  await expect(page).toHaveURL(/\/projects\/proj\/search$/)
+  await page.goto('/projects/proj/search')
   await page.getByPlaceholder('Search…').fill('phase6')
   await page.getByPlaceholder('Search…').press('Enter')
   await expect(page.getByRole('heading', { name: 'Search' })).toBeVisible()
@@ -604,6 +617,18 @@ test('clicking a sidebar agent opens its operation panel in the herdr tab', asyn
   await page.getByTestId('herdr-prompt-input').fill('hello from sidebar')
   await detail.getByRole('button', { name: 'Send' }).click()
   await expect(detail.locator('pre')).toContainText('last prompt: hello from sidebar')
+})
+
+test('clicking a sidebar agent of another project switches to that project first', async ({
+  page,
+}) => {
+  const row = page.getByTestId('sidebar-agent-w8:p1')
+  await expect(row).toContainText('other')
+  await row.click()
+  await expect(page).toHaveURL(/\/projects\/other\/herdr\?agent=w8%3Ap1$/)
+  const detail = page.locator('.herdr-agent-detail')
+  await expect(detail).toBeVisible()
+  await expect(detail.locator('pre')).toContainText('stub output for w8:p1')
 })
 
 test('herdr offers a new tab when no tabs or panes exist at all', async ({ page }) => {

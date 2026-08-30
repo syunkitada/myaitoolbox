@@ -145,6 +145,7 @@ export interface HerdrWorkspace {
 
 export interface HerdrAgent {
   name: string
+  custom_name?: string | null
   status: string
   workspace_id: string
   cwd?: string | null
@@ -292,6 +293,13 @@ export const api = {
 
   sendKeysHerdrAgent: (target: string, keys: string[]) =>
     request<{ ok: boolean }>('POST', '/api/herdr/agents/send-keys', { target, keys }),
+
+  renameHerdrAgent: (target: string, name?: string, clear?: boolean) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/agents/rename', {
+      target,
+      name: name || undefined,
+      clear: clear || undefined,
+    }),
 
   createHerdrTab: (workspaceId?: string, label?: string, cwd?: string, project?: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/tabs/create', {

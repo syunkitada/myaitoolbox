@@ -37,16 +37,19 @@ def seed():
     save("workspaces.json", [
         {"active_tab_id": "w5:t1", "agent_status": "unknown", "focused": False, "label": "home_ex", "number": 1, "pane_count": 1, "tab_count": 1, "workspace_id": "w5"},
         {"active_tab_id": "w7:t1", "agent_status": "working", "focused": True, "label": "proj", "number": 2, "pane_count": 2, "tab_count": 2, "workspace_id": "w7"},
+        {"active_tab_id": "w8:t1", "agent_status": "unknown", "focused": False, "label": "other", "number": 3, "pane_count": 1, "tab_count": 1, "workspace_id": "w8"},
     ])
     save("tabs.json", [
         {"agent_status": "unknown", "focused": False, "label": "1", "number": 1, "pane_count": 1, "tab_id": "w5:t1", "workspace_id": "w5"},
         {"agent_status": "working", "focused": True, "label": "1", "number": 1, "pane_count": 1, "tab_id": "w7:t1", "workspace_id": "w7"},
         {"agent_status": "unknown", "focused": False, "label": "2", "number": 2, "pane_count": 1, "tab_id": "w7:t2", "workspace_id": "w7"},
+        {"agent_status": "unknown", "focused": False, "label": "1", "number": 1, "pane_count": 1, "tab_id": "w8:t1", "workspace_id": "w8"},
     ])
     save("panes.json", [
         {"agent_status": "unknown", "cwd": "/home/stub/home-dir", "focused": False, "pane_id": "w5:p1", "tab_id": "w5:t1", "workspace_id": "w5"},
         {"agent_status": "working", "cwd": "/home/stub/proj-dir", "focused": True, "pane_id": "w7:p1", "tab_id": "w7:t1", "workspace_id": "w7"},
         {"agent_status": "unknown", "cwd": "/tmp/stub", "focused": False, "pane_id": "w7:p2", "tab_id": "w7:t2", "workspace_id": "w7"},
+        {"agent_status": "unknown", "cwd": "/home/stub/other-dir", "focused": False, "pane_id": "w8:p1", "tab_id": "w8:t1", "workspace_id": "w8"},
     ])
 
 def opt(args, flag):
@@ -178,7 +181,12 @@ elif cmd == "agent":
                    "focused": True, "pane_id": "w7:p1", "revision": 6, "screen_detection_skipped": True,
                    "state_change_seq": 25, "tab_id": "w7:t1", "terminal_id": "term_1",
                    "terminal_title": "OC | stub agent", "terminal_title_stripped": "OC | stub agent",
-                   "workspace_id": "w7"}]
+                   "workspace_id": "w7"},
+                  {"agent": "opencode", "agent_status": "unknown", "cwd": "/home/stub/other-dir",
+                   "focused": False, "pane_id": "w8:p1", "revision": 7, "screen_detection_skipped": True,
+                   "state_change_seq": 26, "tab_id": "w8:t1", "terminal_id": "term_2",
+                   "terminal_title": "OC | other agent", "terminal_title_stripped": "OC | other agent",
+                   "workspace_id": "w8"}]
         out("cli:agent:list", "agent_list", "agents", agents)
     elif sub == "read":
         cnt = load("agent-read-count.json", {"n": 0})
@@ -210,6 +218,12 @@ fi
 
 "$ROOT/mybox" project add "$PROJ"
 printf '# Mybox\n\nThis project tracks tasks and knowledge.\n' >"$PROJ/README.md"
+
+# A second project so e2e tests can switch between projects.
+OTHER="$TMP/other"
+mkdir -p "$OTHER"
+printf '# Other\n\nA second project.\n' >"$OTHER/README.md"
+"$ROOT/mybox" project add "$OTHER"
 "$ROOT/mybox" task create --project proj --name "Ship the web UI"
 "$ROOT/mybox" task create --project proj --name "Write E2E tests"
 "$ROOT/mybox" task create --project proj --name "E2E status change target"

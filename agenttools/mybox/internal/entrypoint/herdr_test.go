@@ -208,6 +208,46 @@ func TestHerdrSendKeysAgentValidation(t *testing.T) {
 	}
 }
 
+func TestHerdrRenameAgent(t *testing.T) {
+	var gotArgs []string
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		gotArgs = args
+		return []byte("ok"), nil
+	})
+
+	rec := do(t, s, "POST", "/api/herdr/agents/rename", map[string]any{
+		"target": "w7:p1", "name": "worker-1",
+	})
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, []string{"agent", "rename", "w7:p1", "worker-1"}, gotArgs)
+
+	rec = do(t, s, "POST", "/api/herdr/agents/rename", map[string]any{
+		"target": "w7:p1", "clear": true,
+	})
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, []string{"agent", "rename", "w7:p1", "--clear"}, gotArgs)
+
+	rec = do(t, s, "POST", "/api/herdr/agents/rename", map[string]any{
+		"target": "w7:p1", "name": "",
+	})
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, []string{"agent", "rename", "w7:p1", "--clear"}, gotArgs)
+}
+
+func TestHerdrRenameAgentValidation(t *testing.T) {
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		return nil, errors.New("should not run")
+	})
+	for _, body := range []map[string]any{
+		{"target": "", "name": "worker"},
+		{"target": "bad;id", "name": "worker"},
+		{"target": "w7:p1", "name": strings.Repeat("a", 81)},
+	} {
+		rec := do(t, s, "POST", "/api/herdr/agents/rename", body)
+		assert.NotEqual(t, 200, rec.Code, body)
+	}
+}
+
 func TestHerdrTabOperations(t *testing.T) {
 	var gotArgs []string
 	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {

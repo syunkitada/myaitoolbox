@@ -35,12 +35,15 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
   const workspaceStatus = (name: string): string | null =>
     herdr?.workspaces.find((w) => w.label === name)?.agent_status ?? null
 
-  // openAgent navigates to the Herdr tab of the current (or default) project
-  // with the agent's operation panel pre-opened.
+  // openAgent navigates to the Herdr tab of the agent's project (when its
+  // workspace label is a known project) or the current/default project, with
+  // the agent's operation panel pre-opened.
   const openAgent = (paneId: string, fallbackProject?: string) => {
     handleNav()
+    const agentProject =
+      fallbackProject && meta?.projects?.includes(fallbackProject) ? fallbackProject : null
     const target =
-      project || fallbackProject || meta?.default_project || meta?.projects?.[0] || ''
+      agentProject || project || meta?.default_project || meta?.projects?.[0] || ''
     if (!target) return
     navigate(`${projectUrlFor(target, '/herdr')}?agent=${encodeURIComponent(paneId)}`)
   }
@@ -151,7 +154,9 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
           {(herdr?.agents ?? []).map((a) => {
             const wsLabel = herdr?.workspaces.find((w) => w.workspace_id === a.workspace_id)?.label
             const dir = dirName(a.cwd)
+            const agentName = a.custom_name || (a.name && a.name !== 'agy' ? a.name : null)
             const tooltip = [
+              a.custom_name ?? a.name,
               a.status,
               wsLabel,
               a.cwd ?? dir,
@@ -170,16 +175,32 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
                   <Bot />
                   <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
                     <span className="flex w-full items-center gap-1.5">
-                      {wsLabel && (
-                        <span className="truncate text-[13px] font-medium">{wsLabel}</span>
-                      )}
-                      {dir && (
-                        <span
-                          className="truncate text-[11px] text-sidebar-foreground/60"
-                          title={a.cwd ?? dir}
-                        >
-                          · {dir}
-                        </span>
+                      {agentName ? (
+                        <>
+                          <span className="truncate text-[13px] font-medium">{agentName}</span>
+                          {wsLabel && (
+                            <span
+                              className="truncate text-[11px] text-sidebar-foreground/60"
+                              title={`workspace: ${wsLabel}`}
+                            >
+                              · {wsLabel}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {wsLabel && (
+                            <span className="truncate text-[13px] font-medium">{wsLabel}</span>
+                          )}
+                          {dir && (
+                            <span
+                              className="truncate text-[11px] text-sidebar-foreground/60"
+                              title={a.cwd ?? dir}
+                            >
+                              · {dir}
+                            </span>
+                          )}
+                        </>
                       )}
                       <span
                         className={`ml-auto inline-block size-2 shrink-0 rounded-full ${statusDotClass(a.status)} ${a.status === 'working' ? 'animate-pulse' : ''}`}
