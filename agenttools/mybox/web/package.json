@@ -41,7 +41,10 @@
     "yaml": "^2.9.0"
   },
   "overrides": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "monaco-editor": {
+      "dompurify": "^3.4.13"
+    }
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

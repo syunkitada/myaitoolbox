@@ -241,7 +241,7 @@ export function StatsPage() {
 
       {stats && (
         <>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <StatCard
               title="Hostname"
               icon={<Server className="size-4" />}
@@ -257,135 +257,133 @@ export function StatsPage() {
             <StatCard title="CPU" icon={<Cpu className="size-4" />} value={`${stats.cpu_cores} cores`} sub={stats.cpu[0]?.model} />
           </div>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-            <div className="min-w-0 space-y-4">
-              <Card className="gap-0 py-0">
-                <CardHeader className="py-3">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <Cpu className="size-4 text-muted-foreground" />
-                    CPU usage
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="py-3">
-                  <Meter label="Average" used="" total="" pct={avgCPU} />
-                  <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2">
-                    {stats.cpu.map((c, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs">
-                        <span className="w-8 shrink-0 text-muted-foreground">#{i}</span>
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                          <div
-                            className={cn('h-full rounded-full', usageColor(c.usage_percent))}
-                            style={{ width: `${Math.min(100, c.usage_percent)}%` }}
-                          />
-                        </div>
-                        <span className="w-10 shrink-0 text-right tabular-nums">
-                          {c.usage_percent.toFixed(0)}%
-                        </span>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5 xl:items-start">
+            <Card className="gap-0 py-0">
+              <CardHeader className="py-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <Cpu className="size-4 text-muted-foreground" />
+                  CPU usage
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="py-3">
+                <Meter label="Average" used="" total="" pct={avgCPU} />
+                <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2">
+                  {stats.cpu.map((c, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className="w-8 shrink-0 text-muted-foreground">#{i}</span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={cn('h-full rounded-full', usageColor(c.usage_percent))}
+                          style={{ width: `${Math.min(100, c.usage_percent)}%` }}
+                        />
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                      <span className="w-10 shrink-0 text-right tabular-nums">
+                        {c.usage_percent.toFixed(0)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
-              <div className="grid grid-cols-1 gap-4">
-                <MemoryCard title="Memory" mem={stats.memory} />
-                <MemoryCard title="Swap" mem={stats.swap} />
-                <Card className="gap-0 py-0">
-                  <CardHeader className="py-3">
-                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                      <HardDrive className="size-4 text-muted-foreground" />
-                      Disk usage
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid grid-cols-1 gap-x-8 gap-y-1 py-3">
-                    {stats.disks.map((d) => (
-                      <DiskRow key={d.mount_point} disk={d} />
+            <MemoryCard title="Memory" mem={stats.memory} />
+            <MemoryCard title="Swap" mem={stats.swap} />
+
+            <Card className="gap-0 py-0">
+              <CardHeader className="py-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <HardDrive className="size-4 text-muted-foreground" />
+                  Disk usage
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 gap-x-8 gap-y-1 py-3">
+                {stats.disks.map((d) => (
+                  <DiskRow key={d.mount_point} disk={d} />
+                ))}
+                {stats.disks.length === 0 && (
+                  <div className="text-sm text-muted-foreground">No physical disks found.</div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="gap-0 overflow-hidden py-0">
+              <CardHeader className="py-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <Network className="size-4 text-muted-foreground" />
+                  Network
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="overflow-x-auto py-0">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="py-2 font-medium">Interface</th>
+                      <th className="py-2 pr-2 text-right font-medium">RX</th>
+                      <th className="py-2 pr-2 text-right font-medium">TX</th>
+                      <th className="py-2 text-left font-medium">State</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.network.map((n) => (
+                      <tr key={n.name} className="border-b last:border-0">
+                        <td className="py-2 font-mono">{n.name}</td>
+                        <td className="py-2 pr-2 text-right tabular-nums">{formatBytes(n.rx_bytes)}</td>
+                        <td className="py-2 pr-2 text-right tabular-nums">{formatBytes(n.tx_bytes)}</td>
+                        <td className="py-2">
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1.5 text-xs',
+                              n.state === 'up' ? 'text-emerald-600' : 'text-muted-foreground',
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'inline-block size-2 rounded-full',
+                                n.state === 'up' ? 'bg-emerald-500' : 'bg-muted-foreground/40',
+                              )}
+                            />
+                            {n.state}
+                          </span>
+                        </td>
+                      </tr>
                     ))}
-                    {stats.disks.length === 0 && (
-                      <div className="text-sm text-muted-foreground">No physical disks found.</div>
+                    {stats.network.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-3 text-muted-foreground">
+                          No network interfaces found.
+                        </td>
+                      </tr>
                     )}
-                  </CardContent>
-                </Card>
-                <Card className="gap-0 overflow-hidden py-0">
-                  <CardHeader className="py-3">
-                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                      <Network className="size-4 text-muted-foreground" />
-                      Network
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="overflow-x-auto py-0">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-xs text-muted-foreground">
-                          <th className="py-2 font-medium">Interface</th>
-                          <th className="py-2 pr-2 text-right font-medium">RX</th>
-                          <th className="py-2 pr-2 text-right font-medium">TX</th>
-                          <th className="py-2 text-left font-medium">State</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.network.map((n) => (
-                          <tr key={n.name} className="border-b last:border-0">
-                            <td className="py-2 font-mono">{n.name}</td>
-                            <td className="py-2 pr-2 text-right tabular-nums">{formatBytes(n.rx_bytes)}</td>
-                            <td className="py-2 pr-2 text-right tabular-nums">{formatBytes(n.tx_bytes)}</td>
-                            <td className="py-2">
-                              <span
-                                className={cn(
-                                  'inline-flex items-center gap-1.5 text-xs',
-                                  n.state === 'up' ? 'text-emerald-600' : 'text-muted-foreground',
-                                )}
-                              >
-                                <span
-                                  className={cn(
-                                    'inline-block size-2 rounded-full',
-                                    n.state === 'up' ? 'bg-emerald-500' : 'bg-muted-foreground/40',
-                                  )}
-                                />
-                                {n.state}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                        {stats.network.length === 0 && (
-                          <tr>
-                            <td colSpan={4} className="py-3 text-muted-foreground">
-                              No network interfaces found.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </div>
 
-            <div className="min-w-0 space-y-4 lg:sticky lg:top-16">
-              <Card className="gap-0 overflow-hidden py-0">
-                <CardHeader className="py-3">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <Activity className="size-4 text-muted-foreground" />
-                    Processes (top by CPU)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="py-0">
-                  <ProcessTable processes={stats.processes_by_cpu} showCPU />
-                </CardContent>
-              </Card>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+            <Card className="gap-0 overflow-hidden py-0">
+              <CardHeader className="py-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <Activity className="size-4 text-muted-foreground" />
+                  Processes (top by CPU)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="py-0">
+                <ProcessTable processes={stats.processes_by_cpu} showCPU />
+              </CardContent>
+            </Card>
 
-              <Card className="gap-0 overflow-hidden py-0">
-                <CardHeader className="py-3">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <Activity className="size-4 text-muted-foreground" />
-                    Processes (top by memory)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="py-0">
-                  <ProcessTable processes={stats.processes} showCPU={false} />
-                </CardContent>
-              </Card>
-            </div>
+            <Card className="gap-0 overflow-hidden py-0">
+              <CardHeader className="py-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <Activity className="size-4 text-muted-foreground" />
+                  Processes (top by memory)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="py-0">
+                <ProcessTable processes={stats.processes} showCPU={false} />
+              </CardContent>
+            </Card>
           </div>
         </>
       )}
