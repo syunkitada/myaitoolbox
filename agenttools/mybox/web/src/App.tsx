@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard'
 import { GraphPage } from './pages/GraphPage'
 import { SearchPage } from './pages/SearchPage'
 import { KanbanBoard } from './pages/KanbanBoard'
+import { StatsPage } from './pages/StatsPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { HerdrPage } from './pages/HerdrPage'
 import { GitPage } from './pages/GitPage'
@@ -113,6 +114,7 @@ export default function App() {
           <div className="min-h-0 flex-1">
             <Routes>
               <Route path="/projects" element={<ProjectsPage onChanged={refreshMeta} />} />
+              <Route path="/stats" element={<StatsPage />} />
               {project ? (
                 <>
                   <Route

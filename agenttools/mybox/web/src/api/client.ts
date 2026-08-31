@@ -182,6 +182,64 @@ export interface HerdrOverview {
   panes: HerdrPane[]
 }
 
+export interface StatsCPU {
+  id: number
+  model: string
+  usage_percent: number
+}
+
+export interface StatsMemory {
+  total: number
+  used: number
+  available: number
+  usage_percent: number
+}
+
+export interface StatsDisk {
+  device: string
+  mount_point: string
+  fs_type: string
+  total: number
+  used: number
+  available: number
+  usage_percent: number
+}
+
+export interface StatsNet {
+  name: string
+  rx_bytes: number
+  tx_bytes: number
+  rx_packets: number
+  tx_packets: number
+  state: string
+}
+
+export interface StatsProcess {
+  pid: number
+  user: string
+  cpu_percent: number
+  mem_percent: number
+  rss_bytes: number
+  vms_bytes: number
+  command: string
+}
+
+export interface Stats {
+  hostname: string
+  os: string
+  uptime_seconds: number
+  load_avg: [number, number, number]
+  cpu_cores: number
+  cpu: StatsCPU[]
+  memory: StatsMemory
+  swap: StatsMemory
+  disks: StatsDisk[]
+  network: StatsNet[]
+  processes: StatsProcess[]
+  processes_by_cpu: StatsProcess[]
+  collected_at: string
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -365,4 +423,6 @@ export const api = {
 
   getGraph: (path?: string) =>
     request<GraphData>('GET', '/api/graph' + qs({ path })),
+
+  getStats: () => request<Stats>('GET', '/api/stats'),
 }

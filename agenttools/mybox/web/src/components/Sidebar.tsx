@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Bot, Box, Boxes, GitBranch, SquareKanban } from 'lucide-react'
+import { Bot, Box, Boxes, GitBranch, SquareKanban, Activity } from 'lucide-react'
 import { Meta } from '../api/client'
 import { clearProject, dirName, projectUrlFor, setProject } from '../utils/routes'
 import type { HerdrOverview, ProjectGitStatus } from '../api/client'
@@ -82,6 +82,14 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
               <NavLink to="/board" end onClick={handleNav}>
                 <SquareKanban />
                 <span>Board</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Stats" isActive={pathname === '/stats'}>
+              <NavLink to="/stats" end onClick={handleNav}>
+                <Activity />
+                <span>Stats</span>
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
