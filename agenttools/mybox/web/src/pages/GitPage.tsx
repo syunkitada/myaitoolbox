@@ -184,12 +184,16 @@ function WorkingTree({
   selectedKey,
   onSelect,
   onClose,
+  onStageAll,
+  onUnstageAll,
 }: {
   detail: GitDetail
   hasChanges: boolean
   selectedKey: string | null
   onSelect: (f: GitFile) => void
   onClose?: () => void
+  onStageAll: () => void
+  onUnstageAll: () => void
 }) {
   return (
     <div className="knowledge-explorer flex h-full min-h-0 w-full flex-col overflow-y-auto bg-card p-2.5">
@@ -237,6 +241,32 @@ function WorkingTree({
         </div>
       ) : (
         <div>
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            {(detail.unstaged.length > 0 || detail.untracked.length > 0) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onStageAll}
+                aria-label="Stage all changes"
+                data-testid="git-stage-all"
+              >
+                <SquarePlus />
+                Stage all
+              </Button>
+            )}
+            {detail.staged.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onUnstageAll}
+                aria-label="Unstage all changes"
+                data-testid="git-unstage-all"
+              >
+                <RotateCcw />
+                Unstage all
+              </Button>
+            )}
+          </div>
           <TreeSection
             title="Staged"
             files={detail.staged}
@@ -393,6 +423,30 @@ export function GitPage({ refreshMeta }: GitPageProps) {
       () => refresh(),
     )
 
+  const handleStageAll = () => {
+    const changes = [...(detail?.unstaged ?? []), ...(detail?.untracked ?? [])]
+    if (changes.length === 0) return
+    void run(
+      () =>
+        doGitResult(() =>
+          api.gitStage(changes.map((f) => f.path)),
+        ),
+      () => refresh(),
+    )
+  }
+
+  const handleUnstageAll = () => {
+    const staged = detail?.staged ?? []
+    if (staged.length === 0) return
+    void run(
+      () =>
+        doGitResult(() =>
+          api.gitUnstage(staged.map((f) => f.path)),
+        ),
+      () => refresh(),
+    )
+  }
+
   const handleDiscard = (f: GitFile) => {
     if (!window.confirm(`Discard changes to ${f.path}?`)) return
     void run(() => doGitResult(() => api.gitDiscard([f.path])))
@@ -437,6 +491,8 @@ export function GitPage({ refreshMeta }: GitPageProps) {
       selectedKey={selectedKey}
       onSelect={handleSelect}
       onClose={() => setExplorerOpen(false)}
+      onStageAll={handleStageAll}
+      onUnstageAll={handleUnstageAll}
     />
   )
 

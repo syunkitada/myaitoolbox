@@ -57,6 +57,31 @@ export function slugify(text: string): string {
     .replace(/^-|-$/g, '')
 }
 
+const anchorRe = /^#(.*)$/
+
+function markDeadAnchors(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const targets = new Set<string>()
+  for (const el of doc.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
+    const id = el.getAttribute('id')
+    if (id) targets.add(id)
+  }
+  let changed = false
+  for (const a of Array.from(doc.querySelectorAll('a[href^="#"]'))) {
+    const id = (a.getAttribute('href') ?? '').match(anchorRe)?.[1]
+    if (!id || targets.has(id)) continue
+    a.classList.add('dead-anchor')
+    if (!a.querySelector('.dead-link-mark')) {
+      const mark = doc.createElement('span')
+      mark.className = 'dead-link-mark'
+      mark.textContent = 'リンク切れ'
+      a.appendChild(mark)
+    }
+    changed = true
+  }
+  return changed ? doc.body.innerHTML : html
+}
+
 export function extractOutline(text: string): Array<{ level: number; id: string; text: string }> {
   const outline: Array<{ level: number; id: string; text: string }> = []
   let fence: string | null = null
@@ -123,8 +148,10 @@ export function RichMarkdown({ text, pathOf, relativeTo, linkUrl, imageUrl, pres
           return <Mermaid key={i} code={seg.content} />
         }
         const withLinks = pathOf ? renderWikiLinks(seg.content, pathOf) : seg.content
-        const html = DOMPurify.sanitize(
-          md.render(withLinks, { relativeTo, linkUrl, imageUrl, preserveExtension }),
+        const html = markDeadAnchors(
+          DOMPurify.sanitize(
+            md.render(withLinks, { relativeTo, linkUrl, imageUrl, preserveExtension }),
+          ),
         )
         return <div key={i} dangerouslySetInnerHTML={{ __html: html }} />
       })}

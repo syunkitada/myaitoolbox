@@ -188,6 +188,11 @@ describe('resolveMarkdownLink directory links', () => {
   it('does not resolve directory links without the option', () => {
     expect(resolveMarkdownLink('./xdgconfig/', 'notes/x', true)).toBeNull()
   })
+
+  it('resolves a directory target without a trailing slash', () => {
+    expect(resolveMarkdownLink('./src', 'golang/golang_architecture', true, opts)).toBe('golang/src')
+    expect(resolveMarkdownLink('docs', 'notes/guide', true, opts)).toBe('notes/docs')
+  })
 })
 
 describe('resolveMarkdownLink relativeTo directory', () => {

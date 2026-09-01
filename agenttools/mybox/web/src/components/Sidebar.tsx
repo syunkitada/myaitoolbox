@@ -160,70 +160,23 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
             </li>
           )}
           {(herdr?.agents ?? []).map((a) => {
-            const wsLabel = herdr?.workspaces.find((w) => w.workspace_id === a.workspace_id)?.label
             const dir = dirName(a.cwd)
-            const agentName = a.custom_name || (a.name && a.name !== 'agy' ? a.name : null)
-            const tooltip = [
-              a.custom_name ?? a.name,
-              a.status,
-              wsLabel,
-              a.cwd ?? dir,
-              a.title ?? '',
-            ]
-              .filter(Boolean)
-              .join(' · ')
             return (
               <SidebarMenuItem key={a.pane_id}>
                 <SidebarMenuButton
-                  onClick={() => openAgent(a.pane_id, wsLabel)}
-                  tooltip={tooltip}
+                  onClick={() => openAgent(a.pane_id)}
+                  tooltip={[a.status, a.cwd, a.title].filter(Boolean).join(' · ')}
                   className="sidebar-agent-row cursor-pointer"
                   data-testid={`sidebar-agent-${a.pane_id}`}
                 >
                   <Bot />
-                  <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-                    <span className="flex w-full items-center gap-1.5">
-                      {agentName ? (
-                        <>
-                          <span className="truncate text-[13px] font-medium">{agentName}</span>
-                          {wsLabel && (
-                            <span
-                              className="truncate text-[11px] text-sidebar-foreground/60"
-                              title={`workspace: ${wsLabel}`}
-                            >
-                              · {wsLabel}
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {wsLabel && (
-                            <span className="truncate text-[13px] font-medium">{wsLabel}</span>
-                          )}
-                          {dir && (
-                            <span
-                              className="truncate text-[11px] text-sidebar-foreground/60"
-                              title={a.cwd ?? dir}
-                            >
-                              · {dir}
-                            </span>
-                          )}
-                        </>
-                      )}
-                      <span
-                        className={`ml-auto inline-block size-2 shrink-0 rounded-full ${statusDotClass(a.status)} ${a.status === 'working' ? 'animate-pulse' : ''}`}
-                        role="img"
-                        aria-label={`agent status ${a.status}`}
-                      />
-                    </span>
-                    {!collapsed && a.title && (
-                      <span
-                        className="w-full text-[11px] leading-snug whitespace-normal break-words text-muted-foreground line-clamp-2"
-                        title={a.title}
-                      >
-                        {a.title}
-                      </span>
-                    )}
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <span className="truncate text-[13px] font-medium">{dir}: {a.name || a.title}</span>
+                    <span
+                      className={`ml-auto inline-block size-2 shrink-0 rounded-full ${statusDotClass(a.status)} ${a.status === 'working' ? 'animate-pulse' : ''}`}
+                      role="img"
+                      aria-label={`agent status ${a.status}`}
+                    />
                   </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>

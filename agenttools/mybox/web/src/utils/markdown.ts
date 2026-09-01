@@ -148,8 +148,8 @@ export function resolveMarkdownLink(
   if (!target || target.startsWith('#') || target.startsWith('/')) return null
   if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return null
   const clean = target.split(/[?#]/)[0]
-  const dirTarget = opts.resolveDirectories && clean.endsWith('/')
   const fileTarget = /\.md$/i.test(clean) || (opts.resolveAnyFile && /\.[a-z0-9]+$/i.test(clean))
+  const dirTarget = opts.resolveDirectories && (clean.endsWith('/') || !fileTarget)
   if (!dirTarget && !fileTarget) return null
   const isDir = (relativeTo ?? '').endsWith('/')
   const stack = (relativeTo ?? '').split('/').filter(Boolean)

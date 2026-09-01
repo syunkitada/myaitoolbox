@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ReactNode, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileEntry, Knowledge, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
@@ -10,7 +10,7 @@ import { Separator } from '../components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible'
 import MonacoEditor from '../components/MonacoEditor'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { ChevronDown, Clock, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Tag, Text } from 'lucide-react'
+import { ChevronDown, Clock, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Star, Tag, Text } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -38,6 +38,17 @@ function computeViewStartLine(viewText: string): number {
   const fraction = Math.min(1, Math.max(0, scroller.scrollTop / maxScroll))
   const line = Math.round(fraction * (totalLines - 1)) + 1
   return Math.max(1, line)
+}
+
+function handleAnchorClick(e: ReactMouseEvent<HTMLDivElement>) {
+  const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="#"]')
+  if (!anchor) return
+  const id = anchor.getAttribute('href')!.slice(1)
+  if (!id) return
+  const target = document.getElementById(id)
+  if (!target) return
+  e.preventDefault()
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 export type BrowserMode = 'files' | 'knowledge'
@@ -922,8 +933,15 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
               >
                 <PanelRight />
               </Button>
-              <Button variant="ghost" size="sm" className={isFav ? 'text-primary' : ''} onClick={() => fav(!isFav)}>
-                {isFav ? '★ Favorite' : '☆ Favorite'}
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                className={isFav ? 'text-primary' : ''}
+                onClick={() => fav(!isFav)}
+              >
+                {isFav ? <Star fill="currentColor" /> : <Star />}
               </Button>
               {mode === 'knowledge' && !isDir && (
                 <Button variant="ghost" size="sm" onClick={move}>
@@ -1397,6 +1415,7 @@ export function BrowserPage({
           >
             <div
               className="knowledge-files min-w-0 flex-1 overflow-y-auto"
+              onClick={handleAnchorClick}
             >
               {selected ? (
                 <Pane

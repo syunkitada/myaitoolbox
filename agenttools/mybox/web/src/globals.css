@@ -168,6 +168,14 @@ body,
     @apply text-primary underline underline-offset-4;
   }
 
+  .markdown-body a.dead-anchor {
+    @apply text-destructive underline decoration-destructive decoration-dotted underline-offset-4;
+  }
+
+  .markdown-body a.dead-anchor .dead-link-mark {
+    @apply ml-1 inline-flex items-center rounded border border-destructive/50 bg-destructive/10 px-1 text-[10px] font-medium whitespace-nowrap text-destructive;
+  }
+
   .markdown-body ul {
     @apply my-0 list-disc pl-6;
   }
