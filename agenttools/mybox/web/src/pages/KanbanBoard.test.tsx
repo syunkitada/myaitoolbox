@@ -16,6 +16,7 @@ const tasks: Task[] = [
   { id: 't2', title: 'Doing item', status: 'doing', priority: 'medium' },
   { id: 't3', title: 'Done item', status: 'done', priority: 'low' },
   { id: 't4', title: 'Archived item', status: 'done', priority: 'low', archived: true },
+  { id: 'adhoc1', title: 'Review PR', status: 'doing', priority: 'urgent', type: 'adhoc' },
 ]
 
 describe('KanbanBoard', () => {
@@ -52,5 +53,17 @@ describe('KanbanBoard', () => {
     const doneCol = screen.getByTestId('column-done')
     expect(within(doneCol).getByText('Done item')).toBeInTheDocument()
     expect(within(doneCol).queryByText('Archived item')).not.toBeInTheDocument()
+  })
+
+  it('marks adhoc tasks with an adhoc badge in their column', async () => {
+    render(
+      <MemoryRouter>
+        <KanbanBoard />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Review PR')
+    const doingCol = screen.getByTestId('column-doing')
+    expect(within(doingCol).getByText('Review PR')).toBeInTheDocument()
+    expect(within(doingCol).getByText('adhoc')).toBeInTheDocument()
   })
 })

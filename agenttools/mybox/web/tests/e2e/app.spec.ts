@@ -166,6 +166,7 @@ test('dashboard toggles the file explorer', async ({ page }) => {
 test('nav bar file actions open a terminal', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'New file' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add adhoc' })).toBeVisible()
   await page.getByRole('button', { name: 'Open terminal' }).click()
   await expect(page.locator('.terminal-panel')).toBeVisible()
 })
@@ -669,6 +670,9 @@ test('board drag-and-drop changes task status and front matter', async ({ page }
   await page.locator('.project-tabs').getByRole('link', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()
 
+  await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Add adhoc' })).toBeVisible()
+
   const card = page.getByText('e2e-status-change-target')
   await expect(card).toBeVisible()
   const doneColumn = page.getByTestId('column-done')
@@ -688,6 +692,27 @@ test('board drag-and-drop changes task status and front matter', async ({ page }
   const tasks = (await res.json()) as Array<{ id: string; status: string }>
   const moved = tasks.find((t) => t.id === 'e2e-status-change-target')
   expect(moved?.status).toBe('done')
+})
+
+test('adhoc task appears on the board with an adhoc badge', async ({ page }) => {
+  const created = await page.request.post('/api/tasks', {
+    headers: { 'X-Project': 'proj' },
+    data: { name: 'Review PR #99', type: 'adhoc', priority: 'urgent' },
+  })
+  expect(created.ok()).toBeTruthy()
+  const adhoc = (await created.json()) as { id: string; type: string }
+  expect(adhoc.type).toBe('adhoc')
+
+  await page.goto('/projects/proj/dashboard')
+  await page.locator('.project-tabs').getByRole('link', { name: 'Board', exact: true }).click()
+  await expect(page.getByText('Review PR #99')).toBeVisible()
+  const card = page.locator('.board-card').filter({ hasText: 'Review PR #99' })
+  await expect(card).toHaveClass(/adhoc-card/)
+  await expect(card.locator('.badge', { hasText: 'adhoc' })).toBeVisible()
+
+  const res = await page.request.get('/api/tasks?type=adhoc')
+  const tasks = (await res.json()) as Array<{ id: string; type: string }>
+  expect(tasks.some((t) => t.id === adhoc.id && t.type === 'adhoc')).toBeTruthy()
 })
 
 test.describe('mobile viewport', () => {

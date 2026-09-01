@@ -290,6 +290,10 @@ paths:
           in: query
           schema:
             type: string
+        - name: type
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: tasks
@@ -813,6 +817,8 @@ components:
           $ref: "#/components/schemas/TaskStatus"
         priority:
           $ref: "#/components/schemas/TaskPriority"
+        type:
+          $ref: "#/components/schemas/TaskType"
         assignee:
           type: string
         due:
@@ -840,6 +846,9 @@ components:
     TaskPriority:
       type: string
       enum: ["low", "medium", "high", "urgent"]
+    TaskType:
+      type: string
+      enum: ["regular", "adhoc"]
     CreateTaskRequest:
       type: object
       required: [name]
@@ -850,6 +859,8 @@ components:
           $ref: "#/components/schemas/TaskStatus"
         priority:
           $ref: "#/components/schemas/TaskPriority"
+        type:
+          $ref: "#/components/schemas/TaskType"
         assignee:
           type: string
         due:
@@ -867,6 +878,8 @@ components:
           $ref: "#/components/schemas/TaskStatus"
         priority:
           $ref: "#/components/schemas/TaskPriority"
+        type:
+          $ref: "#/components/schemas/TaskType"
         assignee:
           type: string
         due:

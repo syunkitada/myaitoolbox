@@ -127,7 +127,13 @@ export function GraphPage() {
               if (node.type === 'dir')
                 navigate(projectUrl(`/dashboard/files/${encodePath(node.id)}`))
               else if (node.type === 'task')
-                navigate(projectUrl(`/dashboard/files/tasks/${taskIdOf(node.id)}/task.md`))
+                navigate(
+                  projectUrl(
+                    node.id.includes('/adhoc/')
+                      ? `/dashboard/files/tasks/adhoc/${encodePath(taskIdOf(node.id))}.md`
+                      : `/dashboard/files/tasks/${taskIdOf(node.id)}/task.md`,
+                  ),
+                )
               else if (node.type === 'file')
                 navigate(projectUrl(`/dashboard/files/${encodePath(node.id)}`))
               else

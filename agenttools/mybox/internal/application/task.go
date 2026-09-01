@@ -22,12 +22,14 @@ type TaskFilter struct {
 	Status   string
 	Tag      string
 	Assignee string
+	Type     string
 }
 
 type TaskInput struct {
 	Name     string
 	Status   string
 	Priority string
+	Type     string
 	Assignee string
 	Due      string
 	Tags     []string
@@ -58,6 +60,9 @@ func (u *TaskUseCase) List(ctx context.Context, filter TaskFilter) ([]domain.Tas
 			continue
 		}
 		if filter.Assignee != "" && t.Assignee != filter.Assignee {
+			continue
+		}
+		if filter.Type != "" && string(t.Type) != filter.Type {
 			continue
 		}
 		// リポジトリはプロジェクト名を持たないため UseCase 層で補完する
@@ -92,26 +97,44 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 	if err != nil {
 		return nil, err
 	}
+	taskType, err := parseType(input.Type)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now()
 	task := &domain.Task{
-		ID:       now.Format("20060102") + "_" + slugify(name),
 		Title:    name,
 		Status:   status,
 		Priority: priority,
+		Type:     taskType,
 		Assignee: input.Assignee,
 		Due:      input.Due,
 		Tags:     input.Tags,
 		Project:  u.Project,
 		Created:  now,
 	}
-	content, err := u.Template.RenderTask(domain.TaskTemplateData{
-		Name: task.Title,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := u.Tasks.Create(ctx, task.ID, content); err != nil {
-		return nil, err
+	if taskType == domain.TaskTypeAdhoc {
+		task.ID = now.Format("20060102") + "_" + slugify(name)
+		content, err := u.Template.RenderAdhocTask(domain.TaskTemplateData{
+			Name: task.Title,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := u.Tasks.CreateAdhoc(ctx, task.ID, content); err != nil {
+			return nil, err
+		}
+	} else {
+		task.ID = now.Format("20060102") + "_" + slugify(name)
+		content, err := u.Template.RenderTask(domain.TaskTemplateData{
+			Name: task.Title,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := u.Tasks.Create(ctx, task.ID, content); err != nil {
+			return nil, err
+		}
 	}
 	if len(task.Tags) > 0 {
 		if err := u.Tasks.Update(ctx, *task); err != nil {
@@ -142,6 +165,13 @@ func (u *TaskUseCase) Update(ctx context.Context, id string, input TaskInput) (*
 			return nil, err
 		}
 		task.Priority = priority
+	}
+	if input.Type != "" {
+		taskType, err := parseType(input.Type)
+		if err != nil {
+			return nil, err
+		}
+		task.Type = taskType
 	}
 	if input.Assignee != "" {
 		task.Assignee = input.Assignee
@@ -184,6 +214,17 @@ func parsePriority(s string) (domain.TaskPriority, error) {
 		return domain.TaskPriority(s), nil
 	}
 	return "", fmt.Errorf("%w: invalid priority %q", domain.ErrInvalidArgument, s)
+}
+
+func parseType(s string) (domain.TaskType, error) {
+	if s == "" {
+		return domain.TaskTypeRegular, nil
+	}
+	switch domain.TaskType(s) {
+	case domain.TaskTypeRegular, domain.TaskTypeAdhoc:
+		return domain.TaskType(s), nil
+	}
+	return "", fmt.Errorf("%w: invalid type %q", domain.ErrInvalidArgument, s)
 }
 
 func slugify(s string) string {

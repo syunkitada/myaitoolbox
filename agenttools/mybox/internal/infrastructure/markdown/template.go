@@ -26,6 +26,10 @@ func (r *TemplateRenderer) RenderTask(data domain.TaskTemplateData) (string, err
 	return r.render("task/task.md", data)
 }
 
+func (r *TemplateRenderer) RenderAdhocTask(data domain.TaskTemplateData) (string, error) {
+	return r.render("task/adhoc.md", data)
+}
+
 func (r *TemplateRenderer) RenderKnowledge(data domain.KnowledgeTemplateData) (string, error) {
 	return r.render("knowledge/knowledge.md", data)
 }

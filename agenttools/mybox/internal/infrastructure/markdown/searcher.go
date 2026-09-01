@@ -91,10 +91,14 @@ func matchTask(t domain.Task, q string) (domain.SearchResult, int, bool) {
 	if score == 0 {
 		return domain.SearchResult{}, 0, false
 	}
+	path := "tasks/" + t.ID + "/task.md"
+	if t.Type == domain.TaskTypeAdhoc {
+		path = "tasks/adhoc/" + t.ID + ".md"
+	}
 	return domain.SearchResult{
 		Type:    domain.SearchTypeTask,
 		ID:      t.ID,
-		Path:    "tasks/" + t.ID + "/task.md",
+		Path:    path,
 		Title:   t.Title,
 		Snippet: snippet(t.Body, idx),
 	}, score, true

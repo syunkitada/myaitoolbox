@@ -81,3 +81,14 @@ export function PendingBadge({ children, className }: { children: React.ReactNod
     </Badge>
   )
 }
+
+export function AdhocBadge({ className }: { className?: string }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn('badge adhoc border-transparent bg-purple-100 text-purple-700', className)}
+    >
+      adhoc
+    </Badge>
+  )
+}

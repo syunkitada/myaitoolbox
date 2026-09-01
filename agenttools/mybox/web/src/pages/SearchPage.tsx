@@ -64,7 +64,7 @@ export function SearchPage({ navigate }: SearchPageProps) {
               className="h-auto p-0"
               onClick={() => {
                 if (r.type === 'task')
-                  navigate(projectUrl(`/dashboard/files/tasks/${encodePath(r.id ?? r.path)}/task.md`))
+                  navigate(projectUrl(`/dashboard/files/${encodePath(r.path)}`))
                 else navigate(projectUrl(`/dashboard/files/knowledge/${encodePath(r.path)}.md`))
               }}
             >

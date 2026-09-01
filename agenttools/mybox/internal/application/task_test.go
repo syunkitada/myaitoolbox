@@ -90,3 +90,45 @@ func TestTaskShowMissing(t *testing.T) {
 	_, err := uc.Show(context.Background(), "missing")
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
+
+func TestTaskCreateAdhoc(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+
+	task, err := uc.Create(ctx, TaskInput{Name: "Review PR #123", Type: "adhoc"})
+	require.NoError(t, err)
+	assert.Equal(t, domain.TaskTypeAdhoc, task.Type)
+	assert.Contains(t, task.ID, "review-pr-123")
+
+	got, err := uc.Show(ctx, task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.TaskTypeAdhoc, got.Type)
+
+	err = uc.Archive(ctx, task.ID)
+	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+}
+
+func TestTaskListFilterByType(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+	_, err := uc.Create(ctx, TaskInput{Name: "regular task"})
+	require.NoError(t, err)
+	_, err = uc.Create(ctx, TaskInput{Name: "adhoc task", Type: "adhoc"})
+	require.NoError(t, err)
+
+	list, err := uc.List(ctx, TaskFilter{Type: "adhoc"})
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	assert.Equal(t, domain.TaskTypeAdhoc, list[0].Type)
+
+	list, err = uc.List(ctx, TaskFilter{Type: "regular"})
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	assert.Equal(t, domain.TaskTypeRegular, list[0].Type)
+}
+
+func TestTaskCreateInvalidType(t *testing.T) {
+	uc := newTaskUC(t)
+	_, err := uc.Create(context.Background(), TaskInput{Name: "x", Type: "bogus"})
+	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+}

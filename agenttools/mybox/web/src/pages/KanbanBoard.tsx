@@ -12,8 +12,9 @@ import {
 import { Task, TaskStatus, api } from '../api/client'
 import { encodePath, getProject, projectUrl } from '../utils/routes'
 import { Button } from '../components/ui/button'
+import { ListPlus, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
+import { AdhocBadge, DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
 
 const COLUMNS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
@@ -32,7 +33,7 @@ function dueClass(due: string): string {
 
 interface TaskCardProps {
   task: Task
-  onOpen: (id: string, project?: string | null) => void
+  onOpen: (task: Task) => void
   showProject?: boolean
   readonly?: boolean
 }
@@ -44,6 +45,7 @@ function TaskCard({ task, onOpen, showProject, readonly }: TaskCardProps) {
     disabled: readonly,
   })
   const isPending = Boolean(task.pending_until || task.pending_reason)
+  const isAdhoc = task.type === 'adhoc'
   const style = transform
     ? {
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
@@ -59,13 +61,15 @@ function TaskCard({ task, onOpen, showProject, readonly }: TaskCardProps) {
         'board-card cursor-grab rounded-md border bg-card p-2.5 shadow-sm',
         isDragging && 'dragging opacity-60 shadow-lg',
         isPending && 'pending border-dashed opacity-55',
+        isAdhoc && 'adhoc-card border-purple-300 bg-purple-50',
       )}
     >
-      <Button variant="link" size="xs" className="h-auto p-0 text-left" onClick={() => onOpen(task.id, task.project)}>
+      <Button variant="link" size="xs" className="h-auto p-0 text-left" onClick={() => onOpen(task)}>
         {task.title}
       </Button>
       <div className="board-card-meta mt-1.5 flex flex-wrap gap-1">
         {showProject && task.project && <ProjectBadge>{task.project}</ProjectBadge>}
+        {isAdhoc && <AdhocBadge />}
         <PriorityBadge priority={task.priority} />
         {task.due && <DueBadge due={task.due} dueClass={dueClass(task.due)} />}
         {(task.tags ?? []).slice(0, 3).map((t) => (
@@ -85,7 +89,7 @@ function TaskCard({ task, onOpen, showProject, readonly }: TaskCardProps) {
 interface ColumnProps {
   status: TaskStatus
   tasks: Task[]
-  onOpen: (id: string, project?: string | null) => void
+  onOpen: (task: Task) => void
   showProject?: boolean
   readonly?: boolean
 }
@@ -160,10 +164,14 @@ export function KanbanBoard() {
   )
 
   const handleOpen = useCallback(
-    (id: string, project?: string | null) => {
-      const target = project || currentProject
+    (task: Task) => {
+      const target = task.project || currentProject
       if (!target) return
-      const filePath = `/dashboard/files/tasks/${encodePath(id)}/task.md`
+      const relPath =
+        task.type === 'adhoc'
+          ? `tasks/adhoc/${task.id}.md`
+          : `tasks/${encodePath(task.id)}/task.md`
+      const filePath = `/dashboard/files/${relPath}`
       if (target === currentProject) {
         navigate(projectUrl(filePath))
       } else {
@@ -172,6 +180,16 @@ export function KanbanBoard() {
     },
     [navigate, currentProject],
   )
+
+  const handleNewTask = (type: 'regular' | 'adhoc') => {
+    const name = window.prompt(type === 'adhoc' ? 'Adhoc task name' : 'New task name')
+    if (name && name.trim()) {
+      void api
+        .createTask({ name: name.trim(), type })
+        .then((t) => handleOpen(t))
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    }
+  }
 
   const byStatus = (s: TaskStatus) =>
     tasks.filter((t) => t.status === s && !t.archived)
@@ -187,6 +205,18 @@ export function KanbanBoard() {
             </p>
           )}
         </div>
+        {!isGlobal && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => handleNewTask('regular')}>
+              <ListPlus />
+              <span>New task</span>
+            </Button>
+            <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => handleNewTask('adhoc')}>
+              <Zap />
+              <span>Add adhoc</span>
+            </Button>
+          </div>
+        )}
       </div>
       {error && (
         <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">

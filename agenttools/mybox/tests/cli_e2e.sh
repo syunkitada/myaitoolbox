@@ -48,6 +48,21 @@ case "$archived" in *test-task*) ok "archived task visible with --all";; *) fail
 active="$("$BIN" task list --project proj)"
 case "$active" in *test-task*) fail "archived task hidden by default";; *) ok "archived task hidden by default";; esac
 
+step "adhoc task create / list / filter"
+adhoc_id="$("$BIN" task create --project proj --name 'Review PR #123' --adhoc | tail -1)"
+[ -f "$PROJ/tasks/adhoc/$adhoc_id.md" ] && ok "adhoc task stored as single file" || fail "adhoc task stored as single file"
+adhoc_front="$(cat "$PROJ/tasks/adhoc/$adhoc_id.md")"
+case "$adhoc_front" in *"type: adhoc"*) ok "adhoc task frontmatter type";; *) fail "adhoc task frontmatter type";; esac
+adhoc_list="$("$BIN" task list --project proj --type adhoc)"
+case "$adhoc_list" in *review-pr-123*) ok "adhoc task listed with --type adhoc";; *) fail "adhoc task listed with --type adhoc";; esac
+regular_list="$("$BIN" task list --project proj --type regular)"
+case "$regular_list" in *review-pr-123*) fail "regular filter excludes adhoc task";; *) ok "regular filter excludes adhoc task";; esac
+if "$BIN" task archive --project proj "$adhoc_id" >/dev/null 2>&1; then
+  fail "adhoc archive rejected"
+else
+  ok "adhoc archive rejected"
+fi
+
 step "knowledge create / show / move / rename"
 path="$("$BIN" knowledge create --project proj 'notes/alpha' | tail -1)"
 check "knowledge created path" "notes/alpha" "$path"
@@ -67,7 +82,8 @@ case "$task_hits" in *oauth-login-handler*) ok "task search hit";; *) fail "task
 k_hits="$("$BIN" search --project proj oauth --type knowledge)"
 case "$k_hits" in *docs/oauth*) ok "knowledge search hit";; *) fail "knowledge search hit";; esac
 both="$("$BIN" search --project proj oauth --json)"
-case "$both" in *oauth-login-handler*docs/oauth*) ok "cross-type search";; *) fail "cross-type search";; esac
+case "$both" in *oauth-login-handler*) ok "cross-type search includes task";; *) fail "cross-type search includes task";; esac
+case "$both" in *docs/oauth*) ok "cross-type search includes knowledge";; *) fail "cross-type search includes knowledge";; esac
 
 step "serve smoke (read-only rejects writes)"
 "$BIN" serve --project proj --port 18099 --no-browser --read-only &

@@ -112,6 +112,24 @@ func (e TaskStatus) Valid() bool {
 	}
 }
 
+// Defines values for TaskType.
+const (
+	Adhoc   TaskType = "adhoc"
+	Regular TaskType = "regular"
+)
+
+// Valid indicates whether the value is a known member of the TaskType enum.
+func (e TaskType) Valid() bool {
+	switch e {
+	case Adhoc:
+		return true
+	case Regular:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SearchParamsType.
 const (
 	SearchParamsTypeKnowledge SearchParamsType = "knowledge"
@@ -148,6 +166,7 @@ type CreateTaskRequest struct {
 	Priority *TaskPriority `json:"priority,omitempty"`
 	Status   *TaskStatus   `json:"status,omitempty"`
 	Tags     *[]string     `json:"tags,omitempty"`
+	Type     *TaskType     `json:"type,omitempty"`
 }
 
 // FileContent defines model for FileContent.
@@ -440,6 +459,7 @@ type Task struct {
 	Status        TaskStatus   `json:"status"`
 	Tags          *[]string    `json:"tags,omitempty"`
 	Title         string       `json:"title"`
+	Type          *TaskType    `json:"type,omitempty"`
 }
 
 // TaskPriority defines model for TaskPriority.
@@ -447,6 +467,9 @@ type TaskPriority string
 
 // TaskStatus defines model for TaskStatus.
 type TaskStatus string
+
+// TaskType defines model for TaskType.
+type TaskType string
 
 // UpdateFavoriteRequest defines model for UpdateFavoriteRequest.
 type UpdateFavoriteRequest struct {
@@ -462,6 +485,7 @@ type UpdateTaskRequest struct {
 	Priority *TaskPriority `json:"priority,omitempty"`
 	Status   *TaskStatus   `json:"status,omitempty"`
 	Tags     *[]string     `json:"tags,omitempty"`
+	Type     *TaskType     `json:"type,omitempty"`
 }
 
 // GetFileContentParams defines parameters for GetFileContent.
@@ -505,6 +529,7 @@ type ListTasksParams struct {
 	All    *bool   `form:"all,omitempty" json:"all,omitempty"`
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 	Tag    *string `form:"tag,omitempty" json:"tag,omitempty"`
+	Type   *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
 // CreateFileJSONRequestBody defines body for CreateFile for application/json ContentType.

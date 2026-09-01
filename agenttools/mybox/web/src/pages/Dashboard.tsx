@@ -59,6 +59,16 @@ export function Dashboard({ refreshMeta, favorites, recentFiles }: DashboardProp
     }
   }
 
+  const handleNewAdhoc = () => {
+    const name = window.prompt('Adhoc task name')
+    if (name && name.trim()) {
+      void api
+        .createTask({ name: name.trim(), type: 'adhoc' })
+        .then((t) => navigate(projectUrl(`/dashboard/files/tasks/adhoc/${encodePath(t.id)}.md`)))
+        .catch(() => undefined)
+    }
+  }
+
   const handleNewFile = (dir: string) => {
     const prefix = dir ? `${dir}/` : ''
     const name = window.prompt('New file path', prefix)
@@ -74,6 +84,7 @@ export function Dashboard({ refreshMeta, favorites, recentFiles }: DashboardProp
     () =>
       subscribeNavActions((action) => {
         if (action === 'new-task') handleNewTask()
+        else if (action === 'new-adhoc') handleNewAdhoc()
         else if (action === 'new-file') handleNewFile('')
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

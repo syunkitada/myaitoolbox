@@ -3,12 +3,14 @@ export { getBasePath, getProject, setProject, clearProject } from '../utils/rout
 
 export type TaskStatus = 'todo' | 'doing' | 'blocked' | 'review' | 'done'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type TaskType = 'regular' | 'adhoc'
 
 export interface Task {
   id: string
   title: string
   status: TaskStatus
   priority: TaskPriority
+  type?: TaskType | null
   assignee?: string | null
   due?: string | null
   pending_until?: string | null
@@ -24,6 +26,7 @@ export interface CreateTaskRequest {
   name: string
   status?: TaskStatus
   priority?: TaskPriority
+  type?: TaskType
   assignee?: string
   due?: string
   tags?: string[]
@@ -306,7 +309,7 @@ export const api = {
   search: (q: string, type?: 'task' | 'knowledge') =>
     request<SearchResult[]>('GET', '/api/search' + qs({ q, type })),
 
-  listTasks: (params: { status?: TaskStatus; tag?: string; all?: boolean } = {}) =>
+  listTasks: (params: { status?: TaskStatus; tag?: string; type?: TaskType; all?: boolean } = {}) =>
     request<Task[]>('GET', '/api/tasks' + qs(params)),
 
   getTask: (id: string) => request<Task>('GET', `/api/tasks/${encodeURIComponent(id)}`),

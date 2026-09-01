@@ -126,3 +126,69 @@ func TestTaskRepositoryReadsPendingFields(t *testing.T) {
 	assert.Equal(t, "20260820", got.PendingUntil)
 	assert.Equal(t, "waiting for review", got.PendingReason)
 }
+
+func TestTaskRepositoryAdhocLifecycle(t *testing.T) {
+	root := t.TempDir()
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+
+	content := "---\ntitle: review PR\ntype: adhoc\nstatus: todo\npriority: high\n---\n\nbody"
+	require.NoError(t, repo.CreateAdhoc(ctx, "20260902_review-pr", content))
+
+	list, err := repo.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	assert.Equal(t, "20260902_review-pr", list[0].ID)
+	assert.Equal(t, domain.TaskTypeAdhoc, list[0].Type)
+	assert.Equal(t, "review PR", list[0].Title)
+
+	task, err := repo.Find(ctx, "20260902_review-pr")
+	require.NoError(t, err)
+	assert.Equal(t, domain.TaskTypeAdhoc, task.Type)
+
+	task.Status = domain.TaskStatusDoing
+	require.NoError(t, repo.Update(ctx, *task))
+
+	got, err := repo.Find(ctx, "20260902_review-pr")
+	require.NoError(t, err)
+	assert.Equal(t, domain.TaskStatusDoing, got.Status)
+	assert.Equal(t, domain.TaskTypeAdhoc, got.Type)
+	assert.Equal(t, "body", got.Body)
+
+	err = repo.Archive(ctx, "20260902_review-pr")
+	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+}
+
+func TestTaskRepositoryAdhocDuplicate(t *testing.T) {
+	repo := NewTaskRepository(t.TempDir())
+	ctx := context.Background()
+	require.NoError(t, repo.CreateAdhoc(ctx, "adhoc1", "content"))
+	err := repo.CreateAdhoc(ctx, "adhoc1", "content")
+	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
+}
+
+func TestTaskRepositoryMixedList(t *testing.T) {
+	root := t.TempDir()
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+	require.NoError(t, repo.Create(ctx, "20260901_090000_regular", "---\ntitle: regular\n---\n\n"))
+	require.NoError(t, repo.CreateAdhoc(ctx, "20260902_adhoc", "---\ntitle: adhoc\n---\n\n"))
+
+	list, err := repo.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+
+	var regular, adhoc bool
+	for _, tk := range list {
+		if tk.ID == "20260901_090000_regular" {
+			assert.Equal(t, domain.TaskTypeRegular, tk.Type)
+			regular = true
+		}
+		if tk.ID == "20260902_adhoc" {
+			assert.Equal(t, domain.TaskTypeAdhoc, tk.Type)
+			adhoc = true
+		}
+	}
+	assert.True(t, regular)
+	assert.True(t, adhoc)
+}

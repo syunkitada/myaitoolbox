@@ -21,11 +21,19 @@ const (
 	TaskPriorityUrgent TaskPriority = "urgent"
 )
 
+type TaskType string
+
+const (
+	TaskTypeRegular TaskType = "regular"
+	TaskTypeAdhoc   TaskType = "adhoc"
+)
+
 type Task struct {
 	ID            string
 	Title         string
 	Status        TaskStatus
 	Priority      TaskPriority
+	Type          TaskType
 	Assignee      string
 	Due           string
 	PendingUntil  string

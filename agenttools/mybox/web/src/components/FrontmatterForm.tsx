@@ -5,6 +5,7 @@ import { PriorityBadge, StatusBadge, TagBadge } from './badges'
 
 export const STATUS_OPTIONS = ['todo', 'doing', 'blocked', 'review', 'done']
 export const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent']
+export const TYPE_OPTIONS = ['regular', 'adhoc']
 
 const FIELD_ORDER = [
   'title',
@@ -234,7 +235,13 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
         <DateField label="Due" value={value.due} onChange={(v) => setField('due', v)} ariaLabel="Metadata due" />
       </div>
       <div className="field-row flex flex-wrap gap-3">
-        <Field label="Type" value={value.type} onChange={(v) => setField('type', v)} ariaLabel="Metadata type" />
+        <SelectField
+          label="Type"
+          value={value.type}
+          onChange={(v) => setField('type', v)}
+          ariaLabel="Metadata type"
+          options={TYPE_OPTIONS}
+        />
       </div>
       <div className="field-row flex flex-wrap gap-3">
         <DateField

@@ -14,5 +14,6 @@ type KnowledgeTemplateData struct {
 
 type TemplateRenderer interface {
 	RenderTask(data TaskTemplateData) (string, error)
+	RenderAdhocTask(data TaskTemplateData) (string, error)
 	RenderKnowledge(data KnowledgeTemplateData) (string, error)
 }

@@ -123,6 +123,32 @@ func TestMetaAndLifecycle(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestAdhocTaskAPI(t *testing.T) {
+	s, _ := newTestServer(t, false)
+
+	rec := do(t, s, http.MethodPost, "/api/tasks", map[string]any{"name": "review PR", "type": "adhoc"})
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	task := decode[api.Task](t, rec)
+	require.NotNil(t, task.Type)
+	assert.Equal(t, api.Adhoc, *task.Type)
+	assert.Equal(t, "review PR", task.Title)
+
+	rec = do(t, s, http.MethodGet, "/api/tasks?type=adhoc", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	list := decode[[]api.Task](t, rec)
+	require.Len(t, list, 1)
+	require.NotNil(t, list[0].Type)
+	assert.Equal(t, api.Adhoc, *list[0].Type)
+
+	rec = do(t, s, http.MethodGet, "/api/tasks?type=regular", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	list = decode[[]api.Task](t, rec)
+	assert.Empty(t, list)
+
+	rec = do(t, s, http.MethodPost, "/api/tasks/"+task.Id+"/archive", nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
 func TestMetaUnselectedProject(t *testing.T) {
 	s, _ := newTestServer(t, false)
 

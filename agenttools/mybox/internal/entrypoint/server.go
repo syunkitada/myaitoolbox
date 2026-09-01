@@ -469,10 +469,13 @@ func (s *Server) ListTasks(w http.ResponseWriter, r *http.Request, params api.Li
 		filter.All = *params.All
 	}
 	if params.Status != nil {
-		filter.Status = *params.Status
+		filter.Status = string(*params.Status)
 	}
 	if params.Tag != nil {
 		filter.Tag = *params.Tag
+	}
+	if params.Type != nil {
+		filter.Type = *params.Type
 	}
 
 	// X-Project ヘッダーがない = プロジェクト未選択 → 全プロジェクトを横断
@@ -559,6 +562,9 @@ func (s *Server) CreateTask(w http.ResponseWriter, r *http.Request) {
 	if req.Priority != nil {
 		input.Priority = string(*req.Priority)
 	}
+	if req.Type != nil {
+		input.Type = string(*req.Type)
+	}
 	if req.Assignee != nil {
 		input.Assignee = *req.Assignee
 	}
@@ -612,6 +618,9 @@ func (s *Server) UpdateTask(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	if req.Priority != nil {
 		input.Priority = string(*req.Priority)
+	}
+	if req.Type != nil {
+		input.Type = string(*req.Type)
 	}
 	if req.Assignee != nil {
 		input.Assignee = *req.Assignee
@@ -1338,6 +1347,7 @@ func toAPITask(t domain.Task) api.Task {
 		Title:         t.Title,
 		Status:        api.TaskStatus(t.Status),
 		Priority:      api.TaskPriority(t.Priority),
+		Type:          (*api.TaskType)(&t.Type),
 		Assignee:      strPtr(t.Assignee),
 		Due:           strPtr(t.Due),
 		PendingUntil:  strPtr(t.PendingUntil),
