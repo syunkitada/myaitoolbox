@@ -33,15 +33,19 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
   const [keySending, setKeySending] = useState<string | null>(null)
   const loadingRef = useRef(false)
   const preRef = useRef<HTMLPreElement>(null)
+  const agentRef = useRef<HerdrAgent | undefined>(undefined)
+  const prevPaneIdRef = useRef<string | null>(null)
 
   const agent = (overview?.agents ?? []).find((a) => a.name === name)
+  agentRef.current = agent
 
   const loadOutput = useCallback(
     async (reportError = true) => {
-      if (!agent || loadingRef.current) return
+      const a = agentRef.current
+      if (!a || loadingRef.current) return
       loadingRef.current = true
       try {
-        const res = await api.readHerdrAgent(agent.pane_id)
+        const res = await api.readHerdrAgent(a.pane_id)
         setOutput(res.output)
         setOutputError(null)
       } catch (e) {
@@ -50,7 +54,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
         loadingRef.current = false
       }
     },
-    [agent],
+    [],
   )
 
   const stop = useCallback(() => {
@@ -65,15 +69,19 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
   }, [agent, onRefresh])
 
   useEffect(() => {
-    setOutput(null)
-    setOutputError(null)
+    const paneId = agent?.pane_id ?? null
+    if (prevPaneIdRef.current !== paneId) {
+      setOutput(null)
+      setOutputError(null)
+    }
+    prevPaneIdRef.current = paneId
     if (!agent || !open || !overview?.available) return
     void loadOutput()
     const id = setInterval(() => {
       if (!document.hidden) void loadOutput(false)
     }, 1500)
     return () => clearInterval(id)
-  }, [agent, open, overview?.available, loadOutput])
+  }, [agent?.pane_id, open, overview?.available, loadOutput])
 
   useEffect(() => {
     const el = preRef.current
@@ -154,7 +162,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
   // herdr is unavailable: keep the header so the widget stays discoverable.
   if (!overview?.available) {
     return (
-      <div className="file-agent-widget mb-3 rounded-md border border-border bg-muted/40">
+      <div className="file-agent-widget min-w-0 w-full mb-3 rounded-md border border-border bg-muted/40">
         {header}
       </div>
     )
@@ -162,7 +170,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
 
   if (!agent) {
     return (
-      <div className="file-agent-widget mb-3 rounded-md border border-border bg-muted/40">
+      <div className="file-agent-widget min-w-0 w-full mb-3 rounded-md border border-border bg-muted/40">
         {header}
         {open && (
           <div className="px-1.5 pb-2">
@@ -199,7 +207,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
   const agentName: HerdrAgent = agent
 
   return (
-    <div className="file-agent-widget mb-3 rounded-md border border-border bg-muted/40">
+    <div className="file-agent-widget min-w-0 w-full mb-3 rounded-md border border-border bg-muted/40">
       {header}
       {open && (
         <>

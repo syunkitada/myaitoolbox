@@ -924,7 +924,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
   )
 
   return (
-    <div>
+    <div className="min-w-0 w-full">
       {mode === 'files' && entry?.kind === 'file' && herdrOverview !== undefined && (
         <FileAgentWidget
           path={path}
