@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { encodePath, projectUrl, getProject } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
-import { api } from '../api/client'
+import { api, HerdrOverview } from '../api/client'
 import { subscribeNavActions } from '../lib/nav-actions'
 
 const LAST_FILE_KEY = 'mybox_last_selected_file'
@@ -11,9 +11,11 @@ interface DashboardProps {
   refreshMeta: () => Promise<void>
   favorites: string[]
   recentFiles: string[]
+  herdrOverview?: HerdrOverview | null
+  refreshHerdr?: () => void
 }
 
-export function Dashboard({ refreshMeta, favorites, recentFiles }: DashboardProps) {
+export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, refreshHerdr }: DashboardProps) {
   const params = useParams()
   const selected = (params['*'] ?? '').trim()
   const navigate = useNavigate()
@@ -101,6 +103,8 @@ export function Dashboard({ refreshMeta, favorites, recentFiles }: DashboardProp
       favorites={favorites}
       recentFiles={recentFiles}
       refreshMeta={refreshMeta}
+      herdrOverview={herdrOverview}
+      refreshHerdr={refreshHerdr}
       defaultSelect={(entries) =>
         entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
       }

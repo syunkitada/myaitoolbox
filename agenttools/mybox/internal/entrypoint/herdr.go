@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/entrypoint/api"
 )
 
@@ -353,8 +355,6 @@ func (s *Server) RenameHerdrAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, api.HerdrOpResponse{Ok: true})
 }
 
-
-
 func validHerdrLabel(label string) (string, bool) {
 	label = strings.TrimSpace(label)
 	return label, label != "" && len(label) <= 80
@@ -664,4 +664,364 @@ func (s *Server) SendKeysHerdrPane(w http.ResponseWriter, r *http.Request) {
 		args = append(args, req.Keys...)
 		return args
 	})
+}
+
+// herdrAgentKinds lists the agent executables herdr can start in a pane.
+// The set mirrors `herdr agent start --help` (possible values for --kind).
+var herdrAgentKinds = map[string]bool{
+	"pi": true, "claude": true, "codex": true, "gemini": true, "cursor": true,
+	"devin": true, "agy": true, "cline": true, "omp": true, "mastracode": true,
+	"opencode": true, "copilot": true, "kimi": true, "kiro": true, "droid": true,
+	"amp": true, "grok": true, "hermes": true, "kilo": true, "qodercli": true,
+	"qwen": true, "maki": true,
+}
+
+func validHerdrAgentKind(kind string) bool {
+	return herdrAgentKinds[kind]
+}
+
+// herdrFileAgentName derives a herdr agent name from a filename. herdr agent
+// names must match [a-z][a-z0-9_-]{0,31} (lowercase letters/digits, hyphens,
+// underscores) while filenames also carry dots, uppercase, and spaces, so the
+// basename is lowercased and every other character is folded into a single
+// hyphen. It returns "" when no usable name can be produced.
+func herdrFileAgentName(filename string) string {
+	slug := strings.TrimSpace(strings.ToLower(filename))
+	var b strings.Builder
+	prevDash := false
+	for _, r := range slug {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		case r == '_':
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	slug = strings.Trim(b.String(), "-")
+	if slug == "" {
+		return ""
+	}
+	if slug[0] < 'a' || slug[0] > 'z' {
+		slug = "f" + slug
+	}
+	if len(slug) > 32 {
+		slug = strings.TrimRight(slug[:32], "-")
+	}
+	return slug
+}
+
+type herdrStartFileAgentRequest struct {
+	// Path is the project-relative file the agent should work on.
+	Path string `json:"path"`
+	// Kind selects the agent executable herdr launches (default: opencode).
+	Kind string `json:"kind"`
+}
+
+// herdrFileAgentResponse reports the agent dedicated to a file.
+type herdrFileAgentResponse struct {
+	Ok    bool            `json:"ok"`
+	Agent *api.HerdrAgent `json:"agent,omitempty"`
+}
+
+// herdrCreatedTabParse extracts the workspace/tab/root-pane ids from `tab
+// create` and `workspace create` outputs (both return .result.tab and
+// .result.root_pane; only workspace create returns .result.workspace).
+func herdrCreatedTabParse(out []byte) (wsID, tabID, paneID string) {
+	var env struct {
+		Result struct {
+			Workspace struct {
+				WorkspaceID string `json:"workspace_id"`
+			} `json:"workspace"`
+			Tab struct {
+				TabID       string `json:"tab_id"`
+				WorkspaceID string `json:"workspace_id"`
+			} `json:"tab"`
+			RootPane struct {
+				PaneID string `json:"pane_id"`
+			} `json:"root_pane"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(out, &env) != nil {
+		return "", "", ""
+	}
+	wsID = env.Result.Workspace.WorkspaceID
+	if wsID == "" {
+		wsID = env.Result.Tab.WorkspaceID
+	}
+	tabID = env.Result.Tab.TabID
+	paneID = env.Result.RootPane.PaneID
+	if !herdrTargetPattern.MatchString(wsID) {
+		wsID = ""
+	}
+	if !herdrTargetPattern.MatchString(tabID) {
+		tabID = ""
+	}
+	if !herdrTargetPattern.MatchString(paneID) {
+		paneID = ""
+	}
+	return wsID, tabID, paneID
+}
+
+// herdrProjectWorkspaceID returns the id of the herdr workspace labelled after
+// the project, or "" when no workspace matches. An empty id means the
+// workspace has to be bootstrapped before a tab can be created.
+func (s *Server) herdrProjectWorkspaceID(ctx context.Context, project string) (string, error) {
+	out, err := s.runHerdr(ctx, "workspace", "list")
+	if err != nil {
+		return "", err
+	}
+	var env herdrEnvelope
+	if err := json.Unmarshal(out, &env); err != nil {
+		return "", fmt.Errorf("unexpected herdr workspace list output")
+	}
+	var list herdrWorkspaceListResult
+	if err := json.Unmarshal(env.Result, &list); err != nil {
+		return "", fmt.Errorf("unexpected herdr workspace list result")
+	}
+	for _, raw := range list.Workspaces {
+		if raw.Label == project && herdrTargetPattern.MatchString(raw.WorkspaceID) {
+			return raw.WorkspaceID, nil
+		}
+	}
+	return "", nil
+}
+
+// herdrFileTab looks up an existing tab whose label matches the file so that
+// restarting an agent reuses the previous tab instead of stacking duplicates.
+// It returns the tab id and its first pane id; both are "" when none matches.
+func (s *Server) herdrFileTab(ctx context.Context, wsID, label string) (string, string, error) {
+	out, err := s.runHerdr(ctx, "tab", "list", "--workspace", wsID)
+	if err != nil {
+		return "", "", err
+	}
+	var env herdrEnvelope
+	if err := json.Unmarshal(out, &env); err != nil {
+		return "", "", fmt.Errorf("unexpected herdr tab list output")
+	}
+	var list herdrTabListResult
+	if err := json.Unmarshal(env.Result, &list); err != nil {
+		return "", "", fmt.Errorf("unexpected herdr tab list result")
+	}
+	for _, raw := range list.Tabs {
+		if raw.Label != label || !herdrTargetPattern.MatchString(raw.TabID) {
+			continue
+		}
+		paneID, _ := s.firstHerdrTabPane(ctx, raw.TabID)
+		return raw.TabID, paneID, nil
+	}
+	return "", "", nil
+}
+
+// firstHerdrTabPane returns the pane id of the first pane attached to a tab.
+func (s *Server) firstHerdrTabPane(ctx context.Context, tabID string) (string, error) {
+	paneOut, err := s.runHerdr(ctx, "pane", "list")
+	if err != nil {
+		return "", err
+	}
+	var env herdrEnvelope
+	if err := json.Unmarshal(paneOut, &env); err != nil {
+		return "", fmt.Errorf("unexpected herdr pane list output")
+	}
+	var list herdrPaneListResult
+	if err := json.Unmarshal(env.Result, &list); err != nil {
+		return "", fmt.Errorf("unexpected herdr pane list result")
+	}
+	for _, raw := range list.Panes {
+		if raw.TabID == tabID && herdrTargetPattern.MatchString(raw.PaneID) {
+			return raw.PaneID, nil
+		}
+	}
+	return "", nil
+}
+
+// herdrCreateFileTab creates a tab named after the file in the given workspace
+// and returns the id of its fresh root pane. The root pane starts at an
+// interactive shell prompt, which `herdr agent start` requires.
+func (s *Server) herdrCreateFileTab(ctx context.Context, wsID, label, cwd string) (string, error) {
+	args := []string{"tab", "create", "--workspace", wsID, "--label", label}
+	if cwd != "" {
+		args = append(args, "--cwd", cwd)
+	}
+	out, err := s.runHerdr(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	_, _, paneID := herdrCreatedTabParse(out)
+	if paneID == "" {
+		return "", fmt.Errorf("herdr tab create returned no root pane")
+	}
+	return paneID, nil
+}
+
+// findHerdrAgent returns the live agent whose name matches, or nil.
+func (s *Server) findHerdrAgent(ctx context.Context, name string) *api.HerdrAgent {
+	out, err := s.runHerdr(ctx, "agent", "list")
+	if err != nil {
+		return nil
+	}
+	var env herdrEnvelope
+	if err := json.Unmarshal(out, &env); err != nil {
+		return nil
+	}
+	var list herdrAgentListResult
+	if err := json.Unmarshal(env.Result, &list); err != nil {
+		return nil
+	}
+	for _, raw := range list.Agents {
+		agentName := raw.Name
+		if agentName == "" {
+			agentName = raw.Agent
+		}
+		if agentName != name {
+			continue
+		}
+		agent := api.HerdrAgent{
+			Name:        name,
+			Status:      raw.AgentStatus,
+			WorkspaceId: raw.WorkspaceID,
+			PaneId:      raw.PaneID,
+		}
+		if raw.Cwd != "" {
+			cwd := raw.Cwd
+			agent.Cwd = &cwd
+		}
+		return &agent
+	}
+	return nil
+}
+
+// registerHerdrRoutes registers herdr endpoints that are not part of the
+// oapi-codegen contract (manual echoes, mirroring registerGitRoutes).
+func (s *Server) registerHerdrRoutes(e *echo.Echo, basePath string) {
+	wrap := func(method, path string, h http.HandlerFunc) {
+		e.Add(method, basePath+path, echo.WrapHandler(h))
+	}
+	wrap(http.MethodPost, "/api/herdr/agents/start-file", s.StartHerdrFileAgent)
+}
+
+// StartHerdrFileAgent starts a herdr agent dedicated to a file. It creates a
+// tab labelled with the filename in the project's workspace, starts the agent
+// on the tab's root pane using the filename-derived agent name, and returns the
+// agent so the UI can read output / send prompts. When an agent for the file
+// is already running (or a tab for it already exists) it is reused.
+func (s *Server) StartHerdrFileAgent(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req herdrStartFileAgentRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	path := strings.TrimSpace(req.Path)
+	if path == "" || strings.HasPrefix(path, "/") || strings.Contains(path, "..") || len(path) > 1024 {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("invalid file path")})
+		return
+	}
+	filename := filepath.Base(path)
+	label, ok := validHerdrLabel(filename)
+	if !ok {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("file name must be between 1 and 80 characters")})
+		return
+	}
+	name := herdrFileAgentName(filename)
+	if name == "" {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("file name does not produce a valid agent name")})
+		return
+	}
+	kind := strings.TrimSpace(req.Kind)
+	if kind == "" {
+		kind = "opencode"
+	}
+	if !validHerdrAgentKind(kind) {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: fmt.Errorf("unsupported agent kind %q", kind)})
+		return
+	}
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	// The file already has a live agent: report it instead of stacking tabs.
+	if agent := s.findHerdrAgent(r.Context(), name); agent != nil {
+		writeJSONResponse(w, http.StatusOK, herdrFileAgentResponse{Ok: true, Agent: agent})
+		return
+	}
+
+	var wsID, paneID string
+	wsID, err = s.herdrProjectWorkspaceID(r.Context(), app.Project.Name)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if wsID == "" {
+		// No workspace carries the project label yet; bootstrap one. Its fresh
+		// root tab becomes the file's tab, so it only needs the filename label.
+		createdWsID, createdTabID, createdPaneID, err := s.bootstrapHerdrWorkspaceIDs(r.Context(), app.Project.Path)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if _, err := s.runHerdr(r.Context(), "tab", "rename", createdTabID, label); err != nil {
+			writeError(w, err)
+			return
+		}
+		wsID, paneID = createdWsID, createdPaneID
+	} else {
+		// Reuse the file's existing tab when present, otherwise create one.
+		_, paneID, err = s.herdrFileTab(r.Context(), wsID, label)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if paneID == "" {
+			paneID, err = s.herdrCreateFileTab(r.Context(), wsID, label, app.Project.Path)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+		}
+	}
+	if paneID == "" {
+		writeError(w, fmt.Errorf("no usable pane for file agent %q", name))
+		return
+	}
+
+	if _, err := s.runHerdr(r.Context(), "agent", "start", name, "--kind", kind, "--pane", paneID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	agent := s.findHerdrAgent(r.Context(), name)
+	if agent == nil {
+		agent = &api.HerdrAgent{Name: name, Status: "unknown", WorkspaceId: wsID, PaneId: paneID}
+	}
+	writeJSONResponse(w, http.StatusOK, herdrFileAgentResponse{Ok: true, Agent: agent})
+}
+
+// bootstrapHerdrWorkspaceIDs creates herdr's first workspace for the current
+// project and returns the ids of its fresh root workspace, tab and pane. It is
+// the workspace bootstrap used for file agents, capturing the ids the CLI
+// returns so the caller can rename the root tab and start an agent on its pane.
+func (s *Server) bootstrapHerdrWorkspaceIDs(ctx context.Context, cwd string) (wsID, tabID, paneID string, err error) {
+	args := []string{"workspace", "create"}
+	if cwd != "" {
+		args = append(args, "--cwd", cwd)
+	}
+	out, err := s.runHerdr(ctx, args...)
+	if err != nil {
+		return "", "", "", err
+	}
+	wsID, tabID, paneID = herdrCreatedTabParse(out)
+	if wsID == "" || tabID == "" || paneID == "" {
+		return "", "", "", fmt.Errorf("herdr workspace create returned no root workspace/tab/pane")
+	}
+	return wsID, tabID, paneID, nil
 }

@@ -1,7 +1,8 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileEntry, Knowledge, api } from '../api/client'
+import { FileEntry, HerdrOverview, Knowledge, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
+import { FileAgentWidget } from '../components/FileAgentWidget'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
 import { Button } from '../components/ui/button'
@@ -76,6 +77,8 @@ interface BrowserPageProps {
   refreshMeta: () => Promise<void>
   defaultSelect?: (entries: BrowserEntry[]) => string | undefined
   onClose?: () => void
+  herdrOverview?: HerdrOverview | null
+  refreshHerdr?: () => void
 }
 
 interface TreeFile {
@@ -221,6 +224,8 @@ interface ExplorerProps {
   gitStatus?: Record<string, string>
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
+  herdrOverview?: HerdrOverview | null
+  refreshHerdr?: () => void
 }
 
 interface ExplorerSectionProps {
@@ -259,7 +264,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, herdrOverview, refreshHerdr }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -456,11 +461,24 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
 
   const fileMatches = filtered.filter((e) => e.kind === 'file')
 
+  const selectedIsFile =
+    !!selected &&
+    (entries.find((e) => e.path === selected)?.kind === 'file' ||
+      // A nested selection outside the listing (e.g. typed URL) still counts.
+      !entries.some((e) => e.path === selected || e.path === `${selected}/`))
+
   const selectCls =
     'h-9 rounded-md border border-input bg-card px-3 text-sm text-foreground transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
   return (
     <div className="knowledge-explorer flex h-full min-h-0 w-full flex-col overflow-y-auto bg-card p-2.5">
+      {mode === 'files' && selectedIsFile && herdrOverview !== undefined && (
+        <FileAgentWidget
+          path={selected}
+          overview={herdrOverview}
+          onRefresh={refreshHerdr ?? (() => undefined)}
+        />
+      )}
       <div className="page-header mb-1 flex flex-wrap items-center gap-3">
         {onClose && (
           <Button
@@ -1257,6 +1275,8 @@ export function BrowserPage({
   refreshMeta,
   defaultSelect,
   onClose,
+  herdrOverview,
+  refreshHerdr,
 }: BrowserPageProps) {
   const [entries, setEntries] = useState<BrowserEntry[]>([])
   const [gitStatus, setGitStatus] = useState<Record<string, string>>({})
@@ -1392,6 +1412,8 @@ export function BrowserPage({
                     gitStatus={gitStatus}
                     onClose={onClose}
                     onMoveFile={mode === 'files' ? handleMoveFile : undefined}
+                    herdrOverview={herdrOverview}
+                    refreshHerdr={refreshHerdr}
                   />
                 </div>
               </div>
@@ -1414,6 +1436,8 @@ export function BrowserPage({
                   gitStatus={gitStatus}
                   onClose={onClose}
                   onMoveFile={mode === 'files' ? handleMoveFile : undefined}
+                  herdrOverview={herdrOverview}
+                  refreshHerdr={refreshHerdr}
                 />
               </SheetContent>
             </Sheet>

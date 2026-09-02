@@ -125,6 +125,8 @@ export default function App() {
                         refreshMeta={refreshMeta}
                         favorites={meta?.favorites ?? []}
                         recentFiles={meta?.recent_files ?? []}
+                        herdrOverview={herdr.overview}
+                        refreshHerdr={() => herdr.refresh()}
                       />
                     }
                   />
@@ -136,6 +138,8 @@ export default function App() {
                         refreshMeta={refreshMeta}
                         favorites={meta?.favorites ?? []}
                         recentFiles={meta?.recent_files ?? []}
+                        herdrOverview={herdr.overview}
+                        refreshHerdr={() => herdr.refresh()}
                       />
                     }
                   />
