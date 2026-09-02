@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fileAgentName, fileLabel } from './herdr-file-agent'
+import { fileAgentName, fileLabel, filePathForAgent } from './herdr-file-agent'
 
 describe('fileAgentName', () => {
   it('folds non-alphanumeric characters into hyphens', () => {
@@ -41,5 +41,27 @@ describe('fileAgentName', () => {
 describe('fileLabel', () => {
   it('keeps the filename as the tab label', () => {
     expect(fileLabel('app.go')).toBe('app.go')
+  })
+})
+
+describe('filePathForAgent', () => {
+  it('finds the file matching an agent name', () => {
+    const files = [{ path: 'src/app.go' }, { path: 'README.md' }, { path: 'docs/notes.md' }]
+    expect(filePathForAgent(files, 'src-app-go')).toBe('src/app.go')
+    expect(filePathForAgent(files, 'readme-md')).toBe('README.md')
+  })
+
+  it('prefers the closest match when several files share an agent name', () => {
+    const files = [{ path: 'b/c.go' }, { path: 'deep/nested/b/c.go' }]
+    expect(filePathForAgent(files, 'b-c-go')).toBe('b/c.go')
+  })
+
+  it('returns null when no file matches', () => {
+    const files = [{ path: 'a/b.go' }]
+    expect(filePathForAgent(files, 'zzz-zzz')).toBeNull()
+  })
+
+  it('returns null for an empty file list', () => {
+    expect(filePathForAgent([], 'a-b')).toBeNull()
   })
 })

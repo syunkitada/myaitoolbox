@@ -31,3 +31,25 @@ export function fileAgentName(path: string): string {
 export function fileLabel(filename: string): string {
   return filename.trim()
 }
+
+// filePathForAgent finds the file path whose derived agent name matches the
+// given herdr agent name. This inverts fileAgentName() so the Agents panel can
+// link an agent back to the file it was started for. The mapping is lossy (the
+// agent name only encodes the last two path segments), so when several files
+// map to the same name the closest (shortest, most specific) match wins.
+export function filePathForAgent(
+  files: ReadonlyArray<{ path: string }>,
+  agentName: string,
+): string | null {
+  let best: string | null = null
+  let bestSegments = Infinity
+  for (const f of files) {
+    if (fileAgentName(f.path) !== agentName) continue
+    const depth = f.path.split('/').filter(Boolean).length
+    if (depth < bestSegments) {
+      best = f.path
+      bestSegments = depth
+    }
+  }
+  return best
+}

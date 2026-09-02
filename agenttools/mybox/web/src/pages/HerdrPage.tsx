@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { RefreshCw, Send } from 'lucide-react'
-import { dirName, getProject } from '../utils/routes'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { FileText, RefreshCw, Send } from 'lucide-react'
+import { dirName, encodePath, getProject, projectUrl } from '../utils/routes'
 import type { HerdrAgent, HerdrOverview, HerdrPane, HerdrTab, HerdrWorkspace } from '../api/client'
 import { api } from '../api/client'
 import { StatusBadge, StatusDot } from '../components/herdr-status'
 import { Button } from '../components/ui/button'
 import { cn } from '@/lib/utils'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
+import { filePathForAgent } from '../utils/herdr-file-agent'
 
 interface HerdrPageProps {
   overview: HerdrOverview | null
@@ -731,6 +732,37 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
   const matched = workspaces.find((w) => w.label === project)
   const [opError, setOpError] = useState<string | null>(null)
 
+  // Load the project's files once so each agent can be linked back to the file
+  // it was started for (reverse of fileAgentName).
+  const [files, setFiles] = useState<Array<{ path: string }> | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    api
+      .listFiles()
+      .then((entries) => {
+        if (!cancelled) setFiles(entries.filter((e) => e.kind === 'file'))
+      })
+      .catch(() => {
+        if (!cancelled) setFiles([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const agentFilePath = useMemo(() => {
+    const map = new Map<string, string>()
+    if (files) {
+      for (const a of agents) {
+        const found = filePathForAgent(files, a.name)
+        if (found) map.set(a.pane_id, found)
+      }
+    }
+    return map
+  }, [files, agents])
+
+  const navigate = useNavigate()
+
   const onError = useCallback((message: string) => {
     setOpError(message)
     setTimeout(() => setOpError((cur) => (cur === message ? null : cur)), 6000)
@@ -916,6 +948,26 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
                           </span>
                         )}
                       </button>
+                      {(() => {
+                        const filePath = agentFilePath.get(a.pane_id)
+                        return filePath ? (
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            className="h-6 shrink-0 cursor-pointer px-1.5 text-[11px]"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))
+                            }}
+                            title={`Open ${filePath} in Files`}
+                            aria-label={`Open ${dirName(filePath)} in Files`}
+                            data-testid={`agent-file-${a.pane_id}`}
+                          >
+                            <FileText className="mr-1 size-3" />
+                            {dirName(filePath)}
+                          </Button>
+                        ) : null
+                      })()}
                       <Button
                         variant="ghost"
                         size="xs"

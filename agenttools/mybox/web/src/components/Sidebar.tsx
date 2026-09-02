@@ -36,13 +36,24 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
   const workspaceStatus = (name: string): string | null =>
     herdr?.workspaces.find((w) => w.label === name)?.agent_status ?? null
 
-  // openAgent navigates to the Herdr tab of the agent's project (when its
-  // workspace label is a known project) or the current/default project, with
-  // the agent's operation panel pre-opened.
-  const openAgent = (paneId: string, fallbackProject?: string) => {
+  // workspaceProject maps a herdr workspace to a known project label, so an
+  // agent can be opened in the Herdr tab of the project its workspace belongs
+  // to rather than always the currently-active project.
+  const workspaceProject = (workspaceId?: string): string | null => {
+    if (!workspaceId) return null
+    const ws = herdr?.workspaces.find((w) => w.workspace_id === workspaceId)
+    const label = ws?.label
+    return label && meta?.projects?.includes(label) ? label : null
+  }
+
+  // openAgent navigates to the Herdr tab of the agent's own workspace project
+  // (when it maps to a known project) or falls back to the current/default
+  // project, with the agent's operation panel pre-opened.
+  const openAgent = (paneId: string, workspaceId?: string, fallbackProject?: string) => {
     handleNav()
     const agentProject =
-      fallbackProject && meta?.projects?.includes(fallbackProject) ? fallbackProject : null
+      workspaceProject(workspaceId) ||
+      (fallbackProject && meta?.projects?.includes(fallbackProject) ? fallbackProject : null)
     const target =
       agentProject || project || meta?.default_project || meta?.projects?.[0] || ''
     if (!target) return
@@ -167,7 +178,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
             return (
               <SidebarMenuItem key={a.pane_id}>
                 <SidebarMenuButton
-                  onClick={() => openAgent(a.pane_id)}
+                  onClick={() => openAgent(a.pane_id, a.workspace_id)}
                   tooltip={[a.status, a.cwd, a.title].filter(Boolean).join(' · ')}
                   className="sidebar-agent-row cursor-pointer"
                   data-testid={`sidebar-agent-${a.pane_id}`}
