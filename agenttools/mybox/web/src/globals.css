@@ -236,6 +236,55 @@ body,
   }
 }
 
+/* Clickable links embedded in syntax-highlighted (and terminal) output. */
+.syntax-link {
+  @apply text-primary underline underline-offset-2 break-all;
+}
+.syntax-link:hover {
+  @apply text-primary/80;
+}
+
+/* Prism token base colors: inherit the theme-neutral foreground by default so
+   highlighted output works on both the light (prism.css) and scoped dark
+   (okaidia) themes without fighting the app's muted backgrounds. */
+code[class*='language-'],
+pre[class*='language-'] {
+  font-family: inherit;
+  background: transparent;
+  text-shadow: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Dark mode: use the Prism okaidia palette for token colors. */
+.dark code[class*='language-'],
+.dark pre[class*='language-'] {
+  color: var(--prism-fg, oklch(0.85 0.01 255));
+}
+.dark .token.comment,
+.dark .token.prolog,
+.dark .token.doctype,
+.dark .token.cdata { color: oklch(0.62 0.05 255); }
+.dark .token.punctuation { color: oklch(0.75 0 255); }
+.dark .token.selector,
+.dark .token.attr-name,
+.dark .token.string,
+.dark .token.char,
+.dark .token.builtin,
+.dark .token.operator { color: oklch(0.85 0.12 95); }
+.dark .token.property,
+.dark .token.keyword,
+.dark .token.tag { color: oklch(0.72 0.13 260); }
+.dark .token.function,
+.dark .token.class-name { color: oklch(0.8 0.11 210); }
+.dark .token.number,
+.dark .token.boolean,
+.dark .token.constant,
+.dark .token.symbol { color: oklch(0.85 0.12 60); }
+.dark .token.regex,
+.dark .token.important,
+.dark .token.variable { color: oklch(0.83 0.1 20); }
+
 /* On small screens use overlay scrollbars so the terminal fits the full
    available width (xterm reserves ~16px for a layout scrollbar otherwise). */
 @media (max-width: 767px) {

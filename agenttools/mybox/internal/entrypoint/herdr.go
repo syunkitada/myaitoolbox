@@ -118,6 +118,7 @@ type herdrPaneRaw struct {
 	TabID       string `json:"tab_id"`
 	WorkspaceID string `json:"workspace_id"`
 	Cwd         string `json:"cwd"`
+	Agent       string `json:"agent"`
 	AgentStatus string `json:"agent_status"`
 	Title       string `json:"title"`
 	Focused     bool   `json:"focused"`
@@ -681,13 +682,24 @@ func validHerdrAgentKind(kind string) bool {
 	return herdrAgentKinds[kind]
 }
 
-// herdrFileAgentName derives a herdr agent name from a filename. herdr agent
+// herdrFileAgentName derives a herdr agent name from a file path. herdr agent
 // names must match [a-z][a-z0-9_-]{0,31} (lowercase letters/digits, hyphens,
 // underscores) while filenames also carry dots, uppercase, and spaces, so the
-// basename is lowercased and every other character is folded into a single
-// hyphen. It returns "" when no usable name can be produced.
-func herdrFileAgentName(filename string) string {
-	slug := strings.TrimSpace(strings.ToLower(filename))
+// basename and its immediate parent directory are lowercased and every other
+// character is folded into a single hyphen. It returns "" when no usable name
+// can be produced.
+func herdrFileAgentName(path string) string {
+	var parts []string
+	for _, p := range strings.Split(path, "/") {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	tail := parts
+	if len(parts) > 2 {
+		tail = parts[len(parts)-2:]
+	}
+	slug := strings.TrimSpace(strings.ToLower(strings.Join(tail, "-")))
 	var b strings.Builder
 	prevDash := false
 	for _, r := range slug {
@@ -794,9 +806,12 @@ func (s *Server) herdrProjectWorkspaceID(ctx context.Context, project string) (s
 	return "", nil
 }
 
-// herdrFileTab looks up an existing tab whose label matches the file so that
-// restarting an agent reuses the previous tab instead of stacking duplicates.
-// It returns the tab id and its first pane id; both are "" when none matches.
+// herdrFileTab looks up an existing tab whose label matches the file and whose
+// pane is still at an interactive shell prompt, so that restarting an agent
+// reuses the previous tab instead of stacking duplicates. It returns the tab
+// id and its pane id; both are "" when none matches (a matching tab whose pane
+// already runs an agent is deliberately skipped so the caller creates a fresh
+// tab rather than targeting a non-shell pane).
 func (s *Server) herdrFileTab(ctx context.Context, wsID, label string) (string, string, error) {
 	out, err := s.runHerdr(ctx, "tab", "list", "--workspace", wsID)
 	if err != nil {
@@ -814,32 +829,39 @@ func (s *Server) herdrFileTab(ctx context.Context, wsID, label string) (string, 
 		if raw.Label != label || !herdrTargetPattern.MatchString(raw.TabID) {
 			continue
 		}
-		paneID, _ := s.firstHerdrTabPane(ctx, raw.TabID)
-		return raw.TabID, paneID, nil
+		paneID, ok, err := s.firstHerdrTabPane(ctx, raw.TabID)
+		if err != nil {
+			return "", "", err
+		}
+		if ok {
+			return raw.TabID, paneID, nil
+		}
 	}
 	return "", "", nil
 }
 
-// firstHerdrTabPane returns the pane id of the first pane attached to a tab.
-func (s *Server) firstHerdrTabPane(ctx context.Context, tabID string) (string, error) {
+// firstHerdrTabPane returns the pane id of the first pane attached to a tab
+// that is still at an interactive shell prompt (i.e. not already running an
+// agent). ok is false when no such pane exists.
+func (s *Server) firstHerdrTabPane(ctx context.Context, tabID string) (string, bool, error) {
 	paneOut, err := s.runHerdr(ctx, "pane", "list")
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	var env herdrEnvelope
 	if err := json.Unmarshal(paneOut, &env); err != nil {
-		return "", fmt.Errorf("unexpected herdr pane list output")
+		return "", false, fmt.Errorf("unexpected herdr pane list output")
 	}
 	var list herdrPaneListResult
 	if err := json.Unmarshal(env.Result, &list); err != nil {
-		return "", fmt.Errorf("unexpected herdr pane list result")
+		return "", false, fmt.Errorf("unexpected herdr pane list result")
 	}
 	for _, raw := range list.Panes {
-		if raw.TabID == tabID && herdrTargetPattern.MatchString(raw.PaneID) {
-			return raw.PaneID, nil
+		if raw.TabID == tabID && herdrTargetPattern.MatchString(raw.PaneID) && raw.Agent == "" {
+			return raw.PaneID, true, nil
 		}
 	}
-	return "", nil
+	return "", false, nil
 }
 
 // herdrCreateFileTab creates a tab named after the file in the given workspace
@@ -936,13 +958,12 @@ func (s *Server) StartHerdrFileAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("invalid file path")})
 		return
 	}
-	filename := filepath.Base(path)
-	label, ok := validHerdrLabel(filename)
+	label, ok := validHerdrLabel(filepath.Base(path))
 	if !ok {
 		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("file name must be between 1 and 80 characters")})
 		return
 	}
-	name := herdrFileAgentName(filename)
+	name := herdrFileAgentName(path)
 	if name == "" {
 		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("file name does not produce a valid agent name")})
 		return

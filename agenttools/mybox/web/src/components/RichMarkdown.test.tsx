@@ -107,4 +107,11 @@ describe('RichMarkdown', () => {
       { level: 2, text: 'C' },
     ])
   })
+
+  it('highlights fenced code blocks with prism tokens', () => {
+    const { container } = render(<RichMarkdown text={'```javascript\nconst x = 1\n```'} />)
+    expect(container.querySelectorAll('.token').length).toBeGreaterThan(0)
+    const code = container.querySelector('pre.language-javascript code')
+    expect(code?.textContent).toContain('const x = 1')
+  })
 })

@@ -7,6 +7,7 @@ import { api } from '../api/client'
 import { StatusBadge, StatusDot } from '../components/herdr-status'
 import { Button } from '../components/ui/button'
 import { cn } from '@/lib/utils'
+import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 
 interface HerdrPageProps {
   overview: HerdrOverview | null
@@ -40,7 +41,7 @@ function AgentDetail({ agent, autoReload, onRename }: AgentDetailProps) {
   const [keySending, setKeySending] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const loadingRef = useRef(false)
-  const preRef = useRef<HTMLPreElement>(null)
+  const preRef = useRef<HTMLDivElement>(null)
   // While true the viewport follows new output; scrolling up pauses the follow.
   const pinnedRef = useRef(true)
 
@@ -133,13 +134,13 @@ function AgentDetail({ agent, autoReload, onRename }: AgentDetailProps) {
         </div>
       </div>
       {outputError && <p className="mb-2 text-xs text-red-600">{outputError}</p>}
-      <pre
+      <div
         ref={preRef}
         onScroll={handlePreScroll}
-        className="max-h-64 overflow-auto rounded border bg-background p-2 text-xs whitespace-pre-wrap"
+        className="max-h-64 overflow-auto rounded border bg-background p-2 text-xs"
       >
-        {output ?? 'loading...'}
-      </pre>
+        <SyntaxHighlighter text={output ?? 'loading...'} />
+      </div>
       <div
         className="herdr-agent-keys mt-2 flex flex-wrap items-center gap-1"
         data-testid={`agent-keys-${agent.pane_id}`}
@@ -212,7 +213,7 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError }: Pan
   const [sending, setSending] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const loadingRef = useRef(false)
-  const preRef = useRef<HTMLPreElement>(null)
+  const preRef = useRef<HTMLDivElement>(null)
   // While true the viewport follows new output; scrolling up pauses the follow.
   const pinnedRef = useRef(true)
 
@@ -389,13 +390,13 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError }: Pan
               <RefreshCw className="mr-1 size-3" /> Reload
             </Button>
           </div>
-          <pre
+          <div
             ref={preRef}
             onScroll={handlePreScroll}
-            className="max-h-64 overflow-auto rounded bg-black p-2.5 font-mono text-xs text-green-400 whitespace-pre-wrap"
+            className="max-h-64 overflow-auto rounded bg-black p-2.5 font-mono text-xs text-green-400"
           >
-            {output ?? 'loading terminal output...'}
-          </pre>
+            <SyntaxHighlighter text={output ?? 'loading terminal output...'} />
+          </div>
         </div>
       ) : (
         <div className="p-2.5 text-xs text-muted-foreground font-mono flex items-center justify-between">

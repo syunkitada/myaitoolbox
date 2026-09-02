@@ -6,6 +6,10 @@ describe('fileAgentName', () => {
     expect(fileAgentName('app.go')).toBe('app-go')
     expect(fileAgentName('README.md')).toBe('readme-md')
     expect(fileAgentName('architecture.md')).toBe('architecture-md')
+    expect(fileAgentName('src/app.go')).toBe('src-app-go')
+    expect(fileAgentName('docs/architecture.md')).toBe('docs-architecture-md')
+    expect(fileAgentName('a/b/c.go')).toBe('b-c-go')
+    expect(fileAgentName('deep/nested/dir/file.md')).toBe('dir-file-md')
   })
 
   it('keeps underscore separators', () => {

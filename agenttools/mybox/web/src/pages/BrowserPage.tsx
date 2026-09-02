@@ -17,6 +17,8 @@ import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { encodePath, filesUrl, projectUrl, rawFileUrl } from '../utils/routes'
+import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
+import { languageFromPath } from '../utils/prism-langs'
 import {
   buildDirListing,
   buildMarkdown,
@@ -924,8 +926,8 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
   )
 
   return (
-    <div className={cn('relative min-w-0 w-full', outlineOpen && 'md:pr-96')}>
-      {mode === 'files' && entry?.kind === 'file' && herdrOverview !== undefined && (
+    <div className={cn('min-w-0 w-full', outlineOpen && 'md:pr-96')}>
+      {mode === 'files' && herdrOverview !== undefined && (
         <FileAgentWidget
           path={path}
           overview={herdrOverview}
@@ -1173,9 +1175,11 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
                     <img src={rawFileUrl(path)} alt={baseOf(path)} className="max-w-full rounded-md" />
                   </div>
                 ) : (
-                  <pre className="file-raw overflow-x-auto rounded-md bg-muted p-3 font-mono text-[13px] leading-6 whitespace-pre-wrap break-words">
-                    {viewText}
-                  </pre>
+                  <SyntaxHighlighter
+                    text={viewText}
+                    language={languageFromPath(viewFileName ?? undefined)}
+                    className="file-raw rounded-md bg-muted p-3"
+                  />
                 )}
                 {mode === 'knowledge' && links.length > 0 && (
                   <div className="mt-4 border-t pt-3">
@@ -1434,7 +1438,7 @@ export function BrowserPage({
           )}
           <div
             className={cn(
-              'knowledge-pane min-w-0 min-h-0 flex-1 bg-card p-4',
+              'knowledge-pane relative min-w-0 min-h-0 flex-1 bg-card p-4',
               'flex flex-col lg:overflow-hidden',
             )}
           >

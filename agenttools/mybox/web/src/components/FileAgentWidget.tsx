@@ -5,6 +5,7 @@ import { Button } from './ui/button'
 import { fileAgentName } from '../utils/herdr-file-agent'
 import { Bot, ChevronRight, Loader2, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { SyntaxHighlighter } from './SyntaxHighlighter'
 
 const FILE_AGENT_KEYS: { label: string; key: string }[] = [
   { label: 'Enter', key: 'enter' },
@@ -25,7 +26,7 @@ export interface FileAgentWidgetProps {
 
 export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetProps) {
   const filename = path.split('/').pop() ?? path
-  const name = fileAgentName(filename)
+  const name = fileAgentName(path)
 
   const [open, setOpen] = useState(true)
   const [starting, setStarting] = useState(false)
@@ -40,7 +41,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
     return saved && (FILE_AGENT_KIND_OPTIONS as readonly string[]).includes(saved) ? saved : 'opencode'
   })
   const loadingRef = useRef(false)
-  const preRef = useRef<HTMLPreElement>(null)
+  const preRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HerdrAgent | undefined>(undefined)
   const prevPaneIdRef = useRef<string | null>(null)
 
@@ -240,12 +241,12 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
         <>
           {error && <p className="px-1.5 text-[11px] text-red-600">{error}</p>}
           {outputError && <p className="px-1.5 text-[11px] text-red-600">{outputError}</p>}
-          <pre
+          <div
             ref={preRef}
-            className="mx-1.5 max-h-40 overflow-auto rounded border bg-background p-1.5 text-[11px] whitespace-pre-wrap"
+            className="mx-1.5 max-h-80 overflow-auto rounded border bg-background p-1.5 text-[11px]"
           >
-            {output ?? 'loading…'}
-          </pre>
+            <SyntaxHighlighter text={output ?? 'loading…'} />
+          </div>
           <div className="flex flex-wrap items-center gap-1 px-1.5 pt-1.5">
             {FILE_AGENT_KEYS.map((k) => (
               <Button

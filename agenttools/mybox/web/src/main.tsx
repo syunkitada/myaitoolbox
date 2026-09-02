@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { getBasePath } from './api/client'
 import App from './App'
 import './monaco-setup'
+import 'prismjs/themes/prism.css'
 import './globals.css'
 
 createRoot(document.getElementById('root')!).render(

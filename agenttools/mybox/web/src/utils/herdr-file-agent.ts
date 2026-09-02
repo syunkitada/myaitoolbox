@@ -1,10 +1,12 @@
 // herdr agent names must match [a-z][a-z0-9_-]{0,31} while filenames also
-// carry dots, uppercase, and spaces, so the basename is lowercased and every
+// carry dots, uppercase, and spaces, so the path is lowercased and every
 // other character is folded into a single hyphen. Mirrors the Go helper
 // herdrFileAgentName in internal/entrypoint/herdr.go.
 
-export function fileAgentName(filename: string): string {
-  let slug = filename.trim().toLowerCase()
+export function fileAgentName(path: string): string {
+  const parts = path.trim().split('/').filter(Boolean)
+  const suffix = parts.slice(-2).join('-')
+  let slug = (suffix || path).trim().toLowerCase()
   let out = ''
   let prevDash = false
   for (const ch of slug) {

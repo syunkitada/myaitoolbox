@@ -1,14 +1,26 @@
 import { useMemo } from 'react'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
+import { Prism, hasGrammar } from '../utils/prism-langs'
 import { renderWikiLinks, resolveMarkdownLink } from '../utils/markdown'
 import { filesUrl } from '../utils/routes'
 import { Mermaid } from './Mermaid'
 
-const md = new MarkdownIt({
+const md: MarkdownIt = new MarkdownIt({
   html: false,
   linkify: true,
   breaks: true,
+  highlight: (code: string, lang: string): string => {
+    if (lang && hasGrammar(lang)) {
+      try {
+        const highlighted = Prism.highlight(code, Prism.languages[lang], lang)
+        return `<pre class="language-${md.utils.escapeHtml(lang)}"><code>${highlighted}</code></pre>`
+      } catch {
+        // fall through to default
+      }
+    }
+    return ''
+  },
 })
 
 md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {

@@ -443,7 +443,7 @@ const herdrStartFileTabCreateJSON = `{"id":"cli:tab:create","result":{"type":"ta
 	`"root_pane":{"pane_id":"w7:p3","workspace_id":"w7"}}}`
 
 const herdrStartFileAgentJSON = `{"id":"cli:agent:list","result":{"agents":[` +
-	`{"agent":"opencode","name":"app-go","agent_status":"working","cwd":"/tmp/test",` +
+	`{"agent":"opencode","name":"src-app-go","agent_status":"working","cwd":"/tmp/test",` +
 	`"pane_id":"w7:p3","tab_id":"w7:t3","workspace_id":"w7"}]}}`
 
 func TestHerdrStartFileAgentReusesExistingAgent(t *testing.T) {
@@ -469,7 +469,7 @@ func TestHerdrStartFileAgentReusesExistingAgent(t *testing.T) {
 		} `json:"agent"`
 	}](t, rec)
 	assert.True(t, res.Ok)
-	assert.Equal(t, "app-go", res.Agent.Name)
+	assert.Equal(t, "src-app-go", res.Agent.Name)
 	assert.Equal(t, "working", res.Agent.Status)
 	assert.Equal(t, "w7:p3", res.Agent.PaneId)
 	require.Len(t, calls, 1)
@@ -505,7 +505,7 @@ func TestHerdrStartFileAgentCreatesTabAndStarts(t *testing.T) {
 		} `json:"agent"`
 	}](t, rec)
 	assert.True(t, res.Ok)
-	assert.Equal(t, "app-go", res.Agent.Name)
+	assert.Equal(t, "src-app-go", res.Agent.Name)
 	assert.Equal(t, "unknown", res.Agent.Status)
 
 	require.Len(t, calls, 6)
@@ -513,7 +513,7 @@ func TestHerdrStartFileAgentCreatesTabAndStarts(t *testing.T) {
 	assert.Equal(t, []string{"workspace", "list"}, calls[1])
 	assert.Equal(t, []string{"tab", "list", "--workspace", "w7"}, calls[2])
 	assert.Equal(t, []string{"tab", "create", "--workspace", "w7", "--label", "app.go", "--cwd", app.Project.Path}, calls[3])
-	assert.Equal(t, []string{"agent", "start", "app-go", "--kind", "opencode", "--pane", "w7:p3"}, calls[4])
+	assert.Equal(t, []string{"agent", "start", "src-app-go", "--kind", "opencode", "--pane", "w7:p3"}, calls[4])
 }
 
 func TestHerdrStartFileAgentHonorsKind(t *testing.T) {
@@ -574,6 +574,43 @@ func TestHerdrStartFileAgentReusesTab(t *testing.T) {
 			assert.NotEqual(t, []string{"tab", "create"}, c)
 		}
 	}
+}
+
+func TestHerdrStartFileAgentSkippedOccupiedTab(t *testing.T) {
+	// A tab matching the label whose pane is already running an agent is not an
+	// available shell, so starting must create a fresh tab instead of targeting
+	// the occupied pane.
+	var calls [][]string
+	var startArgs []string
+	s, app := newTestServer(t, false)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "agent" && args[1] == "list":
+			return []byte(`{"id":"cli:agent:list","result":{"agents":[]}}`), nil
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(`{"id":"cli:tab:list","result":{"tabs":[` +
+				`{"label":"app.go","number":1,"pane_count":1,"tab_id":"w7:t4","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "list":
+			// The matching tab's pane already runs an opencode agent.
+			return []byte(`{"id":"cli:pane:list","result":{"panes":[` +
+				`{"agent":"opencode","agent_status":"idle","cwd":"/tmp/test","focused":false,` +
+				`"pane_id":"w7:p4","tab_id":"w7:t4","workspace_id":"w7"}]}}`), nil
+		case args[0] == "tab" && args[1] == "create":
+			return []byte(herdrStartFileTabCreateJSON), nil
+		case args[0] == "agent" && args[1] == "start":
+			startArgs = args
+			return []byte("ok"), nil
+		}
+		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
+	}
+
+	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "app.go"})
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, []string{"tab", "create", "--workspace", "w7", "--label", "app.go", "--cwd", app.Project.Path}, calls[4])
+	assert.Equal(t, []string{"agent", "start", "app-go", "--kind", "opencode", "--pane", "w7:p3"}, startArgs)
 }
 
 func TestHerdrStartFileAgentBootstrapsWorkspace(t *testing.T) {
@@ -639,6 +676,10 @@ func TestHerdrFileAgentName(t *testing.T) {
 		{"App.Config.json", "app-config-json"},
 		{"foo_bar.txt", "foo_bar-txt"},
 		{"My File (final).txt", "my-file-final-txt"},
+		{"src/app.go", "src-app-go"},
+		{"docs/architecture.md", "docs-architecture-md"},
+		{"a/b/c.go", "b-c-go"},
+		{"deep/nested/dir/file.md", "dir-file-md"},
 		{"UPPERCASE", "uppercase"},
 		{"123.txt", "f123-txt"},
 		{"!!!", ""},

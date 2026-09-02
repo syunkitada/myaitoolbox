@@ -7,6 +7,7 @@ import { statusDotClass } from './herdr-status'
 import {
   Sidebar,
   SidebarHeader,
+  SidebarContent,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -50,7 +51,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
 
   return (
     <Sidebar collapsible="icon" className="border-r">
-      <SidebarHeader className="gap-1">
+      <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -67,7 +68,9 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+      </SidebarHeader>
 
+      <SidebarContent className="gap-1">
         <SidebarMenu className="sidebar-nav mt-1">
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Workspaces" isActive={pathname === '/projects'}>
@@ -186,7 +189,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
             <p className="px-2 text-xs text-sidebar-foreground/60">No agents running.</p>
           ) : null}
         </SidebarMenu>
-      </SidebarHeader>
+      </SidebarContent>
 
       <SidebarRail />
     </Sidebar>
