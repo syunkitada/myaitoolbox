@@ -12,6 +12,10 @@ const FILE_AGENT_KEYS: { label: string; key: string }[] = [
   { label: 'Ctrl+C', key: 'C-c' },
 ]
 
+const FILE_AGENT_KIND_OPTIONS = ['opencode', 'codex'] as const
+
+const KIND_STORAGE_KEY = 'mybox.herdr.file-agent-kind'
+
 export interface FileAgentWidgetProps {
   /** Project-relative path of the open file the agent works on. */
   path: string
@@ -31,6 +35,10 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [keySending, setKeySending] = useState<string | null>(null)
+  const [kind, setKind] = useState<string>(() => {
+    const saved = window.localStorage.getItem(KIND_STORAGE_KEY)
+    return saved && (FILE_AGENT_KIND_OPTIONS as readonly string[]).includes(saved) ? saved : 'opencode'
+  })
   const loadingRef = useRef(false)
   const preRef = useRef<HTMLPreElement>(null)
   const agentRef = useRef<HerdrAgent | undefined>(undefined)
@@ -84,6 +92,10 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
   }, [agent?.pane_id, open, overview?.available, loadOutput])
 
   useEffect(() => {
+    window.localStorage.setItem(KIND_STORAGE_KEY, kind)
+  }, [kind])
+
+  useEffect(() => {
     const el = preRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [output])
@@ -93,14 +105,14 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
     setStarting(true)
     setError(null)
     void api
-      .startHerdrFileAgent(path)
+      .startHerdrFileAgent(path, kind)
       .then(() => {
         setOpen(true)
         onRefresh()
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setStarting(false))
-  }, [path, starting, onRefresh])
+  }, [path, kind, starting, onRefresh])
 
   const sendPrompt = useCallback(async () => {
     const text = draft.trim()
@@ -173,7 +185,22 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
       <div className="file-agent-widget min-w-0 w-full mb-3 rounded-md border border-border bg-muted/40">
         {header}
         {open && (
-          <div className="px-1.5 pb-2">
+          <div className="px-1.5 pb-1.5">
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <label className="text-[10px] tracking-wider text-muted-foreground uppercase">Agent kind</label>
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+                aria-label="Agent kind"
+                className="cursor-pointer rounded border bg-background px-1.5 py-0.5 text-xs outline-none"
+              >
+                {FILE_AGENT_KIND_OPTIONS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Button
               variant="outline"
               size="xs"
@@ -196,7 +223,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
             </Button>
             {error && <p className="mt-1.5 text-[11px] text-red-600">{error}</p>}
             <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
-              herdr will open a tab named “{filename}” and run an opencode agent on it.
+              herdr will open a tab named “{filename}” and run a {kind} agent on it.
             </p>
           </div>
         )}

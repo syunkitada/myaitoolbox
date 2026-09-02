@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -904,6 +905,17 @@ func (s *Server) registerHerdrRoutes(e *echo.Echo, basePath string) {
 		e.Add(method, basePath+path, echo.WrapHandler(h))
 	}
 	wrap(http.MethodPost, "/api/herdr/agents/start-file", s.StartHerdrFileAgent)
+	wrap(http.MethodGet, "/api/herdr/agent-kinds", s.ListHerdrAgentKinds)
+}
+
+// ListHerdrAgentKinds returns the agent kinds herdr can start in a pane.
+func (s *Server) ListHerdrAgentKinds(w http.ResponseWriter, r *http.Request) {
+	kinds := make([]string, 0, len(herdrAgentKinds))
+	for k := range herdrAgentKinds {
+		kinds = append(kinds, k)
+	}
+	sort.Strings(kinds)
+	writeJSONResponse(w, http.StatusOK, map[string]any{"kinds": kinds})
 }
 
 // StartHerdrFileAgent starts a herdr agent dedicated to a file. It creates a

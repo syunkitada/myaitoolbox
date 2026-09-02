@@ -924,7 +924,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
   )
 
   return (
-    <div className="min-w-0 w-full">
+    <div className={cn('relative min-w-0 w-full', outlineOpen && 'md:pr-96')}>
       {mode === 'files' && entry?.kind === 'file' && herdrOverview !== undefined && (
         <FileAgentWidget
           path={path}
@@ -933,7 +933,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
         />
       )}
       <div className="knowledge-body flex gap-4 max-md:flex-col">
-        <div className={cn('knowledge-main min-w-0 flex-1 md:transition-[margin]', outlineOpen && 'md:mr-96')}>
+        <div className={cn('knowledge-main min-w-0 flex-1 md:transition-[margin]')}>
           <div className="page-header note-toolbar sticky top-0 z-20 mb-3 flex items-center justify-between gap-3 border-b bg-card/95 py-2 backdrop-blur">
             <div className="actions flex flex-wrap gap-2">
               <Button
