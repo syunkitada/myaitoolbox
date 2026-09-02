@@ -224,8 +224,6 @@ interface ExplorerProps {
   gitStatus?: Record<string, string>
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
-  herdrOverview?: HerdrOverview | null
-  refreshHerdr?: () => void
 }
 
 interface ExplorerSectionProps {
@@ -264,7 +262,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, herdrOverview, refreshHerdr }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -461,24 +459,11 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
 
   const fileMatches = filtered.filter((e) => e.kind === 'file')
 
-  const selectedIsFile =
-    !!selected &&
-    (entries.find((e) => e.path === selected)?.kind === 'file' ||
-      // A nested selection outside the listing (e.g. typed URL) still counts.
-      !entries.some((e) => e.path === selected || e.path === `${selected}/`))
-
   const selectCls =
     'h-9 rounded-md border border-input bg-card px-3 text-sm text-foreground transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
   return (
     <div className="knowledge-explorer flex h-full min-h-0 w-full flex-col overflow-y-auto bg-card p-2.5">
-      {mode === 'files' && selectedIsFile && herdrOverview !== undefined && (
-        <FileAgentWidget
-          path={selected}
-          overview={herdrOverview}
-          onRefresh={refreshHerdr ?? (() => undefined)}
-        />
-      )}
       <div className="page-header mb-1 flex flex-wrap items-center gap-3">
         {onClose && (
           <Button
@@ -597,9 +582,11 @@ interface PaneProps {
   onDeleted: () => void
   explorerOpen: boolean
   onToggleExplorer: () => void
+  herdrOverview?: HerdrOverview | null
+  refreshHerdr?: () => void
 }
 
-function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer }: PaneProps) {
+function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer, herdrOverview, refreshHerdr }: PaneProps) {
   const navigate = useNavigate()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
@@ -938,6 +925,13 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
 
   return (
     <div>
+      {mode === 'files' && entry?.kind === 'file' && herdrOverview !== undefined && (
+        <FileAgentWidget
+          path={path}
+          overview={herdrOverview}
+          onRefresh={refreshHerdr ?? (() => undefined)}
+        />
+      )}
       <div className="knowledge-body flex gap-4 max-md:flex-col">
         <div className={cn('knowledge-main min-w-0 flex-1 md:transition-[margin]', outlineOpen && 'md:mr-96')}>
           <div className="page-header note-toolbar sticky top-0 z-20 mb-3 flex items-center justify-between gap-3 border-b bg-card/95 py-2 backdrop-blur">
@@ -1412,8 +1406,6 @@ export function BrowserPage({
                     gitStatus={gitStatus}
                     onClose={onClose}
                     onMoveFile={mode === 'files' ? handleMoveFile : undefined}
-                    herdrOverview={herdrOverview}
-                    refreshHerdr={refreshHerdr}
                   />
                 </div>
               </div>
@@ -1436,8 +1428,6 @@ export function BrowserPage({
                   gitStatus={gitStatus}
                   onClose={onClose}
                   onMoveFile={mode === 'files' ? handleMoveFile : undefined}
-                  herdrOverview={herdrOverview}
-                  refreshHerdr={refreshHerdr}
                 />
               </SheetContent>
             </Sheet>
@@ -1466,6 +1456,8 @@ export function BrowserPage({
                   onDeleted={onBack}
                   explorerOpen={explorerOpen}
                   onToggleExplorer={() => setExplorerOpen((o) => !o)}
+                  herdrOverview={herdrOverview}
+                  refreshHerdr={refreshHerdr}
                 />
               ) : (
                 <Card className="knowledge-empty items-center justify-center gap-2 p-12 text-center">
