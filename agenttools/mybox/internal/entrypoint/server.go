@@ -657,6 +657,22 @@ func (s *Server) ArchiveTask(w http.ResponseWriter, r *http.Request, id string) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) DeleteTask(w http.ResponseWriter, r *http.Request, id string) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !s.ensureWritable(w) {
+		return
+	}
+	if err := app.Tasks.Delete(r.Context(), id); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) ListKnowledge(w http.ResponseWriter, r *http.Request, params api.ListKnowledgeParams) {
 	app, err := s.getApp(r)
 	if err != nil {

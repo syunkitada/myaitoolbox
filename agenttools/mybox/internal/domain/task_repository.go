@@ -10,4 +10,5 @@ type TaskRepository interface {
 	CreateAdhoc(ctx context.Context, id string, content string) error
 	Update(ctx context.Context, task Task) error
 	Archive(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
 }

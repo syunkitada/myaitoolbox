@@ -323,6 +323,9 @@ export const api = {
   archiveTask: (id: string) =>
     request<void>('POST', `/api/tasks/${encodeURIComponent(id)}/archive`),
 
+  deleteTask: (id: string) =>
+    request<void>('DELETE', `/api/tasks/${encodeURIComponent(id)}`),
+
   listKnowledge: (params: { path?: string; tag?: string } = {}) =>
     request<Knowledge[]>('GET', '/api/knowledge' + qs(params)),
 

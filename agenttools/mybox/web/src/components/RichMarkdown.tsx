@@ -1,13 +1,14 @@
-import { useMemo } from 'react'
+import { MouseEvent, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 import { Prism, hasGrammar } from '../utils/prism-langs'
 import { renderWikiLinks, resolveMarkdownLink } from '../utils/markdown'
-import { filesUrl } from '../utils/routes'
+import { filesUrl, getBasePath } from '../utils/routes'
 import { Mermaid } from './Mermaid'
 
 const md: MarkdownIt = new MarkdownIt({
-  html: false,
+  html: true,
   linkify: true,
   breaks: true,
   highlight: (code: string, lang: string): string => {
@@ -80,8 +81,11 @@ function markDeadAnchors(html: string): string {
   }
   let changed = false
   for (const a of Array.from(doc.querySelectorAll('a[href^="#"]'))) {
-    const id = (a.getAttribute('href') ?? '').match(anchorRe)?.[1]
-    if (!id || targets.has(id)) continue
+    const raw = (a.getAttribute('href') ?? '').match(anchorRe)?.[1]
+    if (!raw) continue
+    let id: string
+    try { id = decodeURIComponent(raw) } catch { id = raw }
+    if (targets.has(id)) continue
     a.classList.add('dead-anchor')
     if (!a.querySelector('.dead-link-mark')) {
       const mark = doc.createElement('span')
@@ -152,9 +156,45 @@ function splitSegments(text: string): Segment[] {
 
 export function RichMarkdown({ text, pathOf, relativeTo, linkUrl, imageUrl, preserveExtension }: RichMarkdownProps) {
   const segments = useMemo(() => splitSegments(text), [text])
+  const navigate = useNavigate()
+
+  const handleClick = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[href]')
+      if (!anchor) return
+      const href = anchor.getAttribute('href') ?? ''
+
+      if (href.startsWith('#')) {
+        const raw = href.slice(1)
+        if (!raw) return
+        let id: string
+        try { id = decodeURIComponent(raw) } catch { id = raw }
+        const target = document.getElementById(id)
+        if (!target) return
+        e.preventDefault()
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        return
+      }
+
+      let url: URL
+      try {
+        url = new URL(href, window.location.origin)
+      } catch {
+        return
+      }
+      if (url.origin !== window.location.origin) return
+      const base = getBasePath()
+      const pathname = base && url.pathname.startsWith(base) ? url.pathname.slice(base.length) : url.pathname
+      if (!pathname.startsWith('/projects/')) return
+
+      e.preventDefault()
+      navigate(pathname + url.search + url.hash)
+    },
+    [navigate],
+  )
 
   return (
-    <div className="markdown-body">
+    <div className="markdown-body" onClick={handleClick}>
       {segments.map((seg, i) => {
         if (seg.kind === 'mermaid') {
           return <Mermaid key={i} code={seg.content} />

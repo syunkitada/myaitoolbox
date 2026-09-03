@@ -192,6 +192,10 @@ func (u *TaskUseCase) Archive(ctx context.Context, id string) error {
 	return u.Tasks.Archive(ctx, id)
 }
 
+func (u *TaskUseCase) Delete(ctx context.Context, id string) error {
+	return u.Tasks.Delete(ctx, id)
+}
+
 func parseStatus(s string) (domain.TaskStatus, error) {
 	if s == "" {
 		return domain.TaskStatusTodo, nil

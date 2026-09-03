@@ -46,8 +46,10 @@ function computeViewStartLine(viewText: string): number {
 function handleAnchorClick(e: ReactMouseEvent<HTMLDivElement>) {
   const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="#"]')
   if (!anchor) return
-  const id = anchor.getAttribute('href')!.slice(1)
-  if (!id) return
+  const raw = anchor.getAttribute('href')!.slice(1)
+  if (!raw) return
+  let id: string
+  try { id = decodeURIComponent(raw) } catch { id = raw }
   const target = document.getElementById(id)
   if (!target) return
   e.preventDefault()

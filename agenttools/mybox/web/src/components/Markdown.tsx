@@ -4,7 +4,7 @@ import MarkdownIt from 'markdown-it'
 import { renderWikiLinks } from '../utils/markdown'
 
 const md = new MarkdownIt({
-  html: false,
+  html: true,
   linkify: true,
   breaks: true,
 })

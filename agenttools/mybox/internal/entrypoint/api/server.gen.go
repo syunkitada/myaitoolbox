@@ -144,6 +144,9 @@ type ServerInterface interface {
 	// ArchiveTask Archive a task
 	// (POST /api/tasks/{id}/archive)
 	ArchiveTask(w http.ResponseWriter, r *http.Request, id string)
+	// DeleteTask Delete a task
+	// (DELETE /api/tasks/{id})
+	DeleteTask(w http.ResponseWriter, r *http.Request, id string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1003,6 +1006,32 @@ func (siw *ServerInterfaceWrapper) ArchiveTask(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteTask operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1145,6 +1174,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/{id}", wrapper.GetTask)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tasks/{id}", wrapper.UpdateTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/{id}/archive", wrapper.ArchiveTask)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tasks/{id}", wrapper.DeleteTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/knowledge", wrapper.ListKnowledge)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/knowledge", wrapper.CreateKnowledge)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/knowledge/content", wrapper.GetKnowledgeContent)

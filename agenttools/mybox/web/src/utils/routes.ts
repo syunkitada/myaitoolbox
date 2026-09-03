@@ -83,8 +83,45 @@ export function taskIdOf(nodeId: string): string {
   return parts[parts.length - 2] ?? nodeId
 }
 
+const TAB_STORAGE_KEY = 'mybox:project-tabs'
+
+function getProjectTabs(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(TAB_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveProjectTab(project: string, tabPath: string) {
+  const tabs = getProjectTabs()
+  tabs[project] = tabPath
+  localStorage.setItem(TAB_STORAGE_KEY, JSON.stringify(tabs))
+}
+
+// rememberCurrentTab saves the current tab path for the current project.
+export function rememberCurrentTab() {
+  const currentProject = getProject()
+  if (!currentProject) return
+  const base = getBasePath()
+  const currentPath = base ? window.location.pathname.slice(base.length) : window.location.pathname
+  const projectPrefix = `/projects/${encodeURIComponent(currentProject)}`
+  if (currentPath.startsWith(projectPrefix)) {
+    const tabPath = currentPath.slice(projectPrefix.length) || '/dashboard'
+    saveProjectTab(currentProject, tabPath)
+  }
+}
+
 export function setProject(project: string, navigate: (to: string) => void) {
-  navigate('/projects/' + encodeURIComponent(project) + '/dashboard')
+  const currentProject = getProject()
+  // Save the current project's tab before switching
+  if (currentProject) rememberCurrentTab()
+
+  // Restore the saved tab for the target project, or fall back to /dashboard
+  const tabs = getProjectTabs()
+  const tabPath = tabs[project] || '/dashboard'
+  navigate(`/projects/${encodeURIComponent(project)}${tabPath}`)
 }
 
 export function clearProject(navigate: (to: string) => void) {

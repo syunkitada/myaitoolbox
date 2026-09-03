@@ -318,10 +318,51 @@ func (r *TaskRepository) Archive(ctx context.Context, id string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	if isGitRepo(r.root) {
-		return runGit(ctx, r.root, "mv", src, dst)
+	if err := os.Rename(src, dst); err != nil {
+		return err
 	}
-	return os.Rename(src, dst)
+	// git mv は非追跡ファイル（adhocタスクや未コミットの変更）を含むディレクトリで
+	// "source directory is empty" 等で失敗するため、os.Rename + git add -A（全体）で
+	// 追跡・非追跡どちらでも移動を正しくステージする。
+	if isGitRepo(r.root) {
+		return runGit(ctx, r.root, "add", "-A")
+	}
+	return nil
+}
+
+func (r *TaskRepository) Delete(ctx context.Context, id string) error {
+	if err := validateTaskID(id); err != nil {
+		return err
+	}
+	regular := filepath.Join(r.root, "tasks", id)
+	adhoc := filepath.Join(r.root, "tasks", "adhoc", id+".md")
+	archivedRegular := filepath.Join(r.root, "archives", "tasks", id)
+	archivedAdhoc := filepath.Join(r.root, "archives", "tasks", "adhoc", id+".md")
+
+	targets := []string{regular, adhoc, archivedRegular, archivedAdhoc}
+	var target string
+	for _, t := range targets {
+		if _, err := os.Stat(t); err == nil {
+			target = t
+			break
+		}
+	}
+	if target == "" {
+		return fmt.Errorf("%w: %s", domain.ErrNotFound, id)
+	}
+
+	if err := os.RemoveAll(target); err != nil {
+		return err
+	}
+	// 追跡されていた場合は git add -A（パス無し）で削除をステージする。
+	// パス指定の git add は、非追跡ファイル（adhocタスクなど）に対して
+	// "pathspec did not match any files" で失敗するため、全体指定にする。
+	if isGitRepo(r.root) {
+		if err := runGit(ctx, r.root, "add", "-A"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateTaskID(id string) error {
@@ -341,5 +382,9 @@ func isGitRepo(dir string) bool {
 func runGit(ctx context.Context, dir string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }

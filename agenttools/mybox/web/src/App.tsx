@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Routes, Route, useLocation, useNavigate, Navigate, NavLink } from 'react-router-dom'
 import { api, Meta, ProjectGitStatus } from './api/client'
-import { getProject, projectUrl } from './utils/routes'
+import { getProject, projectUrl, rememberCurrentTab } from './utils/routes'
 import { AppSidebar } from './components/Sidebar'
 import { Dashboard } from './pages/Dashboard'
 import { GraphPage } from './pages/GraphPage'
@@ -47,6 +47,11 @@ export default function App() {
   useEffect(() => {
     void refreshMeta()
   }, [refreshMeta, project])
+
+  // Save the current tab path whenever the user navigates within a project
+  useEffect(() => {
+    if (project) rememberCurrentTab()
+  }, [project, pathname])
 
   const projectTabs = [
     { to: projectUrl('/dashboard'), label: 'Files', icon: Folder, active: pathname.includes('/dashboard') },

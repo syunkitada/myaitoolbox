@@ -9,10 +9,15 @@ describe('Markdown', () => {
     expect(screen.getByText('bold', { selector: 'strong' })).toBeInTheDocument()
   })
 
-  it('strips raw html', () => {
+  it('strips dangerous raw html', () => {
     render(<Markdown text={'<script>alert(1)</script>safe'} />)
     expect(document.querySelector('script')).not.toBeInTheDocument()
-    expect(document.querySelector('p')?.textContent).toContain('safe')
+    expect(document.body.textContent).toContain('safe')
+  })
+
+  it('renders safe embedded html', () => {
+    render(<Markdown text={'before <em class="foo">embedded</em> after'} />)
+    expect(document.querySelector('em.foo')).toHaveTextContent('embedded')
   })
 
   it('renders resolved wiki links as anchors', () => {

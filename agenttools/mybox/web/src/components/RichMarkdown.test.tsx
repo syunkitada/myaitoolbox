@@ -1,11 +1,16 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { RichMarkdown, extractOutline } from './RichMarkdown'
+
+function renderMd(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>)
+}
 
 describe('RichMarkdown', () => {
   it('assigns slug ids to headings matching extractOutline', () => {
     const text = '# Hello World\n\n## Overview\n\n## See [[notes/alpha|Alpha]]\n'
-    render(<RichMarkdown text={text} />)
+    renderMd(<RichMarkdown text={text} />)
     const outline = extractOutline(text)
     expect(outline.length).toBeGreaterThan(0)
     for (const h of outline) {
@@ -16,7 +21,7 @@ describe('RichMarkdown', () => {
   })
 
   it('resolves relative file links with a custom linkUrl', () => {
-    const { container } = render(
+    const { container } = renderMd(
       <RichMarkdown
         text="see [golang_project_structure](./golang_project_structure.md)"
         relativeTo="golang/golang_architecture"
@@ -30,7 +35,7 @@ describe('RichMarkdown', () => {
   })
 
   it('keeps the .md extension on file links in files mode', () => {
-    const { container } = render(
+    const { container } = renderMd(
       <RichMarkdown
         text="see [golang_project_structure](./golang_project_structure.md)"
         relativeTo="golang/golang_architecture"
@@ -45,7 +50,7 @@ describe('RichMarkdown', () => {
   })
 
   it('resolves directory links in files mode', () => {
-    const { container } = render(
+    const { container } = renderMd(
       <RichMarkdown
         text="see [config](./xdgconfig/) and [image](./logo.png)"
         relativeTo="golang/golang_architecture"
@@ -59,7 +64,7 @@ describe('RichMarkdown', () => {
   })
 
   it('resolves relative image embeds to the raw file URL', () => {
-    const { container } = render(
+    const { container } = renderMd(
       <RichMarkdown
         text="![kddi](assets/9433_kddi.png)"
         relativeTo="golang/golang_architecture"
@@ -73,7 +78,7 @@ describe('RichMarkdown', () => {
   })
 
   it('keeps absolute and external image URLs unchanged', () => {
-    const { container } = render(
+    const { container } = renderMd(
       <RichMarkdown
         text={'![ext](https://example.com/x.png)\n\n![root](/assets/y.png)'}
         relativeTo="notes/foo"
@@ -85,7 +90,7 @@ describe('RichMarkdown', () => {
   })
 
   it('does not resolve directory links without a linkUrl', () => {
-    const { container } = render(
+    const { container } = renderMd(
       <RichMarkdown text="see [config](./xdgconfig/)" relativeTo="golang/golang_architecture" />,
     )
     const link = container.querySelector('a')
@@ -108,8 +113,18 @@ describe('RichMarkdown', () => {
     ])
   })
 
+  it('does not mark Japanese anchor links as dead', () => {
+    const { container } = renderMd(
+      <RichMarkdown text={'[memo](#メモ)\n\n# メモ\n\nあああ'} />,
+    )
+    const link = container.querySelector('a')
+    expect(link).not.toBeNull()
+    expect(link?.classList.contains('dead-anchor')).toBe(false)
+    expect(container.querySelector('.dead-link-mark')).toBeNull()
+  })
+
   it('highlights fenced code blocks with prism tokens', () => {
-    const { container } = render(<RichMarkdown text={'```javascript\nconst x = 1\n```'} />)
+    const { container } = renderMd(<RichMarkdown text={'```javascript\nconst x = 1\n```'} />)
     expect(container.querySelectorAll('.token').length).toBeGreaterThan(0)
     const code = container.querySelector('pre.language-javascript code')
     expect(code?.textContent).toContain('const x = 1')

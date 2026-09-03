@@ -373,6 +373,19 @@ paths:
       responses:
         "204":
           description: archived
+  /api/tasks/{id}:
+    delete:
+      operationId: deleteTask
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: deleted
   /api/knowledge:
     get:
       operationId: listKnowledge

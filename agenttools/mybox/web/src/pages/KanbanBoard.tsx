@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   DndContext,
@@ -12,7 +12,7 @@ import {
 import { Task, TaskStatus, api } from '../api/client'
 import { encodePath, getProject, projectUrl } from '../utils/routes'
 import { Button } from '../components/ui/button'
-import { ListPlus, Zap } from 'lucide-react'
+import { Archive, ListPlus, MoreVertical, ExternalLink, Trash2, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AdhocBadge, DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
 
@@ -34,16 +34,20 @@ function dueClass(due: string): string {
 interface TaskCardProps {
   task: Task
   onOpen: (task: Task) => void
+  onArchive?: (task: Task) => void
+  onDelete?: (task: Task) => void
   showProject?: boolean
   readonly?: boolean
 }
 
-function TaskCard({ task, onOpen, showProject, readonly }: TaskCardProps) {
+function TaskCard({ task, onOpen, onArchive, onDelete, showProject, readonly }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { task },
     disabled: readonly,
   })
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const isPending = Boolean(task.pending_until || task.pending_reason)
   const isAdhoc = task.type === 'adhoc'
   const style = transform
@@ -51,22 +55,100 @@ function TaskCard({ task, onOpen, showProject, readonly }: TaskCardProps) {
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
       }
     : undefined
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuOpen])
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
       className={cn(
-        'board-card cursor-grab rounded-md border bg-card p-2.5 shadow-sm',
+        'board-card rounded-md border bg-card p-2.5 shadow-sm',
         isDragging && 'dragging opacity-60 shadow-lg',
         isPending && 'pending border-dashed opacity-55',
         isAdhoc && 'adhoc-card border-purple-300 bg-purple-50',
       )}
     >
-      <Button variant="link" size="xs" className="h-auto p-0 text-left" onClick={() => onOpen(task)}>
-        {task.title}
-      </Button>
+      <div className="flex items-start justify-between gap-1">
+        <div
+          {...listeners}
+          {...attributes}
+          className="flex-1 cursor-grab"
+        >
+          <Button variant="link" size="xs" className="h-auto p-0 text-left" onClick={() => onOpen(task)}>
+            {task.title}
+          </Button>
+        </div>
+        {!readonly && (
+          <div className="relative shrink-0">
+            <Button
+              variant="ghost"
+              size="xs"
+              className="h-5 w-5 p-0 opacity-50 hover:opacity-100"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenuOpen((v) => !v)
+              }}
+            >
+              <MoreVertical className="h-3.5 w-3.5" />
+            </Button>
+            {menuOpen && (
+              <div
+                ref={menuRef}
+                className="absolute right-0 z-50 mt-1 min-w-[8rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+              >
+                <button
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMenuOpen(false)
+                    onOpen(task)
+                  }}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open
+                </button>
+                {!isAdhoc && onArchive && (
+                  <button
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMenuOpen(false)
+                      onArchive(task)
+                    }}
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </button>
+                )}
+                {isAdhoc && onDelete && (
+                  <button
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMenuOpen(false)
+                      onDelete(task)
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div className="board-card-meta mt-1.5 flex flex-wrap gap-1">
         {showProject && task.project && <ProjectBadge>{task.project}</ProjectBadge>}
         {isAdhoc && <AdhocBadge />}
@@ -90,11 +172,13 @@ interface ColumnProps {
   status: TaskStatus
   tasks: Task[]
   onOpen: (task: Task) => void
+  onArchive?: (task: Task) => void
+  onDelete?: (task: Task) => void
   showProject?: boolean
   readonly?: boolean
 }
 
-function Column({ status, tasks, onOpen, showProject, readonly }: ColumnProps) {
+function Column({ status, tasks, onOpen, onArchive, onDelete, showProject, readonly }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status })
   return (
     <div
@@ -113,7 +197,7 @@ function Column({ status, tasks, onOpen, showProject, readonly }: ColumnProps) {
       </h2>
       <div className="board-column-body flex flex-col gap-2">
         {tasks.map((t) => (
-          <TaskCard key={`${t.project ?? ''}/${t.id}`} task={t} onOpen={onOpen} showProject={showProject} readonly={readonly} />
+          <TaskCard key={`${t.project ?? ''}/${t.id}`} task={t} onOpen={onOpen} onArchive={onArchive} onDelete={onDelete} showProject={showProject} readonly={readonly} />
         ))}
         {tasks.length === 0 && (
           <div className="board-empty rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">
@@ -191,6 +275,28 @@ export function KanbanBoard() {
     }
   }
 
+  const handleArchive = useCallback(
+    (task: Task) => {
+      if (!window.confirm(`「${task.title}」をアーカイブしますか？`)) return
+      void api
+        .archiveTask(task.id)
+        .then(() => load())
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    },
+    [load],
+  )
+
+  const handleDelete = useCallback(
+    (task: Task) => {
+      if (!window.confirm(`「${task.title}」を削除しますか？この操作は元に戻せません。`)) return
+      void api
+        .deleteTask(task.id)
+        .then(() => load())
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    },
+    [load],
+  )
+
   const byStatus = (s: TaskStatus) =>
     tasks.filter((t) => t.status === s && !t.archived)
 
@@ -231,6 +337,8 @@ export function KanbanBoard() {
               status={s}
               tasks={byStatus(s)}
               onOpen={handleOpen}
+              onArchive={handleArchive}
+              onDelete={handleDelete}
               showProject={isGlobal}
               readonly={isGlobal}
             />
