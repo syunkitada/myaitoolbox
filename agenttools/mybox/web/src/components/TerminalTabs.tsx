@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { ClipboardAddon } from '@xterm/addon-clipboard'
@@ -6,7 +6,8 @@ import '@xterm/xterm/css/xterm.css'
 import { terminalWsUrl } from '../utils/routes'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
-import { Maximize2, Minimize2, PanelTopClose } from 'lucide-react'
+import { Copy, ClipboardPaste, Maximize2, Minimize2, PanelTopClose } from 'lucide-react'
+import { useIsMobile } from '../hooks/use-mobile'
 
 export interface TerminalTabData {
   id: number
@@ -36,14 +37,21 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   error: 'Connection failed',
 }
 
-function TerminalView({ active, command, sessionId }: { active: boolean; command?: string; sessionId?: string }) {
+export interface TerminalViewHandle {
+  paste: () => void
+  copySelection: () => void
+}
+
+const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?: string; sessionId?: string }>(function TerminalView({ active, command, sessionId }, ref) {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const hiddenInputRef = useRef<HTMLTextAreaElement>(null)
+  const pasteInputRef = useRef<HTMLTextAreaElement>(null)
   const [status, setStatus] = useState<ConnStatus>('connecting')
   const [notice, setNotice] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
+  const [pasteMode, setPasteMode] = useState(false)
 
   const showNotice = (text: string, kind: 'ok' | 'err' = 'ok') => {
     setNotice({ text, kind })
@@ -52,66 +60,71 @@ function TerminalView({ active, command, sessionId }: { active: boolean; command
 
   const copyText = async (text: string): Promise<boolean> => {
     if (!text) return false
+    const ta = hiddenInputRef.current
+    if (ta) {
+      ta.value = text
+      ta.readOnly = false
+      ta.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;'
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      ta.setSelectionRange(0, text.length)
+      let ok = false
+      try {
+        ok = document.execCommand('copy')
+      } catch { /* ignore */ }
+      document.body.removeChild(ta)
+      ta.style.cssText = 'position:absolute;height:1px;width:1px;-left-[9999px];top:0;opacity:0;'
+      if (ok) return true
+    }
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(text)
         return true
-      } catch {
-        /* fall through to textarea fallback */
-      }
-    }
-    const ta = hiddenInputRef.current
-    if (ta) {
-      ta.value = text
-      ta.focus()
-      ta.select()
-      ta.setSelectionRange(0, text.length)
-      try {
-        return document.execCommand('copy')
-      } catch {
-        return false
-      }
+      } catch { /* ignore */ }
     }
     return false
   }
 
-  const readClipboard = (): Promise<string> =>
-    new Promise((resolve) => {
-      if (navigator.clipboard?.readText) {
-        navigator.clipboard.readText().then(resolve).catch(() => readViaPasteEvent(resolve))
-        return
-      }
-      readViaPasteEvent(resolve)
-    })
+  const handlePasteSubmit = () => {
+    const ta = pasteInputRef.current
+    const term = termRef.current
+    if (!term) return
+    const text = ta?.value ?? ''
+    setPasteMode(false)
+    term.focus()
+    if (text) {
+      term.paste(text)
+      showNotice('Pasted')
+    } else {
+      showNotice('No text to paste', 'err')
+    }
+  }
 
-  // Triggers a real browser paste event on the hidden textarea. In a genuine
-  // paste event the browser fills clipboardData with the OS clipboard content
-  // without requiring the clipboard-read permission.
-  const readViaPasteEvent = (resolve: (text: string) => void) => {
-    const ta = hiddenInputRef.current
-    if (!ta) return
-    let settled = false
-    const onPaste = (e: ClipboardEvent) => {
-      if (settled) return
-      settled = true
-      ta.removeEventListener('paste', onPaste)
-      resolve(e.clipboardData?.getData('text') ?? '')
+  const pasteClipboard = async () => {
+    const term = termRef.current
+    if (!term) return
+
+    if (navigator.clipboard?.readText) {
+      try {
+        const text = await navigator.clipboard.readText()
+        if (text) {
+          term.focus()
+          term.paste(text)
+          showNotice('Pasted')
+          return
+        }
+      } catch { /* fall through to visible textarea */ }
     }
-    ta.addEventListener('paste', onPaste)
-    ta.value = ''
-    ta.focus()
-    ta.select()
-    try {
-      document.execCommand('paste')
-    } catch {
-      /* the paste event may not have fired */
-    }
-    window.setTimeout(() => {
-      if (settled) return
-      settled = true
-      ta.removeEventListener('paste', onPaste)
-      resolve(ta.value)
-    }, 60)
+
+    setPasteMode(true)
+    setTimeout(() => {
+      const ta = pasteInputRef.current
+      if (ta) {
+        ta.value = ''
+        ta.focus()
+      }
+    }, 50)
   }
 
   const copySelection = async (sel?: string) => {
@@ -120,21 +133,10 @@ function TerminalView({ active, command, sessionId }: { active: boolean; command
     showNotice(ok ? 'Copied' : 'Nothing to copy', ok ? 'ok' : 'err')
   }
 
-  const pasteClipboard = async () => {
-    const term = termRef.current
-    if (!term) return
-    const text = await readClipboard()
-    term.focus()
-    if (text) {
-      term.paste(text)
-      showNotice('Pasted')
-    } else {
-      showNotice(
-        'Cannot read clipboard. Use long-press / right-click to paste',
-        'err',
-      )
-    }
-  }
+  useImperativeHandle(ref, () => ({
+    paste: pasteClipboard,
+    copySelection,
+  }))
 
   useEffect(() => {
     const host = hostRef.current
@@ -280,6 +282,36 @@ function TerminalView({ active, command, sessionId }: { active: boolean; command
         ref={hostRef}
         className="terminal-xterm h-full w-full"
       />
+      {pasteMode && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 p-4">
+          <p className="mb-3 text-sm text-white">
+            Long-press below and tap Paste
+          </p>
+          <textarea
+            ref={pasteInputRef}
+            className="mb-3 w-full max-w-sm rounded border border-border bg-white p-3 text-black focus:outline-none"
+            rows={3}
+            placeholder="Tap here, then long-press → Paste"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              className="bg-green-600 text-white hover:bg-green-700"
+              onClick={handlePasteSubmit}
+            >
+              Send to terminal
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPasteMode(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
       {status !== 'connected' && (
         <div className="pointer-events-none absolute top-2 right-3 rounded bg-black/60 px-2 py-0.5 text-xs text-red-300">
           {STATUS_LABEL[status]}
@@ -297,9 +329,14 @@ function TerminalView({ active, command, sessionId }: { active: boolean; command
       )}
     </div>
   )
-}
+})
 
 export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onClose, onActivate, onToggleMaximize, onToggleVisible }: TerminalTabsProps) {
+  const termRefs = useRef<Map<number, TerminalViewHandle>>(new Map())
+  const isMobile = useIsMobile()
+
+  const activeTermRef = termRefs.current.get(activeId)
+
   return (
     <div
       className={cn(
@@ -339,6 +376,30 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
           )
         })}
         <div className="flex items-center gap-1.5">
+          {isMobile && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
+                onClick={() => activeTermRef?.paste()}
+                aria-label="Paste"
+                title="Paste"
+              >
+                <ClipboardPaste className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
+                onClick={() => activeTermRef?.copySelection()}
+                aria-label="Copy"
+                title="Copy"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </>
+          )}
           <Button
             variant="ghost"
             size="icon-xs"
@@ -384,7 +445,18 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
               t.id === activeId ? 'block min-h-0 flex-1' : 'hidden',
             )}
           >
-            <TerminalView active={t.id === activeId} command={t.command} sessionId={t.sessionId} />
+            <TerminalView
+              ref={(handle) => {
+                if (handle) {
+                  termRefs.current.set(t.id, handle)
+                } else {
+                  termRefs.current.delete(t.id)
+                }
+              }}
+              active={t.id === activeId}
+              command={t.command}
+              sessionId={t.sessionId}
+            />
           </div>
         ))}
       </div>
