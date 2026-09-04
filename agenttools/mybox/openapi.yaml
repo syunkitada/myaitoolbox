@@ -71,6 +71,19 @@ paths:
           description: removed
         "404":
           description: project not found
+  /api/projects/reorder:
+    put:
+      operationId: reorderProjects
+      summary: Reorder projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderProjectsRequest"
+      responses:
+        "204":
+          description: reordered
   /api/projects/git-status:
     get:
       operationId: getProjectGitStatus
@@ -360,6 +373,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+    delete:
+      operationId: deleteTask
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: deleted
   /api/tasks/{id}/archive:
     post:
       operationId: archiveTask
@@ -373,19 +398,6 @@ paths:
       responses:
         "204":
           description: archived
-  /api/tasks/{id}:
-    delete:
-      operationId: deleteTask
-      summary: Delete a task
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: deleted
   /api/knowledge:
     get:
       operationId: listKnowledge
@@ -749,6 +761,14 @@ components:
       properties:
         path:
           type: string
+    ReorderProjectsRequest:
+      type: object
+      required: [names]
+      properties:
+        names:
+          type: array
+          items:
+            type: string
     Meta:
       type: object
       required: [project, projects, default_project, tags, favorites, recent_files]

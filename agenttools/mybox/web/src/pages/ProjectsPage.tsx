@@ -1,9 +1,86 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { api, Project, setProject } from '../api/client'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { GripVertical } from 'lucide-react'
+
+interface SortableRowProps {
+  project: Project
+  busy: boolean
+  onOpen: (name: string) => void
+  onDelete: (name: string) => void
+}
+
+function SortableRow({ project, busy, onOpen, onDelete }: SortableRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: project.name,
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <tr ref={setNodeRef} style={style}>
+      <td className="border-b p-2 w-8">
+        <button
+          type="button"
+          className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-4" />
+        </button>
+      </td>
+      <td className="border-b p-2">
+        <Button
+          variant="link"
+          size="xs"
+          className="project-name h-auto p-0 font-semibold"
+          onClick={() => onOpen(project.name)}
+          title={`Open ${project.name}`}
+        >
+          {project.name}
+        </Button>
+      </td>
+      <td className="project-path border-b p-2 text-[13px] break-all text-muted-foreground">{project.path}</td>
+      <td className="projects-actions border-b p-2">
+        <div className="flex justify-end gap-1.5">
+          <Button size="sm" onClick={() => onOpen(project.name)}>
+            Open
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={busy}
+            onClick={() => void onDelete(project.name)}
+          >
+            Delete
+          </Button>
+        </div>
+      </td>
+    </tr>
+  )
+}
 
 interface ProjectsPageProps {
   onChanged?: () => void
@@ -85,6 +162,26 @@ export function ProjectsPage({ onChanged }: ProjectsPageProps) {
     }
   }
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = projects.findIndex((p) => p.name === active.id)
+    const newIndex = projects.findIndex((p) => p.name === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const newOrder = arrayMove(projects, oldIndex, newIndex)
+    setProjects(newOrder)
+    void api.reorderProjects(newOrder.map((p) => p.name)).catch((e) => {
+      setError(e instanceof Error ? e.message : String(e))
+      void refresh()
+    })
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+  )
+
   return (
     <div className="projects-page mx-auto max-w-[900px] p-6">
       <h1 className="text-2xl font-bold">Workspaces</h1>
@@ -154,52 +251,35 @@ export function ProjectsPage({ onChanged }: ProjectsPageProps) {
         ) : projects.length === 0 ? (
           <p className="muted text-sm text-muted-foreground">No workspaces yet. Register a directory above to get started.</p>
         ) : (
-          <table className="projects-table w-full border-collapse">
-            <thead>
-              <tr>
-                <th className="border-b p-2 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                  Project
-                </th>
-                <th className="border-b p-2 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                  Path
-                </th>
-                <th className="border-b p-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((p) => (
-                <tr key={p.name}>
-                  <td className="border-b p-2">
-                    <Button
-                      variant="link"
-                      size="xs"
-                      className="project-name h-auto p-0 font-semibold"
-                      onClick={() => openProject(p.name)}
-                      title={`Open ${p.name}`}
-                    >
-                      {p.name}
-                    </Button>
-                  </td>
-                  <td className="project-path border-b p-2 text-[13px] break-all text-muted-foreground">{p.path}</td>
-                  <td className="projects-actions border-b p-2">
-                    <div className="flex justify-end gap-1.5">
-                      <Button size="sm" onClick={() => openProject(p.name)}>
-                        Open
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void handleDelete(p.name)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <table className="projects-table w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className="border-b p-2 w-8" />
+                  <th className="border-b p-2 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                    Project
+                  </th>
+                  <th className="border-b p-2 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                    Path
+                  </th>
+                  <th className="border-b p-2" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <SortableContext items={projects.map((p) => p.name)} strategy={verticalListSortingStrategy}>
+                <tbody>
+                  {projects.map((p) => (
+                    <SortableRow
+                      key={p.name}
+                      project={p}
+                      busy={busy}
+                      onOpen={openProject}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </tbody>
+              </SortableContext>
+            </table>
+          </DndContext>
         )}
       </section>
     </div>

@@ -432,6 +432,11 @@ type RenameKnowledgeRequest struct {
 	OldPath string `json:"old_path"`
 }
 
+// ReorderProjectsRequest defines model for ReorderProjectsRequest.
+type ReorderProjectsRequest struct {
+	Names []string `json:"names"`
+}
+
 // SearchResult defines model for SearchResult.
 type SearchResult struct {
 	Id      *string          `json:"id,omitempty"`
@@ -606,6 +611,9 @@ type RecordRecentJSONRequestBody = RecordRecentRequest
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest
+
+// ReorderProjectsJSONRequestBody defines body for ReorderProjects for application/json ContentType.
+type ReorderProjectsJSONRequestBody = ReorderProjectsRequest
 
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
 type CreateTaskJSONRequestBody = CreateTaskRequest

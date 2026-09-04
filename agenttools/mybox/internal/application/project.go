@@ -124,6 +124,36 @@ func (u *ProjectUseCase) PathCandidates(ctx context.Context, prefix string) ([]s
 	return out, nil
 }
 
+// Reorder reorders the projects to match the given names slice. Projects not
+// listed in names are appended at the end in their original order.
+func (u *ProjectUseCase) Reorder(ctx context.Context, names []string) error {
+	cfg, err := u.Config.Load(ctx)
+	if err != nil {
+		return err
+	}
+	nameSet := make(map[string]bool, len(names))
+	for _, n := range names {
+		nameSet[n] = true
+	}
+	ordered := make([]domain.Project, 0, len(cfg.Projects))
+ByName:
+	for _, n := range names {
+		for _, p := range cfg.Projects {
+			if p.Name == n {
+				ordered = append(ordered, p)
+				continue ByName
+			}
+		}
+	}
+	for _, p := range cfg.Projects {
+		if !nameSet[p.Name] {
+			ordered = append(ordered, p)
+		}
+	}
+	cfg.Projects = ordered
+	return u.Config.Save(ctx, cfg)
+}
+
 func (u *ProjectUseCase) Remove(ctx context.Context, name string) error {
 	cfg, err := u.Config.Load(ctx)
 	if err != nil {

@@ -123,6 +123,9 @@ type ServerInterface interface {
 	// GetProjectPaths List existing directory paths for project path autocompletion
 	// (GET /api/projects/paths)
 	GetProjectPaths(w http.ResponseWriter, r *http.Request, params GetProjectPathsParams)
+	// ReorderProjects Reorder projects
+	// (PUT /api/projects/reorder)
+	ReorderProjects(w http.ResponseWriter, r *http.Request)
 	// DeleteProject Remove a project
 	// (DELETE /api/projects/{name})
 	DeleteProject(w http.ResponseWriter, r *http.Request, name string)
@@ -135,6 +138,9 @@ type ServerInterface interface {
 	// CreateTask Create a task
 	// (POST /api/tasks)
 	CreateTask(w http.ResponseWriter, r *http.Request)
+	// DeleteTask Delete a task
+	// (DELETE /api/tasks/{id})
+	DeleteTask(w http.ResponseWriter, r *http.Request, id string)
 	// GetTask Get a task
 	// (GET /api/tasks/{id})
 	GetTask(w http.ResponseWriter, r *http.Request, id string)
@@ -144,9 +150,6 @@ type ServerInterface interface {
 	// ArchiveTask Archive a task
 	// (POST /api/tasks/{id}/archive)
 	ArchiveTask(w http.ResponseWriter, r *http.Request, id string)
-	// DeleteTask Delete a task
-	// (DELETE /api/tasks/{id})
-	DeleteTask(w http.ResponseWriter, r *http.Request, id string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -770,6 +773,20 @@ func (siw *ServerInterfaceWrapper) GetProjectPaths(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ReorderProjects operation middleware
+func (siw *ServerInterfaceWrapper) ReorderProjects(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReorderProjects(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteProject operation middleware
 func (siw *ServerInterfaceWrapper) DeleteProject(w http.ResponseWriter, r *http.Request) {
 
@@ -928,6 +945,32 @@ func (siw *ServerInterfaceWrapper) CreateTask(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteTask operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTask operation middleware
 func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Request) {
 
@@ -997,32 +1040,6 @@ func (siw *ServerInterfaceWrapper) ArchiveTask(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ArchiveTask(w, r, id)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteTask operation middleware
-func (siw *ServerInterfaceWrapper) DeleteTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteTask(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1156,6 +1173,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/projects", wrapper.CreateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects/paths", wrapper.GetProjectPaths)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/projects/{name}", wrapper.DeleteProject)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/projects/reorder", wrapper.ReorderProjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects/git-status", wrapper.GetProjectGitStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/meta", wrapper.GetMeta)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/meta/favorites", wrapper.UpdateFavorite)
@@ -1171,10 +1189,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/git-status", wrapper.GetFileGitStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks", wrapper.CreateTask)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tasks/{id}", wrapper.DeleteTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/{id}", wrapper.GetTask)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tasks/{id}", wrapper.UpdateTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/{id}/archive", wrapper.ArchiveTask)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tasks/{id}", wrapper.DeleteTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/knowledge", wrapper.ListKnowledge)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/knowledge", wrapper.CreateKnowledge)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/knowledge/content", wrapper.GetKnowledgeContent)

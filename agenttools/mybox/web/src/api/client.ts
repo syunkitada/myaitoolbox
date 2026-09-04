@@ -295,6 +295,9 @@ export const api = {
   deleteProject: (name: string) =>
     request<void>('DELETE', `/api/projects/${encodeURIComponent(name)}`),
 
+  reorderProjects: (names: string[]) =>
+    request<void>('PUT', '/api/projects/reorder', { names }),
+
   getProjectPaths: (prefix: string) =>
     request<string[]>('GET', '/api/projects/paths' + qs({ prefix })),
 

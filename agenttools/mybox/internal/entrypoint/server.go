@@ -232,6 +232,21 @@ func (s *Server) DeleteProject(w http.ResponseWriter, r *http.Request, name stri
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) ReorderProjects(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req api.ReorderProjectsRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if err := s.projects.Reorder(r.Context(), req.Names); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) GetProjectPaths(w http.ResponseWriter, r *http.Request, params api.GetProjectPathsParams) {
 	var prefix string
 	if params.Prefix != nil {
