@@ -309,6 +309,8 @@ export const api = {
 
   recordRecent: (path: string) => request<void>('POST', '/api/meta/recent', { path }),
 
+  deleteRecent: (path: string) => request<void>('POST', '/api/meta/recent/delete', { path }),
+
   search: (q: string, type?: 'task' | 'knowledge') =>
     request<SearchResult[]>('GET', '/api/search' + qs({ q, type })),
 
@@ -347,6 +349,7 @@ export const api = {
   listFiles: () => request<FileEntry[]>('GET', '/api/files'),
   getFileGitStatus: () => request<Record<string, string>>('GET', '/api/files/git-status'),
   createFile: (path: string) => request<void>('POST', '/api/files', { path }),
+  createDir: (path: string) => request<void>('POST', '/api/files/dir', { path }),
   getFileContent: (path: string) =>
     request<FileContent>('GET', '/api/files/content' + qs({ path })),
 

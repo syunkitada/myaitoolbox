@@ -33,6 +33,9 @@ type ServerInterface interface {
 	// DeleteFile Delete a file
 	// (POST /api/files/delete)
 	DeleteFile(w http.ResponseWriter, r *http.Request)
+	// CreateDir Create an empty directory
+	// (POST /api/files/dir)
+	CreateDir(w http.ResponseWriter, r *http.Request)
 	// GetFileGitStatus Get git status for each file in the project
 	// (GET /api/files/git-status)
 	GetFileGitStatus(w http.ResponseWriter, r *http.Request)
@@ -111,6 +114,9 @@ type ServerInterface interface {
 	// RecordRecent Record a recently opened file
 	// (POST /api/meta/recent)
 	RecordRecent(w http.ResponseWriter, r *http.Request)
+	// DeleteRecent Remove a file from the recent list
+	// (POST /api/meta/recent/delete)
+	DeleteRecent(w http.ResponseWriter, r *http.Request)
 	// ListProjects List projects
 	// (GET /api/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request)
@@ -255,6 +261,20 @@ func (siw *ServerInterfaceWrapper) DeleteFile(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteFile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDir operation middleware
+func (siw *ServerInterfaceWrapper) CreateDir(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDir(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -689,6 +709,20 @@ func (siw *ServerInterfaceWrapper) RecordRecent(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RecordRecent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRecent operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRecent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRecent(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1178,9 +1212,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/meta", wrapper.GetMeta)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/meta/favorites", wrapper.UpdateFavorite)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/meta/recent", wrapper.RecordRecent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/meta/recent/delete", wrapper.DeleteRecent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/search", wrapper.Search)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files", wrapper.ListFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files", wrapper.CreateFile)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/dir", wrapper.CreateDir)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/content", wrapper.GetFileContent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/files/content", wrapper.SaveFileContent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/move", wrapper.MoveFile)

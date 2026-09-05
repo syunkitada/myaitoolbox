@@ -445,6 +445,26 @@ func (s *Server) RecordRecent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) DeleteRecent(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req api.RecordRecentRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if err := app.State.RemoveRecent(r.Context(), req.Path); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) Search(w http.ResponseWriter, r *http.Request, params api.SearchParams) {
 	app, err := s.getApp(r)
 	if err != nil {
@@ -894,6 +914,26 @@ func (s *Server) CreateFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := app.Files.Create(r.Context(), req.Path); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) CreateDir(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req api.FilePathRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if err := app.Files.CreateDir(r.Context(), req.Path); err != nil {
 		writeError(w, err)
 		return
 	}

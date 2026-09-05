@@ -153,6 +153,17 @@ func (r *FileRepository) Create(ctx context.Context, path string) error {
 	return os.WriteFile(file, nil, 0o644)
 }
 
+func (r *FileRepository) CreateDir(ctx context.Context, path string) error {
+	if err := validateFilePath(path); err != nil {
+		return err
+	}
+	dir := filepath.Join(r.root, filepath.FromSlash(path))
+	if _, err := os.Stat(dir); err == nil {
+		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, path)
+	}
+	return os.MkdirAll(dir, 0o755)
+}
+
 func (r *FileRepository) Move(ctx context.Context, oldPath string, newPath string) error {
 	if err := validateFilePath(oldPath); err != nil {
 		return err

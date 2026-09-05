@@ -549,6 +549,9 @@ type CopyFileJSONRequestBody = MoveFileRequest
 // DeleteFileJSONRequestBody defines body for DeleteFile for application/json ContentType.
 type DeleteFileJSONRequestBody = FilePathRequest
 
+// CreateDirJSONRequestBody defines body for CreateDir for application/json ContentType.
+type CreateDirJSONRequestBody = FilePathRequest
+
 // MoveFileJSONRequestBody defines body for MoveFile for application/json ContentType.
 type MoveFileJSONRequestBody = MoveFileRequest
 
@@ -608,6 +611,9 @@ type UpdateFavoriteJSONRequestBody = UpdateFavoriteRequest
 
 // RecordRecentJSONRequestBody defines body for RecordRecent for application/json ContentType.
 type RecordRecentJSONRequestBody = RecordRecentRequest
+
+// DeleteRecentJSONRequestBody defines body for DeleteRecent for application/json ContentType.
+type DeleteRecentJSONRequestBody = RecordRecentRequest
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest

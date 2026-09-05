@@ -134,6 +134,19 @@ paths:
       responses:
         "204":
           description: recorded
+  /api/meta/recent/delete:
+    post:
+      operationId: deleteRecent
+      summary: Remove a file from the recent list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordRecentRequest"
+      responses:
+        "204":
+          description: removed
   /api/search:
     get:
       operationId: search
@@ -175,6 +188,23 @@ paths:
     post:
       operationId: createFile
       summary: Create an empty file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilePathRequest"
+      responses:
+        "204":
+          description: created
+        "400":
+          description: invalid path
+        "409":
+          description: already exists
+  /api/files/dir:
+    post:
+      operationId: createDir
+      summary: Create an empty directory
       requestBody:
         required: true
         content:

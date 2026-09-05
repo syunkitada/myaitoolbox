@@ -252,6 +252,13 @@ func TestFavoritesAndRecent(t *testing.T) {
 	meta := decode[api.Meta](t, rec)
 	assert.Contains(t, meta.Favorites, "notes/n1")
 	assert.Contains(t, meta.RecentFiles, "notes/n1")
+
+	rec = do(t, s, http.MethodPost, "/api/meta/recent/delete", map[string]any{"path": "notes/n1"})
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/api/meta", nil, "X-Project", "test")
+	meta = decode[api.Meta](t, rec)
+	assert.NotContains(t, meta.RecentFiles, "notes/n1")
 }
 
 func TestGraphResolvesWikiLinksByAliasAndTitle(t *testing.T) {
@@ -479,6 +486,31 @@ func TestNotFoundAndTraversal(t *testing.T) {
 
 	rec = do(t, s, http.MethodGet, "/api/knowledge/..%2f..%2fetc%2fpasswd", nil)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestFilesCreateDir(t *testing.T) {
+	s, app := newTestServer(t, false)
+	root := app.Project.Path
+
+	rec := do(t, s, http.MethodPost, "/api/files/dir",
+		api.FilePathRequest{Path: "docs/sub"})
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+	info, err := os.Stat(filepath.Join(root, "docs", "sub"))
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	rec = do(t, s, http.MethodPost, "/api/files/dir",
+		api.FilePathRequest{Path: "docs"})
+	assert.Equal(t, http.StatusConflict, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/files/dir",
+		api.FilePathRequest{Path: "../../etc/passwd"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	readonly, _ := newTestServer(t, true)
+	rec = do(t, readonly, http.MethodPost, "/api/files/dir",
+		api.FilePathRequest{Path: "blocked"})
+	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
 func TestFiles(t *testing.T) {

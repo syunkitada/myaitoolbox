@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FileEntry, HerdrOverview, Knowledge, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileAgentWidget } from '../components/FileAgentWidget'
+import { FileTabs } from '../components/FileTabs'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
 import { Button } from '../components/ui/button'
@@ -11,12 +12,12 @@ import { Separator } from '../components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible'
 import MonacoEditor from '../components/MonacoEditor'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { ChevronDown, Clock, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Star, Tag, Text, Zap } from 'lucide-react'
+import { ChevronDown, Clock, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Star, Tag, Text, Trash2, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { encodePath, filesUrl, projectUrl, rawFileUrl } from '../utils/routes'
+import { encodePath, filesUrl, getProject, projectUrl, rawFileUrl } from '../utils/routes'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { languageFromPath } from '../utils/prism-langs'
 import {
@@ -57,6 +58,26 @@ function handleAnchorClick(e: ReactMouseEvent<HTMLDivElement>) {
 }
 
 export type BrowserMode = 'files' | 'knowledge'
+
+async function copyToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return
+  } catch {
+    /* fall through to legacy fallback */
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  try {
+    document.execCommand('copy')
+  } finally {
+    document.body.removeChild(ta)
+  }
+}
 
 export interface BrowserEntry {
   kind: 'file' | 'dir'
@@ -228,6 +249,8 @@ interface ExplorerProps {
   gitStatus?: Record<string, string>
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
+  onChanged?: () => void
+  onError?: (message: string) => void
 }
 
 interface ExplorerSectionProps {
@@ -266,11 +289,163 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverDir, setDragOverDir] = useState<string | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; kind: 'file' | 'dir' } | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const ctxRef = useRef<HTMLDivElement | null>(null)
+  const noticeTimer = useRef<number | null>(null)
+
+  const showNotice = (text: string) => {
+    setNotice(text)
+    if (noticeTimer.current) window.clearTimeout(noticeTimer.current)
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 2000)
+  }
+
+  useEffect(() => {
+    if (!notice) return
+    return () => {
+      if (noticeTimer.current) window.clearTimeout(noticeTimer.current)
+    }
+  }, [notice])
+
+  useEffect(() => {
+    if (!ctxMenu) return
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!ctxRef.current?.contains(e.target as Node)) setCtxMenu(null)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCtxMenu(null)
+    }
+    const onClose = () => setCtxMenu(null)
+    document.addEventListener('mousedown', onDocMouseDown)
+    document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('blur', onClose)
+    window.addEventListener('resize', onClose)
+    window.addEventListener('scroll', onClose, true)
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('blur', onClose)
+      window.removeEventListener('resize', onClose)
+      window.removeEventListener('scroll', onClose, true)
+    }
+  }, [ctxMenu])
+
+  const runError = (e: unknown) => {
+    onError?.(e instanceof Error ? e.message : String(e))
+  }
+
+  const dirOf = (p: string) => {
+    const i = p.lastIndexOf('/')
+    return i >= 0 ? p.slice(0, i) : ''
+  }
+
+  const baseOf = (p: string) => p.split('/').pop() ?? p
+
+  const newFileInDir = () => {
+    if (!ctxMenu) return
+    const name = window.prompt(`New file in "${ctxMenu.path}"`)
+    if (!name || !name.trim()) return
+    const target = ctxMenu.path ? `${ctxMenu.path}/${name.trim()}` : name.trim()
+    setCtxMenu(null)
+    void api
+      .createFile(target)
+      .then(() => {
+        onChanged?.()
+        onSelect(target)
+      })
+      .catch(runError)
+  }
+
+  const newFolderInDir = () => {
+    if (!ctxMenu) return
+    const name = window.prompt(`New folder in "${ctxMenu.path}"`)
+    if (!name || !name.trim()) return
+    const target = ctxMenu.path ? `${ctxMenu.path}/${name.trim()}` : name.trim()
+    setCtxMenu(null)
+    void api
+      .createDir(target)
+      .then(() => {
+        onChanged?.()
+        onSelect(target)
+      })
+      .catch(runError)
+  }
+
+  const copyRelativePath = () => {
+    if (!ctxMenu) return
+    const text = ctxMenu.path
+    setCtxMenu(null)
+    void copyToClipboard(text)
+      .then(() => showNotice(`Copied "${text}"`))
+      .catch(runError)
+  }
+
+  const copyPath = () => {
+    if (!ctxMenu) return
+    const rel = ctxMenu.path
+    const proj = getProject()
+    setCtxMenu(null)
+    void (proj
+      ? (async () => {
+          let abs = rel
+          try {
+            const projects = await api.listProjects()
+            const current = projects.find((p) => p.name === proj)
+            if (current?.path) abs = `${current.path.replace(/\/+$/, '')}/${rel}`
+          } catch {
+            /* fall back to relative path */
+          }
+          await copyToClipboard(abs)
+          showNotice(`Copied "${abs}"`)
+        })()
+      : copyToClipboard(rel).then(() => showNotice(`Copied "${rel}"`))
+    ).catch(runError)
+  }
+
+  const renameEntry = () => {
+    if (!ctxMenu) return
+    const label = ctxMenu.kind === 'dir' ? 'folder' : 'file'
+    const name = window.prompt(`Rename ${label}`, baseOf(ctxMenu.path))
+    if (!name || !name.trim() || name.trim() === baseOf(ctxMenu.path)) return
+    const parent = dirOf(ctxMenu.path)
+    const target = parent ? `${parent}/${name.trim()}` : name.trim()
+    const oldPath = ctxMenu.path
+    setCtxMenu(null)
+    void api
+      .moveFile(oldPath, target)
+      .then(() => {
+        onChanged?.()
+        onSelect(target)
+      })
+      .catch(runError)
+  }
+
+  const removeEntry = () => {
+    if (!ctxMenu) return
+    const path = ctxMenu.path
+    const isDir = ctxMenu.kind === 'dir'
+    setCtxMenu(null)
+    const label = isDir ? `Directory "${path}" and all its contents` : `"${path}"`
+    if (!window.confirm(`Delete ${label}?`)) return
+    void api
+      .deleteFile(path)
+      .then(() => {
+        onChanged?.()
+        if (selected === path) onSelect('')
+      })
+      .catch(runError)
+  }
+
+  const openCtxMenu = (e: React.MouseEvent, path: string, kind: 'file' | 'dir') => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCtxMenu({ x: e.clientX, y: e.clientY, path, kind })
+  }
 
   const allTags = useMemo(
     () => Array.from(new Set(entries.flatMap((e) => e.tags ?? []))).sort(),
@@ -386,6 +561,10 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
                   onDrop: dropFile(node.dirPath),
                 }
               : {})}
+            onContextMenu={(e) => {
+              if (mode !== 'files') return
+              openCtxMenu(e, node.dirPath, 'dir')
+            }}
           >
             <button
               className={cn(
@@ -442,6 +621,10 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
                   onDragOver: (e) => e.stopPropagation(),
                 }
               : {})}
+            onContextMenu={(e) => {
+              if (mode !== 'files') return
+              openCtxMenu(e, node.path, 'file')
+            }}
           >
             <button
               className={cn(
@@ -569,6 +752,59 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
           onSelect={onSelect}
         />
       </div>
+      {ctxMenu && mode === 'files' && (
+        <div
+          ref={ctxRef}
+          role="menu"
+          aria-label="Explorer actions"
+          className="fixed z-50 min-w-44 origin-top rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{
+            left: Math.min(ctxMenu.x, window.innerWidth - 200),
+            top: Math.min(ctxMenu.y, window.innerHeight - 280),
+          }}
+        >
+          <div className="px-2 pt-1 pb-1 text-xs text-muted-foreground select-none">{ctxMenu.path}</div>
+          {ctxMenu.kind === 'dir' && (
+            <>
+              <button role="menuitem" className="file-action-item" onClick={newFileInDir}>
+                <FilePlus className="size-3.5" />
+                New File
+              </button>
+              <button role="menuitem" className="file-action-item" onClick={newFolderInDir}>
+                <FolderHeart className="size-3.5" />
+                New Folder
+              </button>
+              <div className="my-1 h-px bg-border" />
+            </>
+          )}
+          <button role="menuitem" className="file-action-item" onClick={copyPath}>
+            <Text className="size-3.5" />
+            Copy Path
+          </button>
+          <button role="menuitem" className="file-action-item" onClick={copyRelativePath}>
+            <Text className="size-3.5" />
+            Copy Relative Path
+          </button>
+          <div className="my-1 h-px bg-border" />
+          <button role="menuitem" className="file-action-item" onClick={renameEntry}>
+            <Text className="size-3.5" />
+            Rename
+          </button>
+          <button
+            role="menuitem"
+            className="file-action-item text-destructive"
+            onClick={removeEntry}
+          >
+            <Trash2 className="size-3.5" />
+            Delete
+          </button>
+        </div>
+      )}
+      {notice && (
+        <div className="pointer-events-none fixed right-3 bottom-3 z-50 rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md">
+          {notice}
+        </div>
+      )}
     </div>
   )
 }
@@ -1362,6 +1598,41 @@ export function BrowserPage({
 
   const selectedEntry = entries.find((e) => e.path === selected)
 
+  const knownPaths = useMemo(() => {
+    const set = new Set<string>()
+    for (const e of entries) {
+      set.add(e.path)
+      const parts = e.path.split('/')
+      let prefix = ''
+      for (let i = 0; i < parts.length - 1; i++) {
+        prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+        set.add(prefix)
+      }
+    }
+    return set
+  }, [entries])
+
+  const visibleRecents = useMemo(
+    () => recentFiles.filter((p) => knownPaths.has(p)).slice(0, 10),
+    [recentFiles, knownPaths],
+  )
+
+  const handleCloseRecent = useCallback(
+    (p: string) => {
+      void api
+        .deleteRecent(p)
+        .then(() => {
+          void refreshMeta()
+          if (p === selected) {
+            const next = visibleRecents.find((q) => q !== p)
+            onSelect(next ?? '')
+          }
+        })
+        .catch(() => undefined)
+    },
+    [selected, visibleRecents, onSelect, refreshMeta],
+  )
+
   const handleMoveFile = (filePath: string, dirPath: string) => {
     const name = filePath.split('/').pop() ?? filePath
     const newPath = dirPath ? `${dirPath}/${name}` : name
@@ -1412,6 +1683,8 @@ export function BrowserPage({
                     gitStatus={gitStatus}
                     onClose={onClose}
                     onMoveFile={mode === 'files' ? handleMoveFile : undefined}
+                    onChanged={load}
+                    onError={(msg) => setMoveError(msg)}
                   />
                 </div>
               </div>
@@ -1434,6 +1707,8 @@ export function BrowserPage({
                   gitStatus={gitStatus}
                   onClose={onClose}
                   onMoveFile={mode === 'files' ? handleMoveFile : undefined}
+                  onChanged={load}
+                  onError={(msg) => setMoveError(msg)}
                 />
               </SheetContent>
             </Sheet>
@@ -1444,6 +1719,14 @@ export function BrowserPage({
               'flex flex-col lg:overflow-hidden',
             )}
           >
+            {mode === 'files' && (
+              <FileTabs
+                tabs={visibleRecents}
+                active={selected}
+                onSelect={handleSelect}
+                onClose={handleCloseRecent}
+              />
+            )}
             <div
               className="knowledge-files min-w-0 flex-1 overflow-y-auto"
               onClick={handleAnchorClick}

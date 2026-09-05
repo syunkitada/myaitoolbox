@@ -57,6 +57,27 @@ func TestFileRepositoryDeleteDir(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
+func TestFileRepositoryCreateDir(t *testing.T) {
+	root := t.TempDir()
+	repo := NewFileRepository(root)
+
+	require.NoError(t, repo.CreateDir(context.Background(), "docs"))
+	info, err := os.Stat(filepath.Join(root, "docs"))
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	require.NoError(t, repo.CreateDir(context.Background(), "docs/sub/deep"))
+	info, err = os.Stat(filepath.Join(root, "docs/sub/deep"))
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	err = repo.CreateDir(context.Background(), "docs")
+	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
+
+	err = repo.CreateDir(context.Background(), "../escape")
+	assert.ErrorIs(t, err, domain.ErrInvalidPath)
+}
+
 func TestFileRepositoryMoveDir(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))

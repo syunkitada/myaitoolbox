@@ -45,6 +45,15 @@ func (u *StateUseCase) RecordRecent(ctx context.Context, path string) error {
 	return u.State.Save(ctx, state)
 }
 
+func (u *StateUseCase) RemoveRecent(ctx context.Context, path string) error {
+	state, err := u.State.Load(ctx)
+	if err != nil {
+		return err
+	}
+	state.RecentFiles = removeString(state.RecentFiles, path)
+	return u.State.Save(ctx, state)
+}
+
 func removeString(values []string, target string) []string {
 	out := values[:0]
 	for _, v := range values {
