@@ -661,9 +661,72 @@ test('herdr offers a new tab when no tabs or panes exist at all', async ({ page 
   await expect(page.locator('[data-testid^="herdr-tab-"]').filter({ hasText: 'fresh' })).toBeVisible()
 })
 
-test('graph renders knowledge nodes', async ({ page }) => {
+test('graph tab shows the explorer and graph view', async ({ page }) => {
   await page.locator('.project-tabs').getByRole('link', { name: 'Graph' }).click()
   await expect(page.getByRole('heading', { name: 'Graph' })).toBeVisible()
+
+  const explorer = page.locator('.explorer-pane')
+  await expect(explorer.getByText('README.md').first()).toBeVisible()
+
+  const canvas = page.locator('.graph-canvas')
+  await expect(canvas).toBeVisible()
+  await expect(page.getByText(/nodes · .* edges/)).toBeVisible()
+
+  // expanding a directory surfaces its children in both explorer and graph
+  await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
+  await expect(explorer.getByRole('button', { name: 'Collapse knowledge' }).first()).toBeVisible()
+  await expect(explorer.getByText('index.md').first()).toBeVisible()
+})
+
+test('graph explores a file by double-clicking it in the explorer', async ({ page }) => {
+  await page.locator('.project-tabs').getByRole('link', { name: 'Graph' }).click()
+  const explorer = page.locator('.explorer-pane')
+  await expect(explorer.getByText('README.md').first()).toBeVisible()
+  await explorer.getByText('README.md').first().dblclick()
+  await expect(page).toHaveURL(/\/dashboard\/files\/README\.md$/)
+  await expect(page.getByRole('heading', { name: 'Files', level: 1 })).toBeVisible()
+})
+
+test('graph restores the previous explorer state when returning to the tab', async ({ page }) => {
+  await page.locator('.project-tabs').getByRole('link', { name: 'Graph' }).click()
+  await expect(page.getByRole('heading', { name: 'Graph' })).toBeVisible()
+
+  const explorer = page.locator('.explorer-pane')
+  await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
+  await expect(explorer.getByRole('button', { name: 'Collapse knowledge' }).first()).toBeVisible()
+
+  // switch away and back
+  await page.locator('.project-tabs').getByRole('link', { name: 'Files' }).click()
+  await expect(page.getByRole('heading', { name: 'Files', level: 1 })).toBeVisible()
+  await page.locator('.project-tabs').getByRole('link', { name: 'Graph' }).click()
+  await expect(page.getByRole('heading', { name: 'Graph' })).toBeVisible()
+
+  // the expanded directory is still expanded, its file still listed
+  await expect(explorer.getByRole('button', { name: 'Collapse knowledge' }).first()).toBeVisible()
+  await expect(explorer.getByText('index.md').first()).toBeVisible()
+})
+
+test('explorer right-click expands and collapses a directory recursively', async ({ page }) => {
+  await page.locator('.project-tabs').getByRole('link', { name: 'Graph' }).click()
+  const explorer = page.locator('.explorer-pane')
+  await expect(explorer.getByText('knowledge', { exact: true }).first()).toBeVisible()
+
+  // deep files are hidden until the directory is expanded recursively
+  await expect(explorer.getByText('guide.md').first()).toHaveCount(0)
+  await expect(explorer.getByText('pizza.md').first()).toHaveCount(0)
+
+  await explorer.getByText('knowledge', { exact: true }).first().click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Expand all' }).click()
+
+  await expect(explorer.getByText('guide.md').first()).toBeVisible()
+  await expect(explorer.getByText('pizza.md').first()).toBeVisible()
+
+  // collapse-all folds the whole subtree away again
+  await explorer.getByText('knowledge', { exact: true }).first().click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Collapse all' }).click()
+
+  await expect(explorer.getByText('guide.md').first()).toHaveCount(0)
+  await expect(explorer.getByText('pizza.md').first()).toHaveCount(0)
 })
 
 test('board drag-and-drop changes task status and front matter', async ({ page }) => {

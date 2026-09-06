@@ -4,7 +4,7 @@ import { api, Meta, ProjectGitStatus } from './api/client'
 import { getProject, projectUrl, rememberCurrentTab } from './utils/routes'
 import { AppSidebar } from './components/Sidebar'
 import { Dashboard } from './pages/Dashboard'
-import { GraphPage } from './pages/GraphPage'
+import { KnowledgeGraphPage } from './pages/KnowledgeGraphPage'
 import { SearchPage } from './pages/SearchPage'
 import { KanbanBoard } from './pages/KanbanBoard'
 import { StatsPage } from './pages/StatsPage'
@@ -102,7 +102,7 @@ export default function App() {
             )}
           </div>
         </header>
-        <div className="flex min-h-0 flex-col" style={{ maxHeight: 'calc(100svh - 3.5rem)' }}>
+        <div className="flex min-h-0 flex-col" style={{ height: 'calc(100svh - 3.5rem)' }}>
           {error && (
             <div className="error-banner m-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
               {error}
@@ -149,7 +149,7 @@ export default function App() {
                     }
                   />
                   <Route path="/projects/:project/board" element={<KanbanBoard key={project} />} />
-                  <Route path="/projects/:project/graph" element={<GraphPage key={project} />} />
+                  <Route path="/projects/:project/graph" element={<KnowledgeGraphPage key={project} />} />
                   <Route
                     path="/projects/:project/git"
                     element={<GitPage key={project} refreshMeta={refreshMeta} />}
