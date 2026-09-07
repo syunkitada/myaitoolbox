@@ -2,7 +2,9 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -12,9 +14,11 @@ import (
 )
 
 type TaskUseCase struct {
-	Tasks    domain.TaskRepository
-	Template domain.TemplateRenderer
-	Project  string
+	Tasks       domain.TaskRepository
+	Template    domain.TemplateRenderer
+	Prompts     domain.PromptTemplateRepository
+	Project     string
+	ProjectPath string
 }
 
 type TaskFilter struct {
@@ -26,19 +30,26 @@ type TaskFilter struct {
 }
 
 type TaskInput struct {
-	Name     string
-	Status   string
-	Priority string
-	Type     string
-	Assignee string
-	Due      string
-	Tags     []string
+	Name        string
+	Description string
+	AgentKind   string
+	Status      string
+	Priority    string
+	Type        string
+	Assignee    string
+	Due         string
+	Tags        []string
 }
 
-func NewTaskUseCase(tasks domain.TaskRepository, template domain.TemplateRenderer, project string) *TaskUseCase {
-	return &TaskUseCase{Tasks: tasks, Template: template, Project: project}
+func NewTaskUseCase(tasks domain.TaskRepository, template domain.TemplateRenderer, prompts domain.PromptTemplateRepository, project string, projectPath string) *TaskUseCase {
+	return &TaskUseCase{
+		Tasks:       tasks,
+		Template:    template,
+		Prompts:     prompts,
+		Project:     project,
+		ProjectPath: projectPath,
+	}
 }
-
 func (u *TaskUseCase) List(ctx context.Context, filter TaskFilter) ([]domain.Task, error) {
 	tasks, err := u.Tasks.List(ctx)
 	if err != nil {
@@ -103,15 +114,17 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 	}
 	now := time.Now()
 	task := &domain.Task{
-		Title:    name,
-		Status:   status,
-		Priority: priority,
-		Type:     taskType,
-		Assignee: input.Assignee,
-		Due:      input.Due,
-		Tags:     input.Tags,
-		Project:  u.Project,
-		Created:  now,
+		Title:       name,
+		Description: strings.TrimSpace(input.Description),
+		AgentKind:   strings.TrimSpace(input.AgentKind),
+		Status:      status,
+		Priority:    priority,
+		Type:        taskType,
+		Assignee:    input.Assignee,
+		Due:         input.Due,
+		Tags:        input.Tags,
+		Project:     u.Project,
+		Created:     now,
 	}
 	if taskType == domain.TaskTypeAdhoc {
 		task.ID = now.Format("20060102") + "_" + slugify(name)
@@ -136,10 +149,8 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 			return nil, err
 		}
 	}
-	if len(task.Tags) > 0 {
-		if err := u.Tasks.Update(ctx, *task); err != nil {
-			return nil, err
-		}
+	if err := u.Tasks.Update(ctx, *task); err != nil {
+		return nil, err
 	}
 	return task, nil
 }
@@ -151,6 +162,12 @@ func (u *TaskUseCase) Update(ctx context.Context, id string, input TaskInput) (*
 	}
 	if name := strings.TrimSpace(input.Name); name != "" {
 		task.Title = name
+	}
+	if input.Description != "" {
+		task.Description = strings.TrimSpace(input.Description)
+	}
+	if input.AgentKind != "" {
+		task.AgentKind = strings.TrimSpace(input.AgentKind)
 	}
 	if input.Status != "" {
 		status, err := parseStatus(input.Status)
@@ -194,6 +211,71 @@ func (u *TaskUseCase) Archive(ctx context.Context, id string) error {
 
 func (u *TaskUseCase) Delete(ctx context.Context, id string) error {
 	return u.Tasks.Delete(ctx, id)
+}
+
+// FilePath resolves the absolute path of a task's markdown file.
+func (u *TaskUseCase) FilePath(ctx context.Context, id string) (string, error) {
+	task, err := u.Tasks.Find(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return u.FilePathFor(task), nil
+}
+
+// FilePathFor returns the absolute path of the task's markdown file.
+func (u *TaskUseCase) FilePathFor(task *domain.Task) string {
+	return filepath.Join(u.ProjectPath, u.RelativePathFor(task))
+}
+
+// RelativePathFor returns the task's markdown file path relative to the project
+// root (always slash-separated), e.g. tasks/20260101_xxx/task.md. This is the
+// path used by herdr file agents (which start in the project directory). Both
+// regular and adhoc tasks share the same layout; adhoc is distinguished only by
+// the task_kind frontmatter metadata.
+func (u *TaskUseCase) RelativePathFor(task *domain.Task) string {
+	return "tasks/" + task.ID + "/task.md"
+}
+
+// RenderPrompt resolves the prompt for a task. When raw starts with '@' it is
+// strictly a prompt template name (stored under prompts/); otherwise, when raw
+// matches an existing prompt template name the template is used, and any other
+// value is used verbatim as an inline prompt. The variable $task_file_path is
+// expanded to the task's markdown file (relative to the project root).
+func (u *TaskUseCase) RenderPrompt(ctx context.Context, raw string, task *domain.Task) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	vars := map[string]string{
+		"task_file_path": u.RelativePathFor(task),
+	}
+	if u.Prompts == nil {
+		return raw, nil
+	}
+	forced := strings.HasPrefix(raw, "@")
+	name := strings.TrimPrefix(raw, "@")
+	if strings.TrimSpace(name) == "" {
+		return "", nil
+	}
+	if forced || isBarePromptName(name) {
+		rendered, err := u.Prompts.Render(ctx, name, vars)
+		if err == nil {
+			return rendered, nil
+		}
+		if forced || !errors.Is(err, domain.ErrNotFound) {
+			return "", err
+		}
+	}
+	return raw, nil
+}
+
+// isBarePromptName reports whether name can refer to a prompt template file
+// (a flat prompts/<name>.md, no path separators or whitespace).
+func isBarePromptName(name string) bool {
+	return name != "" &&
+		!strings.ContainsAny(name, `/\`) &&
+		!strings.Contains(name, "..") &&
+		!strings.ContainsAny(name, " \t\n")
 }
 
 func parseStatus(s string) (domain.TaskStatus, error) {

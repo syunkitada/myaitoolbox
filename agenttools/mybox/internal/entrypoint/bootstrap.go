@@ -58,7 +58,9 @@ func NewApp(ctx context.Context, projectName string) (*App, error) {
 		Tasks: application.NewTaskUseCase(
 			markdown.NewTaskRepository(project.Path),
 			markdown.NewTemplateRenderer(project.Path, defaultPath),
+			markdown.NewPromptRepository(project.Path, defaultPath),
 			project.Name,
+			project.Path,
 		),
 		Knowledge: application.NewKnowledgeUseCase(
 			markdown.NewKnowledgeRepository(project.Path),

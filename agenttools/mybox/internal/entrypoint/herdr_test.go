@@ -3,12 +3,16 @@ package entrypoint
 import (
 	"context"
 	"errors"
+	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/application"
 )
 
 func herdrTestServer(t *testing.T, run herdrRunFunc) *Server {
@@ -48,6 +52,165 @@ func herdrStubRunner(calls *[][]string) herdrRunFunc {
 		}
 		return nil, errors.New("unexpected args")
 	}
+}
+
+func TestHerdrStartTaskAgent(t *testing.T) {
+	s, app := newTestServer(t, false)
+	var calls [][]string
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(herdrTabsJSON), nil
+		case args[0] == "tab" && args[1] == "create":
+			return []byte(`{"id":"cli:tab:create","result":{"workspace":{"workspace_id":"w7"},"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "agent" && (args[1] == "list" || args[1] == "start" || args[1] == "prompt"):
+			return []byte(`{}`), nil
+		}
+		return nil, errors.New("unexpected args")
+	}
+
+	task, err := app.Tasks.Create(context.Background(), application.TaskInput{
+		Name:      "start the parser",
+		AgentKind: "codex",
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(app.Project.Path, "prompts"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(app.Project.Path, "prompts", "do-the-task.md"),
+		[]byte("`$task_file_path` を実施してください"),
+		0o644,
+	))
+
+	rec := do(t, s, "POST", "/api/herdr/agents/start-task", map[string]string{
+		"task_id": task.ID,
+		"prompt":  "do-the-task",
+	})
+	require.Equal(t, http.StatusOK, rec.Code)
+	res := decode[herdrStartTaskAgentResponse](t, rec)
+	require.True(t, res.Ok)
+	require.NotNil(t, res.Agent)
+	relPath := app.Tasks.RelativePathFor(task)
+	assert.Equal(t, herdrFileAgentName(relPath), res.Agent.Name)
+	assert.Equal(t, "w7", res.Agent.WorkspaceId)
+	assert.Equal(t, "w7:p3", res.Agent.PaneId)
+	assert.Equal(t, "`"+relPath+"` を実施してください", res.Prompt)
+
+	// The agent must be started with the task's agent_kind and the rendered
+	// prompt submitted with the task's file path.
+	var startCall, promptCall []string
+	for _, c := range calls {
+		if len(c) >= 5 && c[0] == "agent" && c[1] == "start" {
+			startCall = c
+		}
+		if len(c) >= 4 && c[0] == "agent" && c[1] == "prompt" {
+			promptCall = c
+		}
+	}
+	require.NotNil(t, startCall)
+	assert.Equal(t, []string{"agent", "start", res.Agent.Name, "--kind", "codex", "--pane", "w7:p3"}, startCall)
+	require.NotNil(t, promptCall)
+	assert.Equal(t, []string{"agent", "prompt", res.Agent.Name, "`" + relPath + "` を実施してください"}, promptCall)
+}
+
+func TestHerdrStartTaskAgentDefaultKind(t *testing.T) {
+	s, app := newTestServer(t, false)
+	var startCall []string
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		switch {
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(herdrTabsJSON), nil
+		case args[0] == "tab" && args[1] == "create":
+			return []byte(`{"id":"cli:tab:create","result":{"workspace":{"workspace_id":"w7"},"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "agent" && args[1] == "start":
+			startCall = args
+			return []byte(`{}`), nil
+		case args[0] == "agent":
+			return []byte(`{}`), nil
+		}
+		return nil, errors.New("unexpected args")
+	}
+
+	// No agent_kind anywhere: falls back to "opencode".
+	task, err := app.Tasks.Create(context.Background(), application.TaskInput{Name: "default kind task"})
+	require.NoError(t, err)
+	rec := do(t, s, "POST", "/api/herdr/agents/start-task", map[string]string{"task_id": task.ID})
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, startCall)
+	assert.Equal(t, "opencode", startCall[4])
+}
+
+func TestHerdrStartTaskAgentInlinePrompt(t *testing.T) {
+	s, app := newTestServer(t, false)
+	var gotPrompt []string
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		switch {
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(herdrTabsJSON), nil
+		case args[0] == "tab" && args[1] == "create":
+			return []byte(`{"id":"cli:tab:create","result":{"workspace":{"workspace_id":"w7"},"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "agent":
+			if args[1] == "prompt" {
+				gotPrompt = args
+			}
+			return []byte(`{}`), nil
+		}
+		return nil, errors.New("unexpected args")
+	}
+
+	task, err := app.Tasks.Create(context.Background(), application.TaskInput{Name: "inline prompt task"})
+	require.NoError(t, err)
+
+	rec := do(t, s, "POST", "/api/herdr/agents/start-task", map[string]string{
+		"task_id": task.ID,
+		"prompt":  "DO IT NOW $task_file_path",
+	})
+	require.Equal(t, http.StatusOK, rec.Code)
+	res := decode[herdrStartTaskAgentResponse](t, rec)
+	assert.Equal(t, "DO IT NOW $task_file_path", res.Prompt)
+	require.NotNil(t, gotPrompt)
+	assert.Equal(t, res.Agent.Name, gotPrompt[2])
+	assert.Equal(t, "DO IT NOW $task_file_path", gotPrompt[3])
+}
+
+func TestHerdrStartTaskAgentValidation(t *testing.T) {
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		return nil, errors.New("should not run")
+	})
+	rec := do(t, s, "POST", "/api/herdr/agents/start-task", map[string]string{"task_id": "../evil"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, http.StatusNotFound, do(t, s, "POST", "/api/herdr/agents/start-task", map[string]string{"task_id": "does-not-exist"}).Code)
+}
+
+func TestHerdrStartTaskAgentForcedMissingTemplate(t *testing.T) {
+	s, app := newTestServer(t, false)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		switch {
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(herdrTabsJSON), nil
+		case args[0] == "tab" && args[1] == "create":
+			return []byte(`{"id":"cli:tab:create","result":{"workspace":{"workspace_id":"w7"},"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "agent":
+			return []byte(`{}`), nil
+		}
+		return nil, errors.New("unexpected args")
+	}
+	task, err := app.Tasks.Create(context.Background(), application.TaskInput{Name: "missing template"})
+	require.NoError(t, err)
+	rec := do(t, s, "POST", "/api/herdr/agents/start-task", map[string]string{
+		"task_id": task.ID,
+		"prompt":  "@missing-template",
+	})
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestHerdrOverview(t *testing.T) {

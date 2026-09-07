@@ -23,9 +23,12 @@ func NewTaskRepository(root string) *TaskRepository {
 
 type taskFields struct {
 	Title         string   `yaml:"title"`
+	Description   string   `yaml:"description"`
+	AgentKind     string   `yaml:"agent_kind"`
 	Status        string   `yaml:"status"`
 	Priority      string   `yaml:"priority"`
-	Type          string   `yaml:"type"`
+	TaskKind      string   `yaml:"task_kind"`
+	TaskType      string   `yaml:"type"` // legacy metadata key
 	Assignee      string   `yaml:"assignee"`
 	Due           string   `yaml:"due"`
 	PendingUntil  string   `yaml:"pending_until"`
@@ -38,11 +41,12 @@ func (r *TaskRepository) List(ctx context.Context) ([]domain.Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	adhoc, err := r.listAdhoc(filepath.Join(r.root, "tasks", "adhoc"), false)
+	// 旧レイアウト（tasks/adhoc/<id>.md）の adhoc タスクも引き続き読む。
+	legacy, err := r.listAdhoc(filepath.Join(r.root, "tasks", "adhoc"), false)
 	if err != nil {
 		return nil, err
 	}
-	return append(tasks, adhoc...), nil
+	return append(tasks, legacy...), nil
 }
 
 func (r *TaskRepository) ListArchived(ctx context.Context) ([]domain.Task, error) {
@@ -104,6 +108,19 @@ func (r *TaskRepository) listAdhoc(dir string, archived bool) ([]domain.Task, er
 	return tasks, nil
 }
 
+// taskTypeFromFields resolves the task kind from the frontmatter. The current
+// metadata key is task_kind; the legacy `type` key is honored as a fallback so
+// existing task.md files keep working. def is used when neither is present.
+func taskTypeFromFields(f taskFields, def domain.TaskType) domain.TaskType {
+	if k := domain.TaskType(f.TaskKind); k != "" {
+		return k
+	}
+	if k := domain.TaskType(f.TaskType); k != "" {
+		return k
+	}
+	return def
+}
+
 func (r *TaskRepository) readTask(dir string, id string, archived bool) (*domain.Task, error) {
 	content, err := os.ReadFile(filepath.Join(dir, "task.md"))
 	if err != nil {
@@ -125,16 +142,14 @@ func (r *TaskRepository) readTask(dir string, id string, archived bool) (*domain
 	if f.Priority == "" {
 		f.Priority = string(domain.TaskPriorityMedium)
 	}
-	taskType := domain.TaskType(f.Type)
-	if taskType == "" {
-		taskType = domain.TaskTypeRegular
-	}
 	return &domain.Task{
 		ID:            id,
 		Title:         f.Title,
+		Description:   f.Description,
+		AgentKind:     f.AgentKind,
 		Status:        domain.TaskStatus(f.Status),
 		Priority:      domain.TaskPriority(f.Priority),
-		Type:          taskType,
+		Type:          taskTypeFromFields(f, domain.TaskTypeRegular),
 		Assignee:      f.Assignee,
 		Due:           f.Due,
 		PendingUntil:  f.PendingUntil,
@@ -170,9 +185,11 @@ func (r *TaskRepository) readAdhocTask(path string, id string, archived bool) (*
 	return &domain.Task{
 		ID:            id,
 		Title:         f.Title,
+		Description:   f.Description,
+		AgentKind:     f.AgentKind,
 		Status:        domain.TaskStatus(f.Status),
 		Priority:      domain.TaskPriority(f.Priority),
-		Type:          domain.TaskTypeAdhoc,
+		Type:          taskTypeFromFields(f, domain.TaskTypeAdhoc),
 		Assignee:      f.Assignee,
 		Due:           f.Due,
 		PendingUntil:  f.PendingUntil,
@@ -230,19 +247,10 @@ func (r *TaskRepository) Create(ctx context.Context, id string, content string) 
 	return os.WriteFile(filepath.Join(dir, "task.md"), []byte(content), 0o644)
 }
 
+// CreateAdhoc stores an adhoc task using the same layout as regular tasks
+// (tasks/<id>/task.md). The adhoc kind is carried in the frontmatter metadata.
 func (r *TaskRepository) CreateAdhoc(ctx context.Context, id string, content string) error {
-	if err := validateTaskID(id); err != nil {
-		return err
-	}
-	adhocDir := filepath.Join(r.root, "tasks", "adhoc")
-	path := filepath.Join(adhocDir, id+".md")
-	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, id)
-	}
-	if err := os.MkdirAll(adhocDir, 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	return r.Create(ctx, id, content)
 }
 
 func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
@@ -277,11 +285,14 @@ func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
 	delete(fm, "project")
 	delete(fm, "created")
 	delete(fm, "created_at")
+	delete(fm, "type")
 	fm["title"] = task.Title
+	fm["description"] = task.Description
+	fm["agent_kind"] = task.AgentKind
 	fm["status"] = string(task.Status)
 	fm["priority"] = string(task.Priority)
 	if task.Type != "" {
-		fm["type"] = string(task.Type)
+		fm["task_kind"] = string(task.Type)
 	}
 	fm["assignee"] = task.Assignee
 	fm["due"] = task.Due
@@ -313,6 +324,13 @@ func (r *TaskRepository) Archive(ctx context.Context, id string) error {
 			return fmt.Errorf("%w: %s", domain.ErrNotFound, id)
 		}
 		return err
+	}
+	task, err := r.readTask(src, id, false)
+	if err != nil {
+		return err
+	}
+	if task.Type == domain.TaskTypeAdhoc {
+		return fmt.Errorf("%w: adhoc tasks cannot be archived; use a regular task", domain.ErrInvalidArgument)
 	}
 	dst := filepath.Join(r.root, "archives", "tasks", id)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {

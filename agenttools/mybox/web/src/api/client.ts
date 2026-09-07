@@ -8,6 +8,8 @@ export type TaskType = 'regular' | 'adhoc'
 export interface Task {
   id: string
   title: string
+  description?: string | null
+  agent_kind?: string | null
   status: TaskStatus
   priority: TaskPriority
   type?: TaskType | null
@@ -24,6 +26,8 @@ export interface Task {
 
 export interface CreateTaskRequest {
   name: string
+  description?: string
+  agent_kind?: string
   status?: TaskStatus
   priority?: TaskPriority
   type?: TaskType
@@ -362,6 +366,17 @@ export const api = {
       path,
       kind: kind || undefined,
     }),
+
+  startTaskAgent: (taskId: string, opts?: { kind?: string; prompt?: string }) =>
+    request<{ ok: boolean; agent?: HerdrAgent; prompt?: string }>(
+      'POST',
+      '/api/herdr/agents/start-task',
+      {
+        task_id: taskId,
+        agent_kind: opts?.kind || undefined,
+        prompt: opts?.prompt || undefined,
+      },
+    ),
 
   readHerdrAgent: (target: string) =>
     request<{ output: string }>('POST', '/api/herdr/agents/read', { target }),

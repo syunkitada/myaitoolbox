@@ -1,7 +1,7 @@
 ---
 title: {{.Name | yamlq}}
 status: todo
-type: adhoc
+task_kind: adhoc
 ---
 
 ## Overview

@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,7 +18,9 @@ func newTaskUC(t *testing.T) *TaskUseCase {
 	return NewTaskUseCase(
 		markdown.NewTaskRepository(root),
 		markdown.NewTemplateRenderer(root, ""),
+		markdown.NewPromptRepository(root, ""),
 		"test",
+		root,
 	)
 }
 
@@ -131,4 +135,79 @@ func TestTaskCreateInvalidType(t *testing.T) {
 	uc := newTaskUC(t)
 	_, err := uc.Create(context.Background(), TaskInput{Name: "x", Type: "bogus"})
 	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+}
+
+func TestTaskDescriptionAgentKind(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+
+	task, err := uc.Create(ctx, TaskInput{Name: "Ship parser", Description: "parse everything", AgentKind: "opencode"})
+	require.NoError(t, err)
+	assert.Equal(t, "parse everything", task.Description)
+	assert.Equal(t, "opencode", task.AgentKind)
+
+	got, err := uc.Show(ctx, task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "parse everything", got.Description)
+	assert.Equal(t, "opencode", got.AgentKind)
+
+	updated, err := uc.Update(ctx, task.ID, TaskInput{AgentKind: "codex"})
+	require.NoError(t, err)
+	assert.Equal(t, "parse everything", updated.Description)
+	assert.Equal(t, "codex", updated.AgentKind)
+
+	got, err = uc.Show(ctx, task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "codex", got.AgentKind)
+}
+
+func TestTaskAdhocFilePaths(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+
+	regular, err := uc.Create(ctx, TaskInput{Name: "regular"})
+	require.NoError(t, err)
+	assert.Equal(t, "tasks/"+regular.ID+"/task.md", uc.RelativePathFor(regular))
+
+	adhoc, err := uc.Create(ctx, TaskInput{Name: "adhoc", Type: "adhoc"})
+	require.NoError(t, err)
+	assert.Equal(t, "tasks/"+adhoc.ID+"/task.md", uc.RelativePathFor(adhoc))
+}
+
+func TestTaskRenderPrompt(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+	task, err := uc.Create(ctx, TaskInput{Name: "implement login"})
+	require.NoError(t, err)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(uc.ProjectPath, "prompts"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(uc.ProjectPath, "prompts", "do-the-task.md"),
+		[]byte("`$task_file_path` を実施してください"),
+		0o644,
+	))
+
+	// Template matched by bare name.
+	rendered, err := uc.RenderPrompt(ctx, "do-the-task", task)
+	require.NoError(t, err)
+	assert.Equal(t, "`tasks/"+task.ID+"/task.md` を実施してください", rendered)
+
+	// Explicit @ template reference.
+	rendered, err = uc.RenderPrompt(ctx, "@do-the-task", task)
+	require.NoError(t, err)
+	assert.Equal(t, "`tasks/"+task.ID+"/task.md` を実施してください", rendered)
+
+	// Inline prompt that does not match any template.
+	rendered, err = uc.RenderPrompt(ctx, "DO IT NOW / do not $expand", task)
+	require.NoError(t, err)
+	assert.Equal(t, "DO IT NOW / do not $expand", rendered)
+
+	// Forced template that is missing surfaces the error.
+	_, err = uc.RenderPrompt(ctx, "@missing-template", task)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+
+	// Empty prompt is a no-op.
+	rendered, err = uc.RenderPrompt(ctx, "  ", task)
+	require.NoError(t, err)
+	assert.Equal(t, "", rendered)
 }

@@ -50,9 +50,10 @@ case "$active" in *test-task*) fail "archived task hidden by default";; *) ok "a
 
 step "adhoc task create / list / filter"
 adhoc_id="$("$BIN" task create --project proj --name 'Review PR #123' --adhoc | tail -1)"
-[ -f "$PROJ/tasks/adhoc/$adhoc_id.md" ] && ok "adhoc task stored as single file" || fail "adhoc task stored as single file"
-adhoc_front="$(cat "$PROJ/tasks/adhoc/$adhoc_id.md")"
-case "$adhoc_front" in *"type: adhoc"*) ok "adhoc task frontmatter type";; *) fail "adhoc task frontmatter type";; esac
+[ -f "$PROJ/tasks/$adhoc_id/task.md" ] && ok "adhoc task stored in regular layout" || fail "adhoc task stored in regular layout"
+[ -e "$PROJ/tasks/adhoc/$adhoc_id.md" ] && fail "adhoc legacy single-file layout" || ok "adhoc legacy single-file layout"
+adhoc_front="$(cat "$PROJ/tasks/$adhoc_id/task.md")"
+case "$adhoc_front" in *"task_kind: adhoc"*) ok "adhoc task frontmatter task_kind";; *) fail "adhoc task frontmatter task_kind";; esac
 adhoc_list="$("$BIN" task list --project proj --type adhoc)"
 case "$adhoc_list" in *review-pr-123*) ok "adhoc task listed with --type adhoc";; *) fail "adhoc task listed with --type adhoc";; esac
 regular_list="$("$BIN" task list --project proj --type regular)"

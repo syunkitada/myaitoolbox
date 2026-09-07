@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { encodePath, projectUrl, getProject } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
-import { api, HerdrOverview } from '../api/client'
+import { api, HerdrOverview, Task } from '../api/client'
+import { NewTaskDialog } from '../components/NewTaskDialog'
 import { subscribeNavActions } from '../lib/nav-actions'
 
 const LAST_FILE_KEY = 'mybox_last_selected_file'
@@ -19,6 +20,7 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
   const params = useParams()
   const selected = (params['*'] ?? '').trim()
   const navigate = useNavigate()
+  const [taskDialog, setTaskDialog] = useState(false)
 
   useEffect(() => {
     if (!selected) {
@@ -52,23 +54,7 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
   }
 
   const handleNewTask = () => {
-    const name = window.prompt('New task name')
-    if (name && name.trim()) {
-      void api
-        .createTask({ name: name.trim() })
-        .then((t) => navigate(projectUrl(`/dashboard/files/tasks/${encodePath(t.id)}/task.md`)))
-        .catch(() => undefined)
-    }
-  }
-
-  const handleNewAdhoc = () => {
-    const name = window.prompt('Adhoc task name')
-    if (name && name.trim()) {
-      void api
-        .createTask({ name: name.trim(), type: 'adhoc' })
-        .then((t) => navigate(projectUrl(`/dashboard/files/tasks/adhoc/${encodePath(t.id)}.md`)))
-        .catch(() => undefined)
-    }
+    setTaskDialog(true)
   }
 
   const handleNewFile = (dir: string) => {
@@ -82,11 +68,13 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
       .catch((e) => window.alert(e instanceof Error ? e.message : String(e)))
   }
 
+  const onTaskCreated = (task: Task) =>
+    navigate(projectUrl(`/dashboard/files/tasks/${encodePath(task.id)}/task.md`))
+
   useEffect(
     () =>
       subscribeNavActions((action) => {
         if (action === 'new-task') handleNewTask()
-        else if (action === 'new-adhoc') handleNewAdhoc()
         else if (action === 'new-file') handleNewFile('')
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,20 +82,28 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
   )
 
   return (
-    <BrowserPage
-      mode="files"
-      title="Files"
-      selected={selected}
-      onSelect={persistSelected}
-      onBack={() => navigate(projectUrl('/dashboard'))}
-      favorites={favorites}
-      recentFiles={recentFiles}
-      refreshMeta={refreshMeta}
-      herdrOverview={herdrOverview}
-      refreshHerdr={refreshHerdr}
-      defaultSelect={(entries) =>
-        entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
-      }
-    />
+    <>
+      <BrowserPage
+        mode="files"
+        title="Files"
+        selected={selected}
+        onSelect={persistSelected}
+        onBack={() => navigate(projectUrl('/dashboard'))}
+        favorites={favorites}
+        recentFiles={recentFiles}
+        refreshMeta={refreshMeta}
+        herdrOverview={herdrOverview}
+        refreshHerdr={refreshHerdr}
+        defaultSelect={(entries) =>
+          entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
+        }
+      />
+      <NewTaskDialog
+        open={taskDialog}
+        onOpenChange={setTaskDialog}
+        onCreated={onTaskCreated}
+        onError={(message) => window.alert(message)}
+      />
+    </>
   )
 }

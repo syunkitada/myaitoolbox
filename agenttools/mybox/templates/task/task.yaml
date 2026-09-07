@@ -1,6 +1,7 @@
 ---
 title: {{.Name | yamlq}}
 status: todo
+task_kind: regular
 ---
 
 ## Overview

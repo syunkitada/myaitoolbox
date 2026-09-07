@@ -593,6 +593,12 @@ func (s *Server) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input := application.TaskInput{Name: req.Name}
+	if req.Description != nil {
+		input.Description = *req.Description
+	}
+	if req.AgentKind != nil {
+		input.AgentKind = *req.AgentKind
+	}
 	if req.Status != nil {
 		input.Status = string(*req.Status)
 	}
@@ -649,6 +655,12 @@ func (s *Server) UpdateTask(w http.ResponseWriter, r *http.Request, id string) {
 	input := application.TaskInput{}
 	if req.Name != nil {
 		input.Name = *req.Name
+	}
+	if req.Description != nil {
+		input.Description = *req.Description
+	}
+	if req.AgentKind != nil {
+		input.AgentKind = *req.AgentKind
 	}
 	if req.Status != nil {
 		input.Status = string(*req.Status)
@@ -1418,6 +1430,8 @@ func toAPITask(t domain.Task) api.Task {
 	return api.Task{
 		Id:            t.ID,
 		Title:         t.Title,
+		Description:   strPtr(t.Description),
+		AgentKind:     strPtr(t.AgentKind),
 		Status:        api.TaskStatus(t.Status),
 		Priority:      api.TaskPriority(t.Priority),
 		Type:          (*api.TaskType)(&t.Type),

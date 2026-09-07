@@ -132,7 +132,7 @@ func TestTaskRepositoryAdhocLifecycle(t *testing.T) {
 	repo := NewTaskRepository(root)
 	ctx := context.Background()
 
-	content := "---\ntitle: review PR\ntype: adhoc\nstatus: todo\npriority: high\n---\n\nbody"
+	content := "---\ntitle: review PR\ntask_kind: adhoc\nstatus: todo\npriority: high\n---\n\nbody"
 	require.NoError(t, repo.CreateAdhoc(ctx, "20260902_review-pr", content))
 
 	list, err := repo.List(ctx)
@@ -167,12 +167,42 @@ func TestTaskRepositoryAdhocDuplicate(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
 }
 
+func TestTaskRepositoryAdhocUsesSameLayout(t *testing.T) {
+	root := t.TempDir()
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+
+	require.NoError(t, repo.CreateAdhoc(ctx, "20260903_adhoc-layout", "---\ntitle: adhoc layout\ntask_kind: adhoc\n---\n\nbody"))
+
+	// adhoc tasks now share the regular directory layout.
+	_, err := os.Stat(filepath.Join(root, "tasks", "20260903_adhoc-layout", "task.md"))
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(root, "tasks", "adhoc", "20260903_adhoc-layout.md"))
+	assert.True(t, os.IsNotExist(err))
+
+	task, err := repo.Find(ctx, "20260903_adhoc-layout")
+	require.NoError(t, err)
+	assert.Equal(t, domain.TaskTypeAdhoc, task.Type)
+}
+
+func TestTaskRepositoryLegacyTypeFallback(t *testing.T) {
+	root := t.TempDir()
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+
+	// Type is determined from task_kind; the legacy `type` key still works.
+	require.NoError(t, repo.Create(ctx, "20260904_legacy-adhoc", "---\ntitle: legacy\ntype: adhoc\n---\n\n"))
+	task, err := repo.Find(ctx, "20260904_legacy-adhoc")
+	require.NoError(t, err)
+	assert.Equal(t, domain.TaskTypeAdhoc, task.Type)
+}
+
 func TestTaskRepositoryMixedList(t *testing.T) {
 	root := t.TempDir()
 	repo := NewTaskRepository(root)
 	ctx := context.Background()
 	require.NoError(t, repo.Create(ctx, "20260901_090000_regular", "---\ntitle: regular\n---\n\n"))
-	require.NoError(t, repo.CreateAdhoc(ctx, "20260902_adhoc", "---\ntitle: adhoc\n---\n\n"))
+	require.NoError(t, repo.CreateAdhoc(ctx, "20260902_adhoc", "---\ntitle: adhoc\ntask_kind: adhoc\n---\n\n"))
 
 	list, err := repo.List(ctx)
 	require.NoError(t, err)

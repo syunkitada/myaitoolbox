@@ -4,5 +4,5 @@ package templates
 
 import "embed"
 
-//go:embed task knowledge
+//go:embed task knowledge prompts
 var FS embed.FS

@@ -93,4 +93,3 @@ func TestPathCandidates(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join(root, "notes")}, got)
 }
-

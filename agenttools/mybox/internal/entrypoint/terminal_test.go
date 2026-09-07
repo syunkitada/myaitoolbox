@@ -140,7 +140,8 @@ func TestTerminalPersistentSession(t *testing.T) {
 	require.NotContains(t, got, "hello123")
 }
 
-func TestTerminalReadOnly(t *testing.T) {	s, _ := newTestServer(t, true)
+func TestTerminalReadOnly(t *testing.T) {
+	s, _ := newTestServer(t, true)
 
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()

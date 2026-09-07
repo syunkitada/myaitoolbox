@@ -927,6 +927,7 @@ func (s *Server) registerHerdrRoutes(e *echo.Echo, basePath string) {
 		e.Add(method, basePath+path, echo.WrapHandler(h))
 	}
 	wrap(http.MethodPost, "/api/herdr/agents/start-file", s.StartHerdrFileAgent)
+	wrap(http.MethodPost, "/api/herdr/agents/start-task", s.StartTaskAgent)
 	wrap(http.MethodGet, "/api/herdr/agent-kinds", s.ListHerdrAgentKinds)
 }
 
@@ -958,22 +959,129 @@ func (s *Server) StartHerdrFileAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("invalid file path")})
 		return
 	}
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	agent, err := s.startHerdrFileAgent(r.Context(), app, path, strings.TrimSpace(req.Kind))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, herdrFileAgentResponse{Ok: true, Agent: agent})
+}
+
+// startHerdrFileAgent launches (or reuses) the herdr agent dedicated to a
+// project-relative file. kind defaults to "opencode".
+func (s *Server) startHerdrFileAgent(ctx context.Context, app *App, path string, kind string) (*api.HerdrAgent, error) {
+	if path == "" || strings.HasPrefix(path, "/") || strings.Contains(path, "..") || len(path) > 1024 {
+		return nil, &httpError{status: http.StatusBadRequest, err: errors.New("invalid file path")}
+	}
 	label, ok := validHerdrLabel(filepath.Base(path))
 	if !ok {
-		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("file name must be between 1 and 80 characters")})
-		return
+		return nil, &httpError{status: http.StatusBadRequest, err: errors.New("file name must be between 1 and 80 characters")}
 	}
 	name := herdrFileAgentName(path)
 	if name == "" {
-		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("file name does not produce a valid agent name")})
-		return
+		return nil, &httpError{status: http.StatusBadRequest, err: errors.New("file name does not produce a valid agent name")}
 	}
-	kind := strings.TrimSpace(req.Kind)
+	kind = strings.TrimSpace(kind)
 	if kind == "" {
 		kind = "opencode"
 	}
 	if !validHerdrAgentKind(kind) {
-		writeError(w, &httpError{status: http.StatusBadRequest, err: fmt.Errorf("unsupported agent kind %q", kind)})
+		return nil, &httpError{status: http.StatusBadRequest, err: fmt.Errorf("unsupported agent kind %q", kind)}
+	}
+
+	// The file already has a live agent: report it instead of stacking tabs.
+	if agent := s.findHerdrAgent(ctx, name); agent != nil {
+		return agent, nil
+	}
+
+	var wsID, paneID string
+	var err error
+	wsID, err = s.herdrProjectWorkspaceID(ctx, app.Project.Name)
+	if err != nil {
+		return nil, err
+	}
+	if wsID == "" {
+		// No workspace carries the project label yet; bootstrap one. Its fresh
+		// root tab becomes the file's tab, so it only needs the filename label.
+		createdWsID, createdTabID, createdPaneID, err := s.bootstrapHerdrWorkspaceIDs(ctx, app.Project.Path)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := s.runHerdr(ctx, "tab", "rename", createdTabID, label); err != nil {
+			return nil, err
+		}
+		wsID, paneID = createdWsID, createdPaneID
+	} else {
+		// Reuse the file's existing tab when present, otherwise create one.
+		_, paneID, err = s.herdrFileTab(ctx, wsID, label)
+		if err != nil {
+			return nil, err
+		}
+		if paneID == "" {
+			paneID, err = s.herdrCreateFileTab(ctx, wsID, label, app.Project.Path)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	if paneID == "" {
+		return nil, fmt.Errorf("no usable pane for file agent %q", name)
+	}
+
+	if _, err := s.runHerdr(ctx, "agent", "start", name, "--kind", kind, "--pane", paneID); err != nil {
+		return nil, err
+	}
+
+	agent := s.findHerdrAgent(ctx, name)
+	if agent == nil {
+		agent = &api.HerdrAgent{Name: name, Status: "unknown", WorkspaceId: wsID, PaneId: paneID}
+	}
+	return agent, nil
+}
+
+// herdrStartTaskAgentRequest starts (or reuses) the herdr agent dedicated to a
+// task file and optionally sends it a prompt immediately.
+type herdrStartTaskAgentRequest struct {
+	// TaskID identifies the task whose markdown file the agent works on.
+	TaskID string `json:"task_id"`
+	// AgentKind overrides the task's agent_kind metadata (default: opencode).
+	AgentKind string `json:"agent_kind"`
+	// Prompt is either a prompt template name (prompts/<name>.md, "@"-prefixed
+	// or matching an existing template) or an inline prompt. When empty no
+	// prompt is sent.
+	Prompt string `json:"prompt"`
+}
+
+// herdrStartTaskAgentResponse reports the agent started for a task and the
+// prompt that was submitted (when one was given).
+type herdrStartTaskAgentResponse struct {
+	Ok    bool            `json:"ok"`
+	Agent *api.HerdrAgent `json:"agent,omitempty"`
+	// Prompt is the rendered prompt text sent to the agent.
+	Prompt string `json:"prompt,omitempty"`
+}
+
+// StartTaskAgent starts a herdr agent dedicated to a task's markdown file. The
+// tab is labelled after the task file and the agent (agent_kind) runs bound to
+// that file, mirroring the file-agent flow. When a prompt is given it is
+// rendered (via a prompts/<name>.md template when it matches one) and submitted
+// to the agent immediately.
+func (s *Server) StartTaskAgent(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req herdrStartTaskAgentRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	req.TaskID = strings.TrimSpace(req.TaskID)
+	if req.TaskID == "" || strings.ContainsAny(req.TaskID, `/\`) {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("invalid task id")})
 		return
 	}
 	app, err := s.getApp(r)
@@ -981,62 +1089,44 @@ func (s *Server) StartHerdrFileAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-
-	// The file already has a live agent: report it instead of stacking tabs.
-	if agent := s.findHerdrAgent(r.Context(), name); agent != nil {
-		writeJSONResponse(w, http.StatusOK, herdrFileAgentResponse{Ok: true, Agent: agent})
-		return
-	}
-
-	var wsID, paneID string
-	wsID, err = s.herdrProjectWorkspaceID(r.Context(), app.Project.Name)
+	task, err := app.Tasks.Show(r.Context(), req.TaskID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	if wsID == "" {
-		// No workspace carries the project label yet; bootstrap one. Its fresh
-		// root tab becomes the file's tab, so it only needs the filename label.
-		createdWsID, createdTabID, createdPaneID, err := s.bootstrapHerdrWorkspaceIDs(r.Context(), app.Project.Path)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if _, err := s.runHerdr(r.Context(), "tab", "rename", createdTabID, label); err != nil {
-			writeError(w, err)
-			return
-		}
-		wsID, paneID = createdWsID, createdPaneID
-	} else {
-		// Reuse the file's existing tab when present, otherwise create one.
-		_, paneID, err = s.herdrFileTab(r.Context(), wsID, label)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if paneID == "" {
-			paneID, err = s.herdrCreateFileTab(r.Context(), wsID, label, app.Project.Path)
-			if err != nil {
-				writeError(w, err)
-				return
-			}
-		}
+	kind := strings.TrimSpace(req.AgentKind)
+	if kind == "" {
+		kind = task.AgentKind
 	}
-	if paneID == "" {
-		writeError(w, fmt.Errorf("no usable pane for file agent %q", name))
+	if kind == "" {
+		kind = "opencode"
+	}
+	if !validHerdrAgentKind(kind) {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: fmt.Errorf("unsupported agent kind %q", kind)})
 		return
 	}
-
-	if _, err := s.runHerdr(r.Context(), "agent", "start", name, "--kind", kind, "--pane", paneID); err != nil {
+	relPath := app.Tasks.RelativePathFor(task)
+	agent, err := s.startHerdrFileAgent(r.Context(), app, relPath, kind)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
-
-	agent := s.findHerdrAgent(r.Context(), name)
-	if agent == nil {
-		agent = &api.HerdrAgent{Name: name, Status: "unknown", WorkspaceId: wsID, PaneId: paneID}
+	resp := herdrStartTaskAgentResponse{Ok: true, Agent: agent}
+	if prompt := strings.TrimSpace(req.Prompt); prompt != "" {
+		text, err := app.Tasks.RenderPrompt(r.Context(), prompt, task)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if strings.TrimSpace(text) != "" {
+			if _, err := s.runHerdr(r.Context(), "agent", "prompt", agent.Name, text); err != nil {
+				writeError(w, err)
+				return
+			}
+			resp.Prompt = text
+		}
 	}
-	writeJSONResponse(w, http.StatusOK, herdrFileAgentResponse{Ok: true, Agent: agent})
+	writeJSONResponse(w, http.StatusOK, resp)
 }
 
 // bootstrapHerdrWorkspaceIDs creates herdr's first workspace for the current

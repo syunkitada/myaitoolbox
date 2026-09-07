@@ -31,6 +31,8 @@ const (
 type Task struct {
 	ID            string
 	Title         string
+	Description   string
+	AgentKind     string
 	Status        TaskStatus
 	Priority      TaskPriority
 	Type          TaskType

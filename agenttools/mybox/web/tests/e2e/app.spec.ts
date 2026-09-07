@@ -166,7 +166,6 @@ test('dashboard toggles the file explorer', async ({ page }) => {
 test('nav bar file actions open a terminal', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'New file' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Add adhoc' })).toBeVisible()
   await page.getByRole('button', { name: 'Open terminal' }).click()
   await expect(page.locator('.terminal-panel')).toBeVisible()
 })
@@ -734,7 +733,6 @@ test('board drag-and-drop changes task status and front matter', async ({ page }
   await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()
 
   await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Add adhoc' })).toBeVisible()
 
   const card = page.getByText('e2e-status-change-target')
   await expect(card).toBeVisible()

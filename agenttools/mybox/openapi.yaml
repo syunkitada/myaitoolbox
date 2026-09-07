@@ -876,6 +876,10 @@ components:
           type: string
         title:
           type: string
+        description:
+          type: string
+        agent_kind:
+          type: string
         status:
           $ref: "#/components/schemas/TaskStatus"
         priority:
@@ -918,6 +922,10 @@ components:
       properties:
         name:
           type: string
+        description:
+          type: string
+        agent_kind:
+          type: string
         status:
           $ref: "#/components/schemas/TaskStatus"
         priority:
@@ -936,6 +944,10 @@ components:
       type: object
       properties:
         name:
+          type: string
+        description:
+          type: string
+        agent_kind:
           type: string
         status:
           $ref: "#/components/schemas/TaskStatus"

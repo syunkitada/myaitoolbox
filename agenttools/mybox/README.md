@@ -113,9 +113,9 @@ mybox serve --project proj --base-path /mybox
 myproject/
 ├── tasks/
 │   ├── 20260802_design-the-login-flow/
-│   │   └── task.md          # --- フロントマターで status / priority / type 等を保持
-│   └── adhoc/
-│       └── 20260902_review-pr.md   # アドホックタスク（1タスク=1ファイル）
+│   │   └── task.md          # --- フロントマターで status / priority / task_kind 等を保持
+│   └── 20260902_review-pr/
+│       └── task.md          # アドホックタスク（通常タスクと同じディレクトリ配置）
 └── knowledge/
     ├── index.md
     └── notes/architecture.md
@@ -127,8 +127,8 @@ myproject/
 
 PRレビューやアラート対応など、一時的に発生するタスクは **アドホックタスク** として通常タスクと区別して管理できます。
 
-- `tasks/adhoc/` 以下に `YYYYMMDD_<slug>.md` 形式の単一ファイルとして保存されます。
-- フロントマターに `type: adhoc` を持ち、GTD Board では 紫色のバッジとカード背景で区別して表示されます。
+- 通常タスクと同じ `tasks/<id>/task.md` のディレクトリ配置で保存されます。
+- フロントマターの `task_kind: adhoc` で区別され、GTD Board では 紫色のバッジとカード背景で区別して表示されます。
 - 通常タスクと同じステータス（todo / doing / blocked / review / done）と優先度を設定できます。
 - アーカイブはできません（完了後はファイル削除で整理します）。
 

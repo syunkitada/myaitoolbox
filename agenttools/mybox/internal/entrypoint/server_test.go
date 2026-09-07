@@ -32,7 +32,9 @@ func newTestServer(t *testing.T, readOnly bool) (*Server, *App) {
 		Tasks: application.NewTaskUseCase(
 			markdown.NewTaskRepository(root),
 			markdown.NewTemplateRenderer(root, root),
+			markdown.NewPromptRepository(root, root),
 			"test",
+			root,
 		),
 		Knowledge: application.NewKnowledgeUseCase(
 			markdown.NewKnowledgeRepository(root),

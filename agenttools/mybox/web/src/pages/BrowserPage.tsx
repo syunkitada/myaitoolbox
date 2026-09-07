@@ -12,7 +12,7 @@ import { Separator } from '../components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible'
 import MonacoEditor from '../components/MonacoEditor'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { ChevronDown, Clock, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Star, Tag, Text, Trash2, Zap } from 'lucide-react'
+import { ChevronDown, Clock, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Star, Tag, Text, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -687,17 +687,6 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
             >
               <ListPlus />
               <span className="hidden sm:inline">Task</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="cursor-pointer"
-              onClick={() => dispatchNavAction('new-adhoc')}
-              aria-label="Add adhoc"
-              title="Add adhoc"
-            >
-              <Zap />
-              <span className="hidden sm:inline">Adhoc</span>
             </Button>
           </div>
         )}

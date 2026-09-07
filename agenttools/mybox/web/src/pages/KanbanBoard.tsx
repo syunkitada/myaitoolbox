@@ -12,7 +12,8 @@ import {
 import { Task, TaskStatus, api } from '../api/client'
 import { encodePath, getProject, projectUrl } from '../utils/routes'
 import { Button } from '../components/ui/button'
-import { Archive, ListPlus, MoreVertical, ExternalLink, Trash2, Zap } from 'lucide-react'
+import { NewTaskDialog } from '../components/NewTaskDialog'
+import { Archive, ListPlus, MoreVertical, ExternalLink, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AdhocBadge, DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
 
@@ -212,6 +213,8 @@ function Column({ status, tasks, onOpen, onArchive, onDelete, showProject, reado
 export function KanbanBoard() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [newTaskOpen, setNewTaskOpen] = useState(false)
+  const [newTaskType, setNewTaskType] = useState<'regular' | 'adhoc'>('regular')
   const navigate = useNavigate()
   const currentProject = getProject()
   const isGlobal = !currentProject  // プロジェクト未選択 = 全プロジェクト横断モード
@@ -251,10 +254,7 @@ export function KanbanBoard() {
     (task: Task) => {
       const target = task.project || currentProject
       if (!target) return
-      const relPath =
-        task.type === 'adhoc'
-          ? `tasks/adhoc/${task.id}.md`
-          : `tasks/${encodePath(task.id)}/task.md`
+      const relPath = `tasks/${encodePath(task.id)}/task.md`
       const filePath = `/dashboard/files/${relPath}`
       if (target === currentProject) {
         navigate(projectUrl(filePath))
@@ -266,13 +266,8 @@ export function KanbanBoard() {
   )
 
   const handleNewTask = (type: 'regular' | 'adhoc') => {
-    const name = window.prompt(type === 'adhoc' ? 'Adhoc task name' : 'New task name')
-    if (name && name.trim()) {
-      void api
-        .createTask({ name: name.trim(), type })
-        .then((t) => handleOpen(t))
-        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-    }
+    setNewTaskType(type)
+    setNewTaskOpen(true)
   }
 
   const handleArchive = useCallback(
@@ -317,10 +312,6 @@ export function KanbanBoard() {
               <ListPlus />
               <span>New task</span>
             </Button>
-            <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => handleNewTask('adhoc')}>
-              <Zap />
-              <span>Add adhoc</span>
-            </Button>
           </div>
         )}
       </div>
@@ -345,6 +336,16 @@ export function KanbanBoard() {
           ))}
         </div>
       </DndContext>
+      <NewTaskDialog
+        open={newTaskOpen}
+        initialType={newTaskType}
+        onOpenChange={setNewTaskOpen}
+        onCreated={(t) => {
+          void load()
+          handleOpen(t)
+        }}
+        onError={(message) => setError(message)}
+      />
     </div>
   )
 }

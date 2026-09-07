@@ -232,8 +232,8 @@ func newTaskShowCommand(project *string) *cobra.Command {
 }
 
 func newTaskCreateCommand(project *string) *cobra.Command {
-	var name string
-	var adhoc, jsonOut bool
+	var name, description, agentKind, prompt string
+	var adhoc, jsonOut, noAgent bool
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a task",
@@ -246,22 +246,87 @@ func newTaskCreateCommand(project *string) *cobra.Command {
 			if adhoc {
 				taskType = string(domain.TaskTypeAdhoc)
 			}
-			task, err := app.Tasks.Create(cmd.Context(), application.TaskInput{Name: name, Type: taskType})
+			agentKind = strings.TrimSpace(agentKind)
+			if agentKind != "" && !validHerdrAgentKind(agentKind) {
+				return fmt.Errorf("unsupported agent kind %q", agentKind)
+			}
+			task, err := app.Tasks.Create(cmd.Context(), application.TaskInput{
+				Name:        name,
+				Description: description,
+				AgentKind:   agentKind,
+				Type:        taskType,
+			})
 			if err != nil {
 				return err
+			}
+			kind := agentKind
+			if kind == "" {
+				kind = task.AgentKind
+			}
+			if kind != "" && !validHerdrAgentKind(kind) {
+				return fmt.Errorf("unsupported agent kind %q", kind)
+			}
+			started := false
+			var sentPrompt string
+			if !noAgent && kind != "" {
+				text, _, err := startTaskAgent(cmd.Context(), app, task, kind, prompt)
+				if err != nil {
+					return err
+				}
+				started = true
+				sentPrompt = text
 			}
 			if jsonOut {
 				return writeJSON(cmd, task)
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), task.ID)
+			if started {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "started agent (kind=%s) bound to %s\n", kind, app.Tasks.RelativePathFor(task))
+				if sentPrompt != "" {
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "prompt sent: %s\n", sentPrompt)
+				}
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "task name")
+	cmd.Flags().StringVar(&description, "description", "", "task description")
+	cmd.Flags().StringVar(&agentKind, "agent-kind", "", "agent kind to launch for this task (e.g. opencode)")
+	cmd.Flags().StringVar(&prompt, "prompt", "", "prompt template name or inline prompt sent to the agent")
 	cmd.Flags().BoolVar(&adhoc, "adhoc", false, "create an adhoc task")
+	cmd.Flags().BoolVar(&noAgent, "no-agent", false, "do not start a herdr agent")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
+}
+
+// startTaskAgent runs the herdr orchestration for a freshly created task: start
+// the agent bound to the task file (kind) and, when prompt is non-empty, render
+// and submit the prompt. It reuses the server-side file-agent logic via a
+// lightweight Server whose herdr runner talks to the herdr CLI directly
+// (mirroring the StartTaskAgent API endpoint). It returns the submitted prompt
+// ("" when none) and the agent name.
+func startTaskAgent(ctx context.Context, app *App, task *domain.Task, kind string, prompt string) (string, string, error) {
+	srv := &Server{herdrRun: defaultHerdrRun}
+	relPath := app.Tasks.RelativePathFor(task)
+	agent, err := srv.startHerdrFileAgent(ctx, app, relPath, kind)
+	if err != nil {
+		return "", "", err
+	}
+	sent := ""
+	if strings.TrimSpace(prompt) != "" {
+		text, err := app.Tasks.RenderPrompt(ctx, prompt, task)
+		if err != nil {
+			return "", "", err
+		}
+		if strings.TrimSpace(text) != "" {
+			if _, err := srv.runHerdr(ctx, "agent", "prompt", agent.Name, text); err != nil {
+				return "", "", err
+			}
+			sent = text
+		}
+	}
+	return sent, agent.Name, nil
 }
 
 func newTaskEditCommand(project *string) *cobra.Command {

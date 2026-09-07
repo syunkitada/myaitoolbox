@@ -160,13 +160,15 @@ type CreateProjectRequest struct {
 
 // CreateTaskRequest defines model for CreateTaskRequest.
 type CreateTaskRequest struct {
-	Assignee *string       `json:"assignee,omitempty"`
-	Due      *string       `json:"due,omitempty"`
-	Name     string        `json:"name"`
-	Priority *TaskPriority `json:"priority,omitempty"`
-	Status   *TaskStatus   `json:"status,omitempty"`
-	Tags     *[]string     `json:"tags,omitempty"`
-	Type     *TaskType     `json:"type,omitempty"`
+	AgentKind   *string       `json:"agent_kind,omitempty"`
+	Assignee    *string       `json:"assignee,omitempty"`
+	Description *string       `json:"description,omitempty"`
+	Due         *string       `json:"due,omitempty"`
+	Name        string        `json:"name"`
+	Priority    *TaskPriority `json:"priority,omitempty"`
+	Status      *TaskStatus   `json:"status,omitempty"`
+	Tags        *[]string     `json:"tags,omitempty"`
+	Type        *TaskType     `json:"type,omitempty"`
 }
 
 // FileContent defines model for FileContent.
@@ -451,10 +453,12 @@ type SearchResultType string
 
 // Task defines model for Task.
 type Task struct {
+	AgentKind     *string      `json:"agent_kind,omitempty"`
 	Archived      *bool        `json:"archived,omitempty"`
 	Assignee      *string      `json:"assignee,omitempty"`
 	Body          *string      `json:"body,omitempty"`
 	Created       *time.Time   `json:"created,omitempty"`
+	Description   *string      `json:"description,omitempty"`
 	Due           *string      `json:"due,omitempty"`
 	Id            string       `json:"id"`
 	PendingReason *string      `json:"pending_reason,omitempty"`
@@ -484,13 +488,15 @@ type UpdateFavoriteRequest struct {
 
 // UpdateTaskRequest defines model for UpdateTaskRequest.
 type UpdateTaskRequest struct {
-	Assignee *string       `json:"assignee,omitempty"`
-	Due      *string       `json:"due,omitempty"`
-	Name     *string       `json:"name,omitempty"`
-	Priority *TaskPriority `json:"priority,omitempty"`
-	Status   *TaskStatus   `json:"status,omitempty"`
-	Tags     *[]string     `json:"tags,omitempty"`
-	Type     *TaskType     `json:"type,omitempty"`
+	AgentKind   *string       `json:"agent_kind,omitempty"`
+	Assignee    *string       `json:"assignee,omitempty"`
+	Description *string       `json:"description,omitempty"`
+	Due         *string       `json:"due,omitempty"`
+	Name        *string       `json:"name,omitempty"`
+	Priority    *TaskPriority `json:"priority,omitempty"`
+	Status      *TaskStatus   `json:"status,omitempty"`
+	Tags        *[]string     `json:"tags,omitempty"`
+	Type        *TaskType     `json:"type,omitempty"`
 }
 
 // GetFileContentParams defines parameters for GetFileContent.
