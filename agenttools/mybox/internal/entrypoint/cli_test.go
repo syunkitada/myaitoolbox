@@ -132,69 +132,53 @@ func TestCLITaskLifecycle(t *testing.T) {
 	assert.True(t, tasks[0].Archived)
 }
 
-func TestCLITaskSearch(t *testing.T) {
-	setupCLIProject(t)
-	runCLIOk(t, "task", "create", "--name", "OAuth callback handler")
-	out := runCLIOk(t, "task", "search", "oauth", "--json")
-	var results []domain.SearchResult
-	require.NoError(t, json.Unmarshal([]byte(out), &results))
-	require.Len(t, results, 1)
-	assert.Equal(t, domain.SearchTypeTask, results[0].Type)
-	assert.Contains(t, results[0].Title, "OAuth")
-}
-
-func TestCLIKnowledgeLifecycle(t *testing.T) {
+func TestCLIFilesLifecycle(t *testing.T) {
 	e := setupCLIProject(t)
-	path := runCLIOk(t, "knowledge", "create", "--json", "notes/alpha")
-	var k domain.Knowledge
-	require.NoError(t, json.Unmarshal([]byte(path), &k))
-	assert.Equal(t, "notes/alpha", k.Path)
+	out := runCLIOk(t, "files", "create", "--json", "notes/alpha.md")
+	var created map[string]string
+	require.NoError(t, json.Unmarshal([]byte(out), &created))
+	assert.Equal(t, "notes/alpha.md", created["path"])
 
-	out := runCLIOk(t, "knowledge", "list", "--json")
-	var list []domain.Knowledge
-	require.NoError(t, json.Unmarshal([]byte(out), &list))
-	require.Len(t, list, 1)
-	assert.Equal(t, "notes/alpha", list[0].Path)
+	runCLIOk(t, "files", "mkdir", "docs")
+	runCLIOk(t, "files", "create", "docs/README.md")
 
-	out = runCLIOk(t, "knowledge", "show", "notes/alpha")
-	assert.Contains(t, out, "notes/alpha")
-
-	runCLIOk(t, "knowledge", "move", "notes/alpha", "notes/beta")
-	_, err := os.Stat(filepath.Join(e.projPath, "knowledge", "notes", "beta.md"))
-	require.NoError(t, err)
-
-	runCLIOk(t, "knowledge", "rename", "notes/beta", "gamma")
-	_, err = os.Stat(filepath.Join(e.projPath, "knowledge", "notes", "gamma.md"))
-	require.NoError(t, err)
-}
-
-func TestCLISearchCrossType(t *testing.T) {
-	e := setupCLIProject(t)
-	runCLIOk(t, "task", "create", "--name", "OAuth login flow")
-	runCLIOk(t, "knowledge", "create", "docs/oauth")
-	require.NoError(t, os.WriteFile(
-		filepath.Join(e.projPath, "knowledge", "docs", "oauth.md"),
-		[]byte("# OAuth\n\nImplement the oauth flow.\n"), 0o644,
-	))
-
-	out := runCLIOk(t, "search", "oauth", "--json")
-	var results []domain.SearchResult
-	require.NoError(t, json.Unmarshal([]byte(out), &results))
-	types := map[domain.SearchType]bool{}
-	for _, r := range results {
-		types[r.Type] = true
+	out = runCLIOk(t, "files", "list", "--json")
+	var entries []domain.FileEntry
+	require.NoError(t, json.Unmarshal([]byte(out), &entries))
+	paths := make([]string, 0, len(entries))
+	for _, e := range entries {
+		paths = append(paths, e.Path)
 	}
-	assert.True(t, types[domain.SearchTypeTask], "expected a task hit")
-	assert.True(t, types[domain.SearchTypeKnowledge], "expected a knowledge hit")
+	assert.Contains(t, paths, "notes/alpha.md")
+	assert.Contains(t, paths, "docs")
+	assert.Contains(t, paths, "docs/README.md")
 
-	out = runCLIOk(t, "search", "oauth", "--type", "knowledge", "--json")
-	require.NoError(t, json.Unmarshal([]byte(out), &results))
-	assert.Len(t, results, 1)
-	assert.Equal(t, domain.SearchTypeKnowledge, results[0].Type)
+	out = runCLIOk(t, "files", "list", "docs")
+	assert.Contains(t, out, "docs/README.md")
+	assert.NotContains(t, out, "notes/alpha.md")
 
-	_, err := runCLI(t, "search", "oauth", "--type", "bogus")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid --type")
+	out = runCLIOk(t, "files", "show", "docs/README.md")
+	assert.Equal(t, "", strings.TrimSpace(out))
+
+	runCLIOk(t, "files", "move", "notes/alpha.md", "notes/beta.md")
+	_, err := os.Stat(filepath.Join(e.projPath, "notes", "beta.md"))
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(e.projPath, "notes", "alpha.md"))
+	require.Error(t, err)
+
+	runCLIOk(t, "files", "copy", "notes/beta.md", "notes/beta-copy.md")
+	_, err = os.Stat(filepath.Join(e.projPath, "notes", "beta-copy.md"))
+	require.NoError(t, err)
+
+	runCLIOk(t, "files", "rename", "notes/beta.md", "gamma.md")
+	_, err = os.Stat(filepath.Join(e.projPath, "notes", "gamma.md"))
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(e.projPath, "notes", "beta.md"))
+	require.Error(t, err)
+
+	runCLIOk(t, "files", "delete", "notes/gamma.md")
+	_, err = os.Stat(filepath.Join(e.projPath, "notes", "gamma.md"))
+	require.Error(t, err)
 }
 
 func trimOutput(s string) string {

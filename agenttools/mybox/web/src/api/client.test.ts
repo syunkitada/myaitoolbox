@@ -18,12 +18,6 @@ describe('api client', () => {
     } as Response)
   }
 
-  it('sends query params and parses json', async () => {
-    mockFetch(200, [{ type: 'task', path: 'a', title: 'A' }])
-    await api.search('foo', 'task')
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/search?q=foo&type=task', expect.any(Object))
-  })
-
   it('omits empty query params', async () => {
     mockFetch(200, [])
     await api.listTasks({})

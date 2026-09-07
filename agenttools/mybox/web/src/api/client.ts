@@ -69,14 +69,6 @@ export interface FileContent {
   content: string
 }
 
-export interface SearchResult {
-  type: 'task' | 'knowledge'
-  id?: string | null
-  path: string
-  title: string
-  snippet?: string | null
-}
-
 export interface GraphNode {
   id: string
   label: string
@@ -314,9 +306,6 @@ export const api = {
   recordRecent: (path: string) => request<void>('POST', '/api/meta/recent', { path }),
 
   deleteRecent: (path: string) => request<void>('POST', '/api/meta/recent/delete', { path }),
-
-  search: (q: string, type?: 'task' | 'knowledge') =>
-    request<SearchResult[]>('GET', '/api/search' + qs({ q, type })),
 
   listTasks: (params: { status?: TaskStatus; tag?: string; type?: TaskType; all?: boolean } = {}) =>
     request<Task[]>('GET', '/api/tasks' + qs(params)),

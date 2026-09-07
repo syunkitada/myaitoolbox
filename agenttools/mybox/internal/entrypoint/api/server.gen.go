@@ -135,9 +135,6 @@ type ServerInterface interface {
 	// DeleteProject Remove a project
 	// (DELETE /api/projects/{name})
 	DeleteProject(w http.ResponseWriter, r *http.Request, name string)
-	// Search Search tasks and knowledge
-	// (GET /api/search)
-	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
 	// ListTasks List tasks
 	// (GET /api/tasks)
 	ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams)
@@ -847,52 +844,6 @@ func (siw *ServerInterfaceWrapper) DeleteProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
-// Search operation middleware
-func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params SearchParams
-
-	// ------------- Required query parameter "q" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "type" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.Search(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // ListTasks operation middleware
 func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Request) {
 
@@ -1213,7 +1164,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/meta/favorites", wrapper.UpdateFavorite)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/meta/recent", wrapper.RecordRecent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/meta/recent/delete", wrapper.DeleteRecent)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/search", wrapper.Search)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files", wrapper.ListFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files", wrapper.CreateFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/dir", wrapper.CreateDir)

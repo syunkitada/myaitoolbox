@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Routes, Route, useLocation, useNavigate, Navigate, NavLink } from 'react-router-dom'
+import { Routes, Route, useLocation, Navigate, NavLink } from 'react-router-dom'
 import { api, Meta, ProjectGitStatus } from './api/client'
 import { getProject, projectUrl, rememberCurrentTab } from './utils/routes'
 import { AppSidebar } from './components/Sidebar'
 import { Dashboard } from './pages/Dashboard'
 import { KnowledgeGraphPage } from './pages/KnowledgeGraphPage'
-import { SearchPage } from './pages/SearchPage'
 import { KanbanBoard } from './pages/KanbanBoard'
 import { StatsPage } from './pages/StatsPage'
 import { ProjectsPage } from './pages/ProjectsPage'
@@ -27,7 +26,6 @@ export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [gitStatus, setGitStatus] = useState<Record<string, ProjectGitStatus>>({})
   const [error, setError] = useState<string | null>(null)
-  const navigate = useNavigate()
   const { pathname } = useLocation()
   const project = getProject()
   const herdr = useHerdrOverview()
@@ -166,7 +164,6 @@ export default function App() {
                       />
                     }
                   />
-                  <Route path="/projects/:project/search" element={<SearchPage key={project} navigate={navigate} />} />
                   <Route
                     path="/projects/:project"
                     element={<Navigate to={projectUrl('/dashboard')} replace />}

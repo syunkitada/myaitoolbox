@@ -17,7 +17,6 @@ type App struct {
 	Tasks     *application.TaskUseCase
 	Knowledge *application.KnowledgeUseCase
 	Files     *application.FileUseCase
-	Search    *application.SearchUseCase
 	State     *application.StateUseCase
 }
 
@@ -66,9 +65,8 @@ func NewApp(ctx context.Context, projectName string) (*App, error) {
 			markdown.NewKnowledgeRepository(project.Path),
 			markdown.NewTemplateRenderer(project.Path, defaultPath),
 		),
-		Files:  application.NewFileUseCase(markdown.NewFileRepository(project.Path)),
-		Search: application.NewSearchUseCase(markdown.NewSearcher(project.Path)),
-		State:  application.NewStateUseCase(config.NewStateStore()),
+		Files: application.NewFileUseCase(markdown.NewFileRepository(project.Path)),
+		State: application.NewStateUseCase(config.NewStateStore()),
 	}
 	return app, nil
 }

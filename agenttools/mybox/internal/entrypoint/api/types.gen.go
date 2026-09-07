@@ -43,24 +43,6 @@ func (e HerdrPaneSplitRequestDirection) Valid() bool {
 	}
 }
 
-// Defines values for SearchResultType.
-const (
-	SearchResultTypeKnowledge SearchResultType = "knowledge"
-	SearchResultTypeTask      SearchResultType = "task"
-)
-
-// Valid indicates whether the value is a known member of the SearchResultType enum.
-func (e SearchResultType) Valid() bool {
-	switch e {
-	case SearchResultTypeKnowledge:
-		return true
-	case SearchResultTypeTask:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for TaskPriority.
 const (
 	High   TaskPriority = "high"
@@ -130,23 +112,7 @@ func (e TaskType) Valid() bool {
 	}
 }
 
-// Defines values for SearchParamsType.
-const (
-	SearchParamsTypeKnowledge SearchParamsType = "knowledge"
-	SearchParamsTypeTask      SearchParamsType = "task"
-)
-
-// Valid indicates whether the value is a known member of the SearchParamsType enum.
-func (e SearchParamsType) Valid() bool {
-	switch e {
-	case SearchParamsTypeKnowledge:
-		return true
-	case SearchParamsTypeTask:
-		return true
-	default:
-		return false
-	}
-}
+// Defines values for TaskStatus.
 
 // CreateKnowledgeRequest defines model for CreateKnowledgeRequest.
 type CreateKnowledgeRequest struct {
@@ -439,18 +405,6 @@ type ReorderProjectsRequest struct {
 	Names []string `json:"names"`
 }
 
-// SearchResult defines model for SearchResult.
-type SearchResult struct {
-	Id      *string          `json:"id,omitempty"`
-	Path    string           `json:"path"`
-	Snippet *string          `json:"snippet,omitempty"`
-	Title   string           `json:"title"`
-	Type    SearchResultType `json:"type"`
-}
-
-// SearchResultType defines model for SearchResult.Type.
-type SearchResultType string
-
 // Task defines model for Task.
 type Task struct {
 	AgentKind     *string      `json:"agent_kind,omitempty"`
@@ -525,15 +479,6 @@ type GetKnowledgeContentParams struct {
 type GetProjectPathsParams struct {
 	Prefix *string `form:"prefix,omitempty" json:"prefix,omitempty"`
 }
-
-// SearchParams defines parameters for Search.
-type SearchParams struct {
-	Q    string            `form:"q" json:"q"`
-	Type *SearchParamsType `form:"type,omitempty" json:"type,omitempty"`
-}
-
-// SearchParamsType defines parameters for Search.
-type SearchParamsType string
 
 // ListTasksParams defines parameters for ListTasks.
 type ListTasksParams struct {

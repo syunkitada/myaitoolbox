@@ -9,8 +9,10 @@ Markdownを唯一のデータソースとする個人ワークスペースツー
   - CLI: 作成・一覧・検索・表示・編集・フィールド更新・アーカイブ
   - Web UI: GTDボード（Todo / Doing / Blocked / Review / Done）とドラッグ＆ドロップ
 - **ナレッジ管理** — `knowledge/` 配下のMarkdownファイル
-  - CLI: 作成・一覧・検索・表示・編集・移動・リネーム
   - Web UI: エクスプローラー・WikiLink・Backlinks・Graph View・Mermaid・アウトライン・全文検索・タグ・お気に入り・最近開いたファイル
+- **ファイル管理** — プロジェクトルート起点で任意のファイル/ディレクトリを操作
+  - CLI: 一覧・表示・作成（ファイル/ディレクトリ）・編集・移動・コピー・リネーム・削除
+  - Web UI: Filesタブ（ツリー・編集・DnD・コンテキストメニュー）
 - **横断検索** — タスクとナレッジをまとめて検索
 - **HTTP API + Web UI** — `serve` コマンドで起動
 
@@ -64,27 +66,20 @@ mybox task edit --project proj <task-id>   # $EDITOR で編集
 mybox task archive --project proj <task-id>
 ```
 
-### ナレッジ
+### ファイル
 
 ```bash
-mybox knowledge create --project proj notes/architecture
-mybox knowledge list --project proj
-mybox knowledge show --project proj notes/architecture
-mybox knowledge edit --project proj notes/architecture
-mybox knowledge move --project proj notes/architecture docs/architecture
-mybox knowledge rename --project proj docs/architecture design
+mybox files list                   # プロジェクトルート起点でファイル一覧
+mybox files list docs              # 指定ディレクトリ配下のみ
+mybox files show notes/arch.md
+mybox files create notes/new.md
+mybox files mkdir assets
+mybox files edit notes/arch.md     # $EDITOR で編集
+mybox files move old.md new.md
+mybox files copy old.md copy.md
+mybox files rename old.md renamed.md
+mybox files delete notes/old.md
 ```
-$ herdr
-herdr: detached from server
-Run `herdr` to reattach
-### 検索
-
-```bash
-mybox search oauth --project proj
-mybox search oauth --type knowledge
-mybox search login --type task --json
-```
-
 ### Web UI
 
 ```bash

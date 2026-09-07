@@ -465,40 +465,6 @@ func (s *Server) DeleteRecent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) Search(w http.ResponseWriter, r *http.Request, params api.SearchParams) {
-	app, err := s.getApp(r)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	option := domain.SearchOption{}
-	if params.Type != nil {
-		switch *params.Type {
-		case api.SearchParamsType(domain.SearchTypeTask), api.SearchParamsType(domain.SearchTypeKnowledge):
-			option.Type = domain.SearchType(*params.Type)
-		default:
-			writeError(w, fmt.Errorf("%w: invalid type", domain.ErrInvalidArgument))
-			return
-		}
-	}
-	results, err := app.Search.Search(r.Context(), params.Q, option)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	out := make([]api.SearchResult, 0, len(results))
-	for _, res := range results {
-		out = append(out, api.SearchResult{
-			Id:      strPtr(res.ID),
-			Path:    res.Path,
-			Title:   res.Title,
-			Snippet: strPtr(res.Snippet),
-			Type:    api.SearchResultType(res.Type),
-		})
-	}
-	writeJSONResponse(w, http.StatusOK, out)
-}
-
 func (s *Server) ListTasks(w http.ResponseWriter, r *http.Request, params api.ListTasksParams) {
 	project := r.Header.Get("X-Project")
 	filter := application.TaskFilter{}

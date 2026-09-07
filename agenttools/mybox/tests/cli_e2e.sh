@@ -64,27 +64,18 @@ else
   ok "adhoc archive rejected"
 fi
 
-step "knowledge create / show / move / rename"
-path="$("$BIN" knowledge create --project proj 'notes/alpha' | tail -1)"
-check "knowledge created path" "notes/alpha" "$path"
-show="$("$BIN" knowledge show --project proj "$path")"
-case "$show" in *alpha*) ok "knowledge shown";; *) fail "knowledge shown";; esac
-"$BIN" knowledge move --project proj "$path" 'notes/beta' >/dev/null
-[ -f "$PROJ/knowledge/notes/beta.md" ] && [ ! -f "$PROJ/knowledge/notes/alpha.md" ] && ok "knowledge moved" || fail "knowledge moved"
-"$BIN" knowledge rename --project proj 'notes/beta' 'gamma' >/dev/null
-[ -f "$PROJ/knowledge/notes/gamma.md" ] && ok "knowledge renamed" || fail "knowledge renamed"
-
-step "search (task + knowledge)"
-"$BIN" task create --project proj --name 'OAuth login handler' >/dev/null
-"$BIN" knowledge create --project proj 'docs/oauth' >/dev/null
-printf '# OAuth notes\n\nImplement the oauth flow.\n' >"$PROJ/knowledge/docs/oauth.md"
-task_hits="$("$BIN" search --project proj oauth --type task)"
-case "$task_hits" in *oauth-login-handler*) ok "task search hit";; *) fail "task search hit";; esac
-k_hits="$("$BIN" search --project proj oauth --type knowledge)"
-case "$k_hits" in *docs/oauth*) ok "knowledge search hit";; *) fail "knowledge search hit";; esac
-both="$("$BIN" search --project proj oauth --json)"
-case "$both" in *oauth-login-handler*) ok "cross-type search includes task";; *) fail "cross-type search includes task";; esac
-case "$both" in *docs/oauth*) ok "cross-type search includes knowledge";; *) fail "cross-type search includes knowledge";; esac
+step "files create / show / mkdir / move / rename"
+path="$("$BIN" files create --project proj 'notes/alpha.md' | tail -1)"
+check "files created path" "notes/alpha.md" "$path"
+printf '# Alpha\n' >"$PROJ/notes/alpha.md"
+show="$("$BIN" files show --project proj "$path")"
+case "$show" in *Alpha*) ok "files shown";; *) fail "files shown";; esac
+"$BIN" files mkdir --project proj 'docs' >/dev/null
+[ -d "$PROJ/docs" ] && ok "files mkdir" || fail "files mkdir"
+"$BIN" files move --project proj "$path" 'notes/beta.md' >/dev/null
+[ -f "$PROJ/notes/beta.md" ] && [ ! -f "$PROJ/notes/alpha.md" ] && ok "files moved" || fail "files moved"
+"$BIN" files rename --project proj 'notes/beta.md' 'gamma.md' >/dev/null
+[ -f "$PROJ/notes/gamma.md" ] && ok "files renamed" || fail "files renamed"
 
 step "serve smoke (read-only rejects writes)"
 "$BIN" serve --project proj --port 18099 --no-browser --read-only &

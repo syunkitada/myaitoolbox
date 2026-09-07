@@ -37,9 +37,8 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newProjectCommand())
-	root.AddCommand(newSearchCommand(&project))
 	root.AddCommand(newTaskCommand(&project))
-	root.AddCommand(newKnowledgeCommand(&project))
+	root.AddCommand(newFilesCommand(&project))
 	root.AddCommand(newServeCommand())
 	return root
 }
@@ -115,44 +114,12 @@ func newProjectRemoveCommand() *cobra.Command {
 	}
 }
 
-func newSearchCommand(project *string) *cobra.Command {
-	var typeFilter string
-	var jsonOut bool
-	cmd := &cobra.Command{
-		Use:   "search <query>",
-		Short: "Search tasks and knowledge",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := NewApp(cmd.Context(), *project)
-			if err != nil {
-				return err
-			}
-			option := domain.SearchOption{}
-			switch typeFilter {
-			case "", "task", "knowledge":
-				option.Type = domain.SearchType(typeFilter)
-			default:
-				return fmt.Errorf("%w: invalid --type %q", domain.ErrInvalidArgument, typeFilter)
-			}
-			results, err := app.Search.Search(cmd.Context(), args[0], option)
-			if err != nil {
-				return err
-			}
-			return printResults(cmd, results, jsonOut)
-		},
-	}
-	cmd.Flags().StringVar(&typeFilter, "type", "", "filter by type (task|knowledge)")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
-	return cmd
-}
-
 func newTaskCommand(project *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "task",
 		Short: "Manage tasks",
 	}
 	cmd.AddCommand(newTaskListCommand(project))
-	cmd.AddCommand(newTaskSearchCommand(project))
 	cmd.AddCommand(newTaskShowCommand(project))
 	cmd.AddCommand(newTaskCreateCommand(project))
 	cmd.AddCommand(newTaskEditCommand(project))
@@ -186,28 +153,6 @@ func newTaskListCommand(project *string) *cobra.Command {
 	cmd.Flags().StringVar(&tag, "tag", "", "filter by tag")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "filter by assignee")
 	cmd.Flags().StringVar(&taskType, "type", "", "filter by type (regular|adhoc)")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
-	return cmd
-}
-
-func newTaskSearchCommand(project *string) *cobra.Command {
-	var jsonOut bool
-	cmd := &cobra.Command{
-		Use:   "search <query>",
-		Short: "Search tasks",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := NewApp(cmd.Context(), *project)
-			if err != nil {
-				return err
-			}
-			results, err := app.Search.Search(cmd.Context(), args[0], domain.SearchOption{Type: domain.SearchTypeTask})
-			if err != nil {
-				return err
-			}
-			return printResults(cmd, results, jsonOut)
-		},
-	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 	return cmd
 }
@@ -399,108 +344,96 @@ func newTaskArchiveCommand(project *string) *cobra.Command {
 	}
 }
 
-func newKnowledgeCommand(project *string) *cobra.Command {
+func newFilesCommand(project *string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "knowledge",
-		Short: "Manage knowledge",
+		Use:   "files",
+		Short: "Manage files (project root)",
 	}
-	cmd.AddCommand(newKnowledgeListCommand(project))
-	cmd.AddCommand(newKnowledgeSearchCommand(project))
-	cmd.AddCommand(newKnowledgeShowCommand(project))
-	cmd.AddCommand(newKnowledgeCreateCommand(project))
-	cmd.AddCommand(newKnowledgeEditCommand(project))
-	cmd.AddCommand(newKnowledgeMoveCommand(project))
-	cmd.AddCommand(newKnowledgeRenameCommand(project))
+	cmd.AddCommand(newFilesListCommand(project))
+	cmd.AddCommand(newFilesShowCommand(project))
+	cmd.AddCommand(newFilesCreateCommand(project))
+	cmd.AddCommand(newFilesMkdirCommand(project))
+	cmd.AddCommand(newFilesEditCommand(project))
+	cmd.AddCommand(newFilesMoveCommand(project))
+	cmd.AddCommand(newFilesCopyCommand(project))
+	cmd.AddCommand(newFilesRenameCommand(project))
+	cmd.AddCommand(newFilesDeleteCommand(project))
 	return cmd
 }
 
-func newKnowledgeListCommand(project *string) *cobra.Command {
-	var all, jsonOut bool
-	var tag string
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List knowledge",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := NewApp(cmd.Context(), *project)
-			if err != nil {
-				return err
-			}
-			list, err := app.Knowledge.List(cmd.Context(), application.KnowledgeFilter{Tag: tag})
-			if err != nil {
-				return err
-			}
-			if !all {
-				list = filterHidden(list)
-			}
-			return printKnowledge(cmd, list, jsonOut)
-		},
-	}
-	cmd.Flags().BoolVar(&all, "all", false, "include hidden files")
-	cmd.Flags().StringVar(&tag, "tag", "", "filter by tag")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
-	return cmd
-}
-
-func newKnowledgeSearchCommand(project *string) *cobra.Command {
+func newFilesListCommand(project *string) *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
-		Use:   "search <query>",
-		Short: "Search knowledge",
-		Args:  cobra.ExactArgs(1),
+		Use:   "list [path]",
+		Short: "List files from the project root",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := NewApp(cmd.Context(), *project)
 			if err != nil {
 				return err
 			}
-			results, err := app.Search.Search(cmd.Context(), args[0], domain.SearchOption{Type: domain.SearchTypeKnowledge})
+			entries, err := app.Files.Tree(cmd.Context())
 			if err != nil {
 				return err
 			}
-			return printResults(cmd, results, jsonOut)
+			if len(args) == 1 {
+				prefix := strings.TrimSuffix(args[0], "/")
+				var filtered []domain.FileEntry
+				for _, e := range entries {
+					if e.Path == prefix || strings.HasPrefix(e.Path, prefix+"/") {
+						filtered = append(filtered, e)
+					}
+				}
+				entries = filtered
+			}
+			return printFileEntries(cmd, entries, jsonOut)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 	return cmd
 }
 
-func newKnowledgeShowCommand(project *string) *cobra.Command {
+func newFilesShowCommand(project *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <path>",
-		Short: "Show knowledge details",
+		Short: "Show file content",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := NewApp(cmd.Context(), *project)
 			if err != nil {
 				return err
 			}
-			k, err := app.Knowledge.Show(cmd.Context(), args[0])
+			content, err := app.Files.Content(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			return printKnowledgeDetail(cmd, k)
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), content)
+			if !strings.HasSuffix(content, "\n") {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout())
+			}
+			return nil
 		},
 	}
 }
 
-func newKnowledgeCreateCommand(project *string) *cobra.Command {
+func newFilesCreateCommand(project *string) *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "create <path>",
-		Short: "Create knowledge",
+		Short: "Create an empty file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := NewApp(cmd.Context(), *project)
 			if err != nil {
 				return err
 			}
-			k, err := app.Knowledge.Create(cmd.Context(), args[0])
-			if err != nil {
+			if err := app.Files.Create(cmd.Context(), args[0]); err != nil {
 				return err
 			}
 			if jsonOut {
-				return writeJSON(cmd, k)
+				return writeJSON(cmd, map[string]string{"path": args[0]})
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), k.Path)
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), args[0])
 			return nil
 		},
 	}
@@ -508,33 +441,52 @@ func newKnowledgeCreateCommand(project *string) *cobra.Command {
 	return cmd
 }
 
-func newKnowledgeEditCommand(project *string) *cobra.Command {
-	return &cobra.Command{
-		Use:   "edit <path>",
-		Short: "Edit knowledge in $EDITOR",
+func newFilesMkdirCommand(project *string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "mkdir <path>",
+		Short: "Create a directory",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := NewApp(cmd.Context(), *project)
 			if err != nil {
 				return err
 			}
-			path := filepath.Join(app.Project.Path, "knowledge", args[0]+".md")
-			return editFile(cmd, path)
+			if err := app.Files.CreateDir(cmd.Context(), args[0]); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), args[0])
+			return nil
+		},
+	}
+	return cmd
+}
+
+func newFilesEditCommand(project *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "edit <path>",
+		Short: "Edit file in $EDITOR",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := NewApp(cmd.Context(), *project)
+			if err != nil {
+				return err
+			}
+			return editFile(cmd, filepath.Join(app.Project.Path, filepath.FromSlash(args[0])))
 		},
 	}
 }
 
-func newKnowledgeMoveCommand(project *string) *cobra.Command {
+func newFilesMoveCommand(project *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "move <old> <new>",
-		Short: "Move knowledge to another path",
+		Short: "Move a file or directory",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := NewApp(cmd.Context(), *project)
 			if err != nil {
 				return err
 			}
-			if err := app.Knowledge.Move(cmd.Context(), args[0], args[1]); err != nil {
+			if err := app.Files.Move(cmd.Context(), args[0], args[1]); err != nil {
 				return err
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "moved %s -> %s\n", args[0], args[1])
@@ -543,20 +495,62 @@ func newKnowledgeMoveCommand(project *string) *cobra.Command {
 	}
 }
 
-func newKnowledgeRenameCommand(project *string) *cobra.Command {
+func newFilesCopyCommand(project *string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "rename <old> <new-name>",
-		Short: "Rename knowledge",
+		Use:   "copy <old> <new>",
+		Short: "Copy a file or directory",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := NewApp(cmd.Context(), *project)
 			if err != nil {
 				return err
 			}
-			if err := app.Knowledge.Rename(cmd.Context(), args[0], args[1]); err != nil {
+			if err := app.Files.Copy(cmd.Context(), args[0], args[1]); err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "renamed %s -> %s\n", args[0], args[1])
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "copied %s -> %s\n", args[0], args[1])
+			return nil
+		},
+	}
+}
+
+func newFilesRenameCommand(project *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "rename <old> <new-name>",
+		Short: "Rename a file or directory",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := NewApp(cmd.Context(), *project)
+			if err != nil {
+				return err
+			}
+			if args[1] == "" || strings.ContainsAny(args[1], `/\`) || strings.Contains(args[1], "..") {
+				return fmt.Errorf("%w: %q", domain.ErrInvalidPath, args[1])
+			}
+			newPath := filepath.ToSlash(filepath.Join(filepath.Dir(args[0]), args[1]))
+			if err := app.Files.Move(cmd.Context(), args[0], newPath); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "renamed %s -> %s\n", args[0], newPath)
+			return nil
+		},
+	}
+}
+
+func newFilesDeleteCommand(project *string) *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <path>",
+		Short: "Delete a file or directory",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := NewApp(cmd.Context(), *project)
+			if err != nil {
+				return err
+			}
+			if err := app.Files.Delete(cmd.Context(), args[0]); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "deleted %s\n", args[0])
 			return nil
 		},
 	}
@@ -666,23 +660,6 @@ func splitTags(s string) []string {
 	return tags
 }
 
-func filterHidden(list []domain.Knowledge) []domain.Knowledge {
-	var out []domain.Knowledge
-	for _, k := range list {
-		hidden := false
-		for _, seg := range strings.Split(k.Path, "/") {
-			if strings.HasPrefix(seg, ".") {
-				hidden = true
-				break
-			}
-		}
-		if !hidden {
-			out = append(out, k)
-		}
-	}
-	return out
-}
-
 func printTasks(cmd *cobra.Command, tasks []domain.Task, jsonOut bool) error {
 	if jsonOut {
 		return writeJSON(cmd, tasks)
@@ -722,42 +699,14 @@ func printTaskDetail(cmd *cobra.Command, task *domain.Task) error {
 	return nil
 }
 
-func printKnowledge(cmd *cobra.Command, list []domain.Knowledge, jsonOut bool) error {
+func printFileEntries(cmd *cobra.Command, entries []domain.FileEntry, jsonOut bool) error {
 	if jsonOut {
-		return writeJSON(cmd, list)
+		return writeJSON(cmd, entries)
 	}
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "PATH\tTITLE\tTAGS")
-	for _, k := range list {
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", k.Path, k.Title, strings.Join(k.Tags, ","))
-	}
-	return w.Flush()
-}
-
-func printKnowledgeDetail(cmd *cobra.Command, k *domain.Knowledge) error {
-	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-	_, _ = fmt.Fprintf(w, "Path:\t%s\n", k.Path)
-	_, _ = fmt.Fprintf(w, "Title:\t%s\n", k.Title)
-	_, _ = fmt.Fprintf(w, "Tags:\t%s\n", strings.Join(k.Tags, ", "))
-	_, _ = fmt.Fprintf(w, "Aliases:\t%s\n", strings.Join(k.Aliases, ", "))
-	_, _ = fmt.Fprintf(w, "WikiLinks:\t%s\n", strings.Join(k.WikiLinks, ", "))
-	if err := w.Flush(); err != nil {
-		return err
-	}
-	if strings.TrimSpace(k.Body) != "" {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n%s\n", k.Body)
-	}
-	return nil
-}
-
-func printResults(cmd *cobra.Command, results []domain.SearchResult, jsonOut bool) error {
-	if jsonOut {
-		return writeJSON(cmd, results)
-	}
-	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "TYPE\tPATH\tTITLE\tSNIPPET")
-	for _, r := range results {
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Type, r.Path, r.Title, r.Snippet)
+	_, _ = fmt.Fprintln(w, "PATH\tKIND\tSTATUS")
+	for _, e := range entries {
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", e.Path, e.Kind, e.Status)
 	}
 	return w.Flush()
 }

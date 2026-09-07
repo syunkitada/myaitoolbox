@@ -147,31 +147,6 @@ paths:
       responses:
         "204":
           description: removed
-  /api/search:
-    get:
-      operationId: search
-      summary: Search tasks and knowledge
-      parameters:
-        - name: q
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: type
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: ["task", "knowledge"]
-      responses:
-        "200":
-          description: search results
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/SearchResult"
   /api/files:
     get:
       operationId: listFiles
@@ -852,21 +827,6 @@ components:
       required: [path]
       properties:
         path:
-          type: string
-    SearchResult:
-      type: object
-      required: [type, path, title]
-      properties:
-        type:
-          type: string
-          enum: ["task", "knowledge"]
-        id:
-          type: string
-        path:
-          type: string
-        title:
-          type: string
-        snippet:
           type: string
     Task:
       type: object

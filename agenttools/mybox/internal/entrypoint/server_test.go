@@ -40,9 +40,8 @@ func newTestServer(t *testing.T, readOnly bool) (*Server, *App) {
 			markdown.NewKnowledgeRepository(root),
 			markdown.NewTemplateRenderer(root, root),
 		),
-		Files:  application.NewFileUseCase(markdown.NewFileRepository(root)),
-		Search: application.NewSearchUseCase(markdown.NewSearcher(root)),
-		State:  application.NewStateUseCase(&fakeStateStore{}),
+		Files: application.NewFileUseCase(markdown.NewFileRepository(root)),
+		State: application.NewStateUseCase(&fakeStateStore{}),
 	}
 	s := NewServer(app.Config, "test", readOnly, "")
 	s.apps["test"] = app
@@ -220,24 +219,6 @@ func TestReadOnly(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 
 	rec = do(t, s, http.MethodGet, "/api/meta", nil)
-	assert.Equal(t, http.StatusOK, rec.Code)
-}
-
-func TestSearchAndKnowledge(t *testing.T) {
-	s, app := newTestServer(t, false)
-	ctx := context.Background()
-	_, err := app.Tasks.Create(ctx, application.TaskInput{Name: "wire it up", Tags: []string{"api"}})
-	require.NoError(t, err)
-	_, err = app.Knowledge.Create(ctx, "notes/n1")
-	require.NoError(t, err)
-
-	rec := do(t, s, http.MethodGet, "/api/search?q=wire", nil)
-	assert.Equal(t, http.StatusOK, rec.Code)
-	results := decode[[]api.SearchResult](t, rec)
-	require.Len(t, results, 1)
-	assert.Equal(t, api.SearchResultType("task"), results[0].Type)
-
-	rec = do(t, s, http.MethodGet, "/api/knowledge?tag=api", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 

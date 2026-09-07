@@ -421,16 +421,6 @@ test('sidebar lists projects and switches between them', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/projects/${other}/dashboard$`))
 })
 
-test('search finds knowledge and opens it in the dashboard', async ({ page }) => {
-  await page.goto('/projects/proj/search')
-  await page.getByPlaceholder('Search…').fill('phase6')
-  await page.getByPlaceholder('Search…').press('Enter')
-  await expect(page.getByRole('heading', { name: 'Search' })).toBeVisible()
-  await page.getByRole('button', { name: 'Phase 6' }).click()
-  await expect(page).toHaveURL(/\/projects\/proj\/dashboard\/files\/knowledge\/notes\/phase6\.md$/)
-  await expect(page.getByText('The HTTP API is done.')).toBeVisible()
-})
-
 test('sidebar board shows tasks across projects', async ({ page }) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mybox-e2e-cross-'))
   const added = await page.request.post('/api/projects', { data: { path: dir } })
