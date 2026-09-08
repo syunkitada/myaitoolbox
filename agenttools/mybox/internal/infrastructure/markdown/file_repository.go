@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/fsutil"
 )
 
 type FileRepository struct {
@@ -133,10 +134,7 @@ func (r *FileRepository) Save(ctx context.Context, path string, content string) 
 	if info, err := os.Stat(file); err == nil && info.IsDir() {
 		return fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
 	}
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(file, []byte(content), 0o644)
+	return fsutil.WriteFileAtomic(file, []byte(content), 0o644)
 }
 
 func (r *FileRepository) Create(ctx context.Context, path string) error {
@@ -147,10 +145,7 @@ func (r *FileRepository) Create(ctx context.Context, path string) error {
 	if _, err := os.Stat(file); err == nil {
 		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, path)
 	}
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(file, nil, 0o644)
+	return fsutil.WriteFileAtomic(file, nil, 0o644)
 }
 
 func (r *FileRepository) CreateDir(ctx context.Context, path string) error {
@@ -234,7 +229,7 @@ func (r *FileRepository) Copy(ctx context.Context, oldPath string, newPath strin
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(target, data, 0o644)
+	return fsutil.WriteFileAtomic(target, data, 0o644)
 }
 
 func copyDir(src string, dst string) error {
@@ -257,7 +252,7 @@ func copyDir(src string, dst string) error {
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(target, data, 0o644)
+		return fsutil.WriteFileAtomic(target, data, 0o644)
 	})
 }
 

@@ -3,6 +3,7 @@ package entrypoint
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 )
 
 // gitOpsMu serializes git commands so concurrent UI operations (for example a
@@ -343,6 +345,12 @@ func (s *Server) gitPathsOp(w http.ResponseWriter, r *http.Request, op string) {
 		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("no paths specified")})
 		return
 	}
+	for _, p := range req.Paths {
+		if err := validateGitPath(p); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 	gitOpsMu.Lock()
 	defer gitOpsMu.Unlock()
 	var (
@@ -351,12 +359,12 @@ func (s *Server) gitPathsOp(w http.ResponseWriter, r *http.Request, op string) {
 	)
 	switch op {
 	case "stage":
-		opOut, opErr = runGit(app.Project.Path, append([]string{"add", "--"}, req.Paths...)...)
+		opOut, opErr = runGit(app.Project.Path, append([]string{"--literal-pathspecs", "add", "--"}, req.Paths...)...)
 	case "unstage":
 		// reset -q works for both newly added files and staged
 		// modifications, including on a repository without commits yet
 		// (where restore --staged fails with "could not resolve HEAD").
-		opOut, opErr = runGit(app.Project.Path, append([]string{"reset", "-q", "--"}, req.Paths...)...)
+		opOut, opErr = runGit(app.Project.Path, append([]string{"--literal-pathspecs", "reset", "-q", "--"}, req.Paths...)...)
 	case "discard":
 		opOut, opErr = discardPaths(app.Project.Path, req.Paths)
 	}
@@ -367,9 +375,23 @@ func (s *Server) gitPathsOp(w http.ResponseWriter, r *http.Request, op string) {
 	writeGitResult(w, http.StatusOK, gitResult{Ok: true, Output: opOut})
 }
 
+// validateGitPath rejects paths that could escape the project tree or smuggle
+// pathspec magic (e.g. :(exclude)…), matching the validation applied to every
+// other file-oriented endpoint. Git runs with --literal-pathspecs as a second
+// line of defense so the paths are always treated as literal file paths.
+func validateGitPath(p string) error {
+	if p == "" || p == "." || p == ".." ||
+		strings.HasPrefix(p, "/") || strings.HasPrefix(p, ":") ||
+		strings.Contains(p, "..") ||
+		strings.ContainsAny(p, `\`) {
+		return fmt.Errorf("%w: %q", domain.ErrInvalidPath, p)
+	}
+	return nil
+}
+
 // untrackedPath reports whether path is untracked (status ??).
 func untrackedPath(dir, path string) bool {
-	out, _ := runGitRaw(dir, "status", "--porcelain", "--", path)
+	out, _ := runGitRaw(dir, "--literal-pathspecs", "status", "--porcelain", "--", path)
 	for _, line := range strings.Split(out, "\n") {
 		if strings.HasPrefix(line, "??") {
 			return true
@@ -395,5 +417,5 @@ func discardPaths(dir string, paths []string) (string, error) {
 	if len(tracked) == 0 {
 		return "", nil
 	}
-	return runGit(dir, append([]string{"restore", "--"}, tracked...)...)
+	return runGit(dir, append([]string{"--literal-pathspecs", "restore", "--"}, tracked...)...)
 }

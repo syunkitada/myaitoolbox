@@ -1,7 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { ClipboardAddon } from '@xterm/addon-clipboard'
 import '@xterm/xterm/css/xterm.css'
 import { terminalWsUrl } from '../utils/routes'
 import { Button } from './ui/button'
@@ -52,6 +51,7 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
   const [status, setStatus] = useState<ConnStatus>('connecting')
   const [notice, setNotice] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
   const [pasteMode, setPasteMode] = useState(false)
+  const [osc52Modal, setOsc52Modal] = useState<{ text: string } | null>(null)
 
   const showNotice = (text: string, kind: 'ok' | 'err' = 'ok') => {
     setNotice({ text, kind })
@@ -155,10 +155,19 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
       },
     })
     const fit = new FitAddon()
-    const clipboard = new ClipboardAddon()
     term.loadAddon(fit)
-    term.loadAddon(clipboard)
     term.open(host)
+
+    term.parser.registerOscHandler(52, (data) => {
+      const args = data.split(';')
+      if (args.length < 2 || args[1] === '?') return true
+      let text = ''
+      try {
+        text = decodeURIComponent(escape(atob(args[1])))
+      } catch { /* ignore */ }
+      if (text) setOsc52Modal({ text })
+      return true
+    })
     termRef.current = term
     fitRef.current = fit
 
@@ -281,6 +290,7 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
       <div
         ref={hostRef}
         className="terminal-xterm h-full w-full"
+        onContextMenu={(e) => e.preventDefault()}
       />
       {pasteMode && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 p-4">
@@ -309,6 +319,44 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
             >
               Cancel
             </Button>
+          </div>
+        </div>
+      )}
+      {osc52Modal && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 p-4">
+          <div className="flex w-full max-w-md flex-col overflow-hidden rounded-md border border-border bg-card">
+            <div className="flex items-center justify-between border-b border-border/70 px-4 py-2">
+              <span className="text-sm font-medium text-foreground">Copy from terminal</span>
+              <button
+                className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-border/60 hover:text-foreground"
+                onClick={() => setOsc52Modal(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all px-4 py-3 text-xs text-foreground">
+              {osc52Modal.text}
+            </pre>
+            <div className="flex gap-2 border-t border-border/70 px-4 py-3">
+              <Button
+                size="sm"
+                className="bg-green-600 text-white hover:bg-green-700"
+                onClick={() => {
+                  void copyText(osc52Modal.text)
+                  setOsc52Modal(null)
+                }}
+              >
+                Copy to clipboard
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setOsc52Modal(null)}
+              >
+                Close
+              </Button>
+            </div>
           </div>
         </div>
       )}

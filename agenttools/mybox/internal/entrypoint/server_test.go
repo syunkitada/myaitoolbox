@@ -64,6 +64,10 @@ func (f *fakeConfigStore) Load(ctx context.Context) (*domain.Config, error) {
 
 func (f *fakeConfigStore) Save(ctx context.Context, cfg *domain.Config) error { return nil }
 
+func (f *fakeConfigStore) Update(ctx context.Context, fn func(*domain.Config) error) error {
+	return fn(&domain.Config{DefaultProject: "test", Projects: []domain.Project{{Name: "test", Path: "/tmp"}}})
+}
+
 type fakeStateStore struct {
 	state domain.State
 }
@@ -73,6 +77,15 @@ func (f *fakeStateStore) Load(ctx context.Context) (*domain.State, error) {
 }
 
 func (f *fakeStateStore) Save(ctx context.Context, st *domain.State) error {
+	f.state = *st
+	return nil
+}
+
+func (f *fakeStateStore) Update(ctx context.Context, fn func(*domain.State) error) error {
+	st := &domain.State{Favorites: append([]string(nil), f.state.Favorites...), RecentFiles: append([]string(nil), f.state.RecentFiles...)}
+	if err := fn(st); err != nil {
+		return err
+	}
 	f.state = *st
 	return nil
 }

@@ -261,6 +261,9 @@ func (s *Server) ReadHerdrAgent(w http.ResponseWriter, r *http.Request) {
 
 // PromptHerdrAgent submits a prompt to the target agent.
 func (s *Server) PromptHerdrAgent(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrPromptRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -299,6 +302,9 @@ func validHerdrKey(key string) bool {
 
 // SendKeysHerdrAgent sends key presses (e.g. Enter, esc) to the target agent.
 func (s *Server) SendKeysHerdrAgent(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrAgentSendKeysRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -328,6 +334,9 @@ func (s *Server) SendKeysHerdrAgent(w http.ResponseWriter, r *http.Request) {
 
 // RenameHerdrAgent renames an agent or clears its custom name.
 func (s *Server) RenameHerdrAgent(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrAgentRenameRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -367,6 +376,9 @@ func validHerdrLabel(label string) (string, bool) {
 // workspace"; in that case the first workspace of the current project is
 // bootstrapped instead, which also creates the requested tab.
 func (s *Server) CreateHerdrTab(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrTabCreateRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -547,6 +559,9 @@ func herdrIDOp(w http.ResponseWriter, r *http.Request, kind string, id string, r
 
 // RenameHerdrTab renames a tab.
 func (s *Server) RenameHerdrTab(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrTabRenameRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -563,6 +578,9 @@ func (s *Server) RenameHerdrTab(w http.ResponseWriter, r *http.Request) {
 
 // CloseHerdrTab closes a tab (closing the last tab closes its workspace).
 func (s *Server) CloseHerdrTab(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrTabCloseRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -574,6 +592,9 @@ func (s *Server) CloseHerdrTab(w http.ResponseWriter, r *http.Request) {
 
 // SplitHerdrPane splits a pane to the right or below.
 func (s *Server) SplitHerdrPane(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrPaneSplitRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -593,6 +614,9 @@ func (s *Server) SplitHerdrPane(w http.ResponseWriter, r *http.Request) {
 
 // RenameHerdrPane renames a pane.
 func (s *Server) RenameHerdrPane(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrPaneRenameRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -627,6 +651,9 @@ func (s *Server) ReadHerdrPane(w http.ResponseWriter, r *http.Request) {
 
 // CloseHerdrPane closes a pane.
 func (s *Server) CloseHerdrPane(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrPaneCloseRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -638,6 +665,9 @@ func (s *Server) CloseHerdrPane(w http.ResponseWriter, r *http.Request) {
 
 // SendTextHerdrPane sends literal text to a pane.
 func (s *Server) SendTextHerdrPane(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrPaneSendTextRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -653,6 +683,9 @@ func (s *Server) SendTextHerdrPane(w http.ResponseWriter, r *http.Request) {
 
 // SendKeysHerdrPane sends key presses to a pane.
 func (s *Server) SendKeysHerdrPane(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
 	var req api.HerdrPaneSendKeysRequest
 	if !decodeBody(w, r, &req) {
 		return

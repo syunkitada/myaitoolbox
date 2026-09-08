@@ -36,16 +36,34 @@ function loadProjectMap(): ProjectTermMap {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as ProjectTermMap
-      // Normalize older persisted entries that predate the `visible` flag so a
-      // restored terminal panel is shown rather than hidden.
-      for (const key of Object.keys(parsed)) {
-        const p = parsed[key]
-        if (p && Array.isArray(p.tabs) && p.tabs.length > 0 && typeof p.visible !== 'boolean') {
-          p.visible = true
-        }
+      const parsed = JSON.parse(raw)
+      // Guard against malformed/corrupt storage: an object with per-project
+      // entries that are themselves objects. Anything else (null, arrays,
+      // primitives) is discarded wholesale.
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {}
       }
-      return parsed ?? {}
+      const map: ProjectTermMap = {}
+      for (const key of Object.keys(parsed)) {
+        const p = parsed[key] as ProjectTermState | null | undefined
+        if (!p || typeof p !== 'object' || Array.isArray(p)) continue
+        // Drop entries that were persisted as JSON null or arrays of tabs.
+        let tabs: any[] = []
+        if (Array.isArray(p.tabs)) tabs = p.tabs
+        const entry: ProjectTermState = {
+          tabs,
+          activeId: typeof p.activeId === 'number' ? p.activeId : null,
+          collapsed: p.collapsed === true,
+          visible: p.visible === true,
+        }
+        // Normalize older persisted entries that predate the `visible` flag so a
+        // restored terminal panel is shown rather than hidden.
+        if (tabs.length > 0 && typeof p.visible !== 'boolean') {
+          entry.visible = true
+        }
+        map[key] = entry
+      }
+      return map
     }
   } catch {
     // ignore malformed storage

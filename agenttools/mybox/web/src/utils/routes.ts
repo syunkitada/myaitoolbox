@@ -43,6 +43,27 @@ export function encodePath(path: string): string {
     .join('/')
 }
 
+export const LAST_SELECTED_FILE_KEY = 'mybox_last_selected_file'
+
+// rememberedFilesUrl returns the Files tab URL for the current project,
+// including the last-selected file so returning to the Files tab preserves
+// its state instead of resetting to the default.
+export function rememberedFilesUrl(): string {
+  const project = getProject()
+  if (!project) return projectUrl('')
+  try {
+    const stored = localStorage.getItem(LAST_SELECTED_FILE_KEY)
+    if (stored) {
+      const map = JSON.parse(stored) as Record<string, string>
+      const file = map[project]
+      if (file) return projectUrl(`/dashboard/files/${encodePath(file)}`)
+    }
+  } catch {
+    // ignore malformed storage
+  }
+  return projectUrl('/dashboard')
+}
+
 export function filesUrl(resolved: string): string {
   return appUrl(projectUrl(`/dashboard/files/${encodePath(resolved)}`))
 }

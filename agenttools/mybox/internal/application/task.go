@@ -83,12 +83,29 @@ func (u *TaskUseCase) List(ctx context.Context, filter TaskFilter) ([]domain.Tas
 		out = append(out, t)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Status != out[j].Status {
-			return out[i].Status < out[j].Status
+		if ri, rj := rankTaskStatus(out[i].Status), rankTaskStatus(out[j].Status); ri != rj {
+			return ri < rj
 		}
 		return out[i].Created.After(out[j].Created)
 	})
 	return out, nil
+}
+
+// taskStatusRank orders statuses by the workflow order shown on the GTD board
+// (todo -> doing -> blocked -> review -> done) rather than lexicographically.
+var taskStatusRank = map[domain.TaskStatus]int{
+	domain.TaskStatusTodo:    0,
+	domain.TaskStatusDoing:   1,
+	domain.TaskStatusBlocked: 2,
+	domain.TaskStatusReview:  3,
+	domain.TaskStatusDone:    4,
+}
+
+func rankTaskStatus(s domain.TaskStatus) int {
+	if r, ok := taskStatusRank[s]; ok {
+		return r
+	}
+	return len(taskStatusRank)
 }
 
 func (u *TaskUseCase) Show(ctx context.Context, id string) (*domain.Task, error) {

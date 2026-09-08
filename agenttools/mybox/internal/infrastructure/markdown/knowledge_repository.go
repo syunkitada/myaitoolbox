@@ -11,6 +11,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/fsutil"
 )
 
 type KnowledgeRepository struct {
@@ -185,10 +186,7 @@ func (r *KnowledgeRepository) Create(ctx context.Context, path string, content s
 	if _, err := os.Stat(file); err == nil {
 		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, path)
 	}
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(file, []byte(content), 0o644)
+	return fsutil.WriteFileAtomic(file, []byte(content), 0o644)
 }
 
 func (r *KnowledgeRepository) SaveContent(ctx context.Context, path string, content string) error {
@@ -196,10 +194,7 @@ func (r *KnowledgeRepository) SaveContent(ctx context.Context, path string, cont
 		return err
 	}
 	file := filepath.Join(r.root, "knowledge", path+".md")
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(file, []byte(content), 0o644)
+	return fsutil.WriteFileAtomic(file, []byte(content), 0o644)
 }
 
 func (r *KnowledgeRepository) Move(ctx context.Context, oldPath string, newPath string) error {

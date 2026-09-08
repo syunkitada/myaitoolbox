@@ -11,6 +11,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/fsutil"
 )
 
 type TaskRepository struct {
@@ -244,7 +245,7 @@ func (r *TaskRepository) Create(ctx context.Context, id string, content string) 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "task.md"), []byte(content), 0o644)
+	return fsutil.WriteFileAtomic(filepath.Join(dir, "task.md"), []byte(content), 0o644)
 }
 
 // CreateAdhoc stores an adhoc task using the same layout as regular tasks
@@ -307,7 +308,7 @@ func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(out), 0o644)
+	return fsutil.WriteFileAtomic(path, []byte(out), 0o644)
 }
 
 func (r *TaskRepository) Archive(ctx context.Context, id string) error {

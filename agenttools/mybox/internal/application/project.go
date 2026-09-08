@@ -44,26 +44,24 @@ func (u *ProjectUseCase) Add(ctx context.Context, path string) (*domain.Project,
 	if info, err := os.Stat(abs); err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidPath, abs)
 	}
-	cfg, err := u.Config.Load(ctx)
-	if err != nil {
-		return nil, err
-	}
 	name := filepath.Base(abs)
-	updated := false
-	for i := range cfg.Projects {
-		if cfg.Projects[i].Name == name {
-			cfg.Projects[i].Path = abs
-			updated = true
-			break
+	if err := u.Config.Update(ctx, func(cfg *domain.Config) error {
+		updated := false
+		for i := range cfg.Projects {
+			if cfg.Projects[i].Name == name {
+				cfg.Projects[i].Path = abs
+				updated = true
+				break
+			}
 		}
-	}
-	if !updated {
-		cfg.Projects = append(cfg.Projects, domain.Project{Name: name, Path: abs})
-	}
-	if cfg.DefaultProject == "" {
-		cfg.DefaultProject = name
-	}
-	if err := u.Config.Save(ctx, cfg); err != nil {
+		if !updated {
+			cfg.Projects = append(cfg.Projects, domain.Project{Name: name, Path: abs})
+		}
+		if cfg.DefaultProject == "" {
+			cfg.DefaultProject = name
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	return &domain.Project{Name: name, Path: abs}, nil
@@ -127,53 +125,49 @@ func (u *ProjectUseCase) PathCandidates(ctx context.Context, prefix string) ([]s
 // Reorder reorders the projects to match the given names slice. Projects not
 // listed in names are appended at the end in their original order.
 func (u *ProjectUseCase) Reorder(ctx context.Context, names []string) error {
-	cfg, err := u.Config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	nameSet := make(map[string]bool, len(names))
-	for _, n := range names {
-		nameSet[n] = true
-	}
-	ordered := make([]domain.Project, 0, len(cfg.Projects))
-ByName:
-	for _, n := range names {
-		for _, p := range cfg.Projects {
-			if p.Name == n {
-				ordered = append(ordered, p)
-				continue ByName
+	return u.Config.Update(ctx, func(cfg *domain.Config) error {
+		nameSet := make(map[string]bool, len(names))
+		for _, n := range names {
+			nameSet[n] = true
+		}
+		ordered := make([]domain.Project, 0, len(cfg.Projects))
+	ByName:
+		for _, n := range names {
+			for _, p := range cfg.Projects {
+				if p.Name == n {
+					ordered = append(ordered, p)
+					continue ByName
+				}
 			}
 		}
-	}
-	for _, p := range cfg.Projects {
-		if !nameSet[p.Name] {
-			ordered = append(ordered, p)
+		for _, p := range cfg.Projects {
+			if !nameSet[p.Name] {
+				ordered = append(ordered, p)
+			}
 		}
-	}
-	cfg.Projects = ordered
-	return u.Config.Save(ctx, cfg)
+		cfg.Projects = ordered
+		return nil
+	})
 }
 
 func (u *ProjectUseCase) Remove(ctx context.Context, name string) error {
-	cfg, err := u.Config.Load(ctx)
-	if err != nil {
-		return err
-	}
-	idx := -1
-	for i := range cfg.Projects {
-		if cfg.Projects[i].Name == name {
-			idx = i
-			break
+	return u.Config.Update(ctx, func(cfg *domain.Config) error {
+		idx := -1
+		for i := range cfg.Projects {
+			if cfg.Projects[i].Name == name {
+				idx = i
+				break
+			}
 		}
-	}
-	if idx < 0 {
-		return fmt.Errorf("%w: project %s", domain.ErrNotFound, name)
-	}
-	cfg.Projects = append(cfg.Projects[:idx], cfg.Projects[idx+1:]...)
-	if cfg.DefaultProject == name {
-		cfg.DefaultProject = ""
-	}
-	return u.Config.Save(ctx, cfg)
+		if idx < 0 {
+			return fmt.Errorf("%w: project %s", domain.ErrNotFound, name)
+		}
+		cfg.Projects = append(cfg.Projects[:idx], cfg.Projects[idx+1:]...)
+		if cfg.DefaultProject == name {
+			cfg.DefaultProject = ""
+		}
+		return nil
+	})
 }
 
 func validatePath(path string) error {

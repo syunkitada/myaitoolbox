@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Routes, Route, useLocation, Navigate, NavLink } from 'react-router-dom'
 import { api, Meta, ProjectGitStatus } from './api/client'
-import { getProject, projectUrl, rememberCurrentTab } from './utils/routes'
+import { getProject, projectUrl, rememberCurrentTab, rememberedFilesUrl } from './utils/routes'
 import { AppSidebar } from './components/Sidebar'
 import { Dashboard } from './pages/Dashboard'
 import { KnowledgeGraphPage } from './pages/KnowledgeGraphPage'
@@ -52,7 +52,12 @@ export default function App() {
   }, [project, pathname])
 
   const projectTabs = [
-    { to: projectUrl('/dashboard'), label: 'Files', icon: Folder, active: pathname.includes('/dashboard') },
+    {
+      to: rememberedFilesUrl(),
+      label: 'Files',
+      icon: Folder,
+      active: pathname.includes('/dashboard'),
+    },
     { to: projectUrl('/board'), label: 'Board', icon: SquareKanban, active: pathname === projectUrl('/board') },
     { to: projectUrl('/graph'), label: 'Graph', icon: Network, active: pathname === projectUrl('/graph') },
     { to: projectUrl('/git'), label: 'Git', icon: GitBranch, active: pathname === projectUrl('/git') },

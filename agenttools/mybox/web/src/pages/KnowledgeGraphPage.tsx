@@ -134,6 +134,15 @@ function KnowledgeGraphBody() {
     controller.applyLayout(300)
   }, [controller])
 
+  const handleNodeMove = useCallback(
+    (id: NodeId, x: number, y: number) => {
+      controller.setNodePosition(id, x, y)
+      const positions = controller.exportPositions()
+      if (Object.keys(positions).length > 0) saveLayout(projectKey, positions)
+    },
+    [controller, projectKey],
+  )
+
   const handleExplorerSelect = useCallback(
     (id: NodeId) => {
       selectNode(id)
@@ -213,6 +222,7 @@ function KnowledgeGraphBody() {
                 selectedNodeId={selectedNodeId}
                 onNodeSelect={handleGraphSelect}
                 onRelayout={handleRelayout}
+                onNodeMove={handleNodeMove}
                 onOpenFile={openFile}
                 onExpandAll={handleExpandAll}
                 onCollapseAll={handleCollapseAll}

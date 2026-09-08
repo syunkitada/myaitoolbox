@@ -3,8 +3,10 @@ package entrypoint
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,15 +15,30 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// sameOrigin reports whether the request's Origin header (when present) matches
+// the Host header. Browsers always send Origin on WebSocket handshakes, so a
+// cross-site page cannot open a shell here, while the app itself (and non-
+// browser clients such as curl, which omit Origin) keep working — including
+// when served behind a reverse proxy, which preserves the Host header.
+func sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
+}
+
 // terminalUpgrader upgrades plain HTTP requests to WebSocket connections.
-// The origin check is relaxed because the app may be served behind reverse
-// proxies and accessed from different hosts.
+// The origin is checked against the Host header so arbitrary web pages cannot
+// drive-by execute a shell (the terminal runs `$SHELL -c <command>`).
 var terminalUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 8192,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin:     sameOrigin,
 }
 
 type terminalMessage struct {
@@ -33,9 +50,16 @@ type terminalMessage struct {
 
 // terminalClient is a single attached WebSocket connection. It receives the
 // session's output through an internal channel rather than writing directly
-// to the socket so that a shell can stream to several clients at once.
+// to the socket so that a shell can stream to several clients at once. `stop`
+// is closed to terminate the serve goroutine when the client disconnects.
 type terminalClient struct {
-	send chan []byte
+	send     chan []byte
+	stop     chan struct{}
+	stopOnce sync.Once
+}
+
+func (c *terminalClient) halt() {
+	c.stopOnce.Do(func() { close(c.stop) })
 }
 
 // terminalSession represents a persistent shell (PTY) for a project. Unlike a
@@ -123,7 +147,10 @@ func (s *terminalSession) destroy() {
 		s.mu.Unlock()
 
 		if s.hub != nil {
-			s.hub.remove(s.project, s.id)
+			// Only remove this session from the hub if it is still the
+			// registered one; a concurrently-created twin session must never
+			// evict a newer session that won the getOrStart race.
+			s.hub.removeIfCurrent(s.project, s.id, s)
 		}
 		_ = s.ptmx.Close()
 		if s.cmd.Process != nil {
@@ -192,6 +219,8 @@ func (s *terminalSession) serveClient(conn *websocket.Conn, client *terminalClie
 		case <-s.done:
 			_ = write(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session closed"))
 			return
+		case <-client.stop:
+			return
 		}
 	}
 }
@@ -217,24 +246,42 @@ func (h *terminalHub) get(project, id string) *terminalSession {
 	return proj[id]
 }
 
-func (h *terminalHub) put(project, id string, sess *terminalSession) {
+// removeIfCurrent removes sess from the hub only if it is still the session
+// registered for (project, id). This prevents a discarded twin session from
+// evicting the session that won the getOrStart race.
+func (h *terminalHub) removeIfCurrent(project, id string, sess *terminalSession) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.sessions[project] == nil {
-		h.sessions[project] = map[string]*terminalSession{}
+	if proj, ok := h.sessions[project]; ok {
+		if proj[id] != sess {
+			return
+		}
 	}
-	h.sessions[project][id] = sess
+	h.removeLocked(project, id)
 }
 
-func (h *terminalHub) remove(project, id string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+func (h *terminalHub) removeLocked(project, id string) {
 	if proj, ok := h.sessions[project]; ok {
 		delete(proj, id)
 		if len(proj) == 0 {
 			delete(h.sessions, project)
 		}
 	}
+}
+
+// putIfAbsent registers sess for (project, id) unless another session already
+// claimed that id, in which case the existing session is returned with ok=false.
+func (h *terminalHub) putIfAbsent(project, id string, sess *terminalSession) (*terminalSession, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.sessions[project] == nil {
+		h.sessions[project] = map[string]*terminalSession{}
+	}
+	if existing := h.sessions[project][id]; existing != nil {
+		return existing, false
+	}
+	h.sessions[project][id] = sess
+	return sess, true
 }
 
 func (h *terminalHub) destroy(project, id string) {
@@ -244,7 +291,9 @@ func (h *terminalHub) destroy(project, id string) {
 }
 
 // getOrStart returns the existing persistent session for project/id, creating
-// it (and its shell) the first time. It is safe to call concurrently.
+// it (and its shell) the first time. Concurrent callers for the same id agree
+// on a single session: the first to finish starting wins, and every other
+// caller discards its own twin shell and reattaches to the winner.
 func (h *terminalHub) getOrStart(project, id, command, dir string, env []string) *terminalSession {
 	if sess := h.get(project, id); sess != nil {
 		return sess
@@ -256,12 +305,13 @@ func (h *terminalHub) getOrStart(project, id, command, dir string, env []string)
 	sess.hub = h
 	sess.project = project
 	sess.id = id
-	if existing := h.get(project, id); existing != nil {
-		// Another request created it while we were starting; discard ours.
+	registered, ok := h.putIfAbsent(project, id, sess)
+	if !ok {
+		// Another request registered its session first; discard our twin
+		// without touching the hub entry (see removeIfCurrent).
 		sess.destroy()
-		return existing
+		return registered
 	}
-	h.put(project, id, sess)
 	return sess
 }
 
@@ -323,7 +373,7 @@ func (s *Server) Terminal(c echo.Context) error {
 		return conn.WriteMessage(messageType, data)
 	}
 
-	client := &terminalClient{send: make(chan []byte, 512)}
+	client := &terminalClient{send: make(chan []byte, 512), stop: make(chan struct{})}
 	sess.addClient(client)
 	go sess.serveClient(conn, client, &writeMu)
 
@@ -345,6 +395,10 @@ func (s *Server) Terminal(c echo.Context) error {
 				return
 			case <-ticker.C:
 				if err := write(websocket.PingMessage, nil); err != nil {
+					// Socket is dead (e.g. the client vanished); stop the serve
+					// goroutine, whose deferred conn.Close() also unblocks any
+					// ReadMessage still waiting on this connection.
+					client.halt()
 					return
 				}
 			}
@@ -354,6 +408,9 @@ func (s *Server) Terminal(c echo.Context) error {
 	for {
 		_, data, readErr := conn.ReadMessage()
 		if readErr != nil {
+			// The client is gone; unblock the serve goroutine so it can clean
+			// up its socket instead of lingering until the next session output.
+			client.halt()
 			break
 		}
 		var msg terminalMessage

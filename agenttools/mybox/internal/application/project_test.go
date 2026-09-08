@@ -24,6 +24,15 @@ func (s *memoryConfigStore) Save(ctx context.Context, cfg *domain.Config) error 
 	return nil
 }
 
+func (s *memoryConfigStore) Update(ctx context.Context, fn func(*domain.Config) error) error {
+	cfg := &domain.Config{DefaultProject: s.cfg.DefaultProject, Projects: append([]domain.Project(nil), s.cfg.Projects...)}
+	if err := fn(cfg); err != nil {
+		return err
+	}
+	s.cfg = cfg
+	return nil
+}
+
 func TestProjectAddSetsDefault(t *testing.T) {
 	store := &memoryConfigStore{cfg: &domain.Config{}}
 	uc := NewProjectUseCase(store)

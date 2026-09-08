@@ -4,10 +4,17 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/goccy/go-yaml"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/fsutil"
 )
+
+// configMu serializes read-modify-write cycles on config.yaml and state.yaml.
+// Both stores back onto files shared by every App instance (one per project),
+// so the lock lives at the package level to protect cross-instance updates.
+var configMu sync.Mutex
 
 type Store struct {
 	path string
@@ -39,6 +46,12 @@ type projectEntry struct {
 }
 
 func (s *Store) Load(ctx context.Context) (*domain.Config, error) {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return s.loadLocked(ctx)
+}
+
+func (s *Store) loadLocked(ctx context.Context) (*domain.Config, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -57,7 +70,23 @@ func (s *Store) Load(ctx context.Context) (*domain.Config, error) {
 	return cfg, nil
 }
 
-func (s *Store) Save(ctx context.Context, cfg *domain.Config) error {
+// Update applies fn to the persisted config under a global lock, so
+// concurrent read-modify-write cycles from different apps cannot drop each
+// other's changes.
+func (s *Store) Update(ctx context.Context, fn func(*domain.Config) error) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	cfg, err := s.loadLocked(ctx)
+	if err != nil {
+		return err
+	}
+	if err := fn(cfg); err != nil {
+		return err
+	}
+	return s.saveLocked(ctx, cfg)
+}
+
+func (s *Store) saveLocked(ctx context.Context, cfg *domain.Config) error {
 	fc := fileConfig{DefaultProject: cfg.DefaultProject}
 	for _, p := range cfg.Projects {
 		fc.Projects = append(fc.Projects, projectEntry{Name: p.Name, Path: p.Path})
@@ -66,8 +95,11 @@ func (s *Store) Save(ctx context.Context, cfg *domain.Config) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(s.path, data, 0o644)
+	return fsutil.WriteFileAtomic(s.path, data, 0o644)
+}
+
+func (s *Store) Save(ctx context.Context, cfg *domain.Config) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return s.saveLocked(ctx, cfg)
 }

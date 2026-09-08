@@ -7,6 +7,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/fsutil"
 )
 
 type StateStore struct {
@@ -23,6 +24,12 @@ type fileState struct {
 }
 
 func (s *StateStore) Load(ctx context.Context) (*domain.State, error) {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return s.loadLocked(ctx)
+}
+
+func (s *StateStore) loadLocked(ctx context.Context) (*domain.State, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -37,7 +44,23 @@ func (s *StateStore) Load(ctx context.Context) (*domain.State, error) {
 	return &domain.State{Favorites: fs.Favorites, RecentFiles: fs.RecentFiles}, nil
 }
 
-func (s *StateStore) Save(ctx context.Context, state *domain.State) error {
+// Update applies fn to the persisted state under a global lock, so concurrent
+// requests (e.g. favorite toggles from different projects) cannot drop each
+// other's changes.
+func (s *StateStore) Update(ctx context.Context, fn func(*domain.State) error) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	state, err := s.loadLocked(ctx)
+	if err != nil {
+		return err
+	}
+	if err := fn(state); err != nil {
+		return err
+	}
+	return s.saveLocked(ctx, state)
+}
+
+func (s *StateStore) saveLocked(ctx context.Context, state *domain.State) error {
 	fs := fileState{Favorites: state.Favorites, RecentFiles: state.RecentFiles}
 	if fs.Favorites == nil {
 		fs.Favorites = []string{}
@@ -49,8 +72,11 @@ func (s *StateStore) Save(ctx context.Context, state *domain.State) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(s.path, data, 0o644)
+	return fsutil.WriteFileAtomic(s.path, data, 0o644)
+}
+
+func (s *StateStore) Save(ctx context.Context, state *domain.State) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return s.saveLocked(ctx, state)
 }

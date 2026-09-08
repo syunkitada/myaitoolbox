@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { encodePath, projectUrl, getProject } from '../utils/routes'
+import { LAST_SELECTED_FILE_KEY, encodePath, projectUrl, getProject, rememberedFilesUrl } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
 import { api, HerdrOverview, Task } from '../api/client'
 import { NewTaskDialog } from '../components/NewTaskDialog'
 import { subscribeNavActions } from '../lib/nav-actions'
-
-const LAST_FILE_KEY = 'mybox_last_selected_file'
 
 interface DashboardProps {
   refreshMeta: () => Promise<void>
@@ -24,17 +22,9 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
 
   useEffect(() => {
     if (!selected) {
-      const project = getProject()
-      const stored = localStorage.getItem(LAST_FILE_KEY)
-      if (stored) {
-        try {
-          const map = JSON.parse(stored) as Record<string, string>
-          if (project && map[project]) {
-            navigate(projectUrl(`/dashboard/files/${encodePath(map[project])}`), { replace: true })
-          }
-        } catch {
-          // ignore malformed storage
-        }
+      const target = rememberedFilesUrl()
+      if (target !== projectUrl('/dashboard')) {
+        navigate(target, { replace: true })
       }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -43,10 +33,10 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
     const project = getProject()
     if (!project) return
     try {
-      const stored = localStorage.getItem(LAST_FILE_KEY)
+      const stored = localStorage.getItem(LAST_SELECTED_FILE_KEY)
       const map = stored ? (JSON.parse(stored) as Record<string, string>) : {}
       map[project] = path
-      localStorage.setItem(LAST_FILE_KEY, JSON.stringify(map))
+      localStorage.setItem(LAST_SELECTED_FILE_KEY, JSON.stringify(map))
     } catch {
       // ignore
     }

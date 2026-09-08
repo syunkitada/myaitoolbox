@@ -30,6 +30,7 @@ export interface GraphViewProps {
   selectedNodeId: NodeId | null
   onNodeSelect: (id: NodeId) => void
   onRelayout: () => void
+  onNodeMove?: (id: NodeId, x: number, y: number) => void
   onOpenFile?: (path: string) => void
   onExpandAll?: (id: NodeId) => void
   onCollapseAll?: (id: NodeId) => void
@@ -75,6 +76,7 @@ export function GraphView({
   selectedNodeId,
   onNodeSelect,
   onRelayout,
+  onNodeMove,
   onOpenFile,
   onExpandAll,
   onCollapseAll,
@@ -128,6 +130,15 @@ export function GraphView({
       graph.mergeNodeAttributes(drag.node, { x: pos.x, y: pos.y, fixed: true })
     })
     const stopDrag = () => {
+      const drag = dragRef.current
+      if (drag) {
+        // Persist the dragged node's final position so it survives a re-layout
+        // or remount instead of snapping back to its old coordinates. The
+        // coordinates are read from the graph because that is where
+        // mousemovebody writes them.
+        const pos = graph.getNodeAttributes(drag.node)
+        onNodeMove?.(drag.node, Number(pos.x) || 0, Number(pos.y) || 0)
+      }
       dragRef.current = null
       setDragging(false)
     }
