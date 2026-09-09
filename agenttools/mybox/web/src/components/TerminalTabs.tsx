@@ -101,22 +101,8 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
     }
   }
 
-  const pasteClipboard = async () => {
-    const term = termRef.current
-    if (!term) return
-
-    if (navigator.clipboard?.readText) {
-      try {
-        const text = await navigator.clipboard.readText()
-        if (text) {
-          term.focus()
-          term.paste(text)
-          showNotice('Pasted')
-          return
-        }
-      } catch { /* fall through to visible textarea */ }
-    }
-
+  const pasteClipboard = () => {
+    if (!termRef.current) return
     setPasteMode(true)
     setTimeout(() => {
       const ta = pasteInputRef.current
@@ -424,29 +410,27 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
           )
         })}
         <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
+            onClick={() => activeTermRef?.paste()}
+            aria-label="Paste"
+            title="Paste"
+          >
+            <ClipboardPaste className="h-4 w-4" />
+          </Button>
           {isMobile && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
-                onClick={() => activeTermRef?.paste()}
-                aria-label="Paste"
-                title="Paste"
-              >
-                <ClipboardPaste className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
-                onClick={() => activeTermRef?.copySelection()}
-                aria-label="Copy"
-                title="Copy"
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
+              onClick={() => activeTermRef?.copySelection()}
+              aria-label="Copy"
+              title="Copy"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
           )}
           <Button
             variant="ghost"
