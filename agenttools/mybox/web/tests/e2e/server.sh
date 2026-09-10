@@ -58,6 +58,67 @@ def opt(args, flag):
         return args[i + 1]
     return None
 
+AREA = {"height": 47, "width": 235, "x": 32, "y": 1}
+
+# Deterministic tab layouts that mirror herdr's snapshot geometry: one pane
+# fills the area; two or more panes form a right split whose left pane keeps
+# the tab's root ratio and the remaining panes stack in the right region.
+def gen_layouts(tabs, panes, ratios):
+    layouts = []
+    for t in tabs:
+        t_panes = [p for p in panes if p["tab_id"] == t["tab_id"]]
+        n = len(t_panes)
+        if n == 0:
+            continue
+        area = dict(AREA)
+        focused = next((p["pane_id"] for p in t_panes if p.get("focused")), t_panes[0]["pane_id"])
+        tab_ratios = ratios.get(t["tab_id"], {})
+        if n == 1:
+            rect = dict(area)
+            layouts.append({
+                "area": area, "focused_pane_id": focused,
+                "panes": [{"focused": p["pane_id"] == focused, "pane_id": p["pane_id"], "rect": rect} for p in t_panes],
+                "splits": [], "tab_id": t["tab_id"], "workspace_id": t["workspace_id"], "zoomed": False,
+            })
+            continue
+        root = float(tab_ratios.get("root", 118.0 / 235.0))
+        left_w = int(round(235 * root))
+        right_x = 32 + left_w
+        right_w = 235 - left_w
+        rects = [{"height": 47, "width": left_w, "x": 32, "y": 1}]
+        stack = t_panes[1:]
+        k = len(stack)
+        if k == 1:
+            rects.append({"height": 47, "width": right_w, "x": right_x, "y": 1})
+        else:
+            base = 47 // k
+            y = 1
+            for i in range(k):
+                h = 47 - base * (k - 1) if i == k - 1 else base
+                rects.append({"height": h, "width": right_w, "x": right_x, "y": y})
+                y += h
+        panes_out = [
+            {"focused": p["pane_id"] == focused, "pane_id": p["pane_id"], "rect": rects[i]}
+            for i, p in enumerate(t_panes)
+        ]
+        splits = [{"direction": "right", "id": f"{t['tab_id']}_split_root", "ratio": root, "rect": dict(area)}]
+        region_y = 1
+        y = 1
+        for i in range(k - 1):
+            region_h = 48 - region_y
+            y += rects[i + 1]["height"]
+            splits.append({
+                "direction": "down", "id": f"{t['tab_id']}_split_stack_{i}",
+                "ratio": (y - region_y) / float(region_h),
+                "rect": {"height": region_h, "width": right_w, "x": right_x, "y": region_y},
+            })
+            region_y = y
+        layouts.append({
+            "area": area, "focused_pane_id": focused, "panes": panes_out,
+            "splits": splits, "tab_id": t["tab_id"], "workspace_id": t["workspace_id"], "zoomed": False,
+        })
+    return layouts
+
 args = sys.argv[1:]
 cmd = args.pop(0) if args else ""
 
@@ -140,6 +201,19 @@ elif cmd == "tab":
         ws_tabs = [t for t in tabs if t["workspace_id"] == tid.split(":")[0]]
         if not ws_tabs:
             save("workspaces.json", [w for w in load("workspaces.json", []) if w["workspace_id"] != tid.split(":")[0]])
+elif cmd == "api":
+    sub = args.pop(0) if args else ""
+    if sub == "snapshot":
+        if not os.path.exists(os.path.join(STATE, "panes.json")):
+            seed()
+        tabs = load("tabs.json", [])
+        panes = load("panes.json", [])
+        ratios = load("layout-ratios.json", {})
+        layouts = gen_layouts(tabs, panes, ratios)
+        print(json.dumps({
+            "id": "cli:api:snapshot",
+            "result": {"snapshot": {"layouts": layouts, "type": "session_snapshot"}},
+        }))
 elif cmd == "pane":
     sub = args.pop(0) if args else ""
     if not os.path.exists(os.path.join(STATE, "panes.json")):
@@ -160,6 +234,22 @@ elif cmd == "pane":
         next(t for t in tabs if t["tab_id"] == src["tab_id"])["pane_count"] += 1
         save("panes.json", panes); save("tabs.json", tabs)
         print(json.dumps({"id": "cli:pane:split", "result": {"type": "pane_split"}}))
+    elif sub == "resize":
+        pid = opt(args, "--pane")
+        direction = opt(args, "--direction") or "right"
+        amount = float(opt(args, "--amount") or 0)
+        p = next((x for x in panes if x["pane_id"] == pid), None)
+        ratios = load("layout-ratios.json", {})
+        if p:
+            tab_ratios = ratios.setdefault(p["tab_id"], {})
+            # Emulate the root right split: right grows the left pane, left
+            # grows the right pane. Other directions are recorded only.
+            if direction == "right":
+                tab_ratios["root"] = float(tab_ratios.get("root", 118.0 / 235.0)) + amount
+            elif direction == "left":
+                tab_ratios["root"] = float(tab_ratios.get("root", 118.0 / 235.0)) - amount
+            save("layout-ratios.json", ratios)
+        print(json.dumps({"id": "cli:pane:resize", "result": {"type": "pane_resized"}}))
     elif sub == "rename":
         pid, label = args[0], args[1]
         next(p for p in panes if p["pane_id"] == pid)["title"] = label
@@ -212,7 +302,15 @@ export PATH="$STUB:$PATH"
 
 export MYBOX_CONFIG="$TMP/config.yaml"
 
-if [ ! -x "$ROOT/mybox" ]; then
+if [ ! -x "$ROOT/mybox" ] || find "$ROOT"/internal "$ROOT"/cmd -name '*.go' -newer "$ROOT/mybox" | grep -q .; then
+  make -C "$ROOT" build
+fi
+
+# The binary embeds internal/webui/dist, produced by `make web-build` from the
+# Vite build in web/. Rebuild it whenever the web sources are newer.
+if [ ! -d "$ROOT/internal/webui/dist/assets" ] \
+  || find "$ROOT/web/src" "$ROOT/web/index.html" -newer "$ROOT/internal/webui/dist" 2>/dev/null | grep -q .; then
+  make -C "$ROOT" web-build
   make -C "$ROOT" build
 fi
 

@@ -173,6 +173,36 @@ export interface HerdrPane {
   focused?: boolean | null
 }
 
+export interface HerdrPaneRect {
+  height: number
+  width: number
+  x: number
+  y: number
+}
+
+export interface HerdrLayoutPane {
+  pane_id: string
+  focused: boolean
+  rect: HerdrPaneRect
+}
+
+export interface HerdrSplit {
+  id: string
+  direction: string
+  ratio: number
+  rect: HerdrPaneRect
+}
+
+export interface HerdrLayout {
+  tab_id: string
+  workspace_id: string
+  focused_pane_id?: string
+  zoomed: boolean
+  area: HerdrPaneRect
+  panes: HerdrLayoutPane[]
+  splits: HerdrSplit[]
+}
+
 export interface HerdrOverview {
   available: boolean
   workspaces: HerdrWorkspace[]
@@ -348,6 +378,8 @@ export const api = {
 
   getHerdrOverview: () => request<HerdrOverview>('GET', '/api/herdr/overview'),
 
+  getHerdrLayouts: () => request<{ layouts: HerdrLayout[] }>('GET', '/api/herdr/layouts'),
+
   getHerdrAgentKinds: () => request<{ kinds: string[] }>('GET', '/api/herdr/agent-kinds'),
 
   startHerdrFileAgent: (path: string, kind?: string) =>
@@ -411,6 +443,13 @@ export const api = {
 
   closeHerdrPane: (paneId: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/panes/close', { pane_id: paneId }),
+
+  resizeHerdrPane: (paneId: string, direction: 'left' | 'right' | 'up' | 'down', amount: number) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/panes/resize', {
+      pane_id: paneId,
+      direction,
+      amount,
+    }),
 
   sendTextHerdrPane: (paneId: string, text: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/panes/send-text', { pane_id: paneId, text }),

@@ -601,6 +601,87 @@ func TestHerdrPaneValidation(t *testing.T) {
 	assert.Equal(t, 500, rec.Code)
 }
 
+const herdrSnapshotJSON = `{"id":"cli:api:snapshot","result":{"snapshot":{"layouts":[` +
+	`{"area":{"height":47,"width":235,"x":32,"y":1},"focused_pane_id":"w9:p1","panes":[` +
+	`{"focused":true,"pane_id":"w9:p1","rect":{"height":47,"width":118,"x":32,"y":1}},` +
+	`{"focused":false,"pane_id":"w9:p9","rect":{"height":47,"width":117,"x":150,"y":1}}],` +
+	`"splits":[{"direction":"right","id":"split_0_root","ratio":0.5,"rect":{"height":47,"width":235,"x":32,"y":1}}],` +
+	`"tab_id":"w9:t1","workspace_id":"w9","zoomed":false}]}}}`
+
+func TestHerdrLayouts(t *testing.T) {
+	var gotArgs []string
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		gotArgs = args
+		return []byte(herdrSnapshotJSON), nil
+	})
+
+	rec := do(t, s, "GET", "/api/herdr/layouts", nil)
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, []string{"api", "snapshot"}, gotArgs)
+
+	res := decode[struct {
+		Layouts []HerdrLayout `json:"layouts"`
+	}](t, rec)
+	require.Len(t, res.Layouts, 1)
+	l := res.Layouts[0]
+	assert.Equal(t, "w9:t1", l.TabID)
+	assert.Equal(t, "w9", l.WorkspaceID)
+	assert.Equal(t, 235, l.Area.Width)
+	assert.Equal(t, 47, l.Area.Height)
+	require.Len(t, l.Panes, 2)
+	assert.Equal(t, "w9:p1", l.Panes[0].PaneID)
+	assert.True(t, l.Panes[0].Focused)
+	assert.Equal(t, 118, l.Panes[0].Rect.Width)
+	assert.Equal(t, 117, l.Panes[1].Rect.Width)
+	require.Len(t, l.Splits, 1)
+	assert.Equal(t, "right", l.Splits[0].Direction)
+	assert.Equal(t, 0.5, l.Splits[0].Ratio)
+}
+
+func TestHerdrLayoutsUnavailable(t *testing.T) {
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		return nil, errors.New("herdr command not found")
+	})
+
+	rec := do(t, s, "GET", "/api/herdr/layouts", nil)
+	require.Equal(t, 200, rec.Code)
+	res := decode[struct {
+		Layouts []HerdrLayout `json:"layouts"`
+	}](t, rec)
+	assert.Empty(t, res.Layouts)
+}
+
+func TestHerdrResizePane(t *testing.T) {
+	var gotArgs []string
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		gotArgs = args
+		return []byte("ok"), nil
+	})
+
+	rec := do(t, s, "POST", "/api/herdr/panes/resize", map[string]any{"pane_id": "w7:p1", "direction": "right", "amount": 5})
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, []string{"pane", "resize", "--pane", "w7:p1", "--direction", "right", "--amount", "5"}, gotArgs)
+
+	rec = do(t, s, "POST", "/api/herdr/panes/resize", map[string]any{"pane_id": "w7:p1", "direction": "down", "amount": 1.5})
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, []string{"pane", "resize", "--pane", "w7:p1", "--direction", "down", "--amount", "1.5"}, gotArgs)
+}
+
+func TestHerdrResizePaneValidation(t *testing.T) {
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		return nil, errors.New("should not run")
+	})
+	for _, body := range []map[string]any{
+		{"pane_id": "bad;id", "direction": "right", "amount": 5},
+		{"pane_id": "w7:p1", "direction": "diagonal", "amount": 5},
+		{"pane_id": "w7:p1", "direction": "right", "amount": 0},
+		{"pane_id": "w7:p1", "direction": "right", "amount": -3},
+	} {
+		rec := do(t, s, "POST", "/api/herdr/panes/resize", body)
+		assert.Equal(t, 500, rec.Code)
+	}
+}
+
 const herdrStartFileTabCreateJSON = `{"id":"cli:tab:create","result":{"type":"tab_created",` +
 	`"tab":{"tab_id":"w7:t3","workspace_id":"w7","label":"app.go"},` +
 	`"root_pane":{"pane_id":"w7:p3","workspace_id":"w7"}}}`

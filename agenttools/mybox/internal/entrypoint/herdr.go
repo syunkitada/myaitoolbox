@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -663,6 +665,187 @@ func (s *Server) CloseHerdrPane(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HerdrPaneRect is the terminal-cell rectangle of a pane or layout area.
+type HerdrPaneRect struct {
+	Height int `json:"height"`
+	Width  int `json:"width"`
+	X      int `json:"x"`
+	Y      int `json:"y"`
+}
+
+// HerdrLayoutPane is one pane position inside a tab layout, in terminal cells.
+type HerdrLayoutPane struct {
+	Focused bool          `json:"focused"`
+	PaneID  string        `json:"pane_id"`
+	Rect    HerdrPaneRect `json:"rect"`
+}
+
+// HerdrSplit describes one split edge of a tab layout (tmux-style binary tree).
+type HerdrSplit struct {
+	Direction string        `json:"direction"`
+	ID        string        `json:"id"`
+	Ratio     float64       `json:"ratio"`
+	Rect      HerdrPaneRect `json:"rect"`
+}
+
+// HerdrLayout reproduces the pane structure of one herdr tab so the web UI can
+// draw panes at their real relative positions and sizes.
+type HerdrLayout struct {
+	Area          HerdrPaneRect     `json:"area"`
+	FocusedPaneID string            `json:"focused_pane_id"`
+	Panes         []HerdrLayoutPane `json:"panes"`
+	Splits        []HerdrSplit      `json:"splits"`
+	TabID         string            `json:"tab_id"`
+	WorkspaceID   string            `json:"workspace_id"`
+	Zoomed        bool              `json:"zoomed"`
+}
+
+type herdrRectRaw struct {
+	Height int `json:"height"`
+	Width  int `json:"width"`
+	X      int `json:"x"`
+	Y      int `json:"y"`
+}
+
+type herdrLayoutPaneRaw struct {
+	Focused bool         `json:"focused"`
+	PaneID  string       `json:"pane_id"`
+	Rect    herdrRectRaw `json:"rect"`
+}
+
+type herdrSplitRaw struct {
+	Direction string       `json:"direction"`
+	ID        string       `json:"id"`
+	Ratio     float64      `json:"ratio"`
+	Rect      herdrRectRaw `json:"rect"`
+}
+
+type herdrLayoutRaw struct {
+	Area          herdrRectRaw         `json:"area"`
+	FocusedPaneID string               `json:"focused_pane_id"`
+	Panes         []herdrLayoutPaneRaw `json:"panes"`
+	Splits        []herdrSplitRaw      `json:"splits"`
+	TabID         string               `json:"tab_id"`
+	WorkspaceID   string               `json:"workspace_id"`
+	Zoomed        bool                 `json:"zoomed"`
+}
+
+type herdrLayoutListResponse struct {
+	Layouts []HerdrLayout `json:"layouts"`
+}
+
+func toHerdrPaneRect(raw herdrRectRaw) HerdrPaneRect {
+	return HerdrPaneRect{Height: raw.Height, Width: raw.Width, X: raw.X, Y: raw.Y}
+}
+
+// ListHerdrLayouts returns the per-tab pane layout parsed from the `herdr api
+// snapshot`, letting the web UI reproduce herdr's split structure (which panes
+// sit side by side, which are stacked, and their relative sizes). When the CLI
+// or its server is unavailable it reports an empty list so the UI falls back
+// to its default grid instead of failing.
+func (s *Server) ListHerdrLayouts(w http.ResponseWriter, r *http.Request) {
+	resp := herdrLayoutListResponse{Layouts: []HerdrLayout{}}
+	out, err := s.runHerdr(r.Context(), "api", "snapshot")
+	if err != nil {
+		writeJSONResponse(w, http.StatusOK, resp)
+		return
+	}
+	var env herdrEnvelope
+	if err := json.Unmarshal(out, &env); err != nil {
+		writeJSONResponse(w, http.StatusOK, resp)
+		return
+	}
+	var snap struct {
+		Snapshot struct {
+			Layouts []herdrLayoutRaw `json:"layouts"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal(env.Result, &snap); err != nil {
+		writeJSONResponse(w, http.StatusOK, resp)
+		return
+	}
+	for _, raw := range snap.Snapshot.Layouts {
+		layout := HerdrLayout{
+			Area:          toHerdrPaneRect(raw.Area),
+			FocusedPaneID: raw.FocusedPaneID,
+			Panes:         []HerdrLayoutPane{},
+			Splits:        []HerdrSplit{},
+			TabID:         raw.TabID,
+			WorkspaceID:   raw.WorkspaceID,
+			Zoomed:        raw.Zoomed,
+		}
+		for _, p := range raw.Panes {
+			layout.Panes = append(layout.Panes, HerdrLayoutPane{
+				Focused: p.Focused,
+				PaneID:  p.PaneID,
+				Rect:    toHerdrPaneRect(p.Rect),
+			})
+		}
+		for _, sp := range raw.Splits {
+			layout.Splits = append(layout.Splits, HerdrSplit{
+				Direction: sp.Direction,
+				ID:        sp.ID,
+				Ratio:     sp.Ratio,
+				Rect:      toHerdrPaneRect(sp.Rect),
+			})
+		}
+		resp.Layouts = append(resp.Layouts, layout)
+	}
+	writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// herdrPaneResizeRequest resizes a pane's edge by a number of cells.
+type herdrPaneResizeRequest struct {
+	// PaneID is the pane whose edge is moved.
+	PaneID string `json:"pane_id"`
+	// Direction is the direction of the edge being moved: left, right, up or
+	// down. "right" on pane A grows pane A to the right (stealing cells from
+	// its right neighbor).
+	Direction string `json:"direction"`
+	// Amount is the number of cells (or fraction) to move the edge.
+	Amount float64 `json:"amount"`
+}
+
+var herdrResizeDirections = map[string]bool{
+	"left": true, "right": true, "up": true, "down": true,
+}
+
+// ResizeHerdrPane moves a pane's edge so the web UI can keep pane sizes in
+// sync with herdr by driving `herdr pane resize`.
+func (s *Server) ResizeHerdrPane(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
+	var req herdrPaneResizeRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	req.Direction = strings.ToLower(strings.TrimSpace(req.Direction))
+	if !herdrTargetPattern.MatchString(req.PaneID) {
+		writeError(w, fmt.Errorf("invalid pane id"))
+		return
+	}
+	if !herdrResizeDirections[req.Direction] {
+		writeError(w, fmt.Errorf("direction must be left, right, up or down"))
+		return
+	}
+	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 || req.Amount > 1000 {
+		writeError(w, fmt.Errorf("amount must be a positive number"))
+		return
+	}
+	if _, err := s.runHerdr(
+		r.Context(),
+		"pane", "resize",
+		"--pane", req.PaneID,
+		"--direction", req.Direction,
+		"--amount", strconv.FormatFloat(req.Amount, 'f', -1, 64),
+	); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, api.HerdrOpResponse{Ok: true})
+}
+
 // SendTextHerdrPane sends literal text to a pane.
 func (s *Server) SendTextHerdrPane(w http.ResponseWriter, r *http.Request) {
 	if !s.ensureWritable(w) {
@@ -962,6 +1145,8 @@ func (s *Server) registerHerdrRoutes(e *echo.Echo, basePath string) {
 	wrap(http.MethodPost, "/api/herdr/agents/start-file", s.StartHerdrFileAgent)
 	wrap(http.MethodPost, "/api/herdr/agents/start-task", s.StartTaskAgent)
 	wrap(http.MethodGet, "/api/herdr/agent-kinds", s.ListHerdrAgentKinds)
+	wrap(http.MethodGet, "/api/herdr/layouts", s.ListHerdrLayouts)
+	wrap(http.MethodPost, "/api/herdr/panes/resize", s.ResizeHerdrPane)
 }
 
 // ListHerdrAgentKinds returns the agent kinds herdr can start in a pane.

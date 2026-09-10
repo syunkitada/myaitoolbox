@@ -2,13 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FileText, RefreshCw, Send } from 'lucide-react'
 import { dirName, encodePath, getProject, projectUrl } from '../utils/routes'
-import type { HerdrAgent, HerdrOverview, HerdrPane, HerdrTab, HerdrWorkspace } from '../api/client'
+import type { HerdrAgent, HerdrLayout, HerdrOverview, HerdrPane, HerdrTab, HerdrWorkspace } from '../api/client'
 import { api } from '../api/client'
 import { StatusBadge, StatusDot } from '../components/herdr-status'
 import { Button } from '../components/ui/button'
 import { cn } from '@/lib/utils'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { filePathForAgent } from '../utils/herdr-file-agent'
+import {
+  edgeNeighborsForSplit,
+  layoutBoxForTab,
+  MAX_RATIO,
+  MIN_RATIO,
+  resizeRecipeForPane,
+  RESIZE_DIRECTION_LABELS,
+  RESIZE_DIRECTIONS,
+} from '../utils/herdr-layout'
+import type { Divider, Rect, ResizeDirection } from '../utils/herdr-layout'
 
 interface HerdrPageProps {
   overview: HerdrOverview | null
@@ -204,9 +214,15 @@ interface PaneRowProps {
   autoReload: boolean
   onChanged: OnChanged
   onError: OnError
+  // fit renders the row to fill an absolutely-positioned layout box (the
+  // terminal output stretches instead of capping at max-h-64).
+  fit: boolean
+  resizeStep: number
+  // Arrow-button resize; undefined when no split layout is available.
+  onResize: ((direction: ResizeDirection) => void) | undefined
 }
 
-function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError }: PaneRowProps) {
+function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, resizeStep, onResize }: PaneRowProps) {
   const [open, setOpen] = useState(true)
   const [output, setOutput] = useState<string | null>(null)
   const [mode, setMode] = useState<'send-text-enter' | 'send-text' | 'send-keys' | 'prompt'>('send-text-enter')
@@ -300,11 +316,16 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError }: Pan
     void runOp(() => api.closeHerdrPane(pane.pane_id), onError, onChanged)
   }
 
+  const resizePane = (direction: ResizeDirection) => {
+    onResize?.(direction)
+  }
+
   return (
     <div
       className={cn(
         'herdr-pane-row flex flex-col rounded border bg-card text-card-foreground shadow-xs transition-all',
         focused ? 'border-primary ring-1 ring-primary/40' : 'border-border',
+        fit && 'h-full min-h-0 overflow-hidden',
       )}
       data-testid={`herdr-pane-${pane.pane_id}`}
       data-focused={focused ? 'true' : 'false'}
@@ -384,8 +405,8 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError }: Pan
 
       {/* Pane Content / Terminal Output */}
       {open ? (
-        <div className="herdr-pane-detail p-2">
-          <div className="mb-1 flex items-center justify-between">
+        <div className={cn('herdr-pane-detail p-2', fit && 'flex min-h-0 flex-1 flex-col')}>
+          <div className="mb-1 flex shrink-0 items-center justify-between">
             <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground">Terminal Output</span>
             <Button variant="ghost" size="xs" className="h-5 px-1 text-[10px]" onClick={() => void loadOutput()}>
               <RefreshCw className="mr-1 size-3" /> Reload
@@ -394,7 +415,10 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError }: Pan
           <div
             ref={preRef}
             onScroll={handlePreScroll}
-            className="max-h-64 overflow-auto rounded bg-black p-2.5 font-mono text-xs text-green-400"
+            className={cn(
+              'overflow-auto rounded bg-black p-2.5 font-mono text-xs text-green-400',
+              fit ? 'min-h-0 flex-1' : 'max-h-64',
+            )}
           >
             <SyntaxHighlighter text={output ?? 'loading terminal output...'} />
           </div>
@@ -449,6 +473,25 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError }: Pan
             >
               [Ctrl+C]
             </Button>
+            <span className="mx-0.5 text-[10px] text-muted-foreground">·</span>
+            {RESIZE_DIRECTIONS.map((dir) => (
+              <Button
+                key={dir}
+                variant="ghost"
+                size="xs"
+                className="herdr-pane-resize h-5 cursor-pointer px-1.5 text-[10px]"
+                title={`Resize ${pane.pane_id} ${dir} by ${resizeStep} cell${resizeStep === 1 ? '' : 's'}`}
+                aria-label={`Resize ${pane.pane_id} ${dir}`}
+                data-testid={`herdr-resize-${pane.pane_id}-${dir}`}
+                disabled={sending || !onResize}
+                onClick={() => resizePane(dir)}
+              >
+                {RESIZE_DIRECTION_LABELS[dir]}
+              </Button>
+            ))}
+            <span className="text-[10px] text-muted-foreground" title="Cells per resize click">
+              {resizeStep}
+            </span>
           </div>
         </div>
 
@@ -555,16 +598,30 @@ function TabRow({ tab, panes, active, onSelect, onChanged, onError }: {
   )
 }
 
+// Live drag of a split divider: the dragged split renders at overrideRatio and
+// the real herdr resize (pane, direction, ratio delta) is sent on pointer up.
+interface DragState {
+  splitId: string
+  axis: 'vertical' | 'horizontal'
+  baseRatio: number
+  baseRegion: Rect
+  startClient: number
+  cellPx: number
+  overrideRatio: number
+}
+
 interface WorkspaceSectionProps {
   ws: HerdrWorkspace
   tabs: HerdrTab[]
   panes: HerdrPane[]
+  layouts: HerdrLayout[]
   current: boolean
   urlTabId: string | null
   urlPaneId: string | null
   onSelectTab: (tabId: string) => void
   onSelectPane: (paneId: string) => void
   autoReload: boolean
+  resizeStep: number
   onChanged: OnChanged
   onError: OnError
 }
@@ -573,12 +630,14 @@ function WorkspaceSection({
   ws,
   tabs,
   panes,
+  layouts,
   current,
   urlTabId,
   urlPaneId,
   onSelectTab,
   onSelectPane,
   autoReload,
+  resizeStep,
   onChanged,
   onError,
 }: WorkspaceSectionProps) {
@@ -602,6 +661,87 @@ function WorkspaceSection({
 
   const activeTab = sortedTabs.find((t) => t.tab_id === selectedTabId) ?? sortedTabs[0]
   const activePanes = activeTab ? panes.filter((p) => p.tab_id === activeTab.tab_id) : []
+
+  // Reproduce herdr's split structure from the tab's layout (real rects and
+  // proportions). When the layout is missing or incomplete the classic grid is
+  // used instead. A zoomed tab only exposes its focused pane.
+  const activeLayout = layouts.find((l) => l.tab_id === activeTab?.tab_id)
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const layoutRef = useRef<HTMLDivElement>(null)
+  // Rendering the dragged split at an alternative ratio previews the resize
+  // live; the real resize is sent to herdr once the pointer is released.
+  const overrides = useMemo<Record<string, number>>(() => {
+    if (!drag) return {}
+    return { [drag.splitId]: drag.overrideRatio }
+  }, [drag])
+  const placed = layoutBoxForTab(activeLayout, overrides)
+  const useLayout =
+    placed != null &&
+    (placed.zoomed || activePanes.every((p) => placed.panes.some((b) => b.paneId === p.pane_id)))
+
+  const startDrag = (e: React.PointerEvent, divider: Divider) => {
+    if (e.button !== 0 || !placed) return
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const el = layoutRef.current
+    if (!el) return
+    const box = el.getBoundingClientRect()
+    const area = placed.area
+    const cellPx =
+      (divider.axis === 'vertical' ? box.width : box.height) /
+      (divider.axis === 'vertical' ? area.width : area.height)
+    setDrag({
+      splitId: divider.splitId,
+      axis: divider.axis,
+      baseRatio: divider.ratio,
+      baseRegion: { x: divider.x, y: divider.y, width: divider.width, height: divider.height },
+      startClient: divider.axis === 'vertical' ? e.clientX : e.clientY,
+      cellPx,
+      overrideRatio: divider.ratio,
+    })
+  }
+
+  const moveDrag = (e: React.PointerEvent) => {
+    if (!drag) return
+    const delta = (drag.axis === 'vertical' ? e.clientX : e.clientY) - drag.startClient
+    const deltaCells = delta / drag.cellPx
+    const regionDim = drag.axis === 'vertical' ? drag.baseRegion.width : drag.baseRegion.height
+    const ratio = Math.min(
+      MAX_RATIO,
+      Math.max(MIN_RATIO, drag.baseRatio + deltaCells / regionDim),
+    )
+    setDrag((prev) => (prev && Math.abs(prev.overrideRatio - ratio) > 1e-4 ? { ...prev, overrideRatio: ratio } : prev))
+  }
+
+  const endDrag = (e: React.PointerEvent) => {
+    if (!drag) return
+    if (typeof e.currentTarget.releasePointerCapture === 'function') {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+    const deltaRatio = drag.overrideRatio - drag.baseRatio
+    const edges = activeLayout ? edgeNeighborsForSplit(activeLayout, drag.splitId) : undefined
+    setDrag(null)
+    const recipe = deltaRatio > 0 ? edges?.positive : edges?.negative
+    if (!recipe || Math.abs(deltaRatio) < 1e-4) return
+    void runOp(
+      () => api.resizeHerdrPane(recipe.paneId, recipe.direction, Math.abs(deltaRatio)),
+      onError,
+      onChanged,
+    )
+  }
+
+  const arrowResize = (paneId: string, direction: ResizeDirection) => {
+    if (!activeLayout) {
+      onError('No split layout available to resize from.')
+      return
+    }
+    const recipe = resizeRecipeForPane(activeLayout, paneId, direction, resizeStep)
+    if (!recipe) {
+      onError(`Pane ${paneId} has no neighbor to the ${direction}.`)
+      return
+    }
+    void runOp(() => api.resizeHerdrPane(recipe.paneId, recipe.direction, recipe.amount), onError, onChanged)
+  }
 
   return (
     <div
@@ -655,6 +795,70 @@ function WorkspaceSection({
           <div className="bg-background/50 p-3 rounded-b border border-t-0">
             {activePanes.length === 0 ? (
               <p className="p-4 text-center text-xs text-muted-foreground">No panes in tab "{activeTab?.label}".</p>
+            ) : useLayout && placed ? (
+              <div
+                ref={layoutRef}
+                className={cn('herdr-layout relative w-full', drag && 'select-none')}
+                style={{ aspectRatio: String(placed.aspectRatio) }}
+                data-layout={placed.zoomed ? 'zoomed' : 'split'}
+                data-testid={`herdr-layout-${ws.workspace_id}`}
+              >
+                {activePanes.map((p) => {
+                  const box = placed.panes.find((b) => b.paneId === p.pane_id)
+                  if (!box) return null
+                  return (
+                    <div
+                      key={p.pane_id}
+                      className="absolute min-w-0"
+                      style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+                    >
+                      <PaneRow
+                        pane={p}
+                        focused={urlPaneId === p.pane_id}
+                        onFocus={() => onSelectPane(p.pane_id)}
+                        autoReload={autoReload}
+                        fit
+                        resizeStep={resizeStep}
+                        onResize={(dir) => arrowResize(p.pane_id, dir)}
+                        onChanged={onChanged}
+                        onError={onError}
+                      />
+                    </div>
+                  )
+                })}
+                {!placed.zoomed &&
+                  placed.dividers.map((d) => {
+                    const isDragging = drag?.splitId === d.splitId
+                    return (
+                      <div
+                        key={d.splitId}
+                        className={cn(
+                          'herdr-divider group absolute z-20 flex touch-none items-center justify-center',
+                          d.axis === 'vertical' ? 'cursor-col-resize' : 'cursor-row-resize',
+                          isDragging && 'z-30',
+                        )}
+                        style={
+                          d.axis === 'vertical'
+                            ? { left: d.pos, top: '0%', height: '100%', width: 10, transform: 'translateX(-50%)' }
+                            : { top: d.pos, left: '0%', width: '100%', height: 10, transform: 'translateY(-50%)' }
+                        }
+                        data-testid={`herdr-divider-${d.splitId}`}
+                        onPointerDown={(e) => startDrag(e, d)}
+                        onPointerMove={moveDrag}
+                        onPointerUp={endDrag}
+                        onPointerCancel={endDrag}
+                      >
+                        <div
+                          className={cn(
+                            'rounded bg-muted-foreground/0 transition-colors group-hover:bg-primary/60 group-active:bg-primary',
+                            d.axis === 'vertical' ? 'h-full w-0.5' : 'h-0.5 w-full',
+                            isDragging && 'bg-primary',
+                          )}
+                        />
+                      </div>
+                    )
+                  })}
+              </div>
             ) : (
               <div
                 className={cn(
@@ -671,6 +875,9 @@ function WorkspaceSection({
                     focused={urlPaneId === p.pane_id}
                     onFocus={() => onSelectPane(p.pane_id)}
                     autoReload={autoReload}
+                    fit={false}
+                    resizeStep={resizeStep}
+                    onResize={undefined}
                     onChanged={onChanged}
                     onError={onError}
                   />
@@ -732,6 +939,31 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
   const matched = workspaces.find((w) => w.label === project)
   const [opError, setOpError] = useState<string | null>(null)
 
+  // Tab layouts drive the tmux-style pane reproduction; they are fetched
+  // separately from the overview so the (cheaper) overview stays the single
+  // polling source in the sidebar and dashboard.
+  const [layouts, setLayouts] = useState<HerdrLayout[]>([])
+  // Cells moved per resize click (also the granularity shown on pane arrows).
+  const [resizeStep, setResizeStep] = useState(2)
+
+  const refreshLayouts = useCallback(async () => {
+    try {
+      const res = await api.getHerdrLayouts()
+      setLayouts(res.layouts ?? [])
+    } catch {
+      setLayouts([])
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshLayouts()
+  }, [refreshLayouts, project])
+
+  const refreshAll = useCallback(async () => {
+    await refresh()
+    await refreshLayouts()
+  }, [refresh, refreshLayouts])
+
   // Load the project's files once so each agent can be linked back to the file
   // it was started for (reverse of fileAgentName).
   const [files, setFiles] = useState<Array<{ path: string }> | null>(null)
@@ -776,7 +1008,7 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
     void runOp(
       () => api.createHerdrTab(undefined, label.trim() || undefined, undefined, project),
       onError,
-      refresh,
+      refreshAll,
     )
   }
 
@@ -791,7 +1023,7 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
     void runOp(
       () => api.renameHerdrAgent(agent.pane_id, trimmed || undefined, !trimmed),
       onError,
-      refresh,
+      refreshAll,
     )
   }
 
@@ -827,7 +1059,23 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
             <RefreshCw className={cn(autoReload && loading && 'animate-spin')} />
             Auto reload: {autoReload ? 'ON' : 'OFF'}
           </Button>
-          <Button variant="ghost" size="sm" className="cursor-pointer" onClick={() => void refresh()} title="Refresh">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Resize:
+            <select
+              value={resizeStep}
+              onChange={(e) => setResizeStep(Number(e.target.value))}
+              className="cursor-pointer rounded border bg-background px-1.5 py-1 text-xs outline-none"
+              aria-label="Resize step"
+              title="Cells moved per resize click"
+            >
+              {[1, 2, 5, 10].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button variant="ghost" size="sm" className="cursor-pointer" onClick={() => void refreshAll()} title="Refresh">
             <RefreshCw className={cn(loading && 'animate-spin')} />
             Refresh
           </Button>
@@ -884,13 +1132,15 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
                   ws={w}
                   tabs={tabs.filter((t) => t.workspace_id === w.workspace_id)}
                   panes={panes.filter((p) => p.workspace_id === w.workspace_id)}
+                  layouts={layouts}
                   current={true}
                   urlTabId={urlTabId}
                   urlPaneId={urlPaneId}
                   onSelectTab={selectTab}
                   onSelectPane={selectPane}
                   autoReload={autoReload}
-                  onChanged={refresh}
+                  resizeStep={resizeStep}
+                  onChanged={refreshAll}
                   onError={onError}
                 />
               ))}

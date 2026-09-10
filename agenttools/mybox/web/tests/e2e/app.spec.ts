@@ -577,6 +577,59 @@ test('herdr tab and pane operations work end to end', async ({ page }) => {
   await expect(newTab).toHaveCount(0)
 })
 
+test('dragging a split divider resizes the neighboring panes', async ({ page }) => {
+  await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
+  const ws = page.getByTestId('herdr-workspace-w7')
+  await expect(ws).toBeVisible()
+
+  // the test owns a fresh tab so it starts from a single full pane
+  page.once('dialog', (d) => d.accept('drag'))
+  await ws.getByRole('button', { name: '+ New Tab' }).click()
+  const tab = page.locator('[data-testid^="herdr-tab-w7:"]').filter({ hasText: 'drag' })
+  await expect(tab).toContainText('drag')
+  const tabId = (await tab.getAttribute('data-testid'))!.replace('herdr-tab-', '')
+  await tab.click()
+  await expect(tab).toHaveAttribute('data-active', 'true')
+
+  const layout = ws.locator('.herdr-layout')
+  await expect(layout).toBeVisible()
+  const pane = layout.locator('[data-testid^="herdr-pane-"]').first()
+  await expect(pane).toBeVisible()
+  const paneId = (await pane.getAttribute('data-testid'))!.replace('herdr-pane-', '')
+
+  // split it to the right so a vertical divider appears between the two panes
+  await page.getByRole('button', { name: `Split ${paneId} right` }).click()
+  const divider = layout.locator('[data-testid^="herdr-divider-"]').first()
+  await expect(divider).toBeVisible()
+
+  const before = (await pane.boundingBox())!.width
+  const db = (await divider.boundingBox())!
+
+  // drag the divider to the right; the left pane keeps the wider ratio
+  await page.mouse.move(db.x + db.width / 2, db.y + db.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(db.x + db.width / 2 + 120, db.y + db.height / 2, { steps: 24 })
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await pane.boundingBox())?.width, { timeout: 5000 })
+    .toBeGreaterThan(before + 5)
+
+  // the resize was committed to herdr: a reload keeps the wider split
+  await page.reload()
+  await expect(layout).toBeVisible()
+  const paneAfter = layout.locator('[data-testid^="herdr-pane-"]').first()
+  await expect(paneAfter).toBeVisible()
+  await expect
+    .poll(async () => (await paneAfter.boundingBox())?.width, { timeout: 5000 })
+    .toBeGreaterThan(before + 5)
+
+  // clean up the tab so later tests start from a predictable server state
+  page.once('dialog', (d) => d.accept())
+  await tab.hover()
+  await tab.getByRole('button', { name: `Close tab ${tabId}` }).click()
+  await expect(tab).toHaveCount(0)
+})
+
 test('sidebar shows workspace status and herdr agents', async ({ page }) => {
   await page.goto('/projects/proj/dashboard')
   const projRow = page
