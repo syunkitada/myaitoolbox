@@ -21,7 +21,7 @@ func TestFileRepositoryTreeStatus(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "notes.txt"),
 		[]byte("---\nstatus: done\n---\n\nplain"), 0o644))
 
-	entries, err := NewFileRepository(root).Tree(context.Background())
+	entries, err := NewFileRepository(root).Tree(context.Background(), true)
 	require.NoError(t, err)
 
 	byPath := map[string]domain.FileEntry{}
@@ -40,7 +40,7 @@ func TestFileRepositoryTreeStatusInvalidFrontMatter(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "broken.md"),
 		[]byte("---\nstatus: [unclosed\n---\n\nbody"), 0o644))
 
-	entries, err := NewFileRepository(root).Tree(context.Background())
+	entries, err := NewFileRepository(root).Tree(context.Background(), true)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	assert.Equal(t, "", entries[0].Status)

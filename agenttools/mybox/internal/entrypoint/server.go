@@ -810,13 +810,17 @@ func (s *Server) RenameKnowledge(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) ListFiles(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListFiles(w http.ResponseWriter, r *http.Request, params api.ListFilesParams) {
 	app, err := s.getApp(r)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	entries, err := app.Files.Tree(r.Context())
+	showHidden := true
+	if params.ShowHidden != nil {
+		showHidden = *params.ShowHidden
+	}
+	entries, err := app.Files.Tree(r.Context(), showHidden)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1054,7 +1058,7 @@ func (s *Server) GetGraph(w http.ResponseWriter, r *http.Request, params api.Get
 		writeError(w, err)
 		return
 	}
-	tree, err := app.Files.Tree(r.Context())
+	tree, err := app.Files.Tree(r.Context(), false)
 	if err != nil {
 		writeError(w, err)
 		return

@@ -15,8 +15,8 @@ func NewFileUseCase(files domain.FileRepository) *FileUseCase {
 	return &FileUseCase{Files: files}
 }
 
-func (u *FileUseCase) Tree(ctx context.Context) ([]domain.FileEntry, error) {
-	entries, err := u.Files.Tree(ctx)
+func (u *FileUseCase) Tree(ctx context.Context, showHidden bool) ([]domain.FileEntry, error) {
+	entries, err := u.Files.Tree(ctx, showHidden)
 	if err != nil {
 		return nil, err
 	}

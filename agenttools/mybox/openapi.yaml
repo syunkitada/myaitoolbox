@@ -151,6 +151,13 @@ paths:
     get:
       operationId: listFiles
       summary: List files in the project directory tree
+      parameters:
+        - name: show_hidden
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
       responses:
         "200":
           description: file tree

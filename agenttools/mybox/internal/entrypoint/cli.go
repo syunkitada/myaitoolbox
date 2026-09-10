@@ -363,6 +363,7 @@ func newFilesCommand(project *string) *cobra.Command {
 
 func newFilesListCommand(project *string) *cobra.Command {
 	var jsonOut bool
+	var showHidden bool
 	cmd := &cobra.Command{
 		Use:   "list [path]",
 		Short: "List files from the project root",
@@ -372,7 +373,7 @@ func newFilesListCommand(project *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			entries, err := app.Files.Tree(cmd.Context())
+			entries, err := app.Files.Tree(cmd.Context(), showHidden)
 			if err != nil {
 				return err
 			}
@@ -390,6 +391,7 @@ func newFilesListCommand(project *string) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
+	cmd.Flags().BoolVar(&showHidden, "hidden", false, "include hidden files and directories")
 	return cmd
 }
 

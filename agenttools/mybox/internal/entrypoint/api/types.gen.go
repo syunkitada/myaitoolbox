@@ -458,6 +458,12 @@ type GetFileContentParams struct {
 	Path string `form:"path" json:"path"`
 }
 
+// ListFilesParams defines parameters for ListFiles.
+type ListFilesParams struct {
+	// ShowHidden Whether to include hidden files (dotfiles) in the result
+	ShowHidden *bool `form:"show_hidden,omitempty" json:"show_hidden,omitempty"`
+}
+
 // GetGraphParams defines parameters for GetGraph.
 type GetGraphParams struct {
 	// Path Optional root directory to scope the graph to (empty means the whole project)

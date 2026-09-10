@@ -12,7 +12,7 @@ import { Separator } from '../components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible'
 import MonacoEditor from '../components/MonacoEditor'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { ChevronDown, Clock, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, Star, Tag, Text, Trash2 } from 'lucide-react'
+import { ChevronDown, Clock, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RefreshCw, Star, Tag, Text, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -33,6 +33,7 @@ import {
 
 const OUTLINE_STORAGE_KEY = 'outline_open'
 const EXPLORER_STORAGE_KEY = 'explorer_open'
+const SHOW_HIDDEN_STORAGE_KEY = 'files_show_hidden'
 
 function computeViewStartLine(viewText: string): number {
   const scroller = document.querySelector<HTMLElement>('.knowledge-files')
@@ -251,6 +252,8 @@ interface ExplorerProps {
   onMoveFile?: (filePath: string, dirPath: string) => void
   onChanged?: () => void
   onError?: (message: string) => void
+  showHidden?: boolean
+  onToggleHidden?: () => void
 }
 
 interface ExplorerSectionProps {
@@ -289,7 +292,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden }: ExplorerProps) {
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -690,6 +693,24 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
             </Button>
           </div>
         )}
+        {mode === 'files' && showHidden !== undefined && onToggleHidden && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn('cursor-pointer', showHidden && 'text-primary')}
+            aria-pressed={showHidden}
+            aria-label={showHidden ? 'Hide hidden files' : 'Show hidden files'}
+            title={
+              showHidden
+                ? 'Hidden files are shown — click to hide them'
+                : 'Hidden files are hidden — click to show them'
+            }
+            onClick={onToggleHidden}
+          >
+            {showHidden ? <Eye /> : <EyeOff />}
+            <span className="hidden sm:inline">Hidden</span>
+          </Button>
+        )}
       </div>
       <div className="toolbar my-3 flex flex-wrap gap-2">
         <SearchBar value={q} onChange={setQ} onSubmit={() => undefined} placeholder="Filter…" />
@@ -811,11 +832,13 @@ interface PaneProps {
   onDeleted: () => void
   explorerOpen: boolean
   onToggleExplorer: () => void
+  onRefresh: () => void
+  refreshKey: number
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
 }
 
-function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer, herdrOverview, refreshHerdr }: PaneProps) {
+function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer, onRefresh, refreshKey, herdrOverview, refreshHerdr }: PaneProps) {
   const navigate = useNavigate()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
@@ -947,7 +970,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
     void api.recordRecent(path).then(() => void refreshMeta()).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, isDir, isImage, readmePath, listing])
+  }, [path, isDir, isImage, readmePath, listing, refreshKey])
 
   const isMarkdown =
     isDir || (entry?.markdown ?? (mode === 'knowledge' || /\.(md|markdown)$/i.test(path)))
@@ -1194,6 +1217,15 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
                 onClick={() => fav(!isFav)}
               >
                 {isFav ? <Star fill="currentColor" /> : <Star />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Refresh explorer and file"
+                title="Refresh explorer and file"
+                onClick={onRefresh}
+              >
+                <RefreshCw />
               </Button>
               {mode === 'knowledge' && !isDir && (
                 <Button variant="ghost" size="sm" onClick={move}>
@@ -1508,6 +1540,7 @@ export function BrowserPage({
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
   const autoDefaulted = useRef(false)
 
   const isMobile = useIsMobile()
@@ -1519,9 +1552,19 @@ export function BrowserPage({
     return true
   })
 
+  const [showHidden, setShowHidden] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    const saved = window.localStorage.getItem(SHOW_HIDDEN_STORAGE_KEY)
+    return saved === null ? true : saved === '1'
+  })
+
   useEffect(() => {
     if (!isMobile) window.localStorage.setItem(EXPLORER_STORAGE_KEY, explorerOpen ? '1' : '0')
   }, [explorerOpen, isMobile])
+
+  useEffect(() => {
+    window.localStorage.setItem(SHOW_HIDDEN_STORAGE_KEY, showHidden ? '1' : '0')
+  }, [showHidden])
 
   const handleSelect = useCallback(
     (p: string) => {
@@ -1532,7 +1575,7 @@ export function BrowserPage({
   )
 
   const load = useCallback(() => {
-    const p = mode === 'knowledge' ? api.listKnowledge() : api.listFiles()
+    const p = mode === 'knowledge' ? api.listKnowledge() : api.listFiles({ showHidden })
     const gs = mode === 'files' ? api.getFileGitStatus() : Promise.resolve({})
     void Promise.all([p, gs])
       .then(([list, gsResult]) => {
@@ -1545,7 +1588,7 @@ export function BrowserPage({
         setEntries([])
         setError(e instanceof Error ? e.message : String(e))
       })
-  }, [mode])
+  }, [mode, showHidden])
 
   const refreshGitStatus = useCallback(() => {
     if (mode !== 'files') return
@@ -1554,6 +1597,12 @@ export function BrowserPage({
       .then(setGitStatus)
       .catch(() => undefined)
   }, [mode])
+
+  const handleRefresh = useCallback(() => {
+    load()
+    refreshGitStatus()
+    setRefreshKey((k) => k + 1)
+  }, [load, refreshGitStatus])
 
   useEffect(() => {
     load()
@@ -1674,6 +1723,8 @@ export function BrowserPage({
                     onMoveFile={mode === 'files' ? handleMoveFile : undefined}
                     onChanged={load}
                     onError={(msg) => setMoveError(msg)}
+                    showHidden={mode === 'files' ? showHidden : undefined}
+                    onToggleHidden={mode === 'files' ? () => setShowHidden((s) => !s) : undefined}
                   />
                 </div>
               </div>
@@ -1698,6 +1749,8 @@ export function BrowserPage({
                   onMoveFile={mode === 'files' ? handleMoveFile : undefined}
                   onChanged={load}
                   onError={(msg) => setMoveError(msg)}
+                  showHidden={mode === 'files' ? showHidden : undefined}
+                  onToggleHidden={mode === 'files' ? () => setShowHidden((s) => !s) : undefined}
                 />
               </SheetContent>
             </Sheet>
@@ -1734,6 +1787,8 @@ export function BrowserPage({
                   onDeleted={onBack}
                   explorerOpen={explorerOpen}
                   onToggleExplorer={() => setExplorerOpen((o) => !o)}
+                  onRefresh={handleRefresh}
+                  refreshKey={refreshKey}
                   herdrOverview={herdrOverview}
                   refreshHerdr={refreshHerdr}
                 />

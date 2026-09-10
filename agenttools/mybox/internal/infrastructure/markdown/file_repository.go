@@ -21,7 +21,7 @@ func NewFileRepository(root string) *FileRepository {
 	return &FileRepository{root: root}
 }
 
-func (r *FileRepository) Tree(ctx context.Context) ([]domain.FileEntry, error) {
+func (r *FileRepository) Tree(ctx context.Context, showHidden bool) ([]domain.FileEntry, error) {
 	var entries []domain.FileEntry
 	if _, err := os.Stat(r.root); err != nil {
 		if os.IsNotExist(err) {
@@ -36,7 +36,7 @@ func (r *FileRepository) Tree(ctx context.Context) ([]domain.FileEntry, error) {
 		if path == r.root {
 			return nil
 		}
-		if strings.HasPrefix(d.Name(), ".") {
+		if !showHidden && strings.HasPrefix(d.Name(), ".") {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}

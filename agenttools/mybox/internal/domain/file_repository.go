@@ -17,7 +17,7 @@ type FileEntry struct {
 }
 
 type FileRepository interface {
-	Tree(ctx context.Context) ([]FileEntry, error)
+	Tree(ctx context.Context, showHidden bool) ([]FileEntry, error)
 	Content(ctx context.Context, path string) (string, error)
 	Raw(ctx context.Context, path string) ([]byte, error)
 	Save(ctx context.Context, path string, content string) error

@@ -519,7 +519,7 @@ func TestFiles(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".git", "config"), []byte("x"), 0o644))
 
-	rec := do(t, s, http.MethodGet, "/api/files", nil)
+	rec := do(t, s, http.MethodGet, "/api/files?show_hidden=false", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	files := decode[[]api.FileEntry](t, rec)
 	require.Len(t, files, 3)
@@ -527,6 +527,17 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, api.FileEntry{Path: "README.md", Name: "README.md", Kind: api.FileEntryKind("file")}, files[1])
 	status := "doing"
 	assert.Equal(t, api.FileEntry{Path: "docs/guide.md", Name: "guide.md", Kind: api.FileEntryKind("file"), Status: &status}, files[2])
+
+	rec = do(t, s, http.MethodGet, "/api/files", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	files = decode[[]api.FileEntry](t, rec)
+	require.Len(t, files, 6)
+	assert.Equal(t, api.FileEntry{Path: ".git", Name: ".git", Kind: api.FileEntryKind("dir")}, files[0])
+	assert.Equal(t, api.FileEntry{Path: "docs", Name: "docs", Kind: api.FileEntryKind("dir")}, files[1])
+	assert.Equal(t, api.FileEntry{Path: ".git/config", Name: "config", Kind: api.FileEntryKind("file")}, files[2])
+	assert.Equal(t, api.FileEntry{Path: ".hidden", Name: ".hidden", Kind: api.FileEntryKind("file")}, files[3])
+	assert.Equal(t, api.FileEntry{Path: "README.md", Name: "README.md", Kind: api.FileEntryKind("file")}, files[4])
+	assert.Equal(t, api.FileEntry{Path: "docs/guide.md", Name: "guide.md", Kind: api.FileEntryKind("file"), Status: &status}, files[5])
 
 	rec = do(t, s, http.MethodGet, "/api/files/content?path=README.md", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)

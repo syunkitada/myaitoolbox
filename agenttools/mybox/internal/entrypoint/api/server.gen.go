@@ -17,7 +17,7 @@ import (
 type ServerInterface interface {
 	// ListFiles List files in the project directory tree
 	// (GET /api/files)
-	ListFiles(w http.ResponseWriter, r *http.Request)
+	ListFiles(w http.ResponseWriter, r *http.Request, params ListFilesParams)
 	// CreateFile Create an empty file
 	// (POST /api/files)
 	CreateFile(w http.ResponseWriter, r *http.Request)
@@ -167,8 +167,22 @@ type MiddlewareFunc func(http.Handler) http.Handler
 // ListFiles operation middleware
 func (siw *ServerInterfaceWrapper) ListFiles(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListFilesParams
+
+	// ------------- Optional query parameter "show_hidden" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "show_hidden", r.URL.Query(), &params.ShowHidden, runtime.BindQueryParameterOptions{Type: "bool", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "show_hidden", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListFiles(w, r)
+		siw.Handler.ListFiles(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

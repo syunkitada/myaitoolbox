@@ -8,17 +8,15 @@ import { StatusBadge, StatusDot } from '../components/herdr-status'
 import { Button } from '../components/ui/button'
 import { cn } from '@/lib/utils'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
+import { useIsMobile } from '../hooks/use-mobile'
 import { filePathForAgent } from '../utils/herdr-file-agent'
 import {
   edgeNeighborsForSplit,
   layoutBoxForTab,
   MAX_RATIO,
   MIN_RATIO,
-  resizeRecipeForPane,
-  RESIZE_DIRECTION_LABELS,
-  RESIZE_DIRECTIONS,
 } from '../utils/herdr-layout'
-import type { Divider, Rect, ResizeDirection } from '../utils/herdr-layout'
+import type { Divider, Rect } from '../utils/herdr-layout'
 
 interface HerdrPageProps {
   overview: HerdrOverview | null
@@ -217,17 +215,16 @@ interface PaneRowProps {
   // fit renders the row to fill an absolutely-positioned layout box (the
   // terminal output stretches instead of capping at max-h-64).
   fit: boolean
-  resizeStep: number
-  // Arrow-button resize; undefined when no split layout is available.
-  onResize: ((direction: ResizeDirection) => void) | undefined
 }
 
-function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, resizeStep, onResize }: PaneRowProps) {
+function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit }: PaneRowProps) {
+  const isMobile = useIsMobile()
   const [open, setOpen] = useState(true)
   const [output, setOutput] = useState<string | null>(null)
   const [mode, setMode] = useState<'send-text-enter' | 'send-text' | 'send-keys' | 'prompt'>('send-text-enter')
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [keySending, setKeySending] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const loadingRef = useRef(false)
   const preRef = useRef<HTMLDivElement>(null)
@@ -316,9 +313,21 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, 
     void runOp(() => api.closeHerdrPane(pane.pane_id), onError, onChanged)
   }
 
-  const resizePane = (direction: ResizeDirection) => {
-    onResize?.(direction)
-  }
+  const sendKey = useCallback(async (label: string, key: string) => {
+    if (keySending) return
+    setKeySending(key)
+    setNotice(null)
+    try {
+      await api.sendKeysHerdrPane(pane.pane_id, [key])
+      setNotice(`${label} sent`)
+      setTimeout(() => setNotice(null), 3000)
+      if (open) void loadOutput()
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e))
+    } finally {
+      setKeySending(null)
+    }
+  }, [keySending, pane.pane_id, open, loadOutput])
 
   return (
     <div
@@ -362,35 +371,39 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, 
           >
             {open ? 'Hide Terminal' : 'View Terminal'}
           </Button>
-          <Button
-            variant="ghost"
-            size="xs"
-            className="h-6 cursor-pointer px-1.5 text-[11px]"
-            title="Split right"
-            aria-label={`Split ${pane.pane_id} right`}
-            onClick={() => void runOp(() => api.splitHerdrPane(pane.pane_id, 'right'), onError, onChanged)}
-          >
-            Split →
-          </Button>
-          <Button
-            variant="ghost"
-            size="xs"
-            className="h-6 cursor-pointer px-1.5 text-[11px]"
-            title="Split down"
-            aria-label={`Split ${pane.pane_id} down`}
-            onClick={() => void runOp(() => api.splitHerdrPane(pane.pane_id, 'down'), onError, onChanged)}
-          >
-            Split ↓
-          </Button>
-          <Button
-            variant="ghost"
-            size="xs"
-            className="h-6 cursor-pointer px-1.5 text-[11px]"
-            onClick={renamePane}
-            title="Rename pane"
-          >
-            Rename
-          </Button>
+          {!isMobile && (
+            <>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="h-6 cursor-pointer px-1.5 text-[11px]"
+                title="Split right"
+                aria-label={`Split ${pane.pane_id} right`}
+                onClick={() => void runOp(() => api.splitHerdrPane(pane.pane_id, 'right'), onError, onChanged)}
+              >
+                Split →
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="h-6 cursor-pointer px-1.5 text-[11px]"
+                title="Split down"
+                aria-label={`Split ${pane.pane_id} down`}
+                onClick={() => void runOp(() => api.splitHerdrPane(pane.pane_id, 'down'), onError, onChanged)}
+              >
+                Split ↓
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="h-6 cursor-pointer px-1.5 text-[11px]"
+                onClick={renamePane}
+                title="Rename pane"
+              >
+                Rename
+              </Button>
+            </>
+          )}
           <Button
             variant="ghost"
             size="xs"
@@ -452,46 +465,21 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, 
               <option value="prompt">prompt (agent prompt)</option>
             </select>
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="xs"
-              className="h-5 px-1.5 text-[10px] font-mono"
-              title="Send Enter key press"
-              disabled={sending}
-              onClick={() => void handleSend('Enter', 'send-keys')}
-            >
-              [Enter]
-            </Button>
-            <Button
-              variant="outline"
-              size="xs"
-              className="h-5 px-1.5 text-[10px] font-mono"
-              title="Send Ctrl+C key press"
-              disabled={sending}
-              onClick={() => void handleSend('C-c', 'send-keys')}
-            >
-              [Ctrl+C]
-            </Button>
-            <span className="mx-0.5 text-[10px] text-muted-foreground">·</span>
-            {RESIZE_DIRECTIONS.map((dir) => (
+          <div className="herdr-pane-keys flex flex-wrap items-center gap-1">
+            {AGENT_QUICK_KEYS.map((k) => (
               <Button
-                key={dir}
-                variant="ghost"
+                key={k.key}
+                variant="outline"
                 size="xs"
-                className="herdr-pane-resize h-5 cursor-pointer px-1.5 text-[10px]"
-                title={`Resize ${pane.pane_id} ${dir} by ${resizeStep} cell${resizeStep === 1 ? '' : 's'}`}
-                aria-label={`Resize ${pane.pane_id} ${dir}`}
-                data-testid={`herdr-resize-${pane.pane_id}-${dir}`}
-                disabled={sending || !onResize}
-                onClick={() => resizePane(dir)}
+                className="cursor-pointer px-1.5 font-mono text-[10px]"
+                title={`Press ${k.label}`}
+                aria-label={`Press ${k.label} on ${pane.pane_id}`}
+                disabled={keySending !== null}
+                onClick={() => void sendKey(k.label, k.key)}
               >
-                {RESIZE_DIRECTION_LABELS[dir]}
+                [{keySending === k.key ? '…' : k.label}]
               </Button>
             ))}
-            <span className="text-[10px] text-muted-foreground" title="Cells per resize click">
-              {resizeStep}
-            </span>
           </div>
         </div>
 
@@ -506,11 +494,11 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, 
             }}
             placeholder={
               mode === 'send-text-enter'
-                ? 'Send text + Enter to pane...'
+                ? 'Send text + Enter...'
                 : mode === 'send-text'
-                  ? 'Send literal text to pane (without Enter)...'
+                  ? 'Send literal text...'
                   : mode === 'send-keys'
-                    ? 'Send keys (e.g. Enter, C-c, Down)...'
+                    ? 'Send keys (e.g. Enter, C-c)...'
                     : 'Send agent prompt...'
             }
             className="flex-1 rounded border bg-background px-2.5 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring"
@@ -621,7 +609,6 @@ interface WorkspaceSectionProps {
   onSelectTab: (tabId: string) => void
   onSelectPane: (paneId: string) => void
   autoReload: boolean
-  resizeStep: number
   onChanged: OnChanged
   onError: OnError
 }
@@ -637,10 +624,10 @@ function WorkspaceSection({
   onSelectTab,
   onSelectPane,
   autoReload,
-  resizeStep,
   onChanged,
   onError,
 }: WorkspaceSectionProps) {
+  const isMobile = useIsMobile()
   // Tab and pane focus are managed by the web UI (persisted in the URL),
   // not by the herdr CLI; herdr's own focused flags are ignored here.
   const sortedTabs = [...tabs].sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
@@ -676,6 +663,7 @@ function WorkspaceSection({
   }, [drag])
   const placed = layoutBoxForTab(activeLayout, overrides)
   const useLayout =
+    !isMobile &&
     placed != null &&
     (placed.zoomed || activePanes.every((p) => placed.panes.some((b) => b.paneId === p.pane_id)))
 
@@ -728,19 +716,6 @@ function WorkspaceSection({
       onError,
       onChanged,
     )
-  }
-
-  const arrowResize = (paneId: string, direction: ResizeDirection) => {
-    if (!activeLayout) {
-      onError('No split layout available to resize from.')
-      return
-    }
-    const recipe = resizeRecipeForPane(activeLayout, paneId, direction, resizeStep)
-    if (!recipe) {
-      onError(`Pane ${paneId} has no neighbor to the ${direction}.`)
-      return
-    }
-    void runOp(() => api.resizeHerdrPane(recipe.paneId, recipe.direction, recipe.amount), onError, onChanged)
   }
 
   return (
@@ -818,8 +793,6 @@ function WorkspaceSection({
                         onFocus={() => onSelectPane(p.pane_id)}
                         autoReload={autoReload}
                         fit
-                        resizeStep={resizeStep}
-                        onResize={(dir) => arrowResize(p.pane_id, dir)}
                         onChanged={onChanged}
                         onError={onError}
                       />
@@ -876,8 +849,6 @@ function WorkspaceSection({
                     onFocus={() => onSelectPane(p.pane_id)}
                     autoReload={autoReload}
                     fit={false}
-                    resizeStep={resizeStep}
-                    onResize={undefined}
                     onChanged={onChanged}
                     onError={onError}
                   />
@@ -943,8 +914,6 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
   // separately from the overview so the (cheaper) overview stays the single
   // polling source in the sidebar and dashboard.
   const [layouts, setLayouts] = useState<HerdrLayout[]>([])
-  // Cells moved per resize click (also the granularity shown on pane arrows).
-  const [resizeStep, setResizeStep] = useState(2)
 
   const refreshLayouts = useCallback(async () => {
     try {
@@ -1037,7 +1006,7 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
 
   return (
     <div className="page p-4 md:p-6">
-      <div className="page-header mb-3 flex items-center justify-between gap-3">
+      <div className="page-header mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Herdr</h1>
           <p className="page-subtitle mt-0.5 text-sm text-muted-foreground">
@@ -1046,7 +1015,7 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
               : `Project “${project}” has no matching herdr workspace.`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant={autoReload ? 'secondary' : 'outline'}
             size="sm"
@@ -1059,22 +1028,6 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
             <RefreshCw className={cn(autoReload && loading && 'animate-spin')} />
             Auto reload: {autoReload ? 'ON' : 'OFF'}
           </Button>
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Resize:
-            <select
-              value={resizeStep}
-              onChange={(e) => setResizeStep(Number(e.target.value))}
-              className="cursor-pointer rounded border bg-background px-1.5 py-1 text-xs outline-none"
-              aria-label="Resize step"
-              title="Cells moved per resize click"
-            >
-              {[1, 2, 5, 10].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
           <Button variant="ghost" size="sm" className="cursor-pointer" onClick={() => void refreshAll()} title="Refresh">
             <RefreshCw className={cn(loading && 'animate-spin')} />
             Refresh
@@ -1139,7 +1092,6 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
                   onSelectTab={selectTab}
                   onSelectPane={selectPane}
                   autoReload={autoReload}
-                  resizeStep={resizeStep}
                   onChanged={refreshAll}
                   onError={onError}
                 />
