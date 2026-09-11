@@ -678,7 +678,6 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
               title="New file"
             >
               <FilePlus />
-              <span className="hidden sm:inline">File</span>
             </Button>
             <Button
               variant="ghost"
@@ -689,7 +688,6 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
               title="New task"
             >
               <ListPlus />
-              <span className="hidden sm:inline">Task</span>
             </Button>
           </div>
         )}
@@ -708,7 +706,6 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
             onClick={onToggleHidden}
           >
             {showHidden ? <Eye /> : <EyeOff />}
-            <span className="hidden sm:inline">Hidden</span>
           </Button>
         )}
       </div>
