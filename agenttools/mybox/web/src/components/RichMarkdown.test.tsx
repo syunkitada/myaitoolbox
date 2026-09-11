@@ -113,6 +113,38 @@ describe('RichMarkdown', () => {
     ])
   })
 
+  it('extractOutline handles CRLF line endings', () => {
+    const outline = extractOutline(
+      '# Hoge\r\n\r\n## 1. Hoge\r\n\r\n# Piyo\r\n\r\n## 2. Piyo\r\n',
+    )
+    expect(outline.map((h) => ({ level: h.level, text: h.text, id: h.id }))).toEqual([
+      { level: 1, text: 'Hoge', id: 'hoge' },
+      { level: 2, text: '1. Hoge', id: '1-hoge' },
+      { level: 1, text: 'Piyo', id: 'piyo' },
+      { level: 2, text: '2. Piyo', id: '2-piyo' },
+    ])
+  })
+
+  it('assigns slug ids to CRLF headings matching extractOutline', () => {
+    const text = '# Hoge\r\n\r\n## 1. Hoge\r\n\r\n# Piyo\r\n\r\n## 2. Piyo\r\n'
+    renderMd(<RichMarkdown text={text} />)
+    const outline = extractOutline(text)
+    expect(outline.length).toBe(4)
+    for (const h of outline) {
+      const el = document.getElementById(h.id)
+      expect(el).not.toBeNull()
+      expect(el?.tagName).toBe(`H${h.level}`)
+    }
+  })
+
+  it('extractOutline accepts up to three leading spaces like markdown-it', () => {
+    const outline = extractOutline('# One\n\n  ## Two\n\n    # Not a heading (indented code)\n')
+    expect(outline.map((h) => ({ level: h.level, text: h.text }))).toEqual([
+      { level: 1, text: 'One' },
+      { level: 2, text: 'Two' },
+    ])
+  })
+
   it('does not mark Japanese anchor links as dead', () => {
     const { container } = renderMd(
       <RichMarkdown text={'[memo](#メモ)\n\n# メモ\n\nあああ'} />,

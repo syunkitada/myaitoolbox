@@ -17,6 +17,7 @@ import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
+import { DialogsProvider } from './components/AppDialogs'
 import { Bot, Folder, GitBranch, Network, SquareKanban, TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
@@ -65,7 +66,8 @@ export default function App() {
   ]
 
   return (
-    <SidebarProvider style={{ '--sidebar-width': '20rem' } as React.CSSProperties}>
+    <DialogsProvider>
+      <SidebarProvider style={{ '--sidebar-width': '20rem' } as React.CSSProperties}>
       <AppSidebar meta={meta} project={project} herdr={herdr.overview} gitStatus={gitStatus} />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
@@ -186,6 +188,7 @@ export default function App() {
           {project && <TerminalPanel />}
         </div>
       </SidebarInset>
-    </SidebarProvider>
+      </SidebarProvider>
+    </DialogsProvider>
   )
 }

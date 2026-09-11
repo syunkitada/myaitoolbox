@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
+import { setMarkdownLinkCompletions } from '../utils/markdown-completions'
 
 interface MonacoEditorProps {
   value: string
@@ -10,6 +11,7 @@ interface MonacoEditorProps {
   className?: string
   initialLine?: number
   original?: string
+  completions?: Array<{ path: string; kind: 'file' | 'dir' }>
 }
 
 const EXT_LANGUAGE: Record<string, string> = {
@@ -141,6 +143,7 @@ function MonacoEditorInner({
   className,
   initialLine,
   original,
+  completions,
 }: MonacoEditorProps) {
   const dark = useIsDark()
   const theme = dark ? 'vs-dark' : 'light'
@@ -232,6 +235,12 @@ function MonacoEditorInner({
     }
   }, [])
 
+  useEffect(() => {
+    if (resolvedLanguage === 'markdown') {
+      setMarkdownLinkCompletions(path, completions)
+    }
+  }, [path, completions, resolvedLanguage])
+
   return (
     <div className={className}>
       <Editor
@@ -252,6 +261,9 @@ function MonacoEditorInner({
           scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
           fixedOverflowWidgets: true,
           ariaLabel,
+          ...(resolvedLanguage === 'markdown'
+            ? { quickSuggestions: { other: 'on', comments: 'off', strings: 'on' } }
+            : {}),
         }}
       />
     </div>

@@ -19,6 +19,7 @@ import { api, Project, setProject } from '../api/client'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { useDialogs } from '../components/AppDialogs'
 import { GripVertical } from 'lucide-react'
 
 interface SortableRowProps {
@@ -88,6 +89,7 @@ interface ProjectsPageProps {
 
 export function ProjectsPage({ onChanged }: ProjectsPageProps) {
   const navigate = useNavigate()
+  const { confirm } = useDialogs()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -149,7 +151,7 @@ export function ProjectsPage({ onChanged }: ProjectsPageProps) {
   }
 
   const handleDelete = async (name: string) => {
-    if (!window.confirm(`Delete project "${name}"?`)) return
+    if (!(await confirm(`Delete project "${name}"?`))) return
     setBusy(true)
     try {
       await api.deleteProject(name)

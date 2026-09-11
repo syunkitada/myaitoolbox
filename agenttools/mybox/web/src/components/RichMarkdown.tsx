@@ -101,7 +101,8 @@ function markDeadAnchors(html: string): string {
 export function extractOutline(text: string): Array<{ level: number; id: string; text: string }> {
   const outline: Array<{ level: number; id: string; text: string }> = []
   let fence: string | null = null
-  for (const line of text.split('\n')) {
+  // Normalize CRLF/LF line endings so heading lines never carry a trailing \r.
+  for (const line of text.split(/\r?\n/)) {
     // Track fenced code blocks (``` or ~~~) so lines inside them are skipped.
     const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line)
     if (fenceMatch) {
@@ -114,7 +115,7 @@ export function extractOutline(text: string): Array<{ level: number; id: string;
       continue
     }
     if (fence) continue
-    const m = /^(#{1,4})\s+(.+)$/.exec(line)
+    const m = /^ {0,3}(#{1,4})[ \t]+(.+)$/.exec(line)
     if (!m) continue
     const raw = m[2]
     const plain = raw.replace(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g, '$1').replace(/[*_`#]/g, '')

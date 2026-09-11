@@ -22,3 +22,5 @@ $ agy
 # plan mode
 /planning
 ```
+
+[hoge](./../opencode/README.md)

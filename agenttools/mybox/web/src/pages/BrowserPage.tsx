@@ -1,5 +1,5 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useBlocker, useNavigate } from 'react-router-dom'
 import { FileEntry, HerdrOverview, Knowledge, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileAgentWidget } from '../components/FileAgentWidget'
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { useDialogs } from '../components/AppDialogs'
 import { encodePath, filesUrl, getProject, projectUrl, rawFileUrl } from '../utils/routes'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { languageFromPath } from '../utils/prism-langs'
@@ -293,6 +294,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
 }
 
 function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden }: ExplorerProps) {
+  const { prompt, confirm } = useDialogs()
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -342,16 +344,9 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
     onError?.(e instanceof Error ? e.message : String(e))
   }
 
-  const dirOf = (p: string) => {
-    const i = p.lastIndexOf('/')
-    return i >= 0 ? p.slice(0, i) : ''
-  }
-
-  const baseOf = (p: string) => p.split('/').pop() ?? p
-
-  const newFileInDir = () => {
+  const newFileInDir = async () => {
     if (!ctxMenu) return
-    const name = window.prompt(`New file in "${ctxMenu.path}"`)
+    const name = await prompt(`New file in "${ctxMenu.path}"`)
     if (!name || !name.trim()) return
     const target = ctxMenu.path ? `${ctxMenu.path}/${name.trim()}` : name.trim()
     setCtxMenu(null)
@@ -364,9 +359,9 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
       .catch(runError)
   }
 
-  const newFolderInDir = () => {
+  const newFolderInDir = async () => {
     if (!ctxMenu) return
-    const name = window.prompt(`New folder in "${ctxMenu.path}"`)
+    const name = await prompt(`New folder in "${ctxMenu.path}"`)
     if (!name || !name.trim()) return
     const target = ctxMenu.path ? `${ctxMenu.path}/${name.trim()}` : name.trim()
     setCtxMenu(null)
@@ -410,31 +405,32 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
     ).catch(runError)
   }
 
-  const renameEntry = () => {
+  const renameEntry = async () => {
     if (!ctxMenu) return
     const label = ctxMenu.kind === 'dir' ? 'folder' : 'file'
-    const name = window.prompt(`Rename ${label}`, baseOf(ctxMenu.path))
-    if (!name || !name.trim() || name.trim() === baseOf(ctxMenu.path)) return
-    const parent = dirOf(ctxMenu.path)
-    const target = parent ? `${parent}/${name.trim()}` : name.trim()
     const oldPath = ctxMenu.path
+    const newPath = await prompt(
+      `Rename ${label} — enter a path relative to the project root.`,
+      oldPath,
+    )
+    if (!newPath || !newPath.trim() || newPath.trim() === oldPath) return
     setCtxMenu(null)
     void api
-      .moveFile(oldPath, target)
+      .moveFile(oldPath, newPath.trim())
       .then(() => {
         onChanged?.()
-        onSelect(target)
+        onSelect(newPath.trim())
       })
       .catch(runError)
   }
 
-  const removeEntry = () => {
+  const removeEntry = async () => {
     if (!ctxMenu) return
     const path = ctxMenu.path
     const isDir = ctxMenu.kind === 'dir'
     setCtxMenu(null)
     const label = isDir ? `Directory "${path}" and all its contents` : `"${path}"`
-    if (!window.confirm(`Delete ${label}?`)) return
+    if (!(await confirm(`Delete ${label}?`))) return
     void api
       .deleteFile(path)
       .then(() => {
@@ -837,6 +833,7 @@ interface PaneProps {
 
 function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer, onRefresh, refreshKey, herdrOverview, refreshHerdr }: PaneProps) {
   const navigate = useNavigate()
+  const { prompt, confirm, confirm3 } = useDialogs()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
   const [draftFm, setDraftFm] = useState<Record<string, unknown>>({})
@@ -849,6 +846,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const editStartLine = useRef<number | null>(null)
+  const viewScroll = useRef<{ path: string; top: number; maxTop: number } | null>(null)
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -998,8 +996,8 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
 
   const baseOf = (p: string) => p.split('/').pop() ?? p
 
-  const move = () => {
-    const newPath = window.prompt('New path', path)
+  const move = async () => {
+    const newPath = await prompt('New path', path)
     if (newPath && newPath.trim() && newPath.trim() !== path) {
       const p =
         mode === 'knowledge'
@@ -1015,13 +1013,13 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
     }
   }
 
-  const duplicate = () => {
+  const duplicate = async () => {
     const base = baseOf(path)
     const dot = base.lastIndexOf('.')
     const copyName = dot > 0 ? base.slice(0, dot) + '-copy' + base.slice(dot) : base + '-copy'
     const dir = dirOf(path)
     const defaultPath = dir ? `${dir}/${copyName}` : copyName
-    const newPath = window.prompt(isDir ? 'New directory path' : 'New file path', defaultPath)
+    const newPath = await prompt(isDir ? 'New directory path' : 'New file path', defaultPath)
     if (!newPath || !newPath.trim() || newPath.trim() === path) return
     void api
       .copyFile(path, newPath.trim())
@@ -1033,9 +1031,9 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }
 
-  const remove = () => {
+  const remove = async () => {
     const label = isDir ? `directory "${path}" and all its contents` : `"${path}"`
-    if (!window.confirm(`Delete ${label}?`)) return
+    if (!(await confirm(`Delete ${label}?`))) return
     void api
       .deleteFile(path)
       .then(() => {
@@ -1046,28 +1044,31 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }
 
-  const save = () => {
+  const save = async (): Promise<boolean> => {
     setSaved(false)
     const out = useForm ? buildMarkdown(serializeFrontmatter(draftFm), draftBody) : draft
     const p =
       mode === 'knowledge'
         ? api.saveKnowledgeContent(path, out)
         : api.saveFileContent(path, out)
-    void p
-      .then(() => {
-        setContent(out)
-        setDraft(out)
-        const split = splitFrontmatter(out)
-        setDraftBody(split.body)
-        setDraftFm(parseFrontmatter(split.frontmatter).data)
-        setEditing(false)
-        setShowDiff(false)
-        setSaved(true)
-        onChanged()
-        onGitStatusChange()
-        setTimeout(() => setSaved(false), 2000)
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    try {
+      await p
+      setContent(out)
+      setDraft(out)
+      const split = splitFrontmatter(out)
+      setDraftBody(split.body)
+      setDraftFm(parseFrontmatter(split.frontmatter).data)
+      setEditing(false)
+      setShowDiff(false)
+      setSaved(true)
+      onChanged()
+      onGitStatusChange()
+      setTimeout(() => setSaved(false), 2000)
+      return true
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      return false
+    }
   }
 
   const links = useMemo(() => (mode === 'knowledge' ? extractWikiLinks(content) : []), [mode, content])
@@ -1082,11 +1083,62 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
   const diffOriginal = content
   const diffOriginalBody = fmSplit.body
   const hasUnsavedChanges = diffOriginal !== diffModified
+
+  // Block navigation when leaving with unsaved edits and ask how to proceed.
+  const blocker = useBlocker(editing && hasUnsavedChanges)
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return
+    void confirm3(
+      `「${path}」には保存されていない変更があります。どうしますか？`,
+      { primary: '保存して移動', secondary: '変更を破棄', cancel: 'キャンセル' },
+    ).then((choice) => {
+      if (choice === 'primary') {
+        void save().then((ok) => {
+          if (ok) blocker.proceed()
+        })
+      } else if (choice === 'secondary') {
+        blocker.proceed()
+      } else {
+        blocker.reset()
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocker.state])
+
+  useEffect(() => {
+    if (!(editing && hasUnsavedChanges)) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [editing, hasUnsavedChanges])
+
   const startEdit = () => {
     editStartLine.current = computeViewStartLine(viewText)
+    const scroller = document.querySelector<HTMLElement>('.knowledge-files')
+    viewScroll.current = scroller
+      ? { path, top: scroller.scrollTop, maxTop: Math.max(0, scroller.scrollHeight - scroller.clientHeight) }
+      : null
     setShowDiff(true)
     setEditing(true)
   }
+
+  useEffect(() => {
+    if (editing) return
+    const snap = viewScroll.current
+    viewScroll.current = null
+    if (!snap || snap.path !== path) return
+    // Wait until the view has been re-rendered and laid out before restoring.
+    requestAnimationFrame(() => {
+      const scroller = document.querySelector<HTMLElement>('.knowledge-files')
+      if (!scroller) return
+      const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+      scroller.scrollTop = snap.maxTop > 0 && maxTop > 0 ? (snap.top / snap.maxTop) * maxTop : snap.top
+    })
+  }, [editing, path])
 
   const outlineItems = useMemo(() => extractOutline(viewText), [viewText])
 
@@ -1358,6 +1410,8 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
                         language="markdown"
                         ariaLabel="File editor"
                         original={diffOriginalBody}
+                        initialLine={editStartLine.current ?? undefined}
+                        completions={list}
                       />
                     ) : (
                       <MonacoEditor
@@ -1368,6 +1422,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
                         language="markdown"
                         ariaLabel="File editor"
                         initialLine={editStartLine.current ?? undefined}
+                        completions={list}
                       />
                     )}
                   </CardContent>
@@ -1382,6 +1437,8 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
                       path={path}
                       ariaLabel={mode === 'knowledge' ? 'Markdown editor' : 'File editor'}
                       original={diffOriginal}
+                      initialLine={editStartLine.current ?? undefined}
+                      completions={list}
                     />
                   ) : (
                     <MonacoEditor
@@ -1391,6 +1448,7 @@ function Pane({ mode, path, entry, list, favorites, refreshMeta, onChanged, onGi
                       path={path}
                       ariaLabel={mode === 'knowledge' ? 'Markdown editor' : 'File editor'}
                       initialLine={editStartLine.current ?? undefined}
+                      completions={list}
                     />
                   )}
                 </CardContent>

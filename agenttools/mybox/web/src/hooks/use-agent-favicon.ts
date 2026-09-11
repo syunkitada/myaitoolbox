@@ -10,8 +10,9 @@ const STATUS_COLORS: Record<string, string> = {
   unknown: '#a1a1aa',
 }
 
-// Attention order: the favicon shows the most demanding status first.
-const STATUS_PRIORITY = ['blocked', 'working', 'idle', 'done', 'unknown']
+// Attention order mirrors herdr's state rollup: the workspace rolls up to the
+// most urgent pane state (blocked > done > working > idle > unknown).
+const STATUS_PRIORITY = ['blocked', 'done', 'working', 'idle', 'unknown']
 
 const FAVICON_SELECTOR = 'link[rel="icon"]'
 

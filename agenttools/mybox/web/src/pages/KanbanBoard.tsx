@@ -13,6 +13,7 @@ import { Task, TaskStatus, api } from '../api/client'
 import { encodePath, getProject, projectUrl } from '../utils/routes'
 import { Button } from '../components/ui/button'
 import { NewTaskDialog } from '../components/NewTaskDialog'
+import { useDialogs } from '../components/AppDialogs'
 import { Archive, ListPlus, MoreVertical, ExternalLink, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AdhocBadge, DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
@@ -216,6 +217,7 @@ export function KanbanBoard() {
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   const [newTaskType, setNewTaskType] = useState<'regular' | 'adhoc'>('regular')
   const navigate = useNavigate()
+  const { confirm } = useDialogs()
   const currentProject = getProject()
   const isGlobal = !currentProject  // プロジェクト未選択 = 全プロジェクト横断モード
 
@@ -272,24 +274,28 @@ export function KanbanBoard() {
 
   const handleArchive = useCallback(
     (task: Task) => {
-      if (!window.confirm(`「${task.title}」をアーカイブしますか？`)) return
-      void api
-        .archiveTask(task.id)
-        .then(() => load())
-        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      void (async () => {
+        if (!(await confirm(`「${task.title}」をアーカイブしますか？`))) return
+        void api
+          .archiveTask(task.id)
+          .then(() => load())
+          .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      })()
     },
-    [load],
+    [confirm, load],
   )
 
   const handleDelete = useCallback(
     (task: Task) => {
-      if (!window.confirm(`「${task.title}」を削除しますか？この操作は元に戻せません。`)) return
-      void api
-        .deleteTask(task.id)
-        .then(() => load())
-        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      void (async () => {
+        if (!(await confirm(`「${task.title}」を削除しますか？この操作は元に戻せません。`))) return
+        void api
+          .deleteTask(task.id)
+          .then(() => load())
+          .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      })()
     },
-    [load],
+    [confirm, load],
   )
 
   const byStatus = (s: TaskStatus) =>

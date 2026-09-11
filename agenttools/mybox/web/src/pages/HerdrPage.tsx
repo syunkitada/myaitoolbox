@@ -6,6 +6,7 @@ import type { HerdrAgent, HerdrLayout, HerdrOverview, HerdrPane, HerdrTab, Herdr
 import { api } from '../api/client'
 import { StatusBadge, StatusDot } from '../components/herdr-status'
 import { Button } from '../components/ui/button'
+import { useDialogs } from '../components/AppDialogs'
 import { cn } from '@/lib/utils'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { useIsMobile } from '../hooks/use-mobile'
@@ -219,6 +220,7 @@ interface PaneRowProps {
 
 function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit }: PaneRowProps) {
   const isMobile = useIsMobile()
+  const { prompt, confirm } = useDialogs()
   const [open, setOpen] = useState(true)
   const [output, setOutput] = useState<string | null>(null)
   const [mode, setMode] = useState<'send-text-enter' | 'send-text' | 'send-keys' | 'prompt'>('send-text-enter')
@@ -301,15 +303,15 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit }
     }
   }, [draft, sending, mode, pane.pane_id, open, loadOutput, onChanged, onError])
 
-  const renamePane = () => {
-    const label = window.prompt(`Rename pane ${pane.pane_id}`, pane.title ?? '')
+  const renamePane = async () => {
+    const label = await prompt(`Rename pane ${pane.pane_id}`, pane.title ?? '')
     if (label === null) return
     if (!label.trim()) return
     void runOp(() => api.renameHerdrPane(pane.pane_id, label.trim()), onError, onChanged)
   }
 
-  const closePane = () => {
-    if (!window.confirm(`Close pane ${pane.pane_id}?`)) return
+  const closePane = async () => {
+    if (!(await confirm(`Close pane ${pane.pane_id}?`))) return
     void runOp(() => api.closeHerdrPane(pane.pane_id), onError, onChanged)
   }
 
@@ -527,21 +529,23 @@ function TabRow({ tab, panes, active, onSelect, onChanged, onError }: {
   onChanged: OnChanged
   onError: OnError
 }) {
-  const renameTab = (e: React.MouseEvent) => {
+  const { prompt, confirm } = useDialogs()
+
+  const renameTab = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    const label = window.prompt(`Rename tab "${tab.label}"`, tab.label)
+    const label = await prompt(`Rename tab "${tab.label}"`, tab.label)
     if (label === null) return
     if (!label.trim()) return
     void runOp(() => api.renameHerdrTab(tab.tab_id, label.trim()), onError, onChanged)
   }
 
-  const closeTab = (e: React.MouseEvent) => {
+  const closeTab = async (e: React.MouseEvent) => {
     e.stopPropagation()
     const extra =
       panes.length === 0 || (tab.pane_count ?? panes.length) <= 1
         ? ' This is the last tab of the workspace; closing it also closes the workspace.'
         : ''
-    if (!window.confirm(`Close tab "${tab.label}"?${extra}`)) return
+    if (!(await confirm(`Close tab "${tab.label}"?${extra}`))) return
     void runOp(() => api.closeHerdrTab(tab.tab_id), onError, onChanged)
   }
 
@@ -628,6 +632,7 @@ function WorkspaceSection({
   onError,
 }: WorkspaceSectionProps) {
   const isMobile = useIsMobile()
+  const { prompt } = useDialogs()
   // Tab and pane focus are managed by the web UI (persisted in the URL),
   // not by the herdr CLI; herdr's own focused flags are ignored here.
   const sortedTabs = [...tabs].sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
@@ -636,8 +641,8 @@ function WorkspaceSection({
       ? urlTabId
       : (sortedTabs[0]?.tab_id ?? null)
 
-  const createTab = () => {
-    const label = window.prompt(`New tab in workspace "${ws.label}" (optional name)`, '')
+  const createTab = async () => {
+    const label = await prompt(`New tab in workspace "${ws.label}" (optional name)`, '')
     if (label === null) return
     void runOp(
       () => api.createHerdrTab(ws.workspace_id, label.trim() || undefined),
@@ -864,6 +869,7 @@ function WorkspaceSection({
 
 export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps) {
   const project = getProject()
+  const { prompt } = useDialogs()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedAgent = searchParams.get('agent')
   // Focus state lives in the URL (?tab=<tab_id>&pane=<pane_id>) so that
@@ -971,8 +977,8 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
 
   // With no matching workspace the server bootstraps this project's first
   // workspace, whose root tab becomes the requested new tab.
-  const createFirstTab = () => {
-    const label = window.prompt(`New tab for project "${project}" (optional name)`, '')
+  const createFirstTab = async () => {
+    const label = await prompt(`New tab for project "${project}" (optional name)`, '')
     if (label === null) return
     void runOp(
       () => api.createHerdrTab(undefined, label.trim() || undefined, undefined, project),
@@ -981,9 +987,9 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
     )
   }
 
-  const renameAgent = (agent: HerdrAgent, e?: React.MouseEvent) => {
+  const renameAgent = async (agent: HerdrAgent, e?: React.MouseEvent) => {
     e?.stopPropagation()
-    const nextName = window.prompt(
+    const nextName = await prompt(
       `Rename agent "${agent.name}" (leave empty to reset to default)`,
       agent.name,
     )

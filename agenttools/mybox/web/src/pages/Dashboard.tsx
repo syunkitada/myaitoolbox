@@ -4,6 +4,7 @@ import { LAST_SELECTED_FILE_KEY, encodePath, projectUrl, getProject, rememberedF
 import { BrowserPage } from './BrowserPage'
 import { api, HerdrOverview, Task } from '../api/client'
 import { NewTaskDialog } from '../components/NewTaskDialog'
+import { useDialogs } from '../components/AppDialogs'
 import { subscribeNavActions } from '../lib/nav-actions'
 
 interface DashboardProps {
@@ -19,6 +20,7 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
   const selected = (params['*'] ?? '').trim()
   const navigate = useNavigate()
   const [taskDialog, setTaskDialog] = useState(false)
+  const { prompt, alert } = useDialogs()
 
   useEffect(() => {
     if (!selected) {
@@ -47,15 +49,15 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
     setTaskDialog(true)
   }
 
-  const handleNewFile = (dir: string) => {
+  const handleNewFile = async (dir: string) => {
     const prefix = dir ? `${dir}/` : ''
-    const name = window.prompt('New file path', prefix)
+    const name = await prompt('New file path', prefix)
     if (!name || !name.trim()) return
     const path = name.trim()
     void api
       .createFile(path)
       .then(() => navigate(projectUrl(`/dashboard/files/${encodePath(path)}`)))
-      .catch((e) => window.alert(e instanceof Error ? e.message : String(e)))
+      .catch((e) => void alert(e instanceof Error ? e.message : String(e)))
   }
 
   const onTaskCreated = (task: Task) =>
@@ -92,7 +94,7 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
         open={taskDialog}
         onOpenChange={setTaskDialog}
         onCreated={onTaskCreated}
-        onError={(message) => window.alert(message)}
+        onError={(message) => void alert(message)}
       />
     </>
   )

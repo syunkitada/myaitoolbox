@@ -19,6 +19,21 @@ async function fillMonacoEditor(
   await page.keyboard.insertText(content)
 }
 
+// The web UI uses a custom modal (AppDialogs) instead of native browser
+// prompt/confirm/alert dialogs. This helper accepts it: it fills a value when
+// one is given (prompt) and otherwise just confirms (confirm/alert).
+async function acceptAppDialog(
+  page: import('@playwright/test').Page,
+  value?: string,
+) {
+  const dialog = page.getByTestId('app-dialog')
+  await expect(dialog).toBeVisible()
+  if (value !== undefined) {
+    await dialog.getByTestId('app-dialog-input').fill(value)
+  }
+  await dialog.getByTestId('app-dialog-ok').click()
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/projects/proj/dashboard')
 })
@@ -281,6 +296,55 @@ test('terminal session persists across a browser reload', async ({ page }) => {
   await expect(page.locator('.terminal-xterm')).toContainText('PERSIST_RELOAD_99')
 })
 
+test('markdown editor completes link targets with project files', async ({ page }) => {
+  await page.goto('/projects/proj/dashboard/files/knowledge/index.md')
+  await page.getByRole('button', { name: 'Edit' }).click()
+  const editor = page.locator('.monaco-editor', { has: page.getByLabel('File editor') })
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+A')
+  await page.keyboard.insertText('')
+  const rows = page.locator('.suggest-widget .monaco-list-row')
+
+  // opening a link bracket-pair shows the project root as candidates
+  await page.keyboard.type('[todo](')
+  await expect(rows.filter({ hasText: 'docs/' })).toBeVisible()
+  await expect(rows.filter({ hasText: 'README.md' })).toBeVisible()
+
+  // typing further into a directory narrows to files and subdirectories
+  await page.keyboard.type('./docs/gu')
+  await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
+
+  // accepting inserts the full relative path
+  await page.keyboard.press('Enter')
+  await expect(editor.locator('.view-line').first()).toContainText('./docs/guide.md')
+})
+
+test('markdown editor completes nested links after Tab-accepting a directory', async ({ page }) => {
+  await page.goto('/projects/proj/dashboard/files/knowledge/index.md')
+  await page.getByRole('button', { name: 'Edit' }).click()
+  const editor = page.locator('.monaco-editor', { has: page.getByLabel('File editor') })
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+A')
+  await page.keyboard.insertText('')
+  const rows = page.locator('.suggest-widget .monaco-list-row')
+
+  // Tab accepts the top suggestion (the docs/ directory, never the parent ..)
+  await page.keyboard.type('[todo](')
+  await expect(rows.filter({ hasText: 'docs/' })).toBeVisible()
+  await page.keyboard.press('Tab')
+  await expect(editor.locator('.view-line').first()).toContainText('./docs/')
+
+  // accepting a directory re-triggers suggestions for its children
+  await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
+  await expect(rows.filter({ hasText: 'recipes/' })).toBeVisible()
+
+  // completing further into the directory still works
+  await page.keyboard.type('gu')
+  await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
+  await page.keyboard.press('Enter')
+  await expect(editor.locator('.view-line').first()).toContainText('./docs/guide.md')
+})
+
 test('dashboard edits and saves a file', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await treeButton(explorer, 'tasks.md').click()
@@ -348,34 +412,34 @@ test('dashboard moves a file by dragging onto a directory', async ({ page }) => 
 })
 
 test('dashboard renames a file via Move', async ({ page }) => {
-  page.on('dialog', (d) => d.accept('knowledge/tasks2.md'))
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks.md').click()
   await page.getByRole('button', { name: 'File actions' }).click()
   await page.getByRole('menuitem', { name: 'Move' }).click({ force: true })
+  await acceptAppDialog(page, 'knowledge/tasks2.md')
   await expect(page.getByText('knowledge/tasks2.md', { exact: true })).toBeVisible()
   await expect(explorer).toContainText('tasks2.md')
 })
 
 test('dashboard duplicates a file', async ({ page }) => {
-  page.on('dialog', (d) => d.accept('knowledge/tasks2-copy.md'))
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks2.md').click()
   await page.getByRole('button', { name: 'File actions' }).click()
   await page.getByRole('menuitem', { name: 'Duplicate' }).click({ force: true })
+  await acceptAppDialog(page, 'knowledge/tasks2-copy.md')
   // Scope to the tree: the opened viewer's meta line shows the same path.
   await expect(treeButton(explorer, 'tasks2-copy.md')).toBeVisible()
 })
 
 test('dashboard deletes a file', async ({ page }) => {
-  page.on('dialog', (d) => d.accept())
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks2-copy.md').click()
   await page.getByRole('button', { name: 'File actions' }).click()
   await page.getByRole('menuitem', { name: 'Delete' }).click({ force: true })
+  await acceptAppDialog(page)
   await expect(
     page.getByText('Select a file from the explorer to view it here.', { exact: true }),
   ).toBeVisible()
@@ -494,9 +558,9 @@ test('herdr tab and pane operations work end to end', async ({ page }) => {
   // the first tab is selected by default; focus is webui-managed
   await expect(page.getByTestId('herdr-tab-w7:t1')).toHaveAttribute('data-active', 'true')
 
-  // create a tab via the prompt dialog
-  page.once('dialog', (d) => d.accept('build'))
+  // create a tab via the custom prompt modal
   await ws.getByRole('button', { name: '+ New Tab' }).click()
+  await acceptAppDialog(page, 'build')
   const newTab = page.getByTestId('herdr-tab-w7:t3')
   await expect(newTab).toContainText('build')
 
@@ -562,18 +626,18 @@ test('herdr tab and pane operations work end to end', async ({ page }) => {
   )
 
   // rename the split pane
-  page.once('dialog', (d) => d.accept('logs'))
   await p4.getByRole('button', { name: 'Rename', exact: true }).click()
+  await acceptAppDialog(page, 'logs')
   await expect(p4).toContainText('logs')
 
-  // close the pane and then the tab (both confirm dialogs)
-  page.once('dialog', (d) => d.accept())
+  // close the pane and then the tab (both confirm modals)
   await p4.locator('.herdr-pane-close').click()
+  await acceptAppDialog(page)
   await expect(p4).toHaveCount(0)
 
-  page.once('dialog', (d) => d.accept())
   await newTab.hover()
   await newTab.getByRole('button', { name: `Close tab w7:t3` }).click()
+  await acceptAppDialog(page)
   await expect(newTab).toHaveCount(0)
 })
 
@@ -583,8 +647,8 @@ test('dragging a split divider resizes the neighboring panes', async ({ page }) 
   await expect(ws).toBeVisible()
 
   // the test owns a fresh tab so it starts from a single full pane
-  page.once('dialog', (d) => d.accept('drag'))
   await ws.getByRole('button', { name: '+ New Tab' }).click()
+  await acceptAppDialog(page, 'drag')
   const tab = page.locator('[data-testid^="herdr-tab-w7:"]').filter({ hasText: 'drag' })
   await expect(tab).toContainText('drag')
   const tabId = (await tab.getAttribute('data-testid'))!.replace('herdr-tab-', '')
@@ -624,9 +688,9 @@ test('dragging a split divider resizes the neighboring panes', async ({ page }) 
     .toBeGreaterThan(before + 5)
 
   // clean up the tab so later tests start from a predictable server state
-  page.once('dialog', (d) => d.accept())
   await tab.hover()
   await tab.getByRole('button', { name: `Close tab ${tabId}` }).click()
+  await acceptAppDialog(page)
   await expect(tab).toHaveCount(0)
 })
 
@@ -682,9 +746,9 @@ test('herdr offers a new tab when no tabs or panes exist at all', async ({ page 
   // do not count as tabs/panes of this project.)
   for (const tabId of ['w7:t1', 'w7:t2']) {
     const tab = page.getByTestId(`herdr-tab-${tabId}`)
-    page.once('dialog', (d) => d.accept())
     await tab.hover()
     await tab.getByRole('button', { name: `Close tab ${tabId}` }).click()
+    await acceptAppDialog(page)
     await expect(tab).toHaveCount(0)
   }
 
@@ -693,8 +757,8 @@ test('herdr offers a new tab when no tabs or panes exist at all', async ({ page 
   await expect(empty).toContainText(`No herdr workspace found for project "proj"`)
   await expect(page.getByTestId('herdr-create-first-tab')).toBeVisible()
 
-  page.once('dialog', (d) => d.accept('fresh'))
   await page.getByTestId('herdr-create-first-tab').click()
+  await acceptAppDialog(page, 'fresh')
 
   // bootstrapping creates the project's first workspace with the named tab
   const workspace = page.locator('[data-testid^="herdr-workspace-"]')
@@ -891,9 +955,9 @@ test.describe('git tab', () => {
       // A repository (and commit) already exists.
     }
 
-    page.once('dialog', (d) => d.accept())
     await page.getByTestId('git-commit-message').fill('amended subject')
     await page.getByRole('button', { name: 'Amend' }).click()
+    await acceptAppDialog(page)
     await expect(page.getByTestId('git-output')).toContainText('amended subject')
     await expect(page.getByText('Working tree is clean.')).toBeVisible()
   })
@@ -987,8 +1051,8 @@ test.describe('project selection at /', () => {
     await expect(row).toBeVisible()
     await expect(row.locator('.project-path')).toHaveText(dir)
 
-    page.once('dialog', (d) => d.accept())
     await row.getByRole('button', { name: 'Delete' }).click()
+    await acceptAppDialog(page)
     await expect(
       page.locator('.projects-table tbody tr', { hasText: path.basename(dir) }),
     ).toBeHidden()

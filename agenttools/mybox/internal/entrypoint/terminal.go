@@ -2,10 +2,13 @@ package entrypoint
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +16,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sys/unix"
 )
 
 // sameOrigin reports whether the request's Origin header (when present) matches
@@ -74,12 +78,14 @@ type terminalSession struct {
 	cmd     *exec.Cmd
 	ptmx    *os.File
 
-	mu      sync.Mutex
-	clients map[*terminalClient]struct{}
-	ring    [][]byte // bounded recent output replayed to late attachments
-	done    chan struct{}
-	once    sync.Once
-	closed  bool
+	mu        sync.Mutex
+	clients   map[*terminalClient]struct{}
+	ring      [][]byte      // bounded recent output replayed to late attachments
+	ringOsc52 osc52Stripper // strips OSC 52 (clipboard) payloads from the ring
+	modes     *terminalModes
+	done      chan struct{}
+	once      sync.Once
+	closed    bool
 }
 
 func (s *terminalSession) addClient(c *terminalClient) {
@@ -90,8 +96,74 @@ func (s *terminalSession) addClient(c *terminalClient) {
 		default:
 		}
 	}
+	if len(s.ring) > 0 {
+		// The ring replay can only reproduce bytes still in the window, so it
+		// may resurrect modes (mouse tracking, hidden cursor, ...) that no
+		// longer reflect reality — and equally, it may have dropped the one-shot
+		// startup sequences of a still-running application. Bring the fresh
+		// terminal in sync with the session's actual state:
+		//   * foreground shell (idle, nothing running) → full reset;
+		//   * foreground application          → re-assert its current modes.
+		var sync []byte
+		if s.appIsForeground() {
+			sync = s.modes.reconcile()
+		} else {
+			sync = terminalShellReset
+		}
+		select {
+		case c.send <- sync:
+		default:
+		}
+	}
 	s.clients[c] = struct{}{}
 	s.mu.Unlock()
+}
+
+// appIsForeground reports whether an application (rather than an idle shell
+// prompt) owns the terminal. The foreground process group alone is not
+// enough: a shell started with `-c` (the frontend's "new terminal with
+// command" flow) executes the command as its very own process via exec, so
+// the shell's pid stays the foreground pgrp leader while `herdr` (or `sleep`)
+// is actually running as that process. Detect that through the process
+// command name, and fall back to a live-child check for command lists that
+// keep a subshell around.
+func (s *terminalSession) appIsForeground() bool {
+	if s.cmd.Process == nil {
+		return false
+	}
+	pgid := fgpgid(s)
+	if pgid != s.cmd.Process.Pid {
+		return true
+	}
+	if comm, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", s.cmd.Process.Pid)); err == nil {
+		name := strings.TrimSpace(string(comm))
+		shellBase := filepath.Base(os.Getenv("SHELL"))
+		if name != "" && shellBase != "" && name != shellBase {
+			return true
+		}
+	}
+	children, err := os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/children", s.cmd.Process.Pid, s.cmd.Process.Pid))
+	if err != nil {
+		return false
+	}
+	for _, f := range strings.Fields(string(children)) {
+		cpid, err := strconv.Atoi(f)
+		if err != nil {
+			continue
+		}
+		if cpgid, err := unix.Getpgid(cpid); err == nil && cpgid == pgid {
+			return true
+		}
+	}
+	return false
+}
+
+func fgpgid(s *terminalSession) int {
+	pgid, err := unix.IoctlGetInt(int(s.ptmx.Fd()), unix.TIOCGPGRP)
+	if err != nil {
+		return -1
+	}
+	return pgid
 }
 
 func (s *terminalSession) removeClient(c *terminalClient) {
@@ -102,7 +174,11 @@ func (s *terminalSession) removeClient(c *terminalClient) {
 
 func (s *terminalSession) broadcast(data []byte) {
 	s.mu.Lock()
-	s.ring = append(s.ring, data)
+	// The ring feeds late attachments; clipboard (OSC 52) payloads must not
+	// travel through it or a reloading client would re-open the copy modal for
+	// a selection made before the reload. Live clients still get the raw bytes.
+	ringData := s.ringOsc52.filter(data)
+	s.ring = append(s.ring, ringData)
 	if len(s.ring) > 512 {
 		s.ring = append([][]byte(nil), s.ring[len(s.ring)-512:]...)
 	}
@@ -174,6 +250,9 @@ func (s *terminalSession) pump() {
 		if n > 0 {
 			out := make([]byte, n)
 			copy(out, buf[:n])
+			s.mu.Lock()
+			s.modes.feed(out)
+			s.mu.Unlock()
 			s.broadcast(out)
 		}
 		if err != nil {
@@ -373,7 +452,9 @@ func (s *Server) Terminal(c echo.Context) error {
 		return conn.WriteMessage(messageType, data)
 	}
 
-	client := &terminalClient{send: make(chan []byte, 512), stop: make(chan struct{})}
+	// send capacity must exceed the ring bounds (512) so the replayed history
+	// plus terminalClientReset always fit without blocking or being dropped.
+	client := &terminalClient{send: make(chan []byte, 1024), stop: make(chan struct{})}
 	sess.addClient(client)
 	go sess.serveClient(conn, client, &writeMu)
 
@@ -488,6 +569,7 @@ func startTerminalSession(command, dir string, env []string) (*terminalSession, 
 		done:    make(chan struct{}),
 		ptmx:    ptmx,
 		cmd:     cmd,
+		modes:   newTerminalModes(),
 	}
 
 	go sess.pump()

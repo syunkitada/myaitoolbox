@@ -6,6 +6,7 @@ import { terminalWsUrl } from '../utils/routes'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
 import { Copy, ClipboardPaste, Maximize2, Minimize2, PanelTopClose } from 'lucide-react'
+import { Separator } from './ui/separator'
 import { useIsMobile } from '../hooks/use-mobile'
 
 export interface TerminalTabData {
@@ -414,6 +415,17 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
             variant="ghost"
             size="icon-xs"
             className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
+            onClick={() => onAdd()}
+            aria-label="New terminal"
+            title="New terminal"
+          >
+            +
+          </Button>
+          <Separator orientation="vertical" className="mx-0.5 h-4" />
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
             onClick={() => activeTermRef?.paste()}
             aria-label="Paste"
             title="Paste"
@@ -432,16 +444,7 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
               <Copy className="h-4 w-4" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="h-8 w-8 cursor-pointer text-muted-foreground hover:text-foreground"
-            onClick={() => onAdd()}
-            aria-label="New terminal"
-            title="New terminal"
-          >
-            +
-          </Button>
+          <Separator orientation="vertical" className="mx-0.5 h-4 max-lg:hidden" />
           <Button
             variant="ghost"
             size="icon-xs"

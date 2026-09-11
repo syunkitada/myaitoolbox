@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { KanbanBoard } from './KanbanBoard'
+import { DialogsProvider } from '../components/AppDialogs'
 import { api, Task } from '../api/client'
 
 vi.mock('../api/client', () => ({
@@ -10,6 +11,16 @@ vi.mock('../api/client', () => ({
     updateTask: vi.fn(),
   },
 }))
+
+function renderBoard() {
+  return render(
+    <MemoryRouter>
+      <DialogsProvider>
+        <KanbanBoard />
+      </DialogsProvider>
+    </MemoryRouter>,
+  )
+}
 
 const tasks: Task[] = [
   { id: 't1', title: 'Todo item', status: 'todo', priority: 'high' },
@@ -25,11 +36,7 @@ describe('KanbanBoard', () => {
   })
 
   it('renders all status columns', async () => {
-    render(
-      <MemoryRouter>
-        <KanbanBoard />
-      </MemoryRouter>,
-    )
+    renderBoard()
     expect(await screen.findByText('Todo item')).toBeInTheDocument()
     for (const s of ['todo', 'doing', 'blocked', 'review', 'done']) {
       expect(screen.getByText(s)).toBeInTheDocument()
@@ -37,11 +44,7 @@ describe('KanbanBoard', () => {
   })
 
   it('places each task in its status column and hides archived', async () => {
-    render(
-      <MemoryRouter>
-        <KanbanBoard />
-      </MemoryRouter>,
-    )
+    renderBoard()
     await screen.findByText('Todo item')
     const todoCol = screen.getByTestId('column-todo')
     expect(within(todoCol).getByText('Todo item')).toBeInTheDocument()
@@ -56,11 +59,7 @@ describe('KanbanBoard', () => {
   })
 
   it('marks adhoc tasks with an adhoc badge in their column', async () => {
-    render(
-      <MemoryRouter>
-        <KanbanBoard />
-      </MemoryRouter>,
-    )
+    renderBoard()
     await screen.findByText('Review PR')
     const doingCol = screen.getByTestId('column-doing')
     expect(within(doingCol).getByText('Review PR')).toBeInTheDocument()

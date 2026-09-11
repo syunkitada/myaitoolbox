@@ -36,17 +36,16 @@ describe('aggregateAgentStatus', () => {
     expect(aggregateAgentStatus(overviewWith(['working', 'blocked', 'idle']))).toBe('blocked')
   })
 
-  it('prefers working over passive statuses', () => {
-    expect(aggregateAgentStatus(overviewWith(['done', 'idle', 'working']))).toBe('working')
+  it('prefers done (unseen) over working', () => {
+    expect(aggregateAgentStatus(overviewWith(['done', 'working', 'idle']))).toBe('done')
   })
 
-  it('prefers idle over done and unknown', () => {
-    expect(aggregateAgentStatus(overviewWith(['done', 'idle', 'unknown']))).toBe('idle')
+  it('prefers working over idle and unknown', () => {
+    expect(aggregateAgentStatus(overviewWith(['idle', 'working', 'unknown']))).toBe('working')
   })
 
-  it('falls back to done then unknown', () => {
-    expect(aggregateAgentStatus(overviewWith(['done']))).toBe('done')
-    expect(aggregateAgentStatus(overviewWith(['nonsense']))).toBe('unknown')
+  it('prefers idle over unknown', () => {
+    expect(aggregateAgentStatus(overviewWith(['idle', 'unknown']))).toBe('idle')
   })
 })
 

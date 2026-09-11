@@ -19,6 +19,7 @@ import { Card, CardContent } from '../components/ui/card'
 import { Sheet, SheetContent } from '../components/ui/sheet'
 import { DiffView } from '../components/DiffView'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useDialogs } from '../components/AppDialogs'
 import { cn } from '@/lib/utils'
 
 const EXPLORER_STORAGE_KEY = 'git_explorer_open'
@@ -298,6 +299,7 @@ function WorkingTree({
 }
 
 export function GitPage({ refreshMeta }: GitPageProps) {
+  const { confirm } = useDialogs()
   const [detail, setDetail] = useState<GitDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
@@ -447,8 +449,8 @@ export function GitPage({ refreshMeta }: GitPageProps) {
     )
   }
 
-  const handleDiscard = (f: GitFile) => {
-    if (!window.confirm(`Discard changes to ${f.path}?`)) return
+  const handleDiscard = async (f: GitFile) => {
+    if (!(await confirm(`Discard changes to ${f.path}?`))) return
     void run(() => doGitResult(() => api.gitDiscard([f.path])))
   }
 
@@ -465,9 +467,9 @@ export function GitPage({ refreshMeta }: GitPageProps) {
     )
   }
 
-  const handleAmend = () => {
+  const handleAmend = async () => {
     if (!detail?.last_commit_message) return
-    if (!window.confirm('Rewrite the most recent commit? This changes history.')) return
+    if (!(await confirm('Rewrite the most recent commit? This changes history.'))) return
     const msg = message.trim()
     void run(
       () => doGitResult(() => api.gitCommit(msg, !stageAll, true)),
