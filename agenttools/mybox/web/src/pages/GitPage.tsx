@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Check,
   CheckCircle2,
+  ChevronDown,
   GitBranch,
+  History,
   PanelLeftClose,
   PanelLeftOpen,
   PencilLine,
@@ -12,20 +15,27 @@ import {
   SquarePlus,
   Trash2,
 } from 'lucide-react'
-import { GitDetail, GitFile, GitResult, api } from '../api/client'
+import { GitBranch as GitBranchInfo, GitDetail, GitFile, GitLogEntry, GitResult, api } from '../api/client'
 import { Button } from '../components/ui/button'
 import { Textarea } from '../components/ui/textarea'
 import { Card, CardContent } from '../components/ui/card'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../components/ui/dropdown-menu'
 import { Sheet, SheetContent } from '../components/ui/sheet'
 import { DiffView } from '../components/DiffView'
+import { CommitDiffView } from '../components/CommitDiffView'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useDialogs } from '../components/AppDialogs'
 import { cn } from '@/lib/utils'
 
 const EXPLORER_STORAGE_KEY = 'git_explorer_open'
+const LOG_PAGE_SIZE = 30
 
-interface GitPageProps {
+type GitViewMode = 'working-tree' | 'log'
+
+interface GitWorkspaceProps {
   refreshMeta: () => Promise<void>
+  scope?: string
+  embedded?: boolean
 }
 
 const codeLabel: Record<string, string> = {
@@ -40,6 +50,117 @@ const codeLabel: Record<string, string> = {
 
 function statusText(f: GitFile): string {
   return codeLabel[f.code] ?? f.code
+}
+
+// formatGitDate renders an ISO 8601 date as a short relative or date label.
+function formatGitDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const diff = Date.now() - d.getTime()
+  const min = 60_000
+  const hr = 60 * min
+  const day = 24 * hr
+  if (diff >= 0) {
+    if (diff < min) return 'just now'
+    if (diff < hr) return `${Math.floor(diff / min)}m ago`
+    if (diff < day) return `${Math.floor(diff / hr)}h ago`
+    if (diff < 7 * day) return `${Math.floor(diff / day)}d ago`
+  }
+  return d.toLocaleDateString()
+}
+
+function ModeToggle({ mode, onChange }: { mode: GitViewMode; onChange: (m: GitViewMode) => void }) {
+  return (
+    <div className="flex shrink-0 rounded-md border border-border p-0.5" data-testid="git-mode-toggle">
+      <Button
+        variant={mode === 'working-tree' ? 'secondary' : 'ghost'}
+        size="sm"
+        onClick={() => onChange('working-tree')}
+        aria-pressed={mode === 'working-tree'}
+        data-testid="git-mode-working-tree"
+      >
+        Working tree
+      </Button>
+      <Button
+        variant={mode === 'log' ? 'secondary' : 'ghost'}
+        size="sm"
+        onClick={() => onChange('log')}
+        aria-pressed={mode === 'log'}
+        data-testid="git-mode-log"
+      >
+        <History />
+        Log
+      </Button>
+    </div>
+  )
+}
+
+function GitLogList({
+  entries,
+  loading,
+  hasMore,
+  selectedHash,
+  onSelect,
+  onLoadMore,
+}: {
+  entries: GitLogEntry[]
+  loading: boolean
+  hasMore: boolean
+  selectedHash: string | null
+  onSelect: (e: GitLogEntry) => void
+  onLoadMore: () => void
+}) {
+  return (
+    <div className="min-h-0">
+      {entries.length === 0 && !loading ? (
+        <p className="px-1 text-xs text-muted-foreground">No commits yet.</p>
+      ) : (
+        <ul className="knowledge-tree m-0 list-none p-0">
+          {entries.map((e) => (
+            <li
+              key={e.hash}
+              className="knowledge-tree-row flex min-h-[26px] items-start gap-1 rounded-md px-1 py-0.5 leading-tight hover:bg-muted"
+            >
+              <button
+                type="button"
+                className={cn(
+                  'knowledge-file flex min-w-0 flex-1 cursor-pointer flex-col items-stretch gap-0.5 self-stretch bg-transparent p-0 text-left',
+                  e.hash === selectedHash && 'active text-primary',
+                )}
+                onClick={() => onSelect(e)}
+                title={e.subject}
+                data-testid="git-log-entry"
+              >
+                <span className="flex w-full items-center gap-1.5">
+                  <span className="shrink-0 rounded bg-muted px-1.5 font-mono text-[10px] leading-4 text-muted-foreground">
+                    {e.short_hash}
+                  </span>
+                  <span className="truncate text-sm font-medium">{e.subject}</span>
+                </span>
+                <span className="truncate pl-0.5 font-mono text-[10px] text-muted-foreground">
+                  {e.author} · {formatGitDate(e.date)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex items-center justify-center py-2">
+        {loading ? (
+          <RefreshCw className="size-4 animate-spin text-muted-foreground" />
+        ) : hasMore ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onLoadMore}
+            data-testid="git-log-load-more"
+          >
+            Load more
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 interface ChangeNode {
@@ -179,7 +300,7 @@ function TreeSection({
   )
 }
 
-function WorkingTree({
+function SimpleTreeList({
   detail,
   hasChanges,
   selectedKey,
@@ -187,6 +308,15 @@ function WorkingTree({
   onClose,
   onStageAll,
   onUnstageAll,
+  scope,
+  mode,
+  onModeChange,
+  logEntries,
+  logLoading,
+  logHasMore,
+  selectedCommitHash,
+  onSelectCommit,
+  onLoadMore,
 }: {
   detail: GitDetail
   hasChanges: boolean
@@ -195,6 +325,15 @@ function WorkingTree({
   onClose?: () => void
   onStageAll: () => void
   onUnstageAll: () => void
+  scope?: string
+  mode: GitViewMode
+  onModeChange: (m: GitViewMode) => void
+  logEntries: GitLogEntry[]
+  logLoading: boolean
+  logHasMore: boolean
+  selectedCommitHash: string | null
+  onSelectCommit: (e: GitLogEntry) => void
+  onLoadMore: () => void
 }) {
   return (
     <div className="knowledge-explorer flex h-full min-h-0 w-full flex-col overflow-y-auto bg-card p-2.5">
@@ -215,6 +354,11 @@ function WorkingTree({
           Git
         </h1>
         <span className="rounded-md border px-2 py-0.5 font-mono text-xs">{detail.branch || 'HEAD'}</span>
+        {scope && (
+          <span className="truncate rounded-md border px-2 py-0.5 font-mono text-xs text-muted-foreground" title={scope}>
+            {scope}
+          </span>
+        )}
         {detail.remote && (
           <span className="truncate rounded-md border px-2 py-0.5 font-mono text-xs text-muted-foreground">
             {detail.remote}
@@ -235,7 +379,19 @@ function WorkingTree({
           </span>
         )}
       </div>
-      {!hasChanges ? (
+      <div className="mb-2 w-full">
+        <ModeToggle mode={mode} onChange={onModeChange} />
+      </div>
+      {mode === 'log' ? (
+        <GitLogList
+          entries={logEntries}
+          loading={logLoading}
+          hasMore={logHasMore}
+          selectedHash={selectedCommitHash}
+          onSelect={onSelectCommit}
+          onLoadMore={onLoadMore}
+        />
+      ) : !hasChanges ? (
         <div className="flex flex-col items-start gap-2 p-2 text-sm text-muted-foreground">
           <CheckCircle2 className="size-5 text-green-600" />
           Working tree is clean.
@@ -298,8 +454,59 @@ function WorkingTree({
   )
 }
 
-export function GitPage({ refreshMeta }: GitPageProps) {
-  const { confirm } = useDialogs()
+function BranchSwitcher({
+  branches,
+  loading,
+  currentBranch,
+  onCheckout,
+  onNewBranch,
+}: {
+  branches: GitBranchInfo[]
+  loading: boolean
+  currentBranch: string
+  onCheckout: (branch: string) => void
+  onNewBranch: () => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" data-testid="git-branch-switcher">
+          <GitBranch className="size-3.5" />
+          <span className="max-w-[120px] truncate font-mono text-xs">{currentBranch || 'HEAD'}</span>
+          <ChevronDown className="size-3" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-[300px] w-56">
+        <DropdownMenuLabel>Branches</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {branches.map((b) => (
+          <DropdownMenuItem
+            key={b.name}
+            onSelect={() => { if (!b.current) onCheckout(b.name) }}
+            className={cn('gap-1', b.current && 'font-semibold')}
+            data-testid={b.current ? 'git-branch-current' : undefined}
+          >
+            {b.current && <Check className="size-3.5 shrink-0 text-green-600" />}
+            <span className="truncate">{b.name}</span>
+          </DropdownMenuItem>
+        ))}
+        {branches.length === 0 && (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+            {loading ? 'Loading…' : 'No branches found.'}
+          </p>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onNewBranch} data-testid="git-new-branch">
+          <SquarePlus className="size-3.5" />
+          New branch…
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps) {
+  const { confirm, prompt } = useDialogs()
   const [detail, setDetail] = useState<GitDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
@@ -308,7 +515,8 @@ export function GitPage({ refreshMeta }: GitPageProps) {
   const [busy, setBusy] = useState(false)
   const [output, setOutput] = useState<string | null>(null)
   const [outputError, setOutputError] = useState(false)
-  const isMobile = useIsMobile()
+  const rawIsMobile = useIsMobile()
+  const isMobile = embedded ? false : rawIsMobile
   const [explorerOpen, setExplorerOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true
     if (window.innerWidth < 768) return false
@@ -321,9 +529,105 @@ export function GitPage({ refreshMeta }: GitPageProps) {
     if (!isMobile) window.localStorage.setItem(EXPLORER_STORAGE_KEY, explorerOpen ? '1' : '0')
   }, [explorerOpen, isMobile])
 
+  const [mode, setMode] = useState<GitViewMode>('working-tree')
+  const [logEntries, setLogEntries] = useState<GitLogEntry[]>([])
+  const [logLoading, setLogLoading] = useState(false)
+  const [logHasMore, setLogHasMore] = useState(true)
+  const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null)
+  const [commitDiff, setCommitDiff] = useState<string | null>(null)
+  const [commitDiffLoading, setCommitDiffLoading] = useState(false)
+
+  const loadLogPage = useCallback(
+    async (offset: number, reset: boolean) => {
+      if (logLoading) return
+      setLogLoading(true)
+      try {
+        const res = await api.getGitLog(scope, offset, LOG_PAGE_SIZE)
+        const commits = res.commits ?? []
+        setLogEntries((prev) => (reset ? commits : [...prev, ...commits]))
+        setLogOffset(offset + commits.length)
+        setLogHasMore(commits.length === LOG_PAGE_SIZE)
+        if (reset && commits.length > 0) {
+          setSelectedCommitHash((cur) => cur ?? commits[0].hash)
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setLogLoading(false)
+      }
+    },
+    [logLoading, scope],
+  )
+
+  const [logOffset, setLogOffset] = useState(0)
+  const [branches, setBranches] = useState<GitBranchInfo[]>([])
+  const [branchesLoading, setBranchesLoading] = useState(false)
+
+  useEffect(() => {
+    if (mode === 'log' && detail?.is_repo && logEntries.length === 0) {
+      void loadLogPage(0, true)
+    }
+  }, [mode, detail?.is_repo, logEntries.length])
+
+  useEffect(() => {
+    if (!selectedCommitHash) {
+      setCommitDiff(null)
+      return
+    }
+    let cancelled = false
+    setCommitDiffLoading(true)
+    api.getGitCommitDiff(scope, selectedCommitHash)
+      .then((res) => {
+        if (!cancelled) setCommitDiff(res.diff)
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (!cancelled) setCommitDiffLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCommitHash, scope])
+
+  const handleModeChange = useCallback(
+    (m: GitViewMode) => {
+      setMode(m)
+      if (m === 'log') {
+        setLogEntries([])
+        setLogHasMore(true)
+        setLogOffset(0)
+        setSelectedCommitHash(null)
+      } else {
+        setSelectedCommitHash(null)
+        setCommitDiff(null)
+      }
+    },
+    [],
+  )
+
+  const handleSelectCommit = useCallback((e: GitLogEntry) => {
+    setSelectedCommitHash((cur) => (cur === e.hash ? null : e.hash))
+  }, [])
+
+  const refreshBranches = useCallback(async () => {
+    if (!detail?.is_repo) return
+    setBranchesLoading(true)
+    try {
+      const res = await api.getGitBranches(scope)
+      setBranches(res.branches ?? [])
+    } catch { /* non-critical */ }
+    finally { setBranchesLoading(false) }
+  }, [detail?.is_repo, scope])
+
+  useEffect(() => {
+    void refreshBranches()
+  }, [refreshBranches])
+
   const refresh = useCallback(async () => {
     try {
-      const d = await api.getGitStatus()
+      const d = await api.getGitStatus(scope)
       setDetail(d)
       setError(null)
       setSelectedKey((key) => {
@@ -334,7 +638,7 @@ export function GitPage({ refreshMeta }: GitPageProps) {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [])
+  }, [scope])
 
   useEffect(() => {
     void refresh()
@@ -398,7 +702,7 @@ export function GitPage({ refreshMeta }: GitPageProps) {
             disabled={busy}
             onClick={() =>
               void run(async () => {
-                await doGitResult(() => api.gitInit())
+                await doGitResult(() => api.gitInit(scope))
               })
             }
           >
@@ -420,7 +724,7 @@ export function GitPage({ refreshMeta }: GitPageProps) {
       () =>
         doGitResult(() => {
           const paths = [f.path]
-          return f.status === 'staged' ? api.gitUnstage(paths) : api.gitStage(paths)
+          return f.status === 'staged' ? api.gitUnstage(scope, paths) : api.gitStage(scope, paths)
         }),
       () => refresh(),
     )
@@ -431,7 +735,7 @@ export function GitPage({ refreshMeta }: GitPageProps) {
     void run(
       () =>
         doGitResult(() =>
-          api.gitStage(changes.map((f) => f.path)),
+          api.gitStage(scope, changes.map((f) => f.path)),
         ),
       () => refresh(),
     )
@@ -443,7 +747,7 @@ export function GitPage({ refreshMeta }: GitPageProps) {
     void run(
       () =>
         doGitResult(() =>
-          api.gitUnstage(staged.map((f) => f.path)),
+          api.gitUnstage(scope, staged.map((f) => f.path)),
         ),
       () => refresh(),
     )
@@ -451,14 +755,14 @@ export function GitPage({ refreshMeta }: GitPageProps) {
 
   const handleDiscard = async (f: GitFile) => {
     if (!(await confirm(`Discard changes to ${f.path}?`))) return
-    void run(() => doGitResult(() => api.gitDiscard([f.path])))
+    void run(() => doGitResult(() => api.gitDiscard(scope, [f.path])))
   }
 
   const handleCommit = () => {
     const msg = message.trim()
     if (!msg) return
     void run(
-      () => doGitResult(() => api.gitCommit(msg, !stageAll)),
+      () => doGitResult(() => api.gitCommit(scope, msg, !stageAll)),
       async () => {
         setMessage('')
         setSelectedKey(null)
@@ -472,7 +776,7 @@ export function GitPage({ refreshMeta }: GitPageProps) {
     if (!(await confirm('Rewrite the most recent commit? This changes history.'))) return
     const msg = message.trim()
     void run(
-      () => doGitResult(() => api.gitCommit(msg, !stageAll, true)),
+      () => doGitResult(() => api.gitCommit(scope, msg, !stageAll, true)),
       async () => {
         setMessage('')
         setSelectedKey(null)
@@ -482,12 +786,46 @@ export function GitPage({ refreshMeta }: GitPageProps) {
   }
 
   const handlePull = () =>
-    void run(() => doGitResult(() => api.gitPull()))
+    void run(() => doGitResult(() => api.gitPull(scope)))
   const handlePush = () =>
-    void run(() => doGitResult(() => api.gitPush()))
+    void run(() => doGitResult(() => api.gitPush(scope)))
+
+  const handleCheckout = (branch: string) =>
+    void run(
+      () => doGitResult(() => api.gitCheckout(scope, branch)),
+      async () => {
+        await refreshBranches()
+        if (mode === 'log') {
+          setLogEntries([])
+          setLogHasMore(true)
+          setLogOffset(0)
+          setSelectedCommitHash(null)
+        }
+      },
+    )
+
+  const handleNewBranch = async () => {
+    const name = await prompt('New branch name:')
+    if (!name?.trim()) return
+    const startPoint = await prompt('Start point (optional, defaults to HEAD):', '')
+    void run(
+      () => doGitResult(() => api.gitCheckout(scope, name.trim(), true, startPoint?.trim() || undefined)),
+      async () => {
+        await refreshBranches()
+        if (mode === 'log') {
+          setLogEntries([])
+          setLogHasMore(true)
+          setLogOffset(0)
+          setSelectedCommitHash(null)
+        }
+      },
+    )
+  }
+
+  const currentBranch = detail.branch || 'HEAD'
 
   const workingTree = (
-    <WorkingTree
+    <SimpleTreeList
       detail={detail}
       hasChanges={hasChanges}
       selectedKey={selectedKey}
@@ -495,6 +833,15 @@ export function GitPage({ refreshMeta }: GitPageProps) {
       onClose={() => setExplorerOpen(false)}
       onStageAll={handleStageAll}
       onUnstageAll={handleUnstageAll}
+      scope={scope}
+      mode={mode}
+      onModeChange={handleModeChange}
+      logEntries={logEntries}
+      logLoading={logLoading}
+      logHasMore={logHasMore}
+      selectedCommitHash={selectedCommitHash}
+      onSelectCommit={handleSelectCommit}
+      onLoadMore={() => void loadLogPage(logOffset, false)}
     />
   )
 
@@ -504,7 +851,7 @@ export function GitPage({ refreshMeta }: GitPageProps) {
         <div
           className={cn(
             'knowledge-layout flex h-full min-h-0 flex-col items-stretch overflow-hidden max-md:flex-col',
-            selectedKey && 'has-selection',
+            (selectedKey || (mode === 'log' && selectedCommitHash)) && 'has-selection',
           )}
         >
           <div className="flex min-h-0 flex-1 max-md:flex-col">
@@ -549,12 +896,20 @@ export function GitPage({ refreshMeta }: GitPageProps) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => void refresh()}
+                      onClick={() => {
+                        void refresh()
+                        if (mode === 'log' && detail?.is_repo) {
+                          setLogEntries([])
+                          setLogHasMore(true)
+                          setLogOffset(0)
+                          setSelectedCommitHash(() => null)
+                        }
+                      }}
                       disabled={busy}
                       aria-label="Refresh"
                       title="Refresh"
                     >
-                      <RefreshCw className={cn(busy && 'animate-spin')} />
+                      <RefreshCw className={cn((busy || logLoading) && 'animate-spin')} />
                       <span className="hidden sm:inline">Refresh</span>
                     </Button>
                     <Button
@@ -579,15 +934,26 @@ export function GitPage({ refreshMeta }: GitPageProps) {
                       <ArrowUpFromLine />
                       <span className="hidden sm:inline">Push</span>
                     </Button>
+                    <BranchSwitcher
+                      branches={branches}
+                      loading={branchesLoading}
+                      currentBranch={currentBranch}
+                      onCheckout={handleCheckout}
+                      onNewBranch={handleNewBranch}
+                    />
                     <span
                       className="min-w-0 truncate font-mono text-sm"
                       data-testid="git-selected-file"
-                      title={selected ? selected.path : ''}
+                      title={mode === 'log' && selectedCommitHash
+                        ? logEntries.find((e) => e.hash === selectedCommitHash)?.subject ?? selectedCommitHash
+                        : selected?.path ?? ''}
                     >
-                      {selected ? selected.path : 'Select a file to view its diff'}
+                      {mode === 'log' && selectedCommitHash
+                        ? logEntries.find((e) => e.hash === selectedCommitHash)?.subject ?? selectedCommitHash.slice(0, 7)
+                        : selected ? selected.path : 'Select a file to view its diff'}
                     </span>
                   </div>
-                  {selected && (
+                  {selected && mode !== 'log' && (
                     <div className="ml-auto flex shrink-0 items-center gap-1.5">
                       <Button
                         variant="outline"
@@ -619,7 +985,22 @@ export function GitPage({ refreshMeta }: GitPageProps) {
                 </div>
                 <Card className="gap-0 p-4">
                   <CardContent className="px-0 py-0">
-                    {selected ? (
+                    {mode === 'log' ? (
+                      commitDiffLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+                          <RefreshCw className="size-4 animate-spin" />
+                          Loading diff…
+                        </div>
+                      ) : selectedCommitHash === null ? (
+                        <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                          <p className="text-sm text-muted-foreground">
+                            Select a commit from the history to view its diff.
+                          </p>
+                        </div>
+                      ) : (
+                        <CommitDiffView diff={commitDiff ?? ''} />
+                      )
+                    ) : selected ? (
                       <DiffView diff={selected.diff ?? ''} />
                     ) : (
                       <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
@@ -694,6 +1075,10 @@ export function GitPage({ refreshMeta }: GitPageProps) {
       )}
     </div>
   )
+}
+
+export function GitPage({ refreshMeta }: { refreshMeta: () => Promise<void> }) {
+  return <GitWorkspace refreshMeta={refreshMeta} />
 }
 
 function OutputBox({ error, output }: { error: boolean; output: string }) {

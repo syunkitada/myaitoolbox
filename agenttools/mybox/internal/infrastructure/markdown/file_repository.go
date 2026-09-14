@@ -51,7 +51,7 @@ func (r *FileRepository) Tree(ctx context.Context, showHidden bool) ([]domain.Fi
 			kind = domain.FileKindDir
 		}
 		status := ""
-		if kind == domain.FileKindFile {
+		if kind == domain.FileKindFile && d.Name() == "task.md" {
 			status = markdownStatus(path)
 		}
 		entries = append(entries, domain.FileEntry{

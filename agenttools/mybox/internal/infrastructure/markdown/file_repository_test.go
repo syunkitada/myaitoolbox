@@ -16,8 +16,8 @@ func TestFileRepositoryTreeStatus(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"),
 		[]byte("---\nstatus: doing\n---\n\n# Project\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"),
-		[]byte("# Guide\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "task.md"),
+		[]byte("---\nstatus: doing\n---\n\n# Task\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "notes.txt"),
 		[]byte("---\nstatus: done\n---\n\nplain"), 0o644))
 
@@ -29,8 +29,8 @@ func TestFileRepositoryTreeStatus(t *testing.T) {
 		byPath[e.Path] = e
 	}
 
-	assert.Equal(t, "doing", byPath["README.md"].Status)
-	assert.Equal(t, "", byPath["docs/guide.md"].Status)
+	assert.Equal(t, "", byPath["README.md"].Status)
+	assert.Equal(t, "doing", byPath["docs/task.md"].Status)
 	assert.Equal(t, "", byPath["notes.txt"].Status)
 	assert.Equal(t, "", byPath["docs"].Status)
 }

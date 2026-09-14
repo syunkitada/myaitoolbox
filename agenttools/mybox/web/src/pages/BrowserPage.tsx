@@ -11,6 +11,7 @@ import { Card, CardContent } from '../components/ui/card'
 import { Separator } from '../components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible'
 import MonacoEditor from '../components/MonacoEditor'
+import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { ChevronDown, Clock, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RefreshCw, Star, Tag, Text, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -255,6 +256,7 @@ interface ExplorerProps {
   onError?: (message: string) => void
   showHidden?: boolean
   onToggleHidden?: () => void
+  onOpenGit?: (path: string) => void
 }
 
 interface ExplorerSectionProps {
@@ -293,7 +295,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit }: ExplorerProps) {
   const { prompt, confirm } = useDialogs()
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
@@ -381,6 +383,12 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
     void copyToClipboard(text)
       .then(() => showNotice(`Copied "${text}"`))
       .catch(runError)
+  }
+
+  const openGit = () => {
+    if (!ctxMenu) return
+    onOpenGit?.(ctxMenu.path)
+    setCtxMenu(null)
   }
 
   const copyPath = () => {
@@ -776,6 +784,15 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
               <button role="menuitem" className="file-action-item" onClick={newFolderInDir}>
                 <FolderHeart className="size-3.5" />
                 New Folder
+              </button>
+              <button
+                role="menuitem"
+                className="file-action-item"
+                onClick={openGit}
+                data-testid="file-open-git"
+              >
+                <GitBranch className="size-3.5" />
+                Open Git
               </button>
               <div className="my-1 h-px bg-border" />
             </>
@@ -1596,6 +1613,7 @@ export function BrowserPage({
   const [error, setError] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [openGitDir, setOpenGitDir] = useState<string | null>(null)
   const autoDefaulted = useRef(false)
 
   const isMobile = useIsMobile()
@@ -1620,6 +1638,10 @@ export function BrowserPage({
   useEffect(() => {
     window.localStorage.setItem(SHOW_HIDDEN_STORAGE_KEY, showHidden ? '1' : '0')
   }, [showHidden])
+
+  useEffect(() => {
+    setOpenGitDir(null)
+  }, [selected])
 
   const handleSelect = useCallback(
     (p: string) => {
@@ -1780,6 +1802,7 @@ export function BrowserPage({
                     onError={(msg) => setMoveError(msg)}
                     showHidden={mode === 'files' ? showHidden : undefined}
                     onToggleHidden={mode === 'files' ? () => setShowHidden((s) => !s) : undefined}
+                    onOpenGit={setOpenGitDir}
                   />
                 </div>
               </div>
@@ -1877,6 +1900,9 @@ export function BrowserPage({
           </div>
         </div>
       </div>
+      {openGitDir && (
+        <GitViewer path={openGitDir} onClose={() => setOpenGitDir(null)} refreshMeta={refreshMeta} />
+      )}
     </div>
   )
 }

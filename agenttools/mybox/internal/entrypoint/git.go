@@ -67,6 +67,10 @@ func (s *Server) registerGitRoutes(e *echo.Echo, basePath string) {
 		e.Add(method, basePath+path, echo.WrapHandler(h))
 	}
 	wrap(http.MethodGet, "/api/git/status", s.GetGitStatus)
+	wrap(http.MethodGet, "/api/git/log", s.GetGitLog)
+	wrap(http.MethodGet, "/api/git/diff", s.GetGitCommitDiff)
+	wrap(http.MethodGet, "/api/git/branches", s.GetGitBranches)
+	wrap(http.MethodPost, "/api/git/checkout", s.PostGitCheckout)
 	wrap(http.MethodPost, "/api/git/commit", s.PostGitCommit)
 	wrap(http.MethodPost, "/api/git/pull", s.PostGitPull)
 	wrap(http.MethodPost, "/api/git/push", s.PostGitPush)
@@ -76,10 +80,62 @@ func (s *Server) registerGitRoutes(e *echo.Echo, basePath string) {
 	wrap(http.MethodPost, "/api/git/discard", s.PostGitDiscard)
 }
 
+// isInsideWorkTree reports whether dir lies inside a git work tree. This is
+// true both for a repository root and for any subdirectory of a repository,
+// so scoped views fall back to the enclosing repository.
+func isInsideWorkTree(dir string) bool {
+	out, err := runGit(dir, "rev-parse", "--is-inside-work-tree")
+	return err == nil && strings.TrimSpace(out) == "true"
+}
+
+// repoRoot resolves the absolute root of the git repository containing dir.
+// It returns "" when dir is not inside a work tree.
+func repoRoot(dir string) string {
+	out, err := runGit(dir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// gitScopeDir resolves a ?path= scope (a directory relative to the project
+// root) into the absolute working directory used for git commands. An empty
+// scope uses the project root itself.
+func gitScopeDir(app *App, scope string) (string, error) {
+	if scope == "" {
+		return app.Project.Path, nil
+	}
+	if err := validateGitPath(scope); err != nil {
+		return "", err
+	}
+	dir := filepath.Join(app.Project.Path, filepath.FromSlash(scope))
+	if rel, err := filepath.Rel(app.Project.Path, dir); err != nil ||
+		rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%w: %q", domain.ErrInvalidPath, scope)
+	}
+	return dir, nil
+}
+
+// gitScope returns the working directory implied by the request's optional
+// ?path= query parameter.
+func (s *Server) gitScope(r *http.Request, app *App) (string, error) {
+	return gitScopeDir(app, r.URL.Query().Get("path"))
+}
+
 func gitRepoDetail(dir string) gitDetail {
 	d := gitDetail{}
-	if !isGitDir(dir) {
+	if !isInsideWorkTree(dir) {
 		return d
+	}
+	// git status reports paths relative to the repository root regardless of
+	// the working directory, so filter the output down to the scope directory
+	// (the working directory) when it is not the repository root itself.
+	root := repoRoot(dir)
+	scopePrefix := ""
+	if root != "" && root != dir {
+		if rel, err := filepath.Rel(root, dir); err == nil && rel != "." {
+			scopePrefix = filepath.ToSlash(rel)
+		}
 	}
 	d.IsRepo = true
 	d.Branch, _ = runGit(dir, "branch", "--show-current")
@@ -113,6 +169,23 @@ func gitRepoDetail(dir string) gitDetail {
 		// diff command (and the file manager) cares about.
 		if i := strings.Index(path, " -> "); i >= 0 {
 			path = path[i+4:]
+		}
+		// The porcelain output covers the whole repository, so restrict it to
+		// the scope directory reported by the working directory.
+		if scopePrefix != "" && path != scopePrefix && !strings.HasPrefix(path, scopePrefix+"/") {
+			continue
+		}
+		// Directories are reported as a single untracked entry when they are
+		// nested repositories; skip them so the UI cannot stage or discard a
+		// complete nested repo as if it were a file.
+		if strings.HasSuffix(path, "/") {
+			continue
+		}
+		// Rebase the repository-root-relative path onto the working directory.
+		if root != "" {
+			if rel, err := filepath.Rel(dir, filepath.Join(root, filepath.FromSlash(path))); err == nil {
+				path = rel
+			}
 		}
 		switch {
 		case x == '?' && y == '?':
@@ -167,6 +240,57 @@ func untrackedDiff(dir, path string) string {
 	return strings.TrimRight(string(out), "\n")
 }
 
+// gitLogEntry describes a single commit in the log response.
+type gitLogEntry struct {
+	Hash      string `json:"hash"`
+	ShortHash string `json:"short_hash"`
+	Author    string `json:"author"`
+	Date      string `json:"date"`
+	Subject   string `json:"subject"`
+}
+
+// gitLogResult is the response of GET /api/git/log.
+type gitLogResult struct {
+	Commits []*gitLogEntry `json:"commits"`
+}
+
+// gitCommitDiffResult is the response of GET /api/git/diff.
+type gitCommitDiffResult struct {
+	Diff string `json:"diff"`
+}
+
+// gitBranchInfo describes a single local branch.
+type gitBranchInfo struct {
+	Name     string `json:"name"`
+	Current  bool   `json:"current"`
+	Upstream string `json:"upstream,omitempty"`
+}
+
+// gitBranchesResult is the response of GET /api/git/branches.
+type gitBranchesResult struct {
+	Branches []*gitBranchInfo `json:"branches"`
+}
+
+// validateBranchName rejects ref-like names that could confuse git or be used
+// to smuggle options. This mirrors git's own ref name rules.
+func validateBranchName(name string) error {
+	if name == "" {
+		return errors.New("branch name is required")
+	}
+	if strings.HasPrefix(name, "-") {
+		return errors.New("branch name must not start with '-'")
+	}
+	if strings.Contains(name, "..") || strings.HasPrefix(name, "/") || strings.HasSuffix(name, ".") {
+		return fmt.Errorf("invalid branch name: %q", name)
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return errors.New("branch name contains invalid characters")
+		}
+	}
+	return nil
+}
+
 // gitResult is the response body of mutating git operations.
 type gitResult struct {
 	Ok     bool   `json:"ok"`
@@ -183,10 +307,142 @@ func (s *Server) GetGitStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	gitOpsMu.Lock()
-	detail := gitRepoDetail(app.Project.Path)
+	detail := gitRepoDetail(dir)
 	gitOpsMu.Unlock()
 	writeJSONResponse(w, http.StatusOK, detail)
+}
+
+// gitLogEntry represents a single commit line in the log format.
+// Format: hash\nshort_hash\nauthor\ndate\nsubject (separated by Record Separator 0x1E)
+
+func gitLogParseEntries(dir string, offset, count int) ([]*gitLogEntry, error) {
+	args := []string{
+		"log",
+		"--format=%H%n%h%n%an%n%ai%n%s%x1e",
+		"--skip=" + strconv.Itoa(offset),
+		"-n", strconv.Itoa(count),
+	}
+	out, err := runGitRaw(dir, args...)
+	if err != nil {
+		// git log exits non-zero when there are no commits yet; treat as
+		// an empty log rather than an error.
+		if strings.Contains(out, "does not have any commits") || strings.TrimSpace(out) == "" {
+			return []*gitLogEntry{}, nil
+		}
+		return nil, fmt.Errorf("git log failed: %s", strings.TrimSpace(out))
+	}
+	entries := []*gitLogEntry{}
+	for _, block := range strings.Split(out, "\x1e") {
+		block = strings.TrimSpace(block)
+		if block == "" {
+			continue
+		}
+		lines := strings.SplitN(block, "\n", 5)
+		if len(lines) < 5 {
+			continue
+		}
+		entries = append(entries, &gitLogEntry{
+			Hash:      lines[0],
+			ShortHash: lines[1],
+			Author:    lines[2],
+			Date:      lines[3],
+			Subject:   lines[4],
+		})
+	}
+	return entries, nil
+}
+
+func (s *Server) GetGitLog(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !isInsideWorkTree(dir) {
+		writeJSONResponse(w, http.StatusOK, gitLogResult{Commits: []*gitLogEntry{}})
+		return
+	}
+	offset := 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	count := 30
+	if v := r.URL.Query().Get("count"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			count = n
+		}
+	}
+	gitOpsMu.Lock()
+	commits, logErr := gitLogParseEntries(dir, offset, count)
+	gitOpsMu.Unlock()
+	if logErr != nil {
+		writeError(w, logErr)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, gitLogResult{Commits: commits})
+}
+
+func (s *Server) GetGitCommitDiff(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	commitRef := r.URL.Query().Get("ref")
+	if commitRef == "" {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("ref parameter is required")})
+		return
+	}
+	gitOpsMu.Lock()
+	defer gitOpsMu.Unlock()
+
+	// Check if this is the root commit (no parent).
+	isRoot := false
+	if _, err := runGit(dir, "rev-parse", "--verify", commitRef+"^"); err != nil {
+		isRoot = true
+	}
+
+	// Without a scope the diff covers the whole repo. When scoped to a
+	// directory, git is run from that directory and `-- .` restricts the
+	// change display to the directory (and any repository nested inside).
+	scoped := r.URL.Query().Get("path") != "" && dir != app.Project.Path
+	var out string
+	if isRoot {
+		args := []string{"show", commitRef}
+		if scoped {
+			args = append(args, "--", ".")
+		}
+		out, err = runGit(dir, args...)
+	} else {
+		args := []string{"diff", commitRef + "^.." + commitRef}
+		if scoped {
+			args = append(args, "--", ".")
+		}
+		out, err = runGit(dir, args...)
+	}
+	if err != nil {
+		writeError(w, fmt.Errorf("failed to get diff for %s: %w", commitRef, err))
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, gitCommitDiffResult{Diff: out})
 }
 
 type gitCommitRequest struct {
@@ -199,11 +455,119 @@ type gitCommitRequest struct {
 	Amend bool `json:"amend"`
 }
 
+func (s *Server) GetGitBranches(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !isInsideWorkTree(dir) {
+		writeJSONResponse(w, http.StatusOK, gitBranchesResult{Branches: []*gitBranchInfo{}})
+		return
+	}
+	gitOpsMu.Lock()
+	defer gitOpsMu.Unlock()
+
+	// Obtain the current branch (empty when HEAD is detached).
+	current, _ := runGit(dir, "symbolic-ref", "--short", "-q", "HEAD")
+
+	// List local branches with upstream info.
+	out, err := runGitRaw(dir,
+		"for-each-ref",
+		"--format=%(refname:short)%00%(upstream:short)",
+		"refs/heads",
+	)
+	if err != nil && strings.TrimSpace(out) == "" {
+		writeJSONResponse(w, http.StatusOK, gitBranchesResult{Branches: []*gitBranchInfo{}})
+		return
+	}
+
+	branches := []*gitBranchInfo{}
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\x00", 2)
+		name := strings.TrimSpace(parts[0])
+		upstream := ""
+		if len(parts) > 1 {
+			upstream = strings.TrimSpace(parts[1])
+		}
+		branches = append(branches, &gitBranchInfo{
+			Name:     name,
+			Current:  name == current,
+			Upstream: upstream,
+		})
+	}
+	writeJSONResponse(w, http.StatusOK, gitBranchesResult{Branches: branches})
+}
+
+type gitCheckoutRequest struct {
+	Branch     string `json:"branch"`
+	Create     bool   `json:"create"`
+	StartPoint string `json:"start_point,omitempty"`
+}
+
+func (s *Server) PostGitCheckout(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureWritable(w) {
+		return
+	}
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	var req gitCheckoutRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if err := validateBranchName(req.Branch); err != nil {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: err})
+		return
+	}
+	if req.StartPoint != "" && req.StartPoint[0] == '-' {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("start_point must not start with '-'")})
+		return
+	}
+	gitOpsMu.Lock()
+	defer gitOpsMu.Unlock()
+	var args []string
+	if req.Create {
+		args = []string{"checkout", "-b", req.Branch}
+		if req.StartPoint != "" {
+			args = append(args, req.StartPoint)
+		}
+	} else {
+		args = []string{"checkout", req.Branch}
+	}
+	out, err := runGit(dir, args...)
+	if err != nil {
+		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
+		return
+	}
+	writeGitResult(w, http.StatusOK, gitResult{Ok: true, Output: out})
+}
+
 func (s *Server) PostGitCommit(w http.ResponseWriter, r *http.Request) {
 	if !s.ensureWritable(w) {
 		return
 	}
 	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	dir, err := s.gitScope(r, app)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -219,7 +583,14 @@ func (s *Server) PostGitCommit(w http.ResponseWriter, r *http.Request) {
 	gitOpsMu.Lock()
 	defer gitOpsMu.Unlock()
 	if !req.StagedOnly {
-		if out, err := runGit(app.Project.Path, "add", "-A"); err != nil {
+		// `git add -A` from a subdirectory stages changes across the whole
+		// repository, so a scoped commit limits staging to the scope dir with
+		// `-- .` to only ever commit changes visible in the view.
+		addArgs := []string{"add", "-A"}
+		if dir != app.Project.Path {
+			addArgs = append(addArgs, "--", ".")
+		}
+		if out, err := runGit(dir, addArgs...); err != nil {
 			writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
 			return
 		}
@@ -235,15 +606,15 @@ func (s *Server) PostGitCommit(w http.ResponseWriter, r *http.Request) {
 	} else {
 		args = append(args, "-m", req.Message)
 	}
-	name, _ := runGit(app.Project.Path, "config", "user.name")
-	email, _ := runGit(app.Project.Path, "config", "user.email")
+	name, _ := runGit(dir, "config", "user.name")
+	email, _ := runGit(dir, "config", "user.email")
 	if name == "" || email == "" {
 		// Fresh setups often have no git identity configured. Inject a local
 		// placeholder instead of surfacing "Please tell me who you are" so the
 		// first commit succeeds out of the box.
 		args = append([]string{"-c", "user.name=mybox", "-c", "user.email=mybox@local"}, args...)
 	}
-	out, err := runGit(app.Project.Path, args...)
+	out, err := runGit(dir, args...)
 	if err != nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
 		return
@@ -260,9 +631,14 @@ func (s *Server) PostGitPull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	gitOpsMu.Lock()
 	defer gitOpsMu.Unlock()
-	out, err := runGit(app.Project.Path, "pull")
+	out, err := runGit(dir, "pull")
 	if err != nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
 		return
@@ -279,9 +655,14 @@ func (s *Server) PostGitPush(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	gitOpsMu.Lock()
 	defer gitOpsMu.Unlock()
-	out, err := runGit(app.Project.Path, "push")
+	out, err := runGit(dir, "push")
 	if err != nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
 		return
@@ -298,13 +679,18 @@ func (s *Server) PostGitInit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	gitOpsMu.Lock()
 	defer gitOpsMu.Unlock()
-	if _, err := runGit(app.Project.Path, "rev-parse", "--is-inside-work-tree"); err == nil {
+	if _, err := runGit(dir, "rev-parse", "--is-inside-work-tree"); err == nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: true, Output: "already a git repository"})
 		return
 	}
-	out, err := runGit(app.Project.Path, "init")
+	out, err := runGit(dir, "init")
 	if err != nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
 		return
@@ -337,6 +723,11 @@ func (s *Server) gitPathsOp(w http.ResponseWriter, r *http.Request, op string) {
 		writeError(w, err)
 		return
 	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	var req gitPathsRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -359,14 +750,14 @@ func (s *Server) gitPathsOp(w http.ResponseWriter, r *http.Request, op string) {
 	)
 	switch op {
 	case "stage":
-		opOut, opErr = runGit(app.Project.Path, append([]string{"--literal-pathspecs", "add", "--"}, req.Paths...)...)
+		opOut, opErr = runGit(dir, append([]string{"--literal-pathspecs", "add", "--"}, req.Paths...)...)
 	case "unstage":
 		// reset -q works for both newly added files and staged
 		// modifications, including on a repository without commits yet
 		// (where restore --staged fails with "could not resolve HEAD").
-		opOut, opErr = runGit(app.Project.Path, append([]string{"--literal-pathspecs", "reset", "-q", "--"}, req.Paths...)...)
+		opOut, opErr = runGit(dir, append([]string{"--literal-pathspecs", "reset", "-q", "--"}, req.Paths...)...)
 	case "discard":
-		opOut, opErr = discardPaths(app.Project.Path, req.Paths)
+		opOut, opErr = discardPaths(dir, req.Paths)
 	}
 	if opErr != nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: opOut})

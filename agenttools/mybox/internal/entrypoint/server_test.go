@@ -514,7 +514,7 @@ func TestFiles(t *testing.T) {
 	root := app.Project.Path
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("# Project\n\nHello.\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("---\nstatus: doing\n---\n\n# Guide\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "task.md"), []byte("---\nstatus: doing\n---\n\n# Task\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".hidden"), []byte("x"), 0o644))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".git", "config"), []byte("x"), 0o644))
@@ -526,7 +526,7 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, api.FileEntry{Path: "docs", Name: "docs", Kind: api.FileEntryKind("dir")}, files[0])
 	assert.Equal(t, api.FileEntry{Path: "README.md", Name: "README.md", Kind: api.FileEntryKind("file")}, files[1])
 	status := "doing"
-	assert.Equal(t, api.FileEntry{Path: "docs/guide.md", Name: "guide.md", Kind: api.FileEntryKind("file"), Status: &status}, files[2])
+	assert.Equal(t, api.FileEntry{Path: "docs/task.md", Name: "task.md", Kind: api.FileEntryKind("file"), Status: &status}, files[2])
 
 	rec = do(t, s, http.MethodGet, "/api/files", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -537,7 +537,7 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, api.FileEntry{Path: ".git/config", Name: "config", Kind: api.FileEntryKind("file")}, files[2])
 	assert.Equal(t, api.FileEntry{Path: ".hidden", Name: ".hidden", Kind: api.FileEntryKind("file")}, files[3])
 	assert.Equal(t, api.FileEntry{Path: "README.md", Name: "README.md", Kind: api.FileEntryKind("file")}, files[4])
-	assert.Equal(t, api.FileEntry{Path: "docs/guide.md", Name: "guide.md", Kind: api.FileEntryKind("file"), Status: &status}, files[5])
+	assert.Equal(t, api.FileEntry{Path: "docs/task.md", Name: "task.md", Kind: api.FileEntryKind("file"), Status: &status}, files[5])
 
 	rec = do(t, s, http.MethodGet, "/api/files/content?path=README.md", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)

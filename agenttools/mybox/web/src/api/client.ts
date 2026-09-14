@@ -132,6 +132,32 @@ export interface GitResult {
   output?: string
 }
 
+export interface GitLogEntry {
+  hash: string
+  short_hash: string
+  author: string
+  date: string
+  subject: string
+}
+
+export interface GitLogResult {
+  commits: GitLogEntry[]
+}
+
+export interface GitCommitDiff {
+  diff: string
+}
+
+export interface GitBranch {
+  name: string
+  current: boolean
+  upstream?: string
+}
+
+export interface GitBranchesResult {
+  branches: GitBranch[]
+}
+
 export interface HerdrWorkspace {
   workspace_id: string
   label: string
@@ -471,19 +497,38 @@ export const api = {
   destroyTerminal: (session: string) =>
     request<void>('DELETE', '/api/terminal/destroy' + qs({ session })),
 
-  getGitStatus: () => request<GitDetail>('GET', '/api/git/status'),
-  gitInit: () => request<GitResult>('POST', '/api/git/init'),
-  gitCommit: (message: string, stagedOnly?: boolean, amend?: boolean) =>
-    request<GitResult>('POST', '/api/git/commit', {
+  getGitStatus: (scope?: string) =>
+    request<GitDetail>('GET', '/api/git/status' + qs({ path: scope })),
+  getGitLog: (scope?: string, offset?: number, count?: number) =>
+    request<GitLogResult>('GET', '/api/git/log' + qs({ path: scope, offset, count })),
+  getGitCommitDiff: (scope: string | undefined, ref: string) =>
+    request<GitCommitDiff>('GET', '/api/git/diff' + qs({ path: scope, ref })),
+  getGitBranches: (scope?: string) =>
+    request<GitBranchesResult>('GET', '/api/git/branches' + qs({ path: scope })),
+  gitCheckout: (scope: string | undefined, branch: string, create?: boolean, startPoint?: string) =>
+    request<GitResult>('POST', '/api/git/checkout' + qs({ path: scope }), {
+      branch,
+      create: create ?? false,
+      start_point: startPoint || undefined,
+    }),
+  gitInit: (scope?: string) =>
+    request<GitResult>('POST', '/api/git/init' + qs({ path: scope })),
+  gitCommit: (scope: string | undefined, message: string, stagedOnly?: boolean, amend?: boolean) =>
+    request<GitResult>('POST', '/api/git/commit' + qs({ path: scope }), {
       message,
       staged_only: stagedOnly ?? false,
       amend: amend ?? false,
     }),
-  gitPull: () => request<GitResult>('POST', '/api/git/pull'),
-  gitPush: () => request<GitResult>('POST', '/api/git/push'),
-  gitStage: (paths: string[]) => request<GitResult>('POST', '/api/git/stage', { paths }),
-  gitUnstage: (paths: string[]) => request<GitResult>('POST', '/api/git/unstage', { paths }),
-  gitDiscard: (paths: string[]) => request<GitResult>('POST', '/api/git/discard', { paths }),
+  gitPull: (scope?: string) =>
+    request<GitResult>('POST', '/api/git/pull' + qs({ path: scope })),
+  gitPush: (scope?: string) =>
+    request<GitResult>('POST', '/api/git/push' + qs({ path: scope })),
+  gitStage: (scope: string | undefined, paths: string[]) =>
+    request<GitResult>('POST', '/api/git/stage' + qs({ path: scope }), { paths }),
+  gitUnstage: (scope: string | undefined, paths: string[]) =>
+    request<GitResult>('POST', '/api/git/unstage' + qs({ path: scope }), { paths }),
+  gitDiscard: (scope: string | undefined, paths: string[]) =>
+    request<GitResult>('POST', '/api/git/discard' + qs({ path: scope }), { paths }),
 
   getGraph: (path?: string) =>
     request<GraphData>('GET', '/api/graph' + qs({ path })),
