@@ -140,7 +140,7 @@ interface Segment {
 
 function splitSegments(text: string): Segment[] {
   const segments: Segment[] = []
-  const pattern = /^```mermaid\s*\n([\s\S]*?)^```\s*$/gm
+  const pattern = /^```\s*mermaid\s*\n([\s\S]*?)^```\s*$/gm
   let last = 0
   for (const m of text.matchAll(pattern)) {
     if (m.index! > last) {

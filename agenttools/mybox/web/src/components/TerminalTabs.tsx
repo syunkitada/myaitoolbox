@@ -290,6 +290,12 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
             rows={3}
             placeholder="Tap here, then long-press → Paste"
             autoFocus
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault()
+                handlePasteSubmit()
+              }
+            }}
           />
           <div className="flex gap-2">
             <Button

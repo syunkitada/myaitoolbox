@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../componen
 import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { ChevronDown, Clock, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RefreshCw, Star, Tag, Text, Trash2 } from 'lucide-react'
+import { ChevronDown, Clock, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RefreshCw, Star, Tag, Text, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -218,22 +218,32 @@ function buildTree(list: BrowserEntry[], gitStatus: Record<string, string>): Tre
     if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1
     return a.path.localeCompare(b.path)
   })
+  const dirCache = new Map<string, TreeDir>()
+  const getDir = (dirPath: string): TreeDir => {
+    let dir = dirCache.get(dirPath)
+    if (dir) return dir
+    const name = dirPath.split('/').pop() ?? dirPath
+    dir = { kind: 'dir', name, dirPath, children: [] }
+    dirCache.set(dirPath, dir)
+    const slash = dirPath.lastIndexOf('/')
+    if (slash < 0) root.push(dir)
+    else getDir(dirPath.slice(0, slash)).children.push(dir)
+    return dir
+  }
   for (const e of sorted) {
-    const parts = e.path.split('/')
-    let cur = root
-    let prefix = ''
-    for (let i = 0; i < parts.length - (e.kind === 'dir' ? 0 : 1); i++) {
-      const part = parts[i]
-      prefix = prefix ? `${prefix}/${part}` : part
-      let dir = cur.find((n): n is TreeDir => n.kind === 'dir' && n.name === part)
-      if (!dir) {
-        dir = { kind: 'dir', name: part, dirPath: prefix, children: [] }
-        cur.push(dir)
+    if (e.kind === 'dir') {
+      getDir(e.path).status = e.status
+    } else {
+      const slash = e.path.lastIndexOf('/')
+      const file: TreeFile = {
+        kind: 'file',
+        name: e.name,
+        path: e.path,
+        status: e.status,
+        gitStatus: gitStatus[e.path],
       }
-      cur = dir.children
-    }
-    if (e.kind === 'file') {
-      cur.push({ kind: 'file', name: parts[parts.length - 1], path: e.path, status: e.status, gitStatus: gitStatus[e.path] })
+      if (slash < 0) root.push(file)
+      else getDir(e.path.slice(0, slash)).children.push(file)
     }
   }
   applyDirStatus(root)
@@ -252,11 +262,12 @@ interface ExplorerProps {
   gitStatus?: Record<string, string>
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
-  onChanged?: () => void
+  onChanged?: () => void | Promise<void>
   onError?: (message: string) => void
   showHidden?: boolean
   onToggleHidden?: () => void
   onOpenGit?: (path: string) => void
+  onLoadDir?: (dir: string, force?: boolean) => void | Promise<void>
 }
 
 interface ExplorerSectionProps {
@@ -295,7 +306,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onLoadDir }: ExplorerProps) {
   const { prompt, confirm } = useDialogs()
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
@@ -354,8 +365,10 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
     setCtxMenu(null)
     void api
       .createFile(target)
-      .then(() => {
-        onChanged?.()
+      .then(async () => {
+        await onChanged?.()
+        const parentDir = target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : ''
+        if (parentDir) await onLoadDir?.(parentDir, true)
         onSelect(target)
       })
       .catch(runError)
@@ -369,8 +382,10 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
     setCtxMenu(null)
     void api
       .createDir(target)
-      .then(() => {
-        onChanged?.()
+      .then(async () => {
+        await onChanged?.()
+        const parentDir = target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : ''
+        if (parentDir) await onLoadDir?.(parentDir, true)
         onSelect(target)
       })
       .catch(runError)
@@ -441,8 +456,10 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
     if (!(await confirm(`Delete ${label}?`))) return
     void api
       .deleteFile(path)
-      .then(() => {
-        onChanged?.()
+      .then(async () => {
+        await onChanged?.()
+        const parentDir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+        if (parentDir) await onLoadDir?.(parentDir, true)
         if (selected === path) onSelect('')
       })
       .catch(runError)
@@ -493,6 +510,8 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
   const visibleRecents = useMemo(() => recentFiles.filter((p) => knownPaths.has(p)), [recentFiles, knownPaths])
 
   const toggle = (dirPath: string) => {
+    const open = expanded.has(dirPath)
+    if (!open) onLoadDir?.(dirPath)
     setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(dirPath)) next.delete(dirPath)
@@ -1607,7 +1626,7 @@ export function BrowserPage({
   herdrOverview,
   refreshHerdr,
 }: BrowserPageProps) {
-  const [entries, setEntries] = useState<BrowserEntry[]>([])
+  const [childrenByDir, setChildrenByDir] = useState<Record<string, BrowserEntry[]>>({})
   const [gitStatus, setGitStatus] = useState<Record<string, string>>({})
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1615,6 +1634,15 @@ export function BrowserPage({
   const [refreshKey, setRefreshKey] = useState(0)
   const [openGitDir, setOpenGitDir] = useState<string | null>(null)
   const autoDefaulted = useRef(false)
+  const loadedDirsRef = useRef(new Set<string>())
+  const loadingDirsRef = useRef(new Set<string>())
+  const autoLoadSeq = useRef(0)
+  const gitStatusLoaded = useRef(false)
+
+  const entries = useMemo(() => {
+    if (mode === 'knowledge') return childrenByDir[''] ?? []
+    return Object.values(childrenByDir).flat()
+  }, [mode, childrenByDir])
 
   const isMobile = useIsMobile()
   const [explorerOpen, setExplorerOpen] = useState<boolean>(() => {
@@ -1651,21 +1679,54 @@ export function BrowserPage({
     [isMobile, onSelect],
   )
 
+  const loadDir = useCallback(
+    (dir: string, force = false) => {
+      if (mode !== 'files') return Promise.resolve()
+      if (!force && (loadedDirsRef.current.has(dir) || loadingDirsRef.current.has(dir))) {
+        return Promise.resolve()
+      }
+      if (loadingDirsRef.current.has(dir)) return Promise.resolve()
+      loadingDirsRef.current.add(dir)
+      return api
+        .listFiles({ path: dir, showHidden })
+        .then((list) => {
+          const children = toEntries(mode, list)
+          loadedDirsRef.current.add(dir)
+          setChildrenByDir((prev) => ({ ...prev, [dir]: children }))
+          setError(null)
+        })
+        .catch((e) => {
+          loadedDirsRef.current.delete(dir)
+          setError(e instanceof Error ? e.message : String(e))
+        })
+        .finally(() => {
+          loadingDirsRef.current.delete(dir)
+        })
+    },
+    [mode, showHidden],
+  )
+
   const load = useCallback(() => {
-    const p = mode === 'knowledge' ? api.listKnowledge() : api.listFiles({ showHidden })
-    const gs = mode === 'files' ? api.getFileGitStatus() : Promise.resolve({})
-    void Promise.all([p, gs])
-      .then(([list, gsResult]) => {
-        setEntries(toEntries(mode, list as (FileEntry | Knowledge)[]))
-        setGitStatus(gsResult)
-        setLoaded(true)
-        setError(null)
-      })
-      .catch((e) => {
-        setEntries([])
-        setError(e instanceof Error ? e.message : String(e))
-      })
-  }, [mode, showHidden])
+    if (mode === 'knowledge') {
+      void api
+        .listKnowledge()
+        .then((list) => {
+          setChildrenByDir({ '': toEntries(mode, list) })
+          setLoaded(true)
+          setError(null)
+        })
+        .catch((e) => {
+          setChildrenByDir({})
+          setLoaded(true)
+          setError(e instanceof Error ? e.message : String(e))
+        })
+      return
+    }
+    loadedDirsRef.current.clear()
+    loadingDirsRef.current.clear()
+    setChildrenByDir({})
+    void loadDir('').then(() => setLoaded(true))
+  }, [mode, loadDir])
 
   const refreshGitStatus = useCallback(() => {
     if (mode !== 'files') return
@@ -1675,11 +1736,30 @@ export function BrowserPage({
       .catch(() => undefined)
   }, [mode])
 
+  const handleChanged = useCallback(() => {
+    if (mode === 'knowledge') {
+      load()
+      return
+    }
+    const promises: Promise<void>[] = [loadDir('', true)]
+    if (selected) {
+      const dir = selected.includes('/') ? selected.slice(0, selected.lastIndexOf('/')) : ''
+      if (dir) promises.push(loadDir(dir, true))
+    }
+    return Promise.all(promises).then(() => undefined)
+  }, [mode, load, loadDir, selected])
+
   const handleRefresh = useCallback(() => {
-    load()
+    if (mode === 'files') {
+      const dirs = [...loadedDirsRef.current]
+      loadingDirsRef.current.clear()
+      for (const d of dirs) void loadDir(d, true)
+    } else {
+      load()
+    }
     refreshGitStatus()
     setRefreshKey((k) => k + 1)
-  }, [load, refreshGitStatus])
+  }, [mode, load, loadDir, refreshGitStatus])
 
   useEffect(() => {
     load()
@@ -1690,16 +1770,38 @@ export function BrowserPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected])
 
-  const reloadedFor = useRef<string | null>(null)
+  // Fetch the ancestor directories of the selected entry one by one so a deep
+  // file can be revealed without ever walking the whole tree. When a directory
+  // itself is selected, also load its children (used by the directory listing
+  // in the pane).
+  useEffect(() => {
+    if (mode !== 'files' || !selected) return
+    const parts = selected.split('/')
+    const targets: string[] = []
+    let prefix = ''
+    for (let i = 0; i < parts.length - 1; i++) {
+      prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+      targets.push(prefix)
+    }
+    const sel = entries.find((e) => e.path === selected)
+    if (sel?.kind === 'dir') targets.push(selected)
+    const seq = ++autoLoadSeq.current
+    ;(async () => {
+      for (const t of targets) {
+        if (autoLoadSeq.current !== seq) return
+        if (!loadedDirsRef.current.has(t)) await loadDir(t)
+      }
+    })()
+  }, [mode, selected, loadDir, entries])
 
   useEffect(() => {
-    if (mode === 'files' && selected && !entries.some((e) => e.path === selected)) {
-      if (reloadedFor.current !== selected) {
-        reloadedFor.current = selected
-        load()
-      }
-    }
-  }, [selected, entries, mode, load])
+    if (mode !== 'files' || gitStatusLoaded.current) return
+    gitStatusLoaded.current = true
+    void api
+      .getFileGitStatus()
+      .then(setGitStatus)
+      .catch(() => undefined)
+  }, [mode])
 
   useEffect(() => {
     if (loaded && !selected && !autoDefaulted.current && defaultSelect) {
@@ -1756,7 +1858,10 @@ export function BrowserPage({
     void api
       .moveFile(filePath, newPath)
       .then(() => {
-        load()
+        loadDir('', true)
+        if (dirPath) loadDir(dirPath, true)
+        const srcDir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : ''
+        if (srcDir && srcDir !== dirPath) loadDir(srcDir, true)
         onSelect(newPath)
       })
       .catch((e) => setMoveError(e instanceof Error ? e.message : String(e)))
@@ -1767,11 +1872,17 @@ export function BrowserPage({
       {error && (
         <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
           {error}
+          <button type="button" onClick={() => setError(null)} className="text-red-500 hover:text-red-800" aria-label="Close error">
+            <X className="size-4" />
+          </button>
         </div>
       )}
       {moveError && (
         <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
           {moveError}
+          <button type="button" onClick={() => setMoveError(null)} className="text-red-500 hover:text-red-800" aria-label="Close error">
+            <X className="size-4" />
+          </button>
         </div>
       )}
       <div className={cn('knowledge-layout flex h-full min-h-0 flex-col items-stretch overflow-hidden max-md:flex-col', selected && 'has-selection')}>
@@ -1798,11 +1909,12 @@ export function BrowserPage({
                     gitStatus={gitStatus}
                     onClose={onClose}
                     onMoveFile={mode === 'files' ? handleMoveFile : undefined}
-                    onChanged={load}
+                    onChanged={handleChanged}
                     onError={(msg) => setMoveError(msg)}
                     showHidden={mode === 'files' ? showHidden : undefined}
                     onToggleHidden={mode === 'files' ? () => setShowHidden((s) => !s) : undefined}
                     onOpenGit={setOpenGitDir}
+                    onLoadDir={mode === 'files' ? loadDir : undefined}
                   />
                 </div>
               </div>
@@ -1825,10 +1937,11 @@ export function BrowserPage({
                   gitStatus={gitStatus}
                   onClose={onClose}
                   onMoveFile={mode === 'files' ? handleMoveFile : undefined}
-                  onChanged={load}
+                  onChanged={handleChanged}
                   onError={(msg) => setMoveError(msg)}
                   showHidden={mode === 'files' ? showHidden : undefined}
                   onToggleHidden={mode === 'files' ? () => setShowHidden((s) => !s) : undefined}
+                  onLoadDir={mode === 'files' ? loadDir : undefined}
                 />
               </SheetContent>
             </Sheet>
@@ -1859,7 +1972,7 @@ export function BrowserPage({
                   list={entries}
                   favorites={favorites}
                   refreshMeta={refreshMeta}
-                  onChanged={load}
+                  onChanged={handleChanged}
                   onGitStatusChange={refreshGitStatus}
                   onOpen={onSelect}
                   onDeleted={onBack}

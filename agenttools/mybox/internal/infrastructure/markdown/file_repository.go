@@ -74,6 +74,66 @@ func (r *FileRepository) Tree(ctx context.Context, showHidden bool) ([]domain.Fi
 	return entries, nil
 }
 
+// Children lists only the direct children of parent ("" = project root),
+// avoiding a full recursive walk of the tree.
+func (r *FileRepository) Children(ctx context.Context, parent string, showHidden bool) ([]domain.FileEntry, error) {
+	dir := r.root
+	if parent != "" {
+		if err := validateFilePath(parent); err != nil {
+			return nil, err
+		}
+		dir = filepath.Join(r.root, filepath.FromSlash(parent))
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%w: %s is not a directory", domain.ErrInvalidPath, parent)
+	}
+	children, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]domain.FileEntry, 0, len(children))
+	for _, d := range children {
+		if !showHidden && strings.HasPrefix(d.Name(), ".") {
+			continue
+		}
+		rel := d.Name()
+		if parent != "" {
+			rel = parent + "/" + d.Name()
+		}
+		kind := domain.FileKindFile
+		if d.IsDir() {
+			kind = domain.FileKindDir
+		}
+		status := ""
+		switch {
+		case kind == domain.FileKindFile && d.Name() == "task.md":
+			status = markdownStatus(filepath.Join(dir, d.Name()))
+		case kind == domain.FileKindDir && parent == "tasks":
+			status = markdownStatus(filepath.Join(dir, d.Name(), "task.md"))
+		}
+		entries = append(entries, domain.FileEntry{
+			Path:   filepath.ToSlash(rel),
+			Name:   d.Name(),
+			Kind:   kind,
+			Status: status,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Kind != entries[j].Kind {
+			return entries[i].Kind == domain.FileKindDir
+		}
+		return entries[i].Path < entries[j].Path
+	})
+	return entries, nil
+}
+
 func markdownStatus(path string) string {
 	if !strings.HasSuffix(strings.ToLower(path), ".md") &&
 		!strings.HasSuffix(strings.ToLower(path), ".markdown") {

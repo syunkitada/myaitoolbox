@@ -29,6 +29,15 @@ func (u *FileUseCase) Tree(ctx context.Context, showHidden bool) ([]domain.FileE
 	return entries, nil
 }
 
+func (u *FileUseCase) Children(ctx context.Context, parent string, showHidden bool) ([]domain.FileEntry, error) {
+	if parent != "" {
+		if err := validatePath(parent); err != nil {
+			return nil, err
+		}
+	}
+	return u.Files.Children(ctx, parent, showHidden)
+}
+
 func (u *FileUseCase) Content(ctx context.Context, path string) (string, error) {
 	if err := validatePath(path); err != nil {
 		return "", err

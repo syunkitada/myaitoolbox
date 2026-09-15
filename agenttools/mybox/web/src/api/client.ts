@@ -395,8 +395,13 @@ export const api = {
   moveKnowledge: (oldPath: string, newPath: string) =>
     request<void>('POST', '/api/knowledge/move', { old_path: oldPath, new_path: newPath }),
 
-  listFiles: (opts?: { showHidden?: boolean }) =>
-    request<FileEntry[]>('GET', '/api/files' + qs({ show_hidden: opts?.showHidden })),
+  listFiles: (opts?: { path?: string; showHidden?: boolean }) => {
+    const q: string[] = []
+    if (opts?.path !== undefined && opts.path !== null) q.push(`path=${encodeURIComponent(opts.path)}`)
+    if (opts?.showHidden !== undefined) q.push(`show_hidden=${opts.showHidden}`)
+    const query = q.length ? '?' + q.join('&') : ''
+    return request<FileEntry[]>('GET', '/api/files' + query)
+  },
   getFileGitStatus: () => request<Record<string, string>>('GET', '/api/files/git-status'),
   createFile: (path: string) => request<void>('POST', '/api/files', { path }),
   createDir: (path: string) => request<void>('POST', '/api/files/dir', { path }),

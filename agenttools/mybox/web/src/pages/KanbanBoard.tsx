@@ -275,7 +275,18 @@ export function KanbanBoard() {
   const handleArchive = useCallback(
     (task: Task) => {
       void (async () => {
-        if (!(await confirm(`「${task.title}」をアーカイブしますか？`))) return
+        let message = `「${task.title}」をアーカイブしますか？`
+        try {
+          const tmpFiles = await api.listFiles({ path: `tasks/${encodePath(task.id)}/tmp` })
+          if (tmpFiles.length > 0) {
+            const names = tmpFiles.slice(0, 5).map((f) => f.name).join(', ')
+            const more = tmpFiles.length > 5 ? ` ほか${tmpFiles.length - 5}件` : ''
+            message = `「${task.title}」をアーカイブしますか？\nタスク内の tmp ディレクトリ（${tmpFiles.length}件: ${names}${more}）も削除されます。元に戻せません。`
+          }
+        } catch {
+          // tmp の確認に失敗してもアーカイブ確認自体は続行する
+        }
+        if (!(await confirm(message))) return
         void api
           .archiveTask(task.id)
           .then(() => load())

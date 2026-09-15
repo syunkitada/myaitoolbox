@@ -46,6 +46,61 @@ func TestFileRepositoryTreeStatusInvalidFrontMatter(t *testing.T) {
 	assert.Equal(t, "", entries[0].Status)
 }
 
+func TestFileRepositoryChildren(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "sub"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".hidden"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "tasks", "alpha"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "tasks", "beta"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("# Project\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes.txt"), []byte("text\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "task.md"), []byte("---\nstatus: doing\n---\n\n# Task\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "sub", "deep.md"), []byte("# Deep\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".hidden", "secret.md"), []byte("# Secret\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "tasks", "alpha", "task.md"), []byte("---\nstatus: done\n---\n\n# Alpha\n"), 0o644))
+
+	repo := NewFileRepository(root)
+
+	rootEntries, err := repo.Children(context.Background(), "", true)
+	require.NoError(t, err)
+	names := []string{}
+	for _, e := range rootEntries {
+		names = append(names, e.Name)
+	}
+	assert.ElementsMatch(t, []string{"docs", ".hidden", "tasks", "README.md", "notes.txt"}, names)
+
+	docs, err := repo.Children(context.Background(), "docs", true)
+	require.NoError(t, err)
+	require.Len(t, docs, 2)
+	byName := map[string]domain.FileEntry{}
+	for _, e := range docs {
+		byName[e.Name] = e
+	}
+	assert.Equal(t, domain.FileKindDir, byName["sub"].Kind)
+	assert.Equal(t, domain.FileKindFile, byName["task.md"].Kind)
+	assert.Equal(t, "doing", byName["task.md"].Status)
+
+	tasks, err := repo.Children(context.Background(), "tasks", true)
+	require.NoError(t, err)
+	byName = map[string]domain.FileEntry{}
+	for _, e := range tasks {
+		byName[e.Name] = e
+	}
+	assert.Equal(t, domain.FileKindDir, byName["alpha"].Kind)
+	assert.Equal(t, "done", byName["alpha"].Status)
+	assert.Equal(t, "", byName["beta"].Status)
+
+	hidden, err := repo.Children(context.Background(), "", false)
+	require.NoError(t, err)
+	for _, e := range hidden {
+		assert.NotContains(t, e.Name, ".hidden")
+	}
+
+	escaped, err := repo.Children(context.Background(), "../escape", true)
+	assert.ErrorIs(t, err, domain.ErrInvalidPath)
+	assert.Nil(t, escaped)
+}
+
 func TestFileRepositoryDeleteDir(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))

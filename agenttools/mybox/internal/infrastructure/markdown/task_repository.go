@@ -333,6 +333,11 @@ func (r *TaskRepository) Archive(ctx context.Context, id string) error {
 	if task.Type == domain.TaskTypeAdhoc {
 		return fmt.Errorf("%w: adhoc tasks cannot be archived; use a regular task", domain.ErrInvalidArgument)
 	}
+	// ファイルエージェントがタスクディレクトリ内に作る一時作業ディレクトリ
+	// （tmp/）はアーカイブ前に削除する。
+	if err := removeTaskTmpDir(src); err != nil {
+		return err
+	}
 	dst := filepath.Join(r.root, "archives", "tasks", id)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
@@ -347,6 +352,23 @@ func (r *TaskRepository) Archive(ctx context.Context, id string) error {
 		return runGit(ctx, r.root, "add", "-A")
 	}
 	return nil
+}
+
+// removeTaskTmpDir deletes the temporary working directory (tmp/) that file
+// agents create inside a task directory. An absent tmp entry is skipped.
+func removeTaskTmpDir(taskDir string) error {
+	tmpDir := filepath.Join(taskDir, "tmp")
+	info, err := os.Stat(tmpDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	return os.RemoveAll(tmpDir)
 }
 
 func (r *TaskRepository) Delete(ctx context.Context, id string) error {

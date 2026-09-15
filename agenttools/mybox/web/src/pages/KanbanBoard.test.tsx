@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { KanbanBoard } from './KanbanBoard'
 import { DialogsProvider } from '../components/AppDialogs'
@@ -9,6 +9,8 @@ vi.mock('../api/client', () => ({
   api: {
     listTasks: vi.fn(),
     updateTask: vi.fn(),
+    listFiles: vi.fn(),
+    archiveTask: vi.fn(),
   },
 }))
 
@@ -64,5 +66,63 @@ describe('KanbanBoard', () => {
     const doingCol = screen.getByTestId('column-doing')
     expect(within(doingCol).getByText('Review PR')).toBeInTheDocument()
     expect(within(doingCol).getByText('adhoc')).toBeInTheDocument()
+  })
+
+  it('archives a regular task after a simple confirmation when tmp has no files', async () => {
+    window.history.replaceState({}, '', '/projects/test')
+    vi.mocked(api.listFiles).mockResolvedValue([])
+    const archive = vi.mocked(api.archiveTask).mockResolvedValue(undefined)
+    renderBoard()
+    await screen.findByText('Todo item')
+
+    const card = screen.getByText('Todo item').closest('.board-card') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: '' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Archive' }))
+
+    const dialog = await screen.findByTestId('app-dialog')
+    expect(within(dialog).queryByText(/tmp ディレクトリ/)).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByTestId('app-dialog-ok'))
+
+    await waitFor(() => expect(archive).toHaveBeenCalledWith('t1'))
+  })
+
+  it('warns about tmp deletion before archiving when a task has a tmp dir', async () => {
+    window.history.replaceState({}, '', '/projects/test')
+    vi.mocked(api.listFiles).mockResolvedValue([
+      { path: 'tasks/t1/tmp/agent.log', name: 'agent.log', kind: 'file' },
+      { path: 'tasks/t1/tmp/out', name: 'out', kind: 'file' },
+    ])
+    const archive = vi.mocked(api.archiveTask).mockResolvedValue(undefined)
+    renderBoard()
+    await screen.findByText('Todo item')
+
+    const card = screen.getByText('Todo item').closest('.board-card') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: '' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Archive' }))
+
+    const dialog = await screen.findByTestId('app-dialog')
+    expect(within(dialog).getByText(/tmp ディレクトリ（2件: agent\.log, out）/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByTestId('app-dialog-ok'))
+
+    await waitFor(() => expect(archive).toHaveBeenCalledWith('t1'))
+  })
+
+  it('does not archive when tmp deletion is declined', async () => {
+    window.history.replaceState({}, '', '/projects/test')
+    vi.mocked(api.listFiles).mockResolvedValue([
+      { path: 'tasks/t1/tmp/agent.log', name: 'agent.log', kind: 'file' },
+    ])
+    const archive = vi.mocked(api.archiveTask).mockResolvedValue(undefined)
+    renderBoard()
+    await screen.findByText('Todo item')
+
+    const card = screen.getByText('Todo item').closest('.board-card') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: '' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Archive' }))
+
+    const dialog = await screen.findByTestId('app-dialog')
+    fireEvent.click(within(dialog).getByTestId('app-dialog-cancel'))
+
+    expect(archive).not.toHaveBeenCalled()
   })
 })

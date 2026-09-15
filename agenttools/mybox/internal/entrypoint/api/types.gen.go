@@ -462,6 +462,9 @@ type GetFileContentParams struct {
 type ListFilesParams struct {
 	// ShowHidden Whether to include hidden files (dotfiles) in the result
 	ShowHidden *bool `form:"show_hidden,omitempty" json:"show_hidden,omitempty"`
+	// Path Directory path relative to the project root. When omitted the
+	// complete tree is returned, otherwise only the direct children.
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
 // GetGraphParams defines parameters for GetGraph.

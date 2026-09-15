@@ -59,6 +59,41 @@ func TestTaskRepositoryLifecycle(t *testing.T) {
 	assert.True(t, found.Archived)
 }
 
+func TestTaskRepositoryArchiveRemovesTmpDir(t *testing.T) {
+	root := t.TempDir()
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+
+	require.NoError(t, repo.Create(ctx, "20260802_cleanup", "---\ntitle: cleanup\n---\n\n"))
+
+	taskDir := filepath.Join(root, "tasks", "20260802_cleanup")
+	tmpDir := filepath.Join(taskDir, "tmp")
+	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "agent.log"), []byte("scratch"), 0o644))
+
+	require.NoError(t, repo.Archive(ctx, "20260802_cleanup"))
+
+	_, err := os.Stat(filepath.Join(root, "tasks", "20260802_cleanup", "tmp"))
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(filepath.Join(root, "archives", "tasks", "20260802_cleanup", "tmp"))
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(filepath.Join(root, "archives", "tasks", "20260802_cleanup", "task.md"))
+	require.NoError(t, err)
+}
+
+func TestTaskRepositoryArchiveWithoutTmpDir(t *testing.T) {
+	root := t.TempDir()
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+
+	require.NoError(t, repo.Create(ctx, "20260802_no-tmp", "---\ntitle: no tmp\n---\n\n"))
+
+	require.NoError(t, repo.Archive(ctx, "20260802_no-tmp"))
+
+	_, err := os.Stat(filepath.Join(root, "archives", "tasks", "20260802_no-tmp", "task.md"))
+	require.NoError(t, err)
+}
+
 func TestTaskRepositoryFindMissing(t *testing.T) {
 	repo := NewTaskRepository(t.TempDir())
 	_, err := repo.Find(context.Background(), "missing")

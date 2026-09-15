@@ -44,7 +44,8 @@ export function Mermaid({ code }: MermaidProps) {
         remember(code, svg)
         if (!cancelled && hostRef.current) hostRef.current.innerHTML = svg
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('[Mermaid] render failed:', err)
         if (!cancelled) setError(true)
       })
     return () => {

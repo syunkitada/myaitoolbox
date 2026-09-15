@@ -820,7 +820,12 @@ func (s *Server) ListFiles(w http.ResponseWriter, r *http.Request, params api.Li
 	if params.ShowHidden != nil {
 		showHidden = *params.ShowHidden
 	}
-	entries, err := app.Files.Tree(r.Context(), showHidden)
+	var entries []domain.FileEntry
+	if params.Path != nil {
+		entries, err = app.Files.Children(r.Context(), *params.Path, showHidden)
+	} else {
+		entries, err = app.Files.Tree(r.Context(), showHidden)
+	}
 	if err != nil {
 		writeError(w, err)
 		return
