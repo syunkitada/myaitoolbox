@@ -242,7 +242,9 @@ export function TerminalPanel({ className }: { className?: string }) {
     <div
       className={cn(
         'flex flex-col',
-        fullscreen && 'fixed inset-0 z-50 h-svh bg-background',
+        fullscreen
+          ? 'fixed inset-0 z-50 h-svh bg-background'
+          : 'relative z-40 bg-background',
         className,
       )}
       style={isMobile && keyboard && !maximized ? { top: keyboard.top, left: 0, width: '100%', height: keyboard.height } : undefined}

@@ -33,13 +33,21 @@ export interface SyntaxHighlighterProps {
   text: string
   language?: string
   className?: string
+  // Terminal column width the pre is forced to render at so long lines wrap at
+  // (and only at) the same columns as the herdr pane they came from.
+  cols?: number
 }
 
-export function SyntaxHighlighter({ text, language, className }: SyntaxHighlighterProps) {
+export function SyntaxHighlighter({ text, language, className, cols }: SyntaxHighlighterProps) {
   const html = useMemo(() => highlightText(text, language), [text, language])
+  const fixedWidth =
+    cols != null && cols > 0 ? { width: `${cols}ch`, minWidth: `${cols}ch` } : undefined
 
   return (
-    <pre className={`overflow-x-auto font-mono text-[13px] leading-6 whitespace-pre-wrap break-words ${className ?? ''}`}>
+    <pre
+      className={`overflow-x-auto font-mono text-[13px] leading-6 whitespace-pre-wrap break-words ${className ?? ''}`}
+      style={fixedWidth}
+    >
       <code dangerouslySetInnerHTML={{ __html: html }} />
     </pre>
   )

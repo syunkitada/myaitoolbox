@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   edgeNeighborsForSplit,
   layoutBoxForTab,
+  paneColumnWidth,
   resizeRecipeForPane,
   splitTreeForLayout,
 } from './herdr-layout'
@@ -189,6 +190,25 @@ describe('edgeNeighborsForSplit', () => {
 
   it('returns undefined for an unknown split', () => {
     expect(edgeNeighborsForSplit(nestedLayout, 'split_nope')).toBeUndefined()
+  })
+})
+
+describe('paneColumnWidth', () => {
+  it('returns the column width of a pane from a layout', () => {
+    expect(paneColumnWidth([splitLayout, nestedLayout], 'w9:p1')).toBe(118)
+    expect(paneColumnWidth([nestedLayout], 'w9:pC')).toBe(138)
+  })
+
+  it('returns undefined for a missing or degenerate width', () => {
+    expect(paneColumnWidth(undefined, 'w9:p1')).toBeUndefined()
+    expect(paneColumnWidth([], 'w9:p1')).toBeUndefined()
+    expect(paneColumnWidth([nestedLayout], 'w9:missing')).toBeUndefined()
+    expect(
+      paneColumnWidth(
+        [{ ...nestedLayout, panes: [{ pane_id: 'w9:pC', focused: false, rect: { height: 23, width: 0, x: 129, y: 25 } }] }],
+        'w9:pC',
+      ),
+    ).toBeUndefined()
   })
 })
 

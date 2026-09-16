@@ -268,6 +268,7 @@ interface ExplorerProps {
   onToggleHidden?: () => void
   onOpenGit?: (path: string) => void
   onLoadDir?: (dir: string, force?: boolean) => void | Promise<void>
+  onClearSubtree?: (path: string) => void | Promise<void>
 }
 
 interface ExplorerSectionProps {
@@ -306,7 +307,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onLoadDir }: ExplorerProps) {
+function Explorer({ entries, selected, onSelect, title, mode, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onLoadDir, onClearSubtree }: ExplorerProps) {
   const { prompt, confirm } = useDialogs()
   const [q, setQ] = useState('')
   const [tag, setTag] = useState('')
@@ -440,8 +441,12 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
     setCtxMenu(null)
     void api
       .moveFile(oldPath, newPath.trim())
-      .then(() => {
-        onChanged?.()
+      .then(async () => {
+        await onChanged?.()
+        if (oldPath !== newPath.trim()) await onClearSubtree?.(oldPath)
+        const oldDir = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : ''
+        const newDir = newPath.trim().includes('/') ? newPath.trim().slice(0, newPath.trim().lastIndexOf('/')) : ''
+        for (const dir of new Set([oldDir, newDir])) if (dir) await onLoadDir?.(dir, true)
         onSelect(newPath.trim())
       })
       .catch(runError)
@@ -458,6 +463,7 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
       .deleteFile(path)
       .then(async () => {
         await onChanged?.()
+        if (isDir) await onClearSubtree?.(path)
         const parentDir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
         if (parentDir) await onLoadDir?.(parentDir, true)
         if (selected === path) onSelect('')
@@ -1706,6 +1712,24 @@ export function BrowserPage({
     [mode, showHidden],
   )
 
+  const clearSubtree = useCallback(
+    (path: string) => {
+      loadedDirsRef.current.delete(path)
+      setChildrenByDir((prev) => {
+        const next: Record<string, BrowserEntry[]> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          if (k === path || k.startsWith(`${path}/`)) {
+            loadedDirsRef.current.delete(k)
+            continue
+          }
+          next[k] = v
+        }
+        return next
+      })
+    },
+    [],
+  )
+
   const load = useCallback(() => {
     if (mode === 'knowledge') {
       void api
@@ -1858,6 +1882,7 @@ export function BrowserPage({
     void api
       .moveFile(filePath, newPath)
       .then(() => {
+        clearSubtree(filePath)
         loadDir('', true)
         if (dirPath) loadDir(dirPath, true)
         const srcDir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : ''
@@ -1915,6 +1940,7 @@ export function BrowserPage({
                     onToggleHidden={mode === 'files' ? () => setShowHidden((s) => !s) : undefined}
                     onOpenGit={setOpenGitDir}
                     onLoadDir={mode === 'files' ? loadDir : undefined}
+                    onClearSubtree={mode === 'files' ? clearSubtree : undefined}
                   />
                 </div>
               </div>
@@ -1942,6 +1968,7 @@ export function BrowserPage({
                   showHidden={mode === 'files' ? showHidden : undefined}
                   onToggleHidden={mode === 'files' ? () => setShowHidden((s) => !s) : undefined}
                   onLoadDir={mode === 'files' ? loadDir : undefined}
+                  onClearSubtree={mode === 'files' ? clearSubtree : undefined}
                 />
               </SheetContent>
             </Sheet>

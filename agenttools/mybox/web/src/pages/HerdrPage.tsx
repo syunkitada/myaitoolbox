@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { FileText, RefreshCw, Send } from 'lucide-react'
+import { ChevronDown, FileText, RefreshCw, Send } from 'lucide-react'
 import { dirName, encodePath, getProject, projectUrl } from '../utils/routes'
 import type { HerdrAgent, HerdrLayout, HerdrOverview, HerdrPane, HerdrTab, HerdrWorkspace } from '../api/client'
 import { api } from '../api/client'
 import { StatusBadge, StatusDot } from '../components/herdr-status'
 import { Button } from '../components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible'
 import { useDialogs } from '../components/AppDialogs'
 import { cn } from '@/lib/utils'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
@@ -30,6 +31,9 @@ interface AgentDetailProps {
   agent: HerdrAgent
   autoReload: boolean
   onRename?: () => void
+  // Terminal column width of the agent's pane, used to render the output at
+  // the same wrap columns as the real herdr pane.
+  cols?: number
 }
 
 // Quick keys sent to the agent terminal via `herdr agent send-keys`.
@@ -43,7 +47,7 @@ const AGENT_QUICK_KEYS: { label: string; key: string }[] = [
   { label: '↓', key: 'Down' },
 ]
 
-function AgentDetail({ agent, autoReload, onRename }: AgentDetailProps) {
+function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
   const [output, setOutput] = useState<string | null>(null)
   const [outputError, setOutputError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -149,7 +153,7 @@ function AgentDetail({ agent, autoReload, onRename }: AgentDetailProps) {
         onScroll={handlePreScroll}
         className="max-h-64 overflow-auto rounded border bg-background p-2 text-xs"
       >
-        <SyntaxHighlighter text={output ?? 'loading...'} />
+        <SyntaxHighlighter text={output ?? 'loading...'} cols={cols} />
       </div>
       <div
         className="herdr-agent-keys mt-2 flex flex-wrap items-center gap-1"
@@ -216,9 +220,12 @@ interface PaneRowProps {
   // fit renders the row to fill an absolutely-positioned layout box (the
   // terminal output stretches instead of capping at max-h-64).
   fit: boolean
+  // Terminal column width of the pane, used to render the output at the same
+  // wrap columns (and horizontal scroll width) as the real herdr pane.
+  cols?: number
 }
 
-function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit }: PaneRowProps) {
+function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, cols }: PaneRowProps) {
   const isMobile = useIsMobile()
   const { prompt, confirm } = useDialogs()
   const [open, setOpen] = useState(true)
@@ -435,7 +442,7 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit }
               fit ? 'min-h-0 flex-1' : 'max-h-64',
             )}
           >
-            <SyntaxHighlighter text={output ?? 'loading terminal output...'} />
+            <SyntaxHighlighter text={output ?? 'loading terminal output...'} cols={cols} />
           </div>
         </div>
       ) : (
@@ -672,6 +679,16 @@ function WorkspaceSection({
     placed != null &&
     (placed.zoomed || activePanes.every((p) => placed.panes.some((b) => b.paneId === p.pane_id)))
 
+  // Terminal column width per pane so output wraps at (and scrolls to) the
+  // same width as the real herdr pane.
+  const paneCols = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of activeLayout?.panes ?? []) {
+      if (p.rect.width > 0) map.set(p.pane_id, p.rect.width)
+    }
+    return map
+  }, [activeLayout])
+
   const startDrag = (e: React.PointerEvent, divider: Divider) => {
     if (e.button !== 0 || !placed) return
     e.preventDefault()
@@ -778,8 +795,16 @@ function WorkspaceSection({
             ) : useLayout && placed ? (
               <div
                 ref={layoutRef}
-                className={cn('herdr-layout relative w-full', drag && 'select-none')}
-                style={{ aspectRatio: String(placed.aspectRatio) }}
+                className={cn('herdr-layout relative font-mono text-[13px]', drag && 'select-none')}
+                style={{
+                  // Match the layout's horizontal width to the real herdr
+                  // terminal (area.width columns × the monospace cell width)
+                  // without ever growing past the visible container: when the
+                  // real layout is wider, overflow is handled by horizontal
+                  // scrolling inside each panel's terminal display instead.
+                  width: `min(100%, ${placed.area.width}ch)`,
+                  aspectRatio: String(placed.aspectRatio),
+                }}
                 data-layout={placed.zoomed ? 'zoomed' : 'split'}
                 data-testid={`herdr-layout-${ws.workspace_id}`}
               >
@@ -798,6 +823,7 @@ function WorkspaceSection({
                         onFocus={() => onSelectPane(p.pane_id)}
                         autoReload={autoReload}
                         fit
+                        cols={paneCols.get(p.pane_id)}
                         onChanged={onChanged}
                         onError={onError}
                       />
@@ -854,6 +880,7 @@ function WorkspaceSection({
                     onFocus={() => onSelectPane(p.pane_id)}
                     autoReload={autoReload}
                     fit={false}
+                    cols={paneCols.get(p.pane_id)}
                     onChanged={onChanged}
                     onError={onError}
                   />
@@ -968,6 +995,18 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
     return map
   }, [files, agents])
 
+  // Map each agent's pane to its terminal column width so terminal output can
+  // wrap at the same columns as the real herdr pane.
+  const agentCols = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const l of layouts) {
+      for (const p of l.panes) {
+        if (p.rect.width > 0) map.set(p.pane_id, p.rect.width)
+      }
+    }
+    return map
+  }, [layouts])
+
   const navigate = useNavigate()
 
   const onError = useCallback((message: string) => {
@@ -1061,49 +1100,64 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
       )}
 
       <section className="herdr-workspaces mb-6">
-        <h2 className="mb-2 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
-          Workspaces · Tabs · Panes
-        </h2>
-        {workspaces.filter((w) => w.label === project).length === 0 ? (
-          <div className="rounded-md border border-dashed p-4 text-center" data-testid="herdr-no-workspace">
-            <p className="text-xs text-muted-foreground">
-              No herdr workspace found for project "{project}".
-            </p>
-            {overview?.available && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-2 cursor-pointer"
-                onClick={createFirstTab}
-                data-testid="herdr-create-first-tab"
-              >
-                + New Tab
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {workspaces
-              .filter((w) => w.label === project)
-              .map((w) => (
-                <WorkspaceSection
-                  key={w.workspace_id}
-                  ws={w}
-                  tabs={tabs.filter((t) => t.workspace_id === w.workspace_id)}
-                  panes={panes.filter((p) => p.workspace_id === w.workspace_id)}
-                  layouts={layouts}
-                  current={true}
-                  urlTabId={urlTabId}
-                  urlPaneId={urlPaneId}
-                  onSelectTab={selectTab}
-                  onSelectPane={selectPane}
-                  autoReload={autoReload}
-                  onChanged={refreshAll}
-                  onError={onError}
-                />
-              ))}
-          </div>
-        )}
+        <Collapsible defaultOpen={false}>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="group flex w-full cursor-pointer items-center gap-1.5 text-left"
+              data-testid="herdr-workspaces-toggle"
+            >
+              <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+              <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
+                Tabs · Panes
+              </h2>
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-2">
+              {workspaces.filter((w) => w.label === project).length === 0 ? (
+                <div className="rounded-md border border-dashed p-4 text-center" data-testid="herdr-no-workspace">
+                  <p className="text-xs text-muted-foreground">
+                    No herdr workspace found for project "{project}".
+                  </p>
+                  {overview?.available && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 cursor-pointer"
+                      onClick={createFirstTab}
+                      data-testid="herdr-create-first-tab"
+                    >
+                      + New Tab
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {workspaces
+                    .filter((w) => w.label === project)
+                    .map((w) => (
+                      <WorkspaceSection
+                        key={w.workspace_id}
+                        ws={w}
+                        tabs={tabs.filter((t) => t.workspace_id === w.workspace_id)}
+                        panes={panes.filter((p) => p.workspace_id === w.workspace_id)}
+                        layouts={layouts}
+                        current={true}
+                        urlTabId={urlTabId}
+                        urlPaneId={urlPaneId}
+                        onSelectTab={selectTab}
+                        onSelectPane={selectPane}
+                        autoReload={autoReload}
+                        onChanged={refreshAll}
+                        onError={onError}
+                      />
+                    ))}
+                </div>
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </section>
 
       <section className="herdr-agents">
@@ -1189,7 +1243,12 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
                       </Button>
                     </div>
                     {openPane === a.pane_id && (
-                      <AgentDetail agent={a} autoReload={autoReload} onRename={() => renameAgent(a)} />
+                      <AgentDetail
+                        agent={a}
+                        autoReload={autoReload}
+                        onRename={() => renameAgent(a)}
+                        cols={agentCols.get(a.pane_id)}
+                      />
                     )}
                   </div>
                 )

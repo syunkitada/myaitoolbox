@@ -6,6 +6,7 @@ import { fileAgentName } from '../utils/herdr-file-agent'
 import { Bot, ChevronRight, Loader2, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SyntaxHighlighter } from './SyntaxHighlighter'
+import { paneColumnWidth } from '../utils/herdr-layout'
 
 const FILE_AGENT_KEYS: { label: string; key: string }[] = [
   { label: 'Enter', key: 'enter' },
@@ -44,6 +45,9 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
   const preRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HerdrAgent | undefined>(undefined)
   const prevPaneIdRef = useRef<string | null>(null)
+  // Terminal column width of the agent's pane, so the output wraps at the same
+  // columns as the real herdr pane instead of the web pane's width.
+  const [cols, setCols] = useState<number | undefined>(undefined)
 
   const agent = (overview?.agents ?? []).find((a) => a.name === name)
   agentRef.current = agent
@@ -91,6 +95,26 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
     }, 1500)
     return () => clearInterval(id)
   }, [agent?.pane_id, open, overview?.available, loadOutput])
+
+  useEffect(() => {
+    const paneId = agent?.pane_id ?? null
+    if (!paneId || !overview?.available) {
+      setCols(undefined)
+      return
+    }
+    let cancelled = false
+    void api
+      .getHerdrLayouts()
+      .then((res) => {
+        if (!cancelled) setCols(paneColumnWidth(res.layouts, paneId))
+      })
+      .catch(() => {
+        if (!cancelled) setCols(undefined)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [agent?.pane_id, open, overview?.available])
 
   useEffect(() => {
     window.localStorage.setItem(KIND_STORAGE_KEY, kind)
@@ -245,7 +269,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
             ref={preRef}
             className="mx-1.5 max-h-80 overflow-auto rounded border bg-background p-1.5 text-[11px]"
           >
-            <SyntaxHighlighter text={output ?? 'loading…'} />
+            <SyntaxHighlighter text={output ?? 'loading…'} cols={cols} />
           </div>
           <div className="flex flex-wrap items-center gap-1 px-1.5 pt-1.5">
             {FILE_AGENT_KEYS.map((k) => (

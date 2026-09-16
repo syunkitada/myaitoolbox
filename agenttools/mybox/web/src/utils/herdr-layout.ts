@@ -374,6 +374,20 @@ export function resizeRecipeForPane(
   return recipe
 }
 
+// The terminal column width of a pane from a set of tab layouts, or undefined
+// when the pane is not present (callers keep their normal CSS wrapping then).
+export function paneColumnWidth(
+  layouts: HerdrLayout[] | undefined,
+  paneId: string,
+): number | undefined {
+  if (!layouts) return undefined
+  for (const layout of layouts) {
+    const pane = layout.panes.find((p) => p.pane_id === paneId)
+    if (pane && pane.rect.width > 0) return pane.rect.width
+  }
+  return undefined
+}
+
 export const RESIZE_DIRECTIONS = ['left', 'up', 'down', 'right'] as const
 
 export const RESIZE_DIRECTION_LABELS: Record<ResizeDirection, string> = {
