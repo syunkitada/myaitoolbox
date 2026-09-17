@@ -59,21 +59,40 @@ type statProc struct {
 	Command string  `json:"command"`
 }
 
+// statProcDetail describes a process together with its runtime state, used by
+// the Process tab to inspect the server's own process and the focused
+// processes (opencode, codex).
+type statProcDetail struct {
+	PID     int     `json:"pid"`
+	PPID    int     `json:"ppid"`
+	User    string  `json:"user"`
+	State   string  `json:"state"`
+	CPU     float64 `json:"cpu_percent"`
+	Mem     float64 `json:"mem_percent"`
+	RSS     uint64  `json:"rss_bytes"`
+	VMS     uint64  `json:"vms_bytes"`
+	Threads int     `json:"threads"`
+	Elapsed uint64  `json:"elapsed_seconds"`
+	Command string  `json:"command"`
+}
+
 // statsResponse is the payload of GET /api/stats.
 type statsResponse struct {
-	Hostname       string     `json:"hostname"`
-	OS             string     `json:"os"`
-	Uptime         uint64     `json:"uptime_seconds"`
-	LoadAvg        [3]float64 `json:"load_avg"`
-	CPUCores       int        `json:"cpu_cores"`
-	CPU            []statCPU  `json:"cpu"`
-	Memory         statMemory `json:"memory"`
-	Swap           statMemory `json:"swap"`
-	Disks          []statDisk `json:"disks"`
-	Network        []statNet  `json:"network"`
-	Processes      []statProc `json:"processes"`
-	ProcessesByCPU []statProc `json:"processes_by_cpu"`
-	CollectedAt    time.Time  `json:"collected_at"`
+	Hostname         string           `json:"hostname"`
+	OS               string           `json:"os"`
+	Uptime           uint64           `json:"uptime_seconds"`
+	LoadAvg          [3]float64       `json:"load_avg"`
+	CPUCores         int              `json:"cpu_cores"`
+	CPU              []statCPU        `json:"cpu"`
+	Memory           statMemory       `json:"memory"`
+	Swap             statMemory       `json:"swap"`
+	Disks            []statDisk       `json:"disks"`
+	Network          []statNet        `json:"network"`
+	Processes        []statProc       `json:"processes"`
+	ProcessesByCPU   []statProc       `json:"processes_by_cpu"`
+	SelfProcess      *statProcDetail  `json:"self_process"`
+	FocusedProcesses []statProcDetail `json:"focused_processes"`
+	CollectedAt      time.Time        `json:"collected_at"`
 }
 
 func readProcLine(path string) string {
@@ -374,18 +393,25 @@ func isVirtualInterface(name string) bool {
 	return false
 }
 
-// procStat holds the numeric fields needed from /proc/<pid>/stat.
+// procStat holds the fields needed from /proc/<pid>/stat.
 type procStat struct {
-	pid   int
-	comm  string
-	utime uint64
-	stime uint64
-	rss   uint64 // in pages
-	vms   uint64
+	pid       int
+	comm      string
+	state     string
+	ppid      int
+	utime     uint64
+	stime     uint64
+	rss       uint64 // in pages
+	vms       uint64
+	threads   int
+	starttime uint64 // in clock ticks since boot
 }
 
 // parseProcStat parses /proc/<pid>/stat. comm may contain spaces or
-// parentheses, so the closing paren locates the start of the numeric fields.
+// parentheses, so the closing paren locates the start of the remaining
+// fields. After the closing paren the first field is the process state, so
+// the proc(5) field N lives at index N-3 of `rest`: utime/stime are fields
+// 14/15, num_threads is 20, starttime is 22, vsize is 23 and rss is 24.
 func parseProcStat(s string) procStat {
 	open := strings.Index(s, "(")
 	end := strings.LastIndex(s, ")")
@@ -397,9 +423,6 @@ func parseProcStat(s string) procStat {
 		ps.pid = atoi(pf[0])
 	}
 	rest := strings.Fields(s[end+1:])
-	// After the closing paren the first field is the process state; field 14
-	// (utime) and 15 (stime) are at indices 11 and 12, field 22 (vms) at 19
-	// and field 24 (rss) at 21 of `rest`.
 	num := func(i int) uint64 {
 		if i >= 0 && i < len(rest) {
 			v, _ := strconv.ParseUint(rest[i], 10, 64)
@@ -407,8 +430,21 @@ func parseProcStat(s string) procStat {
 		}
 		return 0
 	}
+	numInt := func(i int) int {
+		if i >= 0 && i < len(rest) {
+			v, _ := strconv.Atoi(rest[i])
+			return v
+		}
+		return 0
+	}
+	if len(rest) > 0 {
+		ps.state = rest[0]
+	}
+	ps.ppid = numInt(1)
 	ps.utime, ps.stime = num(11), num(12)
-	ps.vms, ps.rss = num(19), num(21)
+	ps.threads = numInt(17)
+	ps.starttime = num(19)
+	ps.vms, ps.rss = num(20), num(21)
 	return ps
 }
 
@@ -556,6 +592,76 @@ func processStats(prev, cur procSnapshot, sysDelta, totalMem uint64) []statProc 
 	return procs
 }
 
+// procClockTicks is the USER_HZ value used by the tick counters in
+// /proc/<pid>/stat. It is part of the Linux userspace ABI and is fixed at 100
+// regardless of the kernel's internal HZ.
+const procClockTicks = 100
+
+// focusProcessNames are the process names surfaced on the Process tab in
+// addition to the server's own process.
+var focusProcessNames = []string{"opencode", "codex"}
+
+// procCmdline reads the full command line of a process, falling back to the
+// comm value when cmdline is unavailable (for example kernel threads).
+func procCmdline(pid int, fallback string) string {
+	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
+	if err == nil {
+		args := strings.Split(strings.TrimRight(string(data), "\x00"), "\x00")
+		if joined := strings.TrimSpace(strings.Join(args, " ")); joined != "" {
+			return joined
+		}
+	}
+	return fallback
+}
+
+// isFocusProcess reports whether a process matches one of the focused process
+// names, checking both the comm and the full command line.
+func isFocusProcess(comm, cmdline string) bool {
+	comm = strings.ToLower(comm)
+	cmdline = strings.ToLower(cmdline)
+	for _, name := range focusProcessNames {
+		if strings.Contains(comm, name) || strings.Contains(cmdline, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildProcDetail computes the Process-tab representation of a single process.
+// prev is the process's snapshot at the start of the sampling interval (equal
+// to cur for processes that appeared during it).
+func buildProcDetail(pid int, cur, prev procStat, sysDelta, totalMem, uptime uint64, command string) statProcDetail {
+	rss := cur.rss * uint64(os.Getpagesize())
+	memPct := 0.0
+	if totalMem > 0 {
+		memPct = 100 * float64(rss) / float64(totalMem)
+	}
+	cpuPct := 0.0
+	if sysDelta > 0 {
+		delta := (cur.utime + cur.stime) - (prev.utime + prev.stime)
+		if delta > 0 {
+			cpuPct = 100.0 * float64(delta) / float64(sysDelta) * float64(cpuCount())
+		}
+	}
+	elapsed := uint64(0)
+	if started := cur.starttime / procClockTicks; uptime > started {
+		elapsed = uptime - started
+	}
+	return statProcDetail{
+		PID:     pid,
+		PPID:    cur.ppid,
+		User:    processUser(strconv.Itoa(pid)),
+		State:   cur.state,
+		CPU:     cpuPct,
+		Mem:     memPct,
+		RSS:     rss,
+		VMS:     cur.vms,
+		Threads: cur.threads,
+		Elapsed: elapsed,
+		Command: command,
+	}
+}
+
 // truncate keeps the first `limit` entries of a slice, or the whole slice when
 // limit is not positive.
 func truncate(procs []statProc, limit int) []statProc {
@@ -616,19 +722,52 @@ func (s *Server) GetStats(w http.ResponseWriter, r *http.Request) {
 	})
 	byCPU = truncate(byCPU, 50)
 
+	// Collect the runtime state of the server's own process and of the
+	// focused processes (opencode, codex) for the Process tab. The focused
+	// list is intentionally unbounded so every matching process is shown.
+	uptime := getUptime()
+	prevAt := func(pid int, cur procStat) procStat {
+		if ps, ok := prevProcs[pid]; ok {
+			return ps
+		}
+		return cur
+	}
+
+	selfPID := os.Getpid()
+	var selfProcess *statProcDetail
+	if ps, ok := curProcs[selfPID]; ok {
+		detail := buildProcDetail(selfPID, ps, prevAt(selfPID, ps), sysDelta, totalMem, uptime, procCmdline(selfPID, ps.comm))
+		selfProcess = &detail
+	}
+
+	focused := make([]statProcDetail, 0)
+	for pid, ps := range curProcs {
+		if pid == selfPID {
+			continue
+		}
+		cmdline := procCmdline(pid, ps.comm)
+		if !isFocusProcess(ps.comm, cmdline) {
+			continue
+		}
+		focused = append(focused, buildProcDetail(pid, ps, prevAt(pid, ps), sysDelta, totalMem, uptime, cmdline))
+	}
+	sort.Slice(focused, func(i, j int) bool { return focused[i].PID < focused[j].PID })
+
 	writeJSONResponse(w, http.StatusOK, statsResponse{
-		Hostname:       hostname,
-		OS:             osRelease(),
-		Uptime:         getUptime(),
-		LoadAvg:        getLoadAvg(),
-		CPUCores:       len(cores),
-		CPU:            cores,
-		Memory:         memoryStats(mem),
-		Swap:           swapStats(mem),
-		Disks:          diskStats(),
-		Network:        netStats(),
-		Processes:      byMem,
-		ProcessesByCPU: byCPU,
-		CollectedAt:    time.Now(),
+		Hostname:         hostname,
+		OS:               osRelease(),
+		Uptime:           uptime,
+		LoadAvg:          getLoadAvg(),
+		CPUCores:         len(cores),
+		CPU:              cores,
+		Memory:           memoryStats(mem),
+		Swap:             swapStats(mem),
+		Disks:            diskStats(),
+		Network:          netStats(),
+		Processes:        byMem,
+		ProcessesByCPU:   byCPU,
+		SelfProcess:      selfProcess,
+		FocusedProcesses: focused,
+		CollectedAt:      time.Now(),
 	})
 }

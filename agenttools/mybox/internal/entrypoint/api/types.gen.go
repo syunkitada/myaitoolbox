@@ -149,12 +149,28 @@ type FileEntry struct {
 	Name string        `json:"name"`
 	Path string        `json:"path"`
 
+	// Executable Whether the file has the executable bit set
+	Executable *bool `json:"executable,omitempty"`
+
 	// Status Front matter status metadata for markdown files, if present
 	Status *string `json:"status,omitempty"`
 }
 
 // FileEntryKind defines model for FileEntry.Kind.
 type FileEntryKind string
+
+// FileExecuteResult defines model for FileExecuteResult.
+type FileExecuteResult struct {
+	// ExitCode Process exit code (124 when the run timed out)
+	ExitCode int `json:"exit_code"`
+
+	// Output Combined stdout and stderr of the executed process
+	Output string `json:"output"`
+	Path   string `json:"path"`
+
+	// TimedOut True when the process was killed after the timeout
+	TimedOut *bool `json:"timed_out,omitempty"`
+}
 
 // FilePathRequest defines model for FilePathRequest.
 type FilePathRequest struct {

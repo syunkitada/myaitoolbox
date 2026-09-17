@@ -23,6 +23,9 @@ import { Bot, Folder, GitBranch, Network, SquareKanban, TerminalSquare } from 'l
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
 
+// Canonical project tab sections; position in this list is the tab index.
+const TAB_SECTIONS = ['dashboard', 'board', 'graph', 'git', 'herdr']
+
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [gitStatus, setGitStatus] = useState<Record<string, ProjectGitStatus>>({})
@@ -51,6 +54,22 @@ export default function App() {
   useEffect(() => {
     if (project) rememberCurrentTab()
   }, [project, pathname])
+
+  // Show <projectIndex>:<tabIndex> as the title; 0 outside a project
+  useEffect(() => {
+    if (!project || !meta) {
+      document.title = '0'
+      return
+    }
+    const index = meta.projects.indexOf(project)
+    if (index < 0) {
+      document.title = '0'
+      return
+    }
+    const section = pathname.split('/')[3] || ''
+    const tab = TAB_SECTIONS.indexOf(section)
+    document.title = `${index + 1}:${tab < 0 ? 0 : tab}`
+  }, [project, meta, pathname])
 
   const projectTabs = [
     {

@@ -10,10 +10,17 @@ const (
 )
 
 type FileEntry struct {
-	Path   string
-	Name   string
-	Kind   FileKind
-	Status string
+	Path       string
+	Name       string
+	Kind       FileKind
+	Status     string
+	Executable bool
+}
+
+type FileExecResult struct {
+	ExitCode int
+	Output   string
+	TimedOut bool
 }
 
 type FileRepository interface {
@@ -27,4 +34,5 @@ type FileRepository interface {
 	Move(ctx context.Context, oldPath string, newPath string) error
 	Copy(ctx context.Context, oldPath string, newPath string) error
 	Delete(ctx context.Context, path string) error
+	Execute(ctx context.Context, path string) (FileExecResult, error)
 }

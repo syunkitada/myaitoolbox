@@ -46,6 +46,47 @@ func TestFileRepositoryTreeStatusInvalidFrontMatter(t *testing.T) {
 	assert.Equal(t, "", entries[0].Status)
 }
 
+func TestFileRepositoryExecutable(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "scripts"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "scripts", "run.sh"), []byte("#!/bin/sh\n"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "plain.txt"), []byte("text\n"), 0o644))
+
+	repo := NewFileRepository(root)
+	entries, err := repo.Tree(context.Background(), true)
+	require.NoError(t, err)
+	byPath := map[string]domain.FileEntry{}
+	for _, e := range entries {
+		byPath[e.Path] = e
+	}
+	assert.True(t, byPath["scripts/run.sh"].Executable)
+	assert.False(t, byPath["plain.txt"].Executable)
+	assert.False(t, byPath["scripts"].Executable)
+}
+
+func TestFileRepositoryExecute(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "hello.sh"),
+		[]byte("#!/bin/sh\nprintf 'hi %s\\n' you\n"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "plain.txt"), []byte("text\n"), 0o644))
+
+	repo := NewFileRepository(root)
+	res, err := repo.Execute(context.Background(), "hello.sh")
+	require.NoError(t, err)
+	assert.Equal(t, 0, res.ExitCode)
+	assert.Equal(t, "hi you\n", res.Output)
+	assert.False(t, res.TimedOut)
+
+	_, err = repo.Execute(context.Background(), "plain.txt")
+	assert.ErrorIs(t, err, domain.ErrInvalidPath)
+
+	_, err = repo.Execute(context.Background(), "missing.sh")
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+
+	_, err = repo.Execute(context.Background(), "../escape.sh")
+	assert.ErrorIs(t, err, domain.ErrInvalidPath)
+}
+
 func TestFileRepositoryChildren(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "sub"), 0o755))

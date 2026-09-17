@@ -836,7 +836,34 @@ func (s *Server) ListFiles(w http.ResponseWriter, r *http.Request, params api.Li
 		if e.Status != "" {
 			entry.Status = &e.Status
 		}
+		if e.Executable {
+			exec := true
+			entry.Executable = &exec
+		}
 		out = append(out, entry)
+	}
+	writeJSONResponse(w, http.StatusOK, out)
+}
+
+func (s *Server) ExecuteFile(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	var req api.FilePathRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	res, err := app.Files.Execute(r.Context(), req.Path)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out := api.FileExecuteResult{Path: req.Path, ExitCode: res.ExitCode, Output: res.Output}
+	if res.TimedOut {
+		timedOut := true
+		out.TimedOut = &timedOut
 	}
 	writeJSONResponse(w, http.StatusOK, out)
 }

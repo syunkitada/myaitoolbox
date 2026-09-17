@@ -62,11 +62,19 @@ export interface FileEntry {
   name: string
   kind: FileKind
   status?: string
+  executable?: boolean
 }
 
 export interface FileContent {
   path: string
   content: string
+}
+
+export interface FileExecuteResult {
+  path: string
+  exit_code: number
+  output: string
+  timed_out?: boolean
 }
 
 export interface GraphNode {
@@ -279,6 +287,20 @@ export interface StatsProcess {
   command: string
 }
 
+export interface StatsProcessDetail {
+  pid: number
+  ppid: number
+  user: string
+  state: string
+  cpu_percent: number
+  mem_percent: number
+  rss_bytes: number
+  vms_bytes: number
+  threads: number
+  elapsed_seconds: number
+  command: string
+}
+
 export interface Stats {
   hostname: string
   os: string
@@ -292,6 +314,8 @@ export interface Stats {
   network: StatsNet[]
   processes: StatsProcess[]
   processes_by_cpu: StatsProcess[]
+  self_process: StatsProcessDetail | null
+  focused_processes: StatsProcessDetail[]
   collected_at: string
 }
 
@@ -499,6 +523,7 @@ export const api = {
     request<void>('POST', '/api/files/copy', { old_path: oldPath, new_path: newPath }),
 
   deleteFile: (path: string) => request<void>('POST', '/api/files/delete', { path }),
+  executeFile: (path: string) => request<FileExecuteResult>('POST', '/api/files/execute', { path }),
   destroyTerminal: (session: string) =>
     request<void>('DELETE', '/api/terminal/destroy' + qs({ session })),
 

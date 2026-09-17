@@ -446,6 +446,31 @@ test('dashboard deletes a file', async ({ page }) => {
   await expect(explorer).not.toContainText('tasks2-copy.md')
 })
 
+test('dashboard executes an executable file and shows its output', async ({ page }) => {
+  const projectsRes = await page.request.get('/api/projects')
+  const projects = (await projectsRes.json()) as Array<{ name: string; path: string }>
+  const proj = projects.find((p) => p.name === 'proj')
+  expect(proj).toBeTruthy()
+  const scripts = path.join(proj!.path, 'scripts')
+  fs.mkdirSync(scripts, { recursive: true })
+  const script = path.join(scripts, 'greet.sh')
+  fs.writeFileSync(script, '#!/bin/sh\nprintf "hello from script %s\\n" mybox\n', { mode: 0o755 })
+
+  await page.goto('/projects/proj/dashboard')
+  const explorer = page.locator('.knowledge-explorer')
+  await explorer.getByRole('button', { name: 'Expand scripts' }).click()
+  const row = explorer.locator('.knowledge-tree-row', { hasText: 'greet.sh' })
+  await expect(row.locator('.exec-file-badge')).toHaveText('exec')
+  await row.click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Execute' }).click()
+
+  const modal = page.getByRole('dialog')
+  await expect(modal).toContainText('Exit code 0')
+  await expect(modal.locator('pre')).toContainText('hello from script mybox')
+  await modal.getByRole('button', { name: 'Close execution result' }).click()
+  await expect(modal).toHaveCount(0)
+})
+
 test('clicking the mybox brand returns to the unselected projects page', async ({ page }) => {
   await page.locator('.sidebar-nav').getByRole('link', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()

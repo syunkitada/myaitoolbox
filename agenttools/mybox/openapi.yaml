@@ -158,6 +158,15 @@ paths:
           schema:
             type: boolean
             default: true
+          description: Whether to include hidden files (dotfiles) in the result
+        - name: path
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >
+            Directory path relative to the project root. When omitted the
+            complete tree is returned, otherwise only the direct children.
       responses:
         "200":
           description: file tree
@@ -298,6 +307,27 @@ paths:
                 additionalProperties:
                   type: string
                   description: Git status code (staged, modified, untracked, deleted)
+  /api/files/execute:
+    post:
+      operationId: executeFile
+      summary: Execute an executable file and return its output
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilePathRequest"
+      responses:
+        "200":
+          description: execution result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileExecuteResult"
+        "400":
+          description: invalid path or not executable
+        "404":
+          description: not found
   /api/tasks:
     get:
       operationId: listTasks
@@ -982,6 +1012,24 @@ components:
         status:
           type: string
           description: Front matter status metadata for markdown files, if present
+        executable:
+          type: boolean
+          description: Whether the file has the executable bit set
+    FileExecuteResult:
+      type: object
+      required: [path, exit_code, output]
+      properties:
+        path:
+          type: string
+        exit_code:
+          type: integer
+          description: Process exit code (124 when the run timed out)
+        output:
+          type: string
+          description: Combined stdout and stderr of the executed process
+        timed_out:
+          type: boolean
+          description: True when the process was killed after the timeout
     FileContent:
       type: object
       required: [path, content]

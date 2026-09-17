@@ -1,17 +1,23 @@
 package markdown
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/fsutil"
 )
+
+const executeTimeout = 2 * time.Minute
 
 type FileRepository struct {
 	root string
@@ -55,10 +61,11 @@ func (r *FileRepository) Tree(ctx context.Context, showHidden bool) ([]domain.Fi
 			status = markdownStatus(path)
 		}
 		entries = append(entries, domain.FileEntry{
-			Path:   filepath.ToSlash(rel),
-			Name:   d.Name(),
-			Kind:   kind,
-			Status: status,
+			Path:       filepath.ToSlash(rel),
+			Name:       d.Name(),
+			Kind:       kind,
+			Status:     status,
+			Executable: execBit(d),
 		})
 		return nil
 	})
@@ -119,10 +126,11 @@ func (r *FileRepository) Children(ctx context.Context, parent string, showHidden
 			status = markdownStatus(filepath.Join(dir, d.Name(), "task.md"))
 		}
 		entries = append(entries, domain.FileEntry{
-			Path:   filepath.ToSlash(rel),
-			Name:   d.Name(),
-			Kind:   kind,
-			Status: status,
+			Path:       filepath.ToSlash(rel),
+			Name:       d.Name(),
+			Kind:       kind,
+			Status:     status,
+			Executable: execBit(d),
 		})
 	}
 	sort.Slice(entries, func(i, j int) bool {
@@ -132,6 +140,17 @@ func (r *FileRepository) Children(ctx context.Context, parent string, showHidden
 		return entries[i].Path < entries[j].Path
 	})
 	return entries, nil
+}
+
+func execBit(d fs.DirEntry) bool {
+	if d.IsDir() {
+		return false
+	}
+	info, err := d.Info()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&0o111 != 0
 }
 
 func markdownStatus(path string) string {
@@ -332,6 +351,52 @@ func (r *FileRepository) Delete(ctx context.Context, path string) error {
 		return os.RemoveAll(file)
 	}
 	return os.Remove(file)
+}
+
+func (r *FileRepository) Execute(ctx context.Context, path string) (domain.FileExecResult, error) {
+	if err := validateFilePath(path); err != nil {
+		return domain.FileExecResult{}, err
+	}
+	file := filepath.Join(r.root, filepath.FromSlash(path))
+	info, err := os.Stat(file)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return domain.FileExecResult{}, fmt.Errorf("%w: %s", domain.ErrNotFound, path)
+		}
+		return domain.FileExecResult{}, err
+	}
+	if info.IsDir() {
+		return domain.FileExecResult{}, fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
+	}
+	if info.Mode()&0o111 == 0 {
+		return domain.FileExecResult{}, fmt.Errorf("%w: %s is not executable", domain.ErrInvalidPath, path)
+	}
+	ctx2, cancel := context.WithTimeout(ctx, executeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx2, file)
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	cmd.Dir = filepath.Dir(file)
+	err = cmd.Run()
+	res := domain.FileExecResult{Output: buf.String()}
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			res.ExitCode = exitErr.ExitCode()
+		} else if ctx2.Err() == context.DeadlineExceeded {
+			res.TimedOut = true
+			res.ExitCode = 124
+			out := buf.String()
+			if out != "" && !strings.HasSuffix(out, "\n") {
+				out += "\n"
+			}
+			res.Output = out + "[timed out after " + executeTimeout.String() + "]"
+		} else {
+			return domain.FileExecResult{}, err
+		}
+	}
+	return res, nil
 }
 
 func validateFilePath(path string) error {

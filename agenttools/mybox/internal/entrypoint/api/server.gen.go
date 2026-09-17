@@ -39,6 +39,9 @@ type ServerInterface interface {
 	// GetFileGitStatus Get git status for each file in the project
 	// (GET /api/files/git-status)
 	GetFileGitStatus(w http.ResponseWriter, r *http.Request)
+	// ExecuteFile Execute an executable file and return its output
+	// (POST /api/files/execute)
+	ExecuteFile(w http.ResponseWriter, r *http.Request)
 	// MoveFile Move a file
 	// (POST /api/files/move)
 	MoveFile(w http.ResponseWriter, r *http.Request)
@@ -308,6 +311,20 @@ func (siw *ServerInterfaceWrapper) GetFileGitStatus(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetFileGitStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExecuteFile operation middleware
+func (siw *ServerInterfaceWrapper) ExecuteFile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExecuteFile(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1195,6 +1212,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/copy", wrapper.CopyFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/delete", wrapper.DeleteFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/git-status", wrapper.GetFileGitStatus)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/execute", wrapper.ExecuteFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks", wrapper.CreateTask)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tasks/{id}", wrapper.DeleteTask)

@@ -645,6 +645,58 @@ func TestFiles(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
+func TestFilesExecutableFlag(t *testing.T) {
+	s, app := newTestServer(t, false)
+	root := app.Project.Path
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "scripts"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "scripts", "run.sh"), []byte("#!/bin/sh\necho hi\n"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("# Project\n"), 0o644))
+
+	rec := do(t, s, http.MethodGet, "/api/files?show_hidden=false", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	files := decode[[]api.FileEntry](t, rec)
+	byPath := map[string]api.FileEntry{}
+	for _, f := range files {
+		byPath[f.Path] = f
+	}
+	run, ok := byPath["scripts/run.sh"]
+	require.True(t, ok, "scripts/run.sh should be listed")
+	require.NotNil(t, run.Executable)
+	assert.True(t, *run.Executable)
+
+	readme, ok := byPath["README.md"]
+	require.True(t, ok)
+	assert.Nil(t, readme.Executable)
+}
+
+func TestFilesExecute(t *testing.T) {
+	s, app := newTestServer(t, false)
+	root := app.Project.Path
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "scripts"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "scripts", "hello.sh"), []byte("#!/bin/sh\nprintf 'hello %s\\n' world\n"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("# Project\n"), 0o644))
+
+	rec := do(t, s, http.MethodPost, "/api/files/execute", api.FilePathRequest{Path: "scripts/hello.sh"})
+	assert.Equal(t, http.StatusOK, rec.Code)
+	res := decode[api.FileExecuteResult](t, rec)
+	assert.Equal(t, "scripts/hello.sh", res.Path)
+	assert.Equal(t, 0, res.ExitCode)
+	assert.Equal(t, "hello world\n", res.Output)
+	assert.Nil(t, res.TimedOut)
+
+	rec = do(t, s, http.MethodPost, "/api/files/execute", api.FilePathRequest{Path: "scripts/fail.sh"})
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/files/execute", api.FilePathRequest{Path: "../../etc/passwd"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/files/execute", api.FilePathRequest{Path: "README.md"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/files/execute", api.FilePathRequest{Path: "scripts"})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
 func TestCreateFile(t *testing.T) {
 	s, app := newTestServer(t, false)
 	root := app.Project.Path

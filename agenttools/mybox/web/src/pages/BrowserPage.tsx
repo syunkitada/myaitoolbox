@@ -1,6 +1,6 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker, useNavigate } from 'react-router-dom'
-import { FileEntry, HerdrOverview, Knowledge, api } from '../api/client'
+import { FileEntry, FileExecuteResult, HerdrOverview, Knowledge, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileAgentWidget } from '../components/FileAgentWidget'
 import { FileTabs } from '../components/FileTabs'
@@ -13,7 +13,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../componen
 import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
-import { ChevronDown, Clock, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RefreshCw, Star, Tag, Text, Trash2, X } from 'lucide-react'
+import { Badge } from '../components/ui/badge'
+import { ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RefreshCw, Star, Tag, Terminal, Text, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -92,6 +93,7 @@ export interface BrowserEntry {
   wikiLinks?: string[]
   status?: string
   markdown: boolean
+  executable?: boolean
 }
 
 interface BrowserPageProps {
@@ -115,6 +117,7 @@ interface TreeFile {
   path: string
   status?: string
   gitStatus?: string
+  executable?: boolean
 }
 
 interface TreeDir {
@@ -155,6 +158,20 @@ function GitFileBadge({ status }: { status?: string }) {
   )
 }
 
+function ExecutableBadge() {
+  return (
+    <Badge
+      variant="outline"
+      className="exec-file-badge shrink-0 border-transparent bg-slate-100 px-1.5 py-px font-normal text-slate-600 select-none"
+      title="Executable"
+      aria-label="Executable"
+    >
+      <Terminal className="size-2.5" aria-hidden="true" />
+      exec
+    </Badge>
+  )
+}
+
 function toEntries(mode: BrowserMode, list: (FileEntry | Knowledge)[]): BrowserEntry[] {
   if (mode === 'knowledge') {
     return (list as Knowledge[]).map((k) => ({
@@ -174,6 +191,7 @@ function toEntries(mode: BrowserMode, list: (FileEntry | Knowledge)[]): BrowserE
     path: e.path,
     status: e.status,
     markdown: /\.(md|markdown)$/i.test(e.path),
+    executable: e.executable,
   }))
 }
 
@@ -241,6 +259,7 @@ function buildTree(list: BrowserEntry[], gitStatus: Record<string, string>): Tre
         path: e.path,
         status: e.status,
         gitStatus: gitStatus[e.path],
+        executable: e.executable,
       }
       if (slash < 0) root.push(file)
       else getDir(e.path.slice(0, slash)).children.push(file)
@@ -313,7 +332,8 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
   const [tag, setTag] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverDir, setDragOverDir] = useState<string | null>(null)
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; kind: 'file' | 'dir' } | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; kind: 'file' | 'dir'; executable?: boolean } | null>(null)
+  const [execState, setExecState] = useState<{ path: string; running: boolean; result?: FileExecuteResult; error?: string } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const ctxRef = useRef<HTMLDivElement | null>(null)
   const noticeTimer = useRef<number | null>(null)
@@ -471,10 +491,21 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
       .catch(runError)
   }
 
-  const openCtxMenu = (e: React.MouseEvent, path: string, kind: 'file' | 'dir') => {
+  const openCtxMenu = (e: React.MouseEvent, path: string, kind: 'file' | 'dir', executable?: boolean) => {
     e.preventDefault()
     e.stopPropagation()
-    setCtxMenu({ x: e.clientX, y: e.clientY, path, kind })
+    setCtxMenu({ x: e.clientX, y: e.clientY, path, kind, executable })
+  }
+
+  const executeEntry = () => {
+    if (!ctxMenu) return
+    const path = ctxMenu.path
+    setCtxMenu(null)
+    setExecState({ path, running: true })
+    void api
+      .executeFile(path)
+      .then((result) => setExecState({ path, running: false, result }))
+      .catch((e) => setExecState({ path, running: false, error: e instanceof Error ? e.message : String(e) }))
   }
 
   const allTags = useMemo(
@@ -655,7 +686,7 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
               : {})}
             onContextMenu={(e) => {
               if (mode !== 'files') return
-              openCtxMenu(e, node.path, 'file')
+              openCtxMenu(e, node.path, 'file', node.executable)
             }}
           >
             <button
@@ -667,6 +698,7 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
             >
               {node.name}
             </button>
+            {node.executable && <ExecutableBadge />}
             <GitFileBadge status={gitStatus?.[node.path]} />
             <FileStatusBadge status={parent?.status && node.name === 'task.md' ? undefined : node.status} />
           </li>,
@@ -760,6 +792,7 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
               <Button variant="link" size="xs" onClick={() => onSelect(e.path)}>
                 {e.path}
               </Button>
+              {e.executable && <ExecutableBadge />}
               <FileStatusBadge status={e.status} />
             </li>
           ))}
@@ -822,6 +855,21 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
               <div className="my-1 h-px bg-border" />
             </>
           )}
+          {ctxMenu.kind === 'file' && ctxMenu.executable && (
+            <>
+              <button
+                role="menuitem"
+                className="file-action-item"
+                onClick={executeEntry}
+                data-testid="file-execute"
+                title="Run the file and show its output"
+              >
+                <Terminal className="size-3.5" />
+                Execute
+              </button>
+              <div className="my-1 h-px bg-border" />
+            </>
+          )}
           <button role="menuitem" className="file-action-item" onClick={copyPath}>
             <Text className="size-3.5" />
             Copy Path
@@ -850,6 +898,112 @@ function Explorer({ entries, selected, onSelect, title, mode, favorites, recentF
           {notice}
         </div>
       )}
+      {execState && (
+        <ExecuteResultModal
+          path={execState.path}
+          running={execState.running}
+          result={execState.result}
+          error={execState.error}
+          onClose={() => setExecState(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ExecuteResultModal({
+  path,
+  running,
+  result,
+  error,
+  onClose,
+}: {
+  path: string
+  running: boolean
+  result?: FileExecuteResult
+  error?: string
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 1500)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+
+  const copyOutput = () => {
+    if (!result) return
+    void copyToClipboard(result.output)
+      .then(() => setCopied(true))
+      .catch(() => undefined)
+  }
+
+  const exitedCleanly = result && result.exit_code === 0 && !result.timed_out
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Execute ${path}`}
+    >
+      <div
+        className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-lg border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Terminal className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="truncate text-sm font-semibold">{path}</span>
+          </div>
+          <button
+            className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={onClose}
+            aria-label="Close execution result"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {running ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              Running…
+            </div>
+          ) : error ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+              {error}
+            </div>
+          ) : result ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                    result.timed_out
+                      ? 'bg-amber-100 text-amber-700'
+                      : exitedCleanly
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-red-100 text-red-700',
+                  )}
+                >
+                  <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
+                  {result.timed_out ? `Timed out (exit ${result.exit_code})` : `Exit code ${result.exit_code}`}
+                </span>
+                <Button variant="ghost" size="sm" className="ml-auto cursor-pointer" onClick={copyOutput}>
+                  {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                  {copied ? 'Copied' : 'Copy output'}
+                </Button>
+              </div>
+              <pre className="exec-result-output m-0 max-h-96 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed whitespace-pre-wrap break-words">
+                {result.output || '(no output)'}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }

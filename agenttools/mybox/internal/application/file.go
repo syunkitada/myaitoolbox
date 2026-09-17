@@ -99,3 +99,10 @@ func (u *FileUseCase) Delete(ctx context.Context, path string) error {
 	}
 	return u.Files.Delete(ctx, path)
 }
+
+func (u *FileUseCase) Execute(ctx context.Context, path string) (domain.FileExecResult, error) {
+	if err := validatePath(path); err != nil {
+		return domain.FileExecResult{}, err
+	}
+	return u.Files.Execute(ctx, path)
+}
