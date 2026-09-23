@@ -1,14 +1,13 @@
 package entrypoint
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
 	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
-	infraProfile "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/profile"
 	mcpclientInfra "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/mcpclient"
+	infraProfile "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/profile"
 )
 
 var listToolsHelperCmd = &cobra.Command{
@@ -23,7 +22,7 @@ var listToolsHelperCmd = &cobra.Command{
 		}
 
 		discovery := mcpclientInfra.NewToolDiscovery()
-		entries, err := discovery.ListTools(context.Background(), p, "")
+		entries, err := discovery.ListTools(cmd.Context(), p, "")
 		if err != nil && len(entries) == 0 {
 			return
 		}
@@ -65,7 +64,7 @@ var listParamsHelperCmd = &cobra.Command{
 		}
 
 		discovery := mcpclientInfra.NewToolDiscovery()
-		entry, err := discovery.GetToolInfo(context.Background(), p, serverName, toolName)
+		entry, err := discovery.GetToolInfo(cmd.Context(), p, serverName, toolName)
 		if err != nil {
 			return
 		}
@@ -143,7 +142,7 @@ var listParamValuesHelperCmd = &cobra.Command{
 		}
 
 		discovery := mcpclientInfra.NewToolDiscovery()
-		entry, err := discovery.GetToolInfo(context.Background(), p, serverName, toolName)
+		entry, err := discovery.GetToolInfo(cmd.Context(), p, serverName, toolName)
 		if err != nil {
 			return
 		}

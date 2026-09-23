@@ -42,6 +42,10 @@ func GetCurrentProfile(resolver domain.ProfileResolver, flagProfile string) (str
 }
 
 func UseProfile(resolver domain.ProfileResolver, newName string) (string, error) {
+	if _, err := resolver.Resolve(newName, ""); err != nil {
+		return "", fmt.Errorf("cannot use profile %q: %w", newName, err)
+	}
+
 	cfg, err := resolver.LoadConfig()
 	if err != nil {
 		return "", err

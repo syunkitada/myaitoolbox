@@ -8,7 +8,7 @@ import (
 )
 
 var completionCmd = &cobra.Command{
-	Use:   "completion [zsh|bash]",
+	Use:   "completion zsh",
 	Short: "Generate shell completion script",
 	Long: `Generate shell completion script.
 
@@ -26,7 +26,7 @@ var completionZshCmd = &cobra.Command{
 	Short: "Generate zsh completion script",
 	Run: func(cmd *cobra.Command, args []string) {
 		out := os.Stdout
-		fmt.Fprint(out, zshCompletionScript)
+		_, _ = fmt.Fprint(out, zshCompletionScript)
 	},
 }
 
@@ -39,19 +39,22 @@ const zshCompletionScript = `#compdef mcpctl
 
 __mcpctl_list_tools() {
   local -a tools
-  tools=(${(f)"$($service __list_tools 2>/dev/null)"})
+  local service="${commands[mcpctl]:-mcpctl}"
+  tools=(${(f)"$("$service" __list_tools 2>/dev/null)"})
   _describe -t tools 'tool' tools
 }
 
 __mcpctl_list_params() {
   local -a params
-  params=(${(f)"$($service __list_params "$1" 2>/dev/null)"})
+  local service="${commands[mcpctl]:-mcpctl}"
+  params=(${(f)"$("$service" __list_params "$1" 2>/dev/null)"})
   _describe -t params 'parameter' params
 }
 
 __mcpctl_list_param_values() {
   local -a values
-  values=(${(f)"$($service __list_param_values "$1" "$2" 2>/dev/null)"})
+  local service="${commands[mcpctl]:-mcpctl}"
+  values=(${(f)"$("$service" __list_param_values "$1" "$2" 2>/dev/null)"})
   if (( $#values )); then
     _describe -t values "values for $2" values
   fi
@@ -59,7 +62,8 @@ __mcpctl_list_param_values() {
 
 __mcpctl_servers() {
   local -a servers
-  servers=(${(f)"$($service __list_tools 2>/dev/null | sed 's|/.*||' | sort -u)"})
+  local service="${commands[mcpctl]:-mcpctl}"
+  servers=(${(f)"$("$service" __list_tools 2>/dev/null | sed 's|/.*||' | sort -u)"})
   _describe -t servers 'server' servers
 }
 
@@ -74,7 +78,6 @@ _mcpctl() {
       'info:Show tool information'
       'search:Search tools'
       'profiles:Manage profiles'
-      'serve:Start MCP server mode'
       'completion:Generate shell completion script'
     )
     _describe -t commands 'command' subcommands && ret=0

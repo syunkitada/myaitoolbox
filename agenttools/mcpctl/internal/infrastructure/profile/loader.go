@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
@@ -41,6 +42,9 @@ func LoadConfig() (*domain.Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config.yaml: %w", err)
 	}
+	if cfg.Output.Format == "" {
+		cfg.Output.Format = "table"
+	}
 
 	return &cfg, nil
 }
@@ -69,6 +73,10 @@ func SaveConfig(cfg *domain.Config) error {
 }
 
 func LoadProfile(name string) (*domain.Profile, error) {
+	if err := validateProfileName(name); err != nil {
+		return nil, err
+	}
+
 	configDir, err := GetConfigDir()
 	if err != nil {
 		return nil, err
@@ -87,9 +95,28 @@ func LoadProfile(name string) (*domain.Profile, error) {
 
 	if profile.Name == "" {
 		profile.Name = name
+	} else if profile.Name != name {
+		return nil, fmt.Errorf("profile name %q does not match file name %q", profile.Name, name)
+	}
+
+	if err := Validate(&profile); err != nil {
+		return nil, fmt.Errorf("invalid profile %s: %w", name, err)
 	}
 
 	return &profile, nil
+}
+
+func validateProfileName(name string) error {
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name || strings.ContainsAny(name, `/\\`) {
+		return fmt.Errorf("invalid profile name %q", name)
+	}
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			continue
+		}
+		return fmt.Errorf("invalid profile name %q", name)
+	}
+	return nil
 }
 
 func ListProfiles() ([]string, error) {

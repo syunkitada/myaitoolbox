@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -40,7 +41,28 @@ func (om OrderedMap) Get(key string) interface{} {
 func DecodeJSON(b []byte) (interface{}, error) {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
-	return decodeValue(dec)
+	value, err := decodeValue(dec)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("unexpected data after JSON value")
+		}
+		return nil, err
+	}
+	return value, nil
+}
+
+func NormalizeJSONValue(data interface{}) (interface{}, error) {
+	switch value := data.(type) {
+	case json.RawMessage:
+		return DecodeJSON(value)
+	case []byte:
+		return DecodeJSON(value)
+	default:
+		return data, nil
+	}
 }
 
 func decodeValue(dec *json.Decoder) (interface{}, error) {
@@ -99,6 +121,9 @@ func OrderedKeys(obj map[string]interface{}) []string {
 }
 
 func ExtractDataArray(data interface{}) interface{} {
+	if normalized, err := NormalizeJSONValue(data); err == nil {
+		data = normalized
+	}
 	if obj, ok := data.(OrderedMap); ok {
 		for _, e := range obj {
 			if e.Key == "data" {
@@ -125,50 +150,50 @@ func PrintTSV(data interface{}) {
 		}
 		if row, ok := v[0].(OrderedMap); ok {
 			headers := row.Keys()
-			fmt.Println(strings.Join(headers, "\t"))
+			fmt.Println(strings.Join(escapeHeaders(headers), "\t"))
 			for _, item := range v {
 				if obj, ok := item.(OrderedMap); ok {
 					vals := make([]string, len(headers))
 					for i, h := range headers {
-						vals[i] = fmt.Sprintf("%v", obj.Get(h))
+						vals[i] = formatCell(obj.Get(h))
 					}
 					fmt.Println(strings.Join(vals, "\t"))
 				}
 			}
 		} else if row, ok := v[0].(map[string]interface{}); ok {
 			headers := OrderedKeys(row)
-			fmt.Println(strings.Join(headers, "\t"))
+			fmt.Println(strings.Join(escapeHeaders(headers), "\t"))
 			for _, item := range v {
 				if obj, ok := item.(map[string]interface{}); ok {
 					vals := make([]string, len(headers))
 					for i, h := range headers {
-						vals[i] = fmt.Sprintf("%v", obj[h])
+						vals[i] = formatCell(obj[h])
 					}
 					fmt.Println(strings.Join(vals, "\t"))
 				}
 			}
 		} else {
 			for _, item := range v {
-				fmt.Printf("%v\n", item)
+				fmt.Println(formatCell(item))
 			}
 		}
 	case OrderedMap:
 		for _, e := range v {
-			fmt.Printf("%s\t%v\n", e.Key, e.Value)
+			fmt.Printf("%s\t%s\n", escapeTSV(e.Key), formatCell(e.Value))
 		}
 	case map[string]interface{}:
 		for _, k := range OrderedKeys(v) {
-			fmt.Printf("%s\t%v\n", k, v[k])
+			fmt.Printf("%s\t%s\n", escapeTSV(k), formatCell(v[k]))
 		}
 	default:
-		fmt.Println(v)
+		fmt.Println(formatCell(v))
 	}
 }
 
 func PrintTable(data interface{}) {
 	data = ExtractDataArray(data)
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	defer w.Flush()
+	defer func() { _ = w.Flush() }()
 
 	switch v := data.(type) {
 	case []interface{}:
@@ -177,57 +202,116 @@ func PrintTable(data interface{}) {
 		}
 		if row, ok := v[0].(OrderedMap); ok {
 			headers := row.Keys()
-			fmt.Fprintln(w, strings.Join(headers, "\t"))
+			_, _ = fmt.Fprintln(w, strings.Join(escapeHeaders(headers), "\t"))
 			seps := make([]string, len(headers))
 			for i, h := range headers {
 				seps[i] = strings.Repeat("-", len(h))
 			}
-			fmt.Fprintln(w, strings.Join(seps, "\t"))
+			_, _ = fmt.Fprintln(w, strings.Join(seps, "\t"))
 			for _, item := range v {
 				if obj, ok := item.(OrderedMap); ok {
 					vals := make([]string, len(headers))
 					for i, h := range headers {
-						vals[i] = fmt.Sprintf("%v", obj.Get(h))
+						vals[i] = formatCell(obj.Get(h))
 					}
-					fmt.Fprintln(w, strings.Join(vals, "\t"))
+					_, _ = fmt.Fprintln(w, strings.Join(vals, "\t"))
 				}
 			}
 		} else if row, ok := v[0].(map[string]interface{}); ok {
 			headers := OrderedKeys(row)
-			fmt.Fprintln(w, strings.Join(headers, "\t"))
+			_, _ = fmt.Fprintln(w, strings.Join(escapeHeaders(headers), "\t"))
 			seps := make([]string, len(headers))
 			for i, h := range headers {
 				seps[i] = strings.Repeat("-", len(h))
 			}
-			fmt.Fprintln(w, strings.Join(seps, "\t"))
+			_, _ = fmt.Fprintln(w, strings.Join(seps, "\t"))
 			for _, item := range v {
 				if obj, ok := item.(map[string]interface{}); ok {
 					vals := make([]string, len(headers))
 					for i, h := range headers {
-						vals[i] = fmt.Sprintf("%v", obj[h])
+						vals[i] = formatCell(obj[h])
 					}
-					fmt.Fprintln(w, strings.Join(vals, "\t"))
+					_, _ = fmt.Fprintln(w, strings.Join(vals, "\t"))
 				}
 			}
 		} else {
 			for _, item := range v {
-				fmt.Fprintf(w, "%v\n", item)
+				_, _ = fmt.Fprintln(w, formatCell(item))
 			}
 		}
 	case OrderedMap:
-		fmt.Fprintln(w, "KEY\tVALUE")
-		fmt.Fprintln(w, "---\t-----")
+		_, _ = fmt.Fprintln(w, "KEY\tVALUE")
+		_, _ = fmt.Fprintln(w, "---\t-----")
 		for _, e := range v {
-			fmt.Fprintf(w, "%s\t%v\n", e.Key, e.Value)
+			_, _ = fmt.Fprintf(w, "%s\t%s\n", escapeTSV(e.Key), formatCell(e.Value))
 		}
 	case map[string]interface{}:
-		fmt.Fprintln(w, "KEY\tVALUE")
-		fmt.Fprintln(w, "---\t-----")
+		_, _ = fmt.Fprintln(w, "KEY\tVALUE")
+		_, _ = fmt.Fprintln(w, "---\t-----")
 		for _, k := range OrderedKeys(v) {
-			fmt.Fprintf(w, "%s\t%v\n", k, v[k])
+			_, _ = fmt.Fprintf(w, "%s\t%s\n", escapeTSV(k), formatCell(v[k]))
 		}
 	default:
-		fmt.Fprintln(w, v)
+		_, _ = fmt.Fprintln(w, formatCell(v))
+	}
+}
+
+func escapeHeaders(headers []string) []string {
+	escaped := make([]string, len(headers))
+	for i, header := range headers {
+		escaped[i] = escapeTSV(header)
+	}
+	return escaped
+}
+
+func escapeTSV(value string) string {
+	value = strings.ReplaceAll(value, "\\", "\\\\")
+	value = strings.ReplaceAll(value, "\t", "\\t")
+	value = strings.ReplaceAll(value, "\r", "\\r")
+	return strings.ReplaceAll(value, "\n", "\\n")
+}
+
+func formatCell(value interface{}) string {
+	switch value := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return escapeTSV(value)
+	case json.Number:
+		return value.String()
+	case bool, float32, float64, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprint(value)
+	default:
+		b, err := json.Marshal(toJSONValue(value))
+		if err == nil {
+			return escapeTSV(string(b))
+		}
+		return escapeTSV(fmt.Sprint(value))
+	}
+}
+
+func toJSONValue(value interface{}) interface{} {
+	switch value := value.(type) {
+	case OrderedMap:
+		obj := make(map[string]interface{}, len(value))
+		for _, entry := range value {
+			obj[entry.Key] = toJSONValue(entry.Value)
+		}
+		return obj
+	case []interface{}:
+		array := make([]interface{}, len(value))
+		for i, item := range value {
+			array[i] = toJSONValue(item)
+		}
+		return array
+	case map[string]interface{}:
+		obj := make(map[string]interface{}, len(value))
+		for key, item := range value {
+			obj[key] = toJSONValue(item)
+		}
+		return obj
+	default:
+		return value
 	}
 }
 
@@ -270,11 +354,15 @@ func ParseArrayArg(val string, existing interface{}) []interface{} {
 }
 
 func GetParamTypes(prof *domain.Profile, serverName, toolName string, discovery domain.ToolDiscovery) map[string]string {
+	return GetParamTypesContext(context.Background(), prof, serverName, toolName, discovery)
+}
+
+func GetParamTypesContext(ctx context.Context, prof *domain.Profile, serverName, toolName string, discovery domain.ToolDiscovery) map[string]string {
 	if prof == nil || discovery == nil {
 		return nil
 	}
 
-	entry, err := discovery.GetToolInfo(context.Background(), prof, serverName, toolName)
+	entry, err := discovery.GetToolInfo(ctx, prof, serverName, toolName)
 	if err != nil {
 		return nil
 	}

@@ -28,7 +28,7 @@ func (e *ToolExecutor) CallTool(ctx context.Context, prof *domain.Profile, serve
 	if err != nil {
 		return nil, fmt.Errorf("server %s: failed to connect: %w", serverName, err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	argsJSON, err := json.Marshal(params)
 	if err != nil {

@@ -1,12 +1,26 @@
 # mcpctl
 
-`mcpctl` は、人間と AI の両方が利用できる MCP (Model Context Protocol) ツールの管理・実行CLI兼サーバです。
+`mcpctl` は、人間と AI の両方が利用できる MCP (Model Context Protocol) ツールの管理・実行CLIです。
+
+## Index
+
+| パス | 役割 |
+| --- | --- |
+| [`cmd/`](./cmd/) | `mcpctl` CLIのエントリーポイント。 |
+| [`docs/README.md`](./docs/README.md) | 設定、仕様、AIエージェント向けガイド。 |
+| [`internal/README.md`](./internal/README.md) | CLIのアプリケーション、ドメイン、インフラ実装。 |
+| [`.gitignore`](./.gitignore) | Goのビルド成果物やローカル設定の除外設定。 |
+| [`.golangci.yml`](./.golangci.yml) | `golangci-lint`の静的解析設定。 |
+| [`Makefile`](./Makefile) | ビルド、テスト、lint用コマンド。 |
+| [`go.mod`](./go.mod) | Goモジュールと依存関係の定義。 |
+| [`go.sum`](./go.sum) | Go依存関係のチェックサム。 |
+| [`README.md`](./README.md) | `mcpctl`の概要と使い方。本文書。 |
 
 ## 特徴
 
 - **CLI Mode**: 人間向けにわかりやすいインターフェースを提供。
-- **MCP Server Mode**: AI エージェントから、他のMCPサーバへアクセスするための統合エンドポイントとして動作。
-- **Unified Conceptual API**: CLI と MCP で List, Search, Info, Call といった同じ概念モデルを共有しています。
+- **MCP Client**: 複数のバックエンドMCPサーバーに接続し、ツールを統合的に操作。
+- **Unified Conceptual API**: List, Search, Info, Call といった操作を共通の概念モデルで提供。
 
 ## アーキテクチャ概要
 
@@ -17,17 +31,6 @@
 Human / AI
     ↓
   mcpctl
-    ↓
- MCP Servers
-```
-
-### MCP Mode (`mcpctl serve`)
-AI エージェントなどが、MCP 経由で mcpctl に接続するモードです。複数のバックエンド MCP サーバーを一つの MCP サーバとして束ねて公開します。
-
-```text
-AI Agent
-    ↓ MCP
- mcpctl serve
     ↓
  MCP Servers
 ```
@@ -84,4 +87,3 @@ echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
 ```
 
 `call` コマンドでは、ツール名の補完に続けて `--パラメータ名` の補完が効きます。`list` ではサーバ名の補完が可能です。
-

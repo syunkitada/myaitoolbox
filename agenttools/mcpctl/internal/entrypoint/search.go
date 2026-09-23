@@ -1,38 +1,37 @@
 package entrypoint
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
 	"github.com/syunkitada/myaitoolbox/mcpctl/internal/application"
-	infraProfile "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/profile"
 	mcpclientInfra "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/mcpclient"
+	infraProfile "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/profile"
 )
 
 var searchCmd = &cobra.Command{
 	Use:   "search [query]",
 	Short: "Search for a tool",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		query := args[0]
 
 		resolver := infraProfile.NewResolver()
 		p, err := resolver.Resolve(profileFlag, "")
 		if err != nil {
-			fmt.Println("Error:", err)
-			return
+			return err
 		}
 
 		discovery := mcpclientInfra.NewToolDiscovery()
-		entries, err := application.SearchTools(context.Background(), discovery, p, query)
+		entries, err := application.SearchTools(cmd.Context(), discovery, p, query)
 		if err != nil {
-			fmt.Println("Error:", err)
+			return err
 		}
 
 		for _, entry := range entries {
 			fmt.Printf("%s/%s\n", entry.ServerName, entry.Tool.Name)
 		}
+		return nil
 	},
 }
 

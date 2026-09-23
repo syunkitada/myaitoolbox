@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -66,5 +67,31 @@ func newStdioTransport(srvConfig domain.ServerConfig) (mcp.Transport, error) {
 		args = parts[1:]
 	}
 
-	return &mcp.CommandTransport{Command: exec.Command(cmd, args...)}, nil
+	command := exec.Command(cmd, args...)
+	if len(srvConfig.Env) > 0 {
+		command.Env = mergeEnvironment(os.Environ(), srvConfig.Env)
+	}
+
+	return &mcp.CommandTransport{Command: command}, nil
+}
+
+func mergeEnvironment(base, overrides []string) []string {
+	values := make(map[string]string, len(base)+len(overrides))
+	order := make([]string, 0, len(base)+len(overrides))
+	for _, entry := range append(append([]string(nil), base...), overrides...) {
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			continue
+		}
+		if _, exists := values[parts[0]]; !exists {
+			order = append(order, parts[0])
+		}
+		values[parts[0]] = parts[1]
+	}
+
+	result := make([]string, 0, len(order))
+	for _, key := range order {
+		result = append(result, key+"="+values[key])
+	}
+	return result
 }

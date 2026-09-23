@@ -19,7 +19,15 @@ func NewToolDiscovery() *ToolDiscovery {
 }
 
 func (d *ToolDiscovery) ListTools(ctx context.Context, prof *domain.Profile, serverFilter string) ([]domain.ToolEntry, error) {
+	if prof == nil {
+		return nil, fmt.Errorf("profile is required")
+	}
 	slog.Debug("listing tools", "profile", prof.Name, "server_filter", serverFilter)
+	if serverFilter != "" {
+		if _, ok := prof.Servers[serverFilter]; !ok {
+			return nil, fmt.Errorf("server %s not found in profile %s", serverFilter, prof.Name)
+		}
+	}
 
 	var entries []domain.ToolEntry
 	var mu sync.Mutex
@@ -41,22 +49,20 @@ func (d *ToolDiscovery) ListTools(ctx context.Context, prof *domain.Profile, ser
 				errCh <- fmt.Errorf("server %s: failed to connect: %w", name, err)
 				return
 			}
-			defer client.Close()
+			defer func() { _ = client.Close() }()
 
-			res, err := client.ListTools(ctx, &mcp.ListToolsParams{})
-			if err != nil {
-				errCh <- fmt.Errorf("server %s: failed to list tools: %w", name, err)
-				return
-			}
-
-			mu.Lock()
-			for _, t := range res.Tools {
+			for t, err := range client.Tools(ctx, &mcp.ListToolsParams{}) {
+				if err != nil {
+					errCh <- fmt.Errorf("server %s: failed to list tools: %w", name, err)
+					return
+				}
+				mu.Lock()
 				entries = append(entries, domain.ToolEntry{
 					ServerName: name,
 					Tool:       t,
 				})
+				mu.Unlock()
 			}
-			mu.Unlock()
 		}(srvName, srvConfig)
 	}
 
@@ -67,16 +73,16 @@ func (d *ToolDiscovery) ListTools(ctx context.Context, prof *domain.Profile, ser
 	for err := range errCh {
 		errors = append(errors, err.Error())
 	}
-
-	if len(errors) > 0 {
-		return entries, fmt.Errorf("some servers failed: %s", strings.Join(errors, "; "))
-	}
-
+	sort.Strings(errors)
 	sort.Slice(entries, func(i, j int) bool {
 		nameI := fmt.Sprintf("%s/%s", entries[i].ServerName, entries[i].Tool.Name)
 		nameJ := fmt.Sprintf("%s/%s", entries[j].ServerName, entries[j].Tool.Name)
 		return nameI < nameJ
 	})
+
+	if len(errors) > 0 {
+		return entries, fmt.Errorf("some servers failed: %s", strings.Join(errors, "; "))
+	}
 
 	return entries, nil
 }

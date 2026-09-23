@@ -44,6 +44,12 @@ func TestValidate(t *testing.T) {
 			errMsg:  "profile name is required",
 		},
 		{
+			name:    "nil profile",
+			profile: nil,
+			wantErr: true,
+			errMsg:  "profile is required",
+		},
+		{
 			name: "stdio without command",
 			profile: &domain.Profile{
 				Name: "test",
@@ -77,6 +83,28 @@ func TestValidate(t *testing.T) {
 			errMsg:  "unsupported transport",
 		},
 		{
+			name: "invalid URL",
+			profile: &domain.Profile{
+				Name: "test",
+				Servers: map[string]domain.ServerConfig{
+					"srv": {Transport: "sse", URL: "not-a-url"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "invalid URL",
+		},
+		{
+			name: "invalid environment",
+			profile: &domain.Profile{
+				Name: "test",
+				Servers: map[string]domain.ServerConfig{
+					"srv": {Transport: "stdio", Command: "myserver", Env: []string{"TOKEN"}},
+				},
+			},
+			wantErr: true,
+			errMsg:  "KEY=VALUE",
+		},
+		{
 			name: "valid stdio",
 			profile: &domain.Profile{
 				Name: "test",
@@ -97,6 +125,20 @@ func TestValidate(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestValidateProfileName(t *testing.T) {
+	for _, name := range []string{"../outside", "nested/name", "", "..", "name with spaces"} {
+		t.Run(name, func(t *testing.T) {
+			assert.Error(t, validateProfileName(name))
+		})
+	}
+
+	for _, name := range []string{"default", "prod-1", "local_test"} {
+		t.Run(name, func(t *testing.T) {
+			assert.NoError(t, validateProfileName(name))
 		})
 	}
 }

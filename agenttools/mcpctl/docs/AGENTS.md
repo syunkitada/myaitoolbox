@@ -68,3 +68,22 @@ mcpctl profiles use prod
 - **`search` → `info` → `call` のワークフローを優先**すること。
 - **指示がない限りデフォルトプロファイルを使用**すること。
 - **機能追加・変更時には**、対応するREADME.md、docs/* 内のファイルを参照し、必要に応じて更新すること。
+
+## 開発完了時の確認
+
+開発が完了したら、`agenttools/mcpctl`で次のコマンドを順番に実行する。
+
+```bash
+go test ./...
+go vet ./...
+golangci-lint run ./...
+go build -o /dev/null ./cmd/mcpctl
+```
+
+`golangci-lint`は、初回またはバージョン更新時に次のコマンドでインストールする。バージョンを固定して、開発者間で検証結果を揃える。
+
+```bash
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+```
+
+`go vet ./...`と`golangci-lint run ./...`を静解析チェックとして実行する。`golangci-lint`の設定は[`../.golangci.yml`](../.golangci.yml)で管理する。

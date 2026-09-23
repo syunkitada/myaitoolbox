@@ -34,7 +34,7 @@ type ProfileResolver interface {
 
 func ParseToolName(name string) (string, string, error) {
 	parts := strings.SplitN(name, "/", 2)
-	if len(parts) != 2 {
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", fmt.Errorf("invalid tool name format, expected <server>/<tool>")
 	}
 	return parts[0], parts[1], nil

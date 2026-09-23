@@ -5,6 +5,8 @@
 *.so
 *.dylib
 mcpctl
+!cmd/mcpctl/
+!cmd/mcpctl/main.go
 bin/
 
 # Test binary, built with `go test -c`

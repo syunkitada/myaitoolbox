@@ -11,7 +11,7 @@
 │   ├── dev.yaml
 │   ├── stg.yaml
 │   └── prod.yaml
-└── cache/               # キャッシュデータ (予約)
+└── cache/               # キャッシュデータ (予約、現時点では未使用)
     ├── dev.json
     └── prod.json
 ```
@@ -43,7 +43,9 @@ servers:
   # サーバの名前（任意の識別子）
   github:
     transport: stdio
-    command: github-mcp # 実行するコマンド
+    command: github-mcp # 実行ファイル
+    args: ["--stdio"]   # コマンド引数（任意）
+    env: ["TOKEN=..."]  # 子プロセスへ渡す環境変数（任意）
 
   slack:
     transport: stdio
@@ -64,5 +66,7 @@ servers:
 
 実行時に使用するプロファイルは以下の優先順位で決定されます：
 
-1. CLIの `--profile` (`-p`) フラグ、またはMCPリクエスト引数としての指定
+1. CLIの `--profile` (`-p`) フラグ
 2. `config.yaml` の `default_profile` に設定されたプロファイル
+
+`output.format` は `call` の既定出力形式として使用されます。指定がない場合は `table` です。

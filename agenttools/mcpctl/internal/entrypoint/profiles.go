@@ -11,30 +11,32 @@ import (
 var profilesCmd = &cobra.Command{
 	Use:   "profiles",
 	Short: "Manage profiles",
-	Run: func(cmd *cobra.Command, args []string) {
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
 		resolver := infraProfile.NewResolver()
 		out, err := application.ListProfiles(resolver)
 		if err != nil {
-			fmt.Println("Error:", err)
-			return
+			return err
 		}
 		if out != "" {
 			fmt.Println(out)
 		}
+		return nil
 	},
 }
 
 var currentProfileCmd = &cobra.Command{
 	Use:   "current",
 	Short: "Show current profile",
-	Run: func(cmd *cobra.Command, args []string) {
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
 		resolver := infraProfile.NewResolver()
 		name, err := application.GetCurrentProfile(resolver, profileFlag)
 		if err != nil {
-			fmt.Println("Error:", err)
-			return
+			return err
 		}
 		fmt.Println(name)
+		return nil
 	},
 }
 
@@ -42,14 +44,14 @@ var useProfileCmd = &cobra.Command{
 	Use:   "use [profile_name]",
 	Short: "Change default profile",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		resolver := infraProfile.NewResolver()
 		out, err := application.UseProfile(resolver, args[0])
 		if err != nil {
-			fmt.Println("Error:", err)
-			return
+			return err
 		}
 		fmt.Println(out)
+		return nil
 	},
 }
 

@@ -2,12 +2,7 @@
 
 ## 概要
 
-`mcpctl` は MCP (Model Context Protocol) サーバー群を統合的に操作する CLI 兼 MCP サーバーです。
-
-**2つの動作モード:**
-
-- **CLI Mode**: 人間やAIエージェントが直接操作
-- **MCP Server Mode** (`serve`): AIエージェントがMCP経由で接続する統合エンドポイント
+`mcpctl` は MCP (Model Context Protocol) サーバー群を統合的に操作する CLI です。
 
 ## ディレクトリ構成
 
@@ -17,7 +12,7 @@
 ├── profiles/                # プロファイル定義
 │   ├── dev.yaml
 │   └── prod.yaml
-└── cache/                   # キャッシュ
+└── cache/                   # キャッシュ（予約、現時点では未使用）
 ```
 
 ## コマンド一覧
@@ -31,8 +26,7 @@
 | `profiles` | | プロファイル一覧表示 |
 | `profiles current` | | 現在のデフォルトプロファイル表示 |
 | `profiles use` | `<name>` | デフォルトプロファイルを変更 |
-| `serve` | | MCPサーバーモード起動（stdio transport） |
-| `completion` | `[zsh\|bash]` | シェル補完スクリプト生成 |
+| `completion` | `zsh` | zsh補完スクリプト生成 |
 
 ### 隠しコマンド（シェル補完用）
 
@@ -57,7 +51,7 @@
 | フラグ | 短縮 | 型 | デフォルト | 説明 |
 |--------|------|----|-----------|------|
 | `--profile` | `-p` | string | `""` | プロファイル名 |
-| `--output` | `-o` | string | `tsv` | 出力形式（raw / tsv / table） |
+| `--output` | `-o` | string | `config.yaml` の `output.format`（未指定時 `table`） | 出力形式（raw / tsv / table） |
 | `--params` | | string | | パラメータJSON（インライン`{...}`またはファイルパス） |
 | `--<paramName>` | `-<s>` | varies | | ツールパラメータ（値なしで boolean true） |
 
@@ -68,7 +62,7 @@
 | 形式 | 説明 |
 |------|------|
 | `raw` | レスポンス全体を `json.MarshalIndent` で整形して出力 |
-| `tsv` | JSONをパースしタブ区切りで出力（デフォルト） |
+| `tsv` | JSONをパースしタブ区切りで出力 |
 | `table` | アラインメントされたテーブル形式で出力 |
 
 ### 出力処理フロー
@@ -123,7 +117,9 @@ name: dev
 servers:
   github:
     transport: stdio
-    command: npx @anthropic/github-mcp-server
+    command: npx
+    args: ["@anthropic/github-mcp-server"]
+    env: ["GITHUB_TOKEN=..."]
   weather:
     transport: streamable-http
     url: https://api.example.com/mcp
@@ -142,64 +138,32 @@ servers:
 
 ### プロファイル解決順序
 
-1. CLI の `--profile` / `-p` フラグ（または MCP Server モードの `profile` パラメータ）
+1. CLI の `--profile` / `-p` フラグ
 2. `config.yaml` の `default_profile`
-
-## MCP Server モード（serve）
-
-`mcpctl serve` は stdio MCP サーバーとして起動し、以下のツールを公開する:
-
-| MCP Tool | パラメータ | 説明 |
-|----------|-----------|------|
-| `list` | `profile` (optional) | ツール一覧 |
-| `search` | `query` (required), `profile` (optional) | ツール検索 |
-| `info` | `tool` (required), `profile` (optional) | ツール詳細 |
-| `call` | `tool` (required), `profile` (optional), `params` (optional) | ツール実行 |
-
-各ハンドラーは CLI と同じ `discovery` / `runtime` パッケージを利用する。
 
 ## アーキテクチャ
 
 ### パッケージ構成
 
 ```
-cmd/mcpctl/main.go        → エントリーポイント（cli.Execute()）
+cmd/mcpctl/main.go          → エントリーポイント（シグナルとCLI実行）
 internal/
-├── cli/                   → Cobra コマンド定義
-│   ├── root.go            → ルートコマンド + --profile フラグ
-│   ├── call.go            → call コマンド + 出力整形
-│   ├── list.go            → list コマンド
-│   ├── search.go          → search コマンド
-│   ├── info.go            → info コマンド
-│   ├── profiles.go        → profiles コマンド
-│   ├── serve.go           → serve コマンド
-│   ├── completion.go      → completion コマンド + zsh補完スクリプト
-│   └── completehelper.go  → 補完用隠しコマンド
-├── profile/               → プロファイル管理
-│   ├── loader.go          → 設定読み込み/保存
-│   ├── resolver.go        → プロファイル解決
-│   └── validator.go       → バリデーション
-├── runtime/
-│   └── caller.go          → CallTool（MCPクライアント接続→ツール実行）
-├── discovery/             → ツール検出
-│   ├── list.go            → ListTools（並列接続）
-│   ├── info.go            → GetToolInfo, ParseToolName
-│   └── search.go          → SearchTools
-├── mcpclient/
-│   └── client.go          → MCP クライアントセッション作成
-└── mcpserver/
-    └── server.go          → MCP サーバーモード実装
+├── application/            → ユースケース、call引数、出力処理
+├── domain/                 → ツール、プロファイル、インターフェース
+├── entrypoint/             → Cobraコマンドとzsh補完
+└── infrastructure/
+    ├── mcpclient/          → MCPクライアント、発見、実行、出力整形
+    └── profile/            → 設定・プロファイル読み込み、検証、保存
 ```
 
 ### データフロー（CLI Mode）
 
 ```
-User → root.go → call.go
-                   ├── profile/resolver.go → プロファイル解決
-                   ├── discovery/info.go   → パラメータ型情報取得
-                   ├── 引数パース
-                   ├── runtime/caller.go   → MCP Client → MCP Server
-                   └── call.go (出力整形)  → stdout / stderr
+User → entrypoint/root.go → entrypoint/call.go
+                              ├── infrastructure/profile → プロファイル解決・検証
+                              ├── application/call.go      → 引数パース・型変換
+                              ├── infrastructure/mcpclient → MCP Client → MCP Server
+                              └── application/call.go      → stdout / stderr
 ```
 
 ### 並列ツール一覧取得
@@ -222,11 +186,12 @@ echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
 
 ## エラーハンドリング
 
-- `call` で指定された出力形式が `raw` / `tsv` / `table` 以外の場合、エラーメッセージを表示して終了
+- `call` で指定された出力形式が `raw` / `tsv` / `table` 以外の場合、stderrにエラーメッセージを表示して非ゼロで終了
 - ツール実行の結果 `res.IsError` が `true` の場合、`"Tool execution returned an error:"` を出力してから内容を表示
-- パラメータ JSON のパースに失敗した場合はエラーを表示して終了
+- パラメータ JSON やCLI引数のパースに失敗した場合はstderrにエラーを表示して非ゼロで終了
 
 ## 注意事項
 
-- `output.format` の config 設定は現時点ではコード上で参照されていない（CLI の `-o` フラグのみ有効）
+- `output.format` は `call` の既定出力形式として参照され、CLIの `-o` 指定が優先される
 - プロファイル名省略時の動作は設定必須（未設定の場合はエラーになる）
+- `cache/` は将来用に予約されており、現時点では使用されない

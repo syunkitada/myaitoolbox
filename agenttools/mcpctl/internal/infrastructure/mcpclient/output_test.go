@@ -47,6 +47,11 @@ func TestDecodeJSON(t *testing.T) {
 		_, err := DecodeJSON(input)
 		assert.Error(t, err)
 	})
+
+	t.Run("trailing data", func(t *testing.T) {
+		_, err := DecodeJSON([]byte(`{"name":"test"} trailing`))
+		assert.Error(t, err)
+	})
 }
 
 func TestOrderedKeys(t *testing.T) {

@@ -1,40 +1,36 @@
 package entrypoint
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
 	"github.com/syunkitada/myaitoolbox/mcpctl/internal/application"
 	"github.com/syunkitada/myaitoolbox/mcpctl/internal/domain"
-	infraProfile "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/profile"
 	mcpclientInfra "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/mcpclient"
+	infraProfile "github.com/syunkitada/myaitoolbox/mcpctl/internal/infrastructure/profile"
 )
 
 var infoCmd = &cobra.Command{
 	Use:   "info [server/tool]",
 	Short: "Show detailed info about a tool",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		toolPath := args[0]
 		serverName, toolName, err := domain.ParseToolName(toolPath)
 		if err != nil {
-			fmt.Println("Error:", err)
-			return
+			return err
 		}
 
 		resolver := infraProfile.NewResolver()
 		p, err := resolver.Resolve(profileFlag, "")
 		if err != nil {
-			fmt.Println("Error:", err)
-			return
+			return err
 		}
 
 		discovery := mcpclientInfra.NewToolDiscovery()
-		entry, err := application.GetToolInfo(context.Background(), discovery, p, serverName, toolName)
+		entry, err := application.GetToolInfo(cmd.Context(), discovery, p, serverName, toolName)
 		if err != nil {
-			fmt.Println("Error:", err)
-			return
+			return err
 		}
 
 		fmt.Println("Name:")
@@ -48,6 +44,7 @@ var infoCmd = &cobra.Command{
 		fmt.Println("Examples:")
 		fmt.Printf("\n  mcpctl call %s/%s \\\n", entry.ServerName, entry.Tool.Name)
 		fmt.Printf("    --params '{\"key\":\"value\"}'\n")
+		return nil
 	},
 }
 
