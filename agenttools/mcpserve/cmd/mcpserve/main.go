@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -32,7 +33,7 @@ var rootCmd = &cobra.Command{
 	RunE: runServer,
 }
 
-func initLogger() {
+func initLogger() error {
 	var lvl slog.Level
 	switch strings.ToLower(logLevel) {
 	case "debug":
@@ -44,9 +45,10 @@ func initLogger() {
 	case "error":
 		lvl = slog.LevelError
 	default:
-		lvl = slog.LevelInfo
+		return fmt.Errorf("invalid log level %q: expected debug, info, warn, or error", logLevel)
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})))
+	return nil
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -58,12 +60,15 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&host, "host", "localhost", "host to listen on (for http transport)")
 	rootCmd.PersistentFlags().StringVar(&port, "port", "8080", "port to listen on (for http transport)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "log level: debug, info, warn, error")
-
-	if err := godotenv.Load(); err != nil {
-		// .env file not found or error reading it; proceed with existing env
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if transport != "stdio" && transport != "http" {
+			return fmt.Errorf("invalid transport %q: expected stdio or http", transport)
+		}
+		return initLogger()
 	}
 
-	initLogger()
+	// .env file is optional; if it cannot be loaded, proceed with the existing environment.
+	_ = godotenv.Load()
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

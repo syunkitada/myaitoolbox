@@ -72,11 +72,12 @@ func TestListAlerts_Success(t *testing.T) {
 	app := NewApp(
 		&mockAlertRepo{
 			alerts: []domain.Alert{
-				{Labels: map[string]string{"alertname": "CPU", "host": "server-a"}, Status: domain.AlertStatus("firing")},
-				{Labels: map[string]string{"alertname": "MEM", "host": "server-b"}, Status: domain.AlertStatus("resolved")},
+				{Labels: map[string]string{"alertname": "CPU", "host": "server-a"}, Status: domain.AlertStatus("active")},
+				{Labels: map[string]string{"alertname": "MEM", "host": "server-b"}, Status: domain.AlertStatus("suppressed")},
 			},
 		},
 		&mockSilenceRepo{},
+		nil,
 		nil,
 	)
 
@@ -106,15 +107,16 @@ func TestListAlerts_FilterByStatus(t *testing.T) {
 	app := NewApp(
 		&mockAlertRepo{
 			alerts: []domain.Alert{
-				{Labels: map[string]string{"alertname": "CPU", "host": "server-a"}, Status: "firing"},
-				{Labels: map[string]string{"alertname": "MEM", "host": "server-b"}, Status: "resolved"},
+				{Labels: map[string]string{"alertname": "CPU", "host": "server-a"}, Status: "active"},
+				{Labels: map[string]string{"alertname": "MEM", "host": "server-b"}, Status: "suppressed"},
 			},
 		},
 		&mockSilenceRepo{},
 		nil,
+		nil,
 	)
 
-	data, _, err := app.ListAlerts(context.Background(), callToolReq(t, map[string]interface{}{"status": "firing"}))
+	data, _, err := app.ListAlerts(context.Background(), callToolReq(t, map[string]interface{}{"status": "active"}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -125,10 +127,40 @@ func TestListAlerts_FilterByStatus(t *testing.T) {
 	}
 }
 
+func TestListAlerts_FilterBySuppression(t *testing.T) {
+	app := NewApp(
+		&mockAlertRepo{alerts: []domain.Alert{
+			{Status: "suppressed", SilencedBy: []string{"silence-1"}},
+			{Status: "suppressed", InhibitedBy: []string{"alert-1"}},
+		}},
+		&mockSilenceRepo{},
+		nil,
+		nil,
+	)
+
+	data, _, err := app.ListAlerts(context.Background(), callToolReq(t, map[string]interface{}{"status": "silenced"}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	items := data.([]map[string]interface{})
+	if len(items) != 1 || items[0]["silenced_by"].([]string)[0] != "silence-1" {
+		t.Fatalf("expected one silenced alert with its silence id, got %#v", items)
+	}
+
+	data, _, err = app.ListAlerts(context.Background(), callToolReq(t, map[string]interface{}{"status": "inhibited"}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if items = data.([]map[string]interface{}); len(items) != 1 {
+		t.Fatalf("expected one inhibited alert, got %#v", items)
+	}
+}
+
 func TestListAlerts_Empty(t *testing.T) {
 	app := NewApp(
 		&mockAlertRepo{alerts: []domain.Alert{}},
 		&mockSilenceRepo{},
+		nil,
 		nil,
 	)
 
@@ -149,7 +181,7 @@ func TestListAlerts_Empty(t *testing.T) {
 }
 
 func TestListAlerts_RepoError(t *testing.T) {
-	app := NewApp(&mockAlertRepo{err: assertError("repo down")}, &mockSilenceRepo{}, nil)
+	app := NewApp(&mockAlertRepo{err: assertError("repo down")}, &mockSilenceRepo{}, nil, nil)
 
 	_, _, err := app.ListAlerts(context.Background(), callToolReq(t, map[string]interface{}{}))
 	if err == nil || err.Error() != "failed to get alerts: repo down" {
@@ -161,6 +193,7 @@ func TestCreateSilence_Success(t *testing.T) {
 	app := NewApp(
 		&mockAlertRepo{},
 		&mockSilenceRepo{createID: "silence-123"},
+		nil,
 		nil,
 	)
 
@@ -186,7 +219,7 @@ func TestCreateSilence_Success(t *testing.T) {
 }
 
 func TestCreateSilence_InvalidMatchers(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil)
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil, nil)
 
 	_, _, err := app.CreateSilence(context.Background(), callToolReq(t, map[string]interface{}{
 		"matchers": "invalid",
@@ -198,7 +231,7 @@ func TestCreateSilence_InvalidMatchers(t *testing.T) {
 }
 
 func TestCreateSilence_EndBeforeStart(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil)
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil, nil)
 
 	_, _, err := app.CreateSilence(context.Background(), callToolReq(t, map[string]interface{}{
 		"matchers": `alertname="Test"`,
@@ -213,6 +246,7 @@ func TestCreateSilence_RepoError(t *testing.T) {
 	app := NewApp(
 		&mockAlertRepo{},
 		&mockSilenceRepo{err: assertError("create failed")},
+		nil,
 		nil,
 	)
 
@@ -232,10 +266,11 @@ func TestListSilences_Success(t *testing.T) {
 		&mockSilenceRepo{
 			silences: []domain.Silence{
 				{
-					ID: "s-1",
+					ID:     "s-1",
+					Status: "expired",
 					Matchers: []domain.Matcher{
-						{Name: "alertname", Value: "CPU"},
-						{Name: "host", Value: "server-a"},
+						{Name: "alertname", Value: "CPU", IsEqual: true},
+						{Name: "host", Value: "server-.*", IsRegex: true, IsEqual: true},
 					},
 					StartsAt:  now,
 					EndsAt:    now.Add(1 * time.Hour),
@@ -244,6 +279,7 @@ func TestListSilences_Success(t *testing.T) {
 				},
 			},
 		},
+		nil,
 		nil,
 	)
 
@@ -259,6 +295,13 @@ func TestListSilences_Success(t *testing.T) {
 
 	if items[0]["id"] != "s-1" {
 		t.Errorf("expected id s-1, got %v", items[0]["id"])
+	}
+	if items[0]["status"] != "expired" {
+		t.Errorf("expected status expired, got %v", items[0]["status"])
+	}
+	matchers, ok := items[0]["matchers"].([]domain.Matcher)
+	if !ok || len(matchers) != 2 || !matchers[1].IsRegex {
+		t.Errorf("expected structured matchers, got %#v", items[0]["matchers"])
 	}
 
 	metaMap := meta.(map[string]interface{})
@@ -286,6 +329,7 @@ func TestListSilences_Verbose(t *testing.T) {
 			},
 		},
 		nil,
+		nil,
 	)
 
 	data, _, err := app.ListSilences(context.Background(), callToolReq(t, map[string]interface{}{"verbose": true}))
@@ -303,7 +347,7 @@ func TestListSilences_Verbose(t *testing.T) {
 }
 
 func TestListSilences_Empty(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil)
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil, nil)
 
 	data, meta, err := app.ListSilences(context.Background(), callToolReq(t, map[string]interface{}{}))
 	if err != nil {
@@ -322,7 +366,7 @@ func TestListSilences_Empty(t *testing.T) {
 }
 
 func TestListAlerts_InvalidJSON(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil)
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil, nil)
 
 	_, _, err := app.ListAlerts(context.Background(), &mcp.CallToolRequest{
 		Params: &mcp.CallToolParamsRaw{
@@ -336,7 +380,7 @@ func TestListAlerts_InvalidJSON(t *testing.T) {
 }
 
 func TestDeleteSilence_Success(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil)
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil, nil)
 
 	data, meta, err := app.DeleteSilence(context.Background(), callToolReq(t, map[string]interface{}{"id": "s-1"}))
 	if err != nil {
@@ -357,7 +401,7 @@ func TestDeleteSilence_Success(t *testing.T) {
 }
 
 func TestDeleteSilence_MissingID(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil)
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil, nil)
 
 	_, _, err := app.DeleteSilence(context.Background(), callToolReq(t, map[string]interface{}{}))
 	if err == nil {
@@ -369,6 +413,7 @@ func TestDeleteSilence_RepoError(t *testing.T) {
 	app := NewApp(
 		&mockAlertRepo{},
 		&mockSilenceRepo{err: assertError("delete failed")},
+		nil,
 		nil,
 	)
 
@@ -392,6 +437,7 @@ func TestQueryMetricSummary_Success(t *testing.T) {
 				To:    "2026-01-01T01:00:00Z",
 			},
 		},
+		nil,
 	)
 
 	data, meta, err := app.QueryMetricSummary(context.Background(), callToolReq(t, map[string]interface{}{
@@ -416,7 +462,7 @@ func TestQueryMetricSummary_Success(t *testing.T) {
 }
 
 func TestQueryMetricSummary_MissingQuery(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, &mockMetricRepo{})
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, &mockMetricRepo{}, nil)
 
 	_, _, err := app.QueryMetricSummary(context.Background(), callToolReq(t, map[string]interface{}{}))
 	if err == nil {
@@ -425,7 +471,7 @@ func TestQueryMetricSummary_MissingQuery(t *testing.T) {
 }
 
 func TestQueryMetricSummary_NilRepo(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil)
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil, nil)
 
 	_, _, err := app.QueryMetricSummary(context.Background(), callToolReq(t, map[string]interface{}{
 		"query": "cpu_usage",
@@ -449,6 +495,7 @@ func TestQueryMetricHistory_Success(t *testing.T) {
 				TimeTo:   "2026-01-01T01:00:00Z",
 			},
 		},
+		nil,
 	)
 
 	data, meta, err := app.QueryMetricHistory(context.Background(), callToolReq(t, map[string]interface{}{
@@ -473,7 +520,7 @@ func TestQueryMetricHistory_Success(t *testing.T) {
 }
 
 func TestQueryMetricHistory_MissingQuery(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, &mockMetricRepo{})
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, &mockMetricRepo{}, nil)
 
 	_, _, err := app.QueryMetricHistory(context.Background(), callToolReq(t, map[string]interface{}{}))
 	if err == nil {
@@ -482,7 +529,7 @@ func TestQueryMetricHistory_MissingQuery(t *testing.T) {
 }
 
 func TestQueryMetricHistory_NilRepo(t *testing.T) {
-	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil)
+	app := NewApp(&mockAlertRepo{}, &mockSilenceRepo{}, nil, nil)
 
 	_, _, err := app.QueryMetricHistory(context.Background(), callToolReq(t, map[string]interface{}{
 		"query": []interface{}{"cpu_usage"},

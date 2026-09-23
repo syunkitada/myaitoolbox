@@ -50,7 +50,10 @@ func TestParseMatchers(t *testing.T) {
 		{"not equal", `severity!="critical"`, 1, domain.Matcher{Name: "severity", Value: "critical", IsRegex: false, IsEqual: false}, false},
 		{"not regex", `host!~"db-.*"`, 1, domain.Matcher{Name: "host", Value: "db-.*", IsRegex: true, IsEqual: false}, false},
 		{"multiple", `alertname="CPU",severity="critical"`, 2, domain.Matcher{Name: "alertname", Value: "CPU", IsEqual: true}, false},
+		{"quoted escape", `label="a\"b"`, 1, domain.Matcher{Name: "label", Value: "a\"b", IsEqual: true}, false},
 		{"no match", `invalid`, 0, domain.Matcher{}, true},
+		{"trailing garbage", `alertname="CPU",severity`, 0, domain.Matcher{}, true},
+		{"trailing comma", `alertname="CPU",`, 0, domain.Matcher{}, true},
 	}
 
 	for _, tt := range tests {

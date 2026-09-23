@@ -11,23 +11,26 @@ type Alert struct {
 	Labels      map[string]string
 	Annotations map[string]string
 	Status      AlertStatus
+	SilencedBy  []string
+	InhibitedBy []string
 }
 
 type Matcher struct {
-	Name    string
-	Value   string
-	IsRegex bool
-	IsEqual bool
+	Name    string `json:"name"`
+	Value   string `json:"value"`
+	IsRegex bool   `json:"isRegex"`
+	IsEqual bool   `json:"isEqual"`
 }
 
 type Silence struct {
-	ID        string
-	Matchers  []Matcher
-	StartsAt  time.Time
-	EndsAt    time.Time
-	UpdatedAt time.Time
-	CreatedBy string
-	Comment   string
+	ID        string    `json:"id,omitempty"`
+	Status    string    `json:"status,omitempty"`
+	Matchers  []Matcher `json:"matchers"`
+	StartsAt  time.Time `json:"startsAt"`
+	EndsAt    time.Time `json:"endsAt"`
+	UpdatedAt time.Time `json:"updatedAt,omitempty"`
+	CreatedBy string    `json:"createdBy"`
+	Comment   string    `json:"comment"`
 }
 
 type AlertRepository interface {

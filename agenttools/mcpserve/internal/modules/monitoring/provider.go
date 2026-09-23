@@ -23,7 +23,7 @@ func (p *monitoringProvider) Name() string {
 }
 
 func (p *monitoringProvider) Description() string {
-	return "Monitoring integration (Alertmanager) for MCP."
+	return "Monitoring integration (Alertmanager, Grafana) for MCP."
 }
 
 func (p *monitoringProvider) RegisterTools(server domain.Server) {
@@ -34,16 +34,18 @@ func (p *monitoringProvider) RegisterTools(server domain.Server) {
 	alertRepo := monInfra.NewAlertmanagerClient(amURL)
 	silenceRepo := alertRepo.(monDomain.SilenceRepository)
 
+	var dashboardRepo monDomain.DashboardRepository
 	var metricRepo monDomain.MetricRepository
 	if grafanaURL := os.Getenv("GRAFANA_URL"); grafanaURL != "" {
 		if apiToken := os.Getenv("GRAFANA_API_TOKEN"); apiToken != "" {
+			dashboardRepo = monInfra.NewGrafanaDashboardClient(grafanaURL, apiToken)
 			if dsUID := os.Getenv("GRAFANA_DATASOURCE_UID"); dsUID != "" {
 				metricRepo = monInfra.NewGrafanaClient(grafanaURL, apiToken, dsUID)
 			}
 		}
 	}
 
-	app := monApp.NewApp(alertRepo, silenceRepo, metricRepo)
+	app := monApp.NewApp(alertRepo, silenceRepo, metricRepo, dashboardRepo)
 
 	server.AddTool(&mcp.Tool{
 		Name:        "list_alerts",
@@ -212,4 +214,107 @@ func (p *monitoringProvider) RegisterTools(server domain.Server) {
 			"required": []string{"query"},
 		},
 	}, monApp.WrapTool(app.QueryMetricHistory))
+
+	server.AddTool(&mcp.Tool{
+		Name:        "list_dashboards",
+		Description: "Search Grafana dashboards",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"query": map[string]interface{}{
+					"type":        "string",
+					"description": "Search text matched against dashboard title",
+				},
+				"folder_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "Restrict results to a folder UID",
+				},
+				"tag": map[string]interface{}{
+					"type":        "array",
+					"items":       map[string]interface{}{"type": "string"},
+					"description": "Dashboard tags to filter by",
+				},
+				"limit": map[string]interface{}{
+					"type":        "integer",
+					"description": "Max number of dashboards to return. Default is 50.",
+				},
+			},
+		},
+	}, monApp.WrapTool(app.ListDashboards))
+
+	server.AddTool(&mcp.Tool{
+		Name:        "get_dashboard",
+		Description: "Get a Grafana dashboard by UID",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"uid": map[string]interface{}{
+					"type": "string",
+				},
+				"verbose": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Include the full dashboard model in the response",
+				},
+			},
+			"required": []string{"uid"},
+		},
+	}, monApp.WrapTool(app.GetDashboard))
+
+	server.AddTool(&mcp.Tool{
+		Name:        "create_dashboard",
+		Description: "Create or update a Grafana dashboard",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"title": map[string]interface{}{
+					"type":        "string",
+					"description": "Dashboard title. Overrides dashboard.title when both are provided.",
+				},
+				"dashboard": map[string]interface{}{
+					"type":        "object",
+					"description": "Full dashboard model JSON. When omitted, a minimal dashboard is created from title and tags.",
+				},
+				"folder_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "Destination folder UID. Omit for the General folder.",
+				},
+				"tags": map[string]interface{}{
+					"type":        "array",
+					"items":       map[string]interface{}{"type": "string"},
+					"description": "Dashboard tags to set",
+				},
+				"overwrite": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Overwrite an existing dashboard with the same UID. Default is false.",
+				},
+				"message": map[string]interface{}{
+					"type":        "string",
+					"description": "Change message stored with the new version",
+				},
+			},
+		},
+	}, monApp.WrapTool(app.CreateDashboard))
+
+	server.AddTool(&mcp.Tool{
+		Name:        "delete_dashboard",
+		Description: "Delete a Grafana dashboard by UID",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"uid": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			"required": []string{"uid"},
+		},
+	}, monApp.WrapTool(app.DeleteDashboard))
+
+	server.AddTool(&mcp.Tool{
+		Name:        "list_folders",
+		Description: "List Grafana dashboard folders",
+		InputSchema: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+	}, monApp.WrapTool(app.ListFolders))
 }

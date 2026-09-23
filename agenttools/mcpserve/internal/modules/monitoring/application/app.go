@@ -17,16 +17,18 @@ import (
 var varParseRegex = regexp.MustCompile(`^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)\s*$`)
 
 type App struct {
-	alertRepo   domain.AlertRepository
-	silenceRepo domain.SilenceRepository
-	metricRepo  domain.MetricRepository
+	alertRepo     domain.AlertRepository
+	silenceRepo   domain.SilenceRepository
+	metricRepo    domain.MetricRepository
+	dashboardRepo domain.DashboardRepository
 }
 
-func NewApp(alertRepo domain.AlertRepository, silenceRepo domain.SilenceRepository, metricRepo domain.MetricRepository) *App {
+func NewApp(alertRepo domain.AlertRepository, silenceRepo domain.SilenceRepository, metricRepo domain.MetricRepository, dashboardRepo domain.DashboardRepository) *App {
 	return &App{
-		alertRepo:   alertRepo,
-		silenceRepo: silenceRepo,
-		metricRepo:  metricRepo,
+		alertRepo:     alertRepo,
+		silenceRepo:   silenceRepo,
+		metricRepo:    metricRepo,
+		dashboardRepo: dashboardRepo,
 	}
 }
 
@@ -36,6 +38,9 @@ func (a *App) ListAlerts(ctx context.Context, req *mcp.CallToolRequest) (data, m
 		return nil, nil, fmt.Errorf("invalid arguments format")
 	}
 	status, _ := args["status"].(string)
+	if status != "" && status != "active" && status != "silenced" && status != "inhibited" {
+		return nil, nil, fmt.Errorf("invalid status: %s", status)
+	}
 	alertname, _ := args["alertname"].(string)
 	host, _ := args["host"].(string)
 	verbose, _ := args["verbose"].(bool)
@@ -55,11 +60,13 @@ func (a *App) ListAlerts(ctx context.Context, req *mcp.CallToolRequest) (data, m
 
 	var filtered []map[string]interface{}
 	for _, al := range alerts {
-		if status != "" && string(al.Status) != status {
+		if !matchesAlertStatus(al, status) {
 			continue
 		}
 		item := map[string]interface{}{
-			"status": al.Status,
+			"status":       al.Status,
+			"silenced_by":  al.SilencedBy,
+			"inhibited_by": al.InhibitedBy,
 		}
 		if verbose {
 			item["labels"] = FormatLabels(al.Labels)
@@ -79,6 +86,21 @@ func (a *App) ListAlerts(ctx context.Context, req *mcp.CallToolRequest) (data, m
 		return []interface{}{}, lmeta, nil
 	}
 	return filtered, lmeta, nil
+}
+
+func matchesAlertStatus(alert domain.Alert, status string) bool {
+	switch status {
+	case "":
+		return true
+	case "active":
+		return alert.Status == domain.AlertStatus("active")
+	case "silenced":
+		return len(alert.SilencedBy) > 0
+	case "inhibited":
+		return len(alert.InhibitedBy) > 0
+	default:
+		return false
+	}
 }
 
 func (a *App) CreateSilence(ctx context.Context, req *mcp.CallToolRequest) (data, meta interface{}, err error) {
@@ -174,22 +196,16 @@ func (a *App) ListSilences(ctx context.Context, req *mcp.CallToolRequest) (data,
 
 	var filtered []map[string]interface{}
 	for _, s := range silences {
-		labelsMap := make(map[string]string)
-		for _, m := range s.Matchers {
-			labelsMap[m.Name] = m.Value
-		}
-
 		item := map[string]interface{}{
-			"id": s.ID,
+			"id":       s.ID,
+			"status":   s.Status,
+			"matchers": s.Matchers,
 		}
 		if verbose {
-			item["labels"] = FormatLabels(labelsMap)
 			item["comment"] = s.Comment
 			item["author"] = s.CreatedBy
 			item["start"] = s.StartsAt.Format(time.RFC3339)
 			item["end"] = s.EndsAt.Format(time.RFC3339)
-		} else {
-			item["labels"] = FormatSelectedLabels(labelsMap, "alertname", "host")
 		}
 		filtered = append(filtered, item)
 	}

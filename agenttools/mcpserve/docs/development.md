@@ -4,21 +4,20 @@
 
 ## 1. パッケージの作成
 
-`internal/providers/` 配下に新しいサーバー用のディレクトリ（例: `example`）を作成し、以下の構造を推奨します:
+`internal/modules/` 配下に新しいサーバー用のディレクトリ（例: `example`）を作成し、以下の構造を推奨します:
 
 ```
-internal/providers/example/
+internal/modules/example/
     application/
     domain/
     infrastructure/
     provider.go
-    init.go
 ```
 
 ## 2. Provider インターフェースの実装
 
 作成したファイル内で、`domain.Provider` インターフェースを満たす構造体を実装します。
-`NewServer()` メソッドでは、`infrastructure.NewMCServer()` を使用してサーバーインスタンスを生成し、必要な Tool を登録します。
+`RegisterTools(server)` メソッドで、受け取ったサーバーに必要なToolを登録します。サーバーの生成と起動は `internal/entrypoint` が担当します。
 
 ```go
 package example
@@ -28,13 +27,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/syunkitada/myaitoolbox/mcpserve/internal/domain"
-	"github.com/syunkitada/myaitoolbox/mcpserve/internal/infrastructure"
 )
-
-// init() を用いて自動で Registry に登録されるようにします。
-func init() {
-	domain.Register(New())
-}
 
 type exampleProvider struct{}
 
@@ -47,44 +40,41 @@ func (p *exampleProvider) Name() string {
 }
 
 func (p *exampleProvider) Description() string {
-	return "Example integration for MCP." // -h オプションで表示される説明
+    return "Example integration for MCP."
 }
 
-func (p *exampleProvider) NewServer() domain.Server {
-	s := infrastructure.NewMCServer(
-		&mcp.Implementation{Name: "example", Version: "0.0.1"},
-		&mcp.ServerOptions{},
-	)
-
-	// ここに Tool を追加します
-	s.AddTool(&mcp.Tool{
+func (p *exampleProvider) RegisterTools(s domain.Server) {
+    s.AddTool(&mcp.Tool{
 		Name:        "example_tool",
 		Description: "An example tool",
-		InputSchema: mcp.ToolInputSchema{
-			Type: "object",
-			Properties: map[string]interface{}{},
+        InputSchema: map[string]interface{}{
+            "type": "object",
+            "properties": map[string]interface{}{},
 		},
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (data, meta interface{}, err error) {
 		// データを返します。metaはメタ情報（例: フィルタ条件、件数など）
 		return "Result from example_tool", nil, nil
 	})
 
-	return s
 }
 ```
 
 ## 3. エントリーポイントへの登録
 
-作成したパッケージの `init()` 関数が実行されるよう、`internal/application/imports.go` の import に追加します（アンダースコア `_` を用いた blank import）。
+作成したパッケージを `internal/entrypoint/bootstrap.go` からimportし、`NewRegistryWithProviders` 内で明示的に登録します。
 
 ```go
-package application
-
 import (
-	// Register providers
-	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/monitoring"
-	_ "github.com/syunkitada/myaitoolbox/mcpserve/internal/providers/example" // <--- 追加
+    "github.com/syunkitada/myaitoolbox/mcpserve/internal/modules/monitoring"
+    "github.com/syunkitada/myaitoolbox/mcpserve/internal/modules/example"
 )
+
+func NewRegistryWithProviders() *Registry {
+    registry := NewRegistry()
+    registry.Register(monitoring.New())
+    registry.Register(example.New())
+    return registry
+}
 ```
 
 ## 4. 動作確認
@@ -92,22 +82,37 @@ import (
 ビルドして正しく追加されているか確認します。
 
 ```bash
-go run cmd/mcpserve/main.go -h
+go run ./cmd/mcpserve -h
 ```
 
-`Available servers:` の一覧に `example` が表示されれば追加成功です。
+MCPクライアントから `mcpserve example` に接続し、ツール一覧に `example_tool` が表示されれば追加成功です。
 
 ## 5. テスト
 
 テストファイルを作成し、動作を確認します。
 
 ```bash
-go test ./internal/providers/example/...
+go test ./internal/modules/example/...
+```
+
+## 6. 品質チェック
+
+実装後は、テストと静的解析を実行して確認します。
+
+```bash
+go test ./...
+go vet ./...
+golangci-lint run ./...
+```
+
+`golangci-lint` の設定は [`.golangci.yml`](../.golangci.yml) で管理し、バージョンを固定して導入しています。未インストールまたはバージョン更新時は、次のコマンドでインストールしてください。
+
+```bash
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 ```
 
 ## 注意事項
 
 - **レスポンスフォーマット**: 全てのツールは成功時に `structuredContent` を返すこと。形式は `{"structuredContent": {"meta": {...}, "data": {...}}}` です。
 - **エラーハンドリング**: エラー時は `IsError: true` を設定し `structuredContent` は省略すること。
-- **ヘルパー関数**: `newStructuredResult(text, meta, data)` を使用すると、レスポンスの構築が簡単になります。
 - **ドキュメント更新**: 機能追加・変更時には、対応するREADME.md、docs/* 内のファイルを参照し、必要に応じて更新すること。

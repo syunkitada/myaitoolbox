@@ -26,5 +26,5 @@ func TestRegisterTools(t *testing.T) {
 }
 
 func TestProviderInterface(t *testing.T) {
-	var _ domain.Provider = New()
+	var _ domain.Provider = (*monitoringProvider)(nil)
 }

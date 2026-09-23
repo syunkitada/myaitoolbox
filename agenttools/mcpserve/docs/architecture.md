@@ -18,25 +18,26 @@ mcpserve/
 ├── cmd/mcpserve/main.go              # エントリーポイント（CLI）
 ├── internal/
 │   ├── domain/provider.go            # コアドメインインターフェース
-│   ├── application/
-│   │   ├── registry.go               # プロバイダーファサード
-│   │   └── imports.go                # blank import による登録トリガー
+│   ├── entrypoint/
+│   │   ├── registry.go               # プロバイダーレジストリ
+│   │   └── bootstrap.go              # DIとサーバー起動
 │   ├── infrastructure/
 │   │   ├── server.go                 # Server インターフェース実装
-│   │   └── registry.go               # グローバルプロバイダーレジストリ
-│   └── providers/
-│       └── monitoring/               # monitoring プロバイダー
+│   └── modules/
+│       └── monitoring/               # monitoring モジュール
 │           ├── provider.go           # Provider インターフェース実装
-│           ├── init.go               # init() による自動登録
 │           ├── domain/               # プロバイダー固有のドメイン型
 │           │   ├── alert.go          # Alert, Silence, Matcher 型 + Repository インターフェース
+│           │   ├── dashboard.go      # Dashboard, Folder 型 + DashboardRepository インターフェース
 │           │   └── metric.go         # MetricSummary 型 + MetricRepository インターフェース
 │           ├── application/          # UseCase 実装
 │           │   ├── app.go            # ListAlerts, CreateSilence, QueryMetricSummary 等
+│           │   ├── dashboard.go      # ListDashboards, CreateDashboard 等
 │           │   ├── wrap.go           # ツールハンドラのログラッパー
 │           │   └── alert_utils.go    # 時間パース、マッチャー解析、ラベルフォーマット
 │           └── infrastructure/       # 外部サービスクライアント
 │               ├── alertmanager.go   # Alertmanager HTTP クライアント
+│               ├── grafana_dashboard.go # Grafana ダッシュボード管理 HTTP クライアント
 │               ├── prometheus.go     # Grafana datasource proxy クライアント
 │               └── metric_utils.go   # PromQL ユーティリティ
 ├── docs/                             # ドキュメント
@@ -53,8 +54,8 @@ mcpserve/
 ```go
 type Provider interface {
     Name() string          // CLI で指定するサーバー名
-    Description() string   // -h で表示される説明
-    NewServer() Server     // サーバーインスタンスの生成
+    Description() string   // プロバイダーの説明
+    RegisterTools(server Server) // ツールをサーバーへ登録
 }
 ```
 
@@ -80,12 +81,11 @@ type Server interface {
 main.go
   │
   ├─ godotenv.Load()           # .env ファイル読み込み
-  ├─ initLogger()              # slog の初期化
-  └─ rootCmd.Execute()         # cobra による CLI 解析
+  └─ rootCmd.Execute()         # cobra による CLI 解析とログ初期化
        │
        └─ runServer()
-            ├─ application.Get(name)  → Provider を取得
-            ├─ provider.NewServer()   → Server を生成（Tool 登録含む）
+            ├─ entrypoint.Get(name)  → Provider を取得
+            ├─ NewMCServer() + provider.RegisterTools(server)
             │
             ├─ [stdio] srv.Run(ctx, &mcp.StdioTransport{})
             └─ [http]  mcp.NewSSEHandler(...) + http.ListenAndServe
@@ -139,27 +139,27 @@ main.go
 
 ## Monitoring プロバイダー
 
-既存の唯一のプロバイダーで、Alertmanager と Prometheus (Grafana経由) との連携を提供します。
+既存の唯一のプロバイダーで、Alertmanager と Prometheus (Grafana経由)、Grafana ダッシュボード管理との連携を提供します。
 
 ### プロバイダーアーキテクチャ
 
 ```
-providers/monitoring/
+modules/monitoring/
   ├── domain/         ← プロバイダー固有の型とリポジトリインターフェース
   ├── application/    ← UseCase 実装
   ├── infrastructure/ ← 外部サービスクライアント
-  ├── provider.go     ← Provider インターフェース実装
-  └── init.go         ← init() による登録
+  └── provider.go     ← Provider実装とツール登録
 ```
 
-### ドメイン (`providers/monitoring/domain/`)
+### ドメイン (`modules/monitoring/domain/`)
 
 | ファイル | 定義 |
 |---------|------|
 | `alert.go` | `Alert`, `Silence`, `Matcher` 型、`AlertRepository` / `SilenceRepository` インターフェース |
+| `dashboard.go` | `DashboardSummary`, `Dashboard`, `Folder` 型、`DashboardRepository` インターフェース |
 | `metric.go` | `MetricSummary`, `OrderedMap` 型、`MetricRepository` インターフェース |
 
-### UseCase (`providers/monitoring/application/app.go`)
+### UseCase (`modules/monitoring/application/app.go`)
 
 | ツール名 | UseCase | 概要 |
 |---------|---------|------|
@@ -169,17 +169,23 @@ providers/monitoring/
 | `delete_silence` | `DeleteSilence` | サイレンスを削除 |
 | `query_metric_summary` | `QueryMetricSummary` | PromQL 統計サマリー (min, max, p50/p90/p99) |
 | `query_metric_history` | `QueryMetricHistory` | PromQL 時系列データポイント |
+| `list_dashboards` | `ListDashboards` | Grafana ダッシュボードの検索 |
+| `get_dashboard` | `GetDashboard` | Grafana ダッシュボードの取得（`verbose` でモデル全体を含む） |
+| `create_dashboard` | `CreateDashboard` | Grafana ダッシュボードの作成・更新 |
+| `delete_dashboard` | `DeleteDashboard` | Grafana ダッシュボードの削除 |
+| `list_folders` | `ListFolders` | Grafana フォルダ一覧の取得 |
 
-### Infrastructure (`providers/monitoring/infrastructure/`)
+### Infrastructure (`modules/monitoring/infrastructure/`)
 
 | クライアント | 対象サービス | 実装するリポジトリ |
 |------------|-------------|-------------------|
 | `alertmanagerClient` | Alertmanager v2 API | `AlertRepository` + `SilenceRepository` |
 | `grafanaClient` | Grafana datasource proxy → Prometheus | `MetricRepository` |
+| `grafanaDashboardClient` | Grafana dashboard API | `DashboardRepository` |
 
 ### ツールラッパー (`WrapTool`)
 
-`providers/monitoring/application/wrap.go` がツールハンドラにログ機能を追加します:
+`modules/monitoring/application/wrap.go` がツールハンドラにログ機能を追加します:
 
 ```
 ツール呼び出し → slog.Info(tool, params) → ハンドラ実行 → slog.Info/Error(tool)
@@ -195,6 +201,9 @@ GRAFANA_URL=http://localhost:3000
 GRAFANA_API_TOKEN=your-token
 GRAFANA_DATASOURCE_UID=your-uid
 ```
+
+- メトリクス取得ツールは `GRAFANA_URL` / `GRAFANA_API_TOKEN` / `GRAFANA_DATASOURCE_UID` の3つが設定されている場合に有効になります。
+- ダッシュボード管理ツール（`list_dashboards` 等）は `GRAFANA_URL` と `GRAFANA_API_TOKEN` のみで有効になり、`GRAFANA_DATASOURCE_UID` は不要です。
 
 ### CLI フラグ
 

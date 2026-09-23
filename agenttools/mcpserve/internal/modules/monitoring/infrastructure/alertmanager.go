@@ -29,7 +29,9 @@ type amAlertDTO struct {
 	Labels      map[string]string `json:"labels"`
 	Annotations map[string]string `json:"annotations"`
 	Status      struct {
-		State string `json:"state"`
+		State       string   `json:"state"`
+		SilencedBy  []string `json:"silencedBy"`
+		InhibitedBy []string `json:"inhibitedBy"`
 	} `json:"status"`
 }
 
@@ -66,7 +68,7 @@ func (c *alertmanagerClient) GetAlerts(ctx context.Context, filters ...string) (
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get alerts: %s", resp.Status)
@@ -83,6 +85,8 @@ func (c *alertmanagerClient) GetAlerts(ctx context.Context, filters ...string) (
 			Labels:      dto.Labels,
 			Annotations: dto.Annotations,
 			Status:      domain.AlertStatus(dto.Status.State),
+			SilencedBy:  dto.Status.SilencedBy,
+			InhibitedBy: dto.Status.InhibitedBy,
 		}
 	}
 	return alerts, nil
@@ -108,7 +112,7 @@ func (c *alertmanagerClient) List(ctx context.Context, filters ...string) ([]dom
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get silences: %s", resp.Status)
@@ -123,6 +127,7 @@ func (c *alertmanagerClient) List(ctx context.Context, filters ...string) ([]dom
 	for i, dto := range dtos {
 		silences[i] = domain.Silence{
 			ID:        dto.ID,
+			Status:    dto.Status.State,
 			Matchers:  dto.Matchers,
 			StartsAt:  dto.StartsAt,
 			EndsAt:    dto.EndsAt,
@@ -135,7 +140,19 @@ func (c *alertmanagerClient) List(ctx context.Context, filters ...string) ([]dom
 }
 
 func (c *alertmanagerClient) Create(ctx context.Context, silence domain.Silence) (string, error) {
-	body, err := json.Marshal(silence)
+	body, err := json.Marshal(struct {
+		Matchers  []domain.Matcher `json:"matchers"`
+		StartsAt  time.Time        `json:"startsAt"`
+		EndsAt    time.Time        `json:"endsAt"`
+		CreatedBy string           `json:"createdBy"`
+		Comment   string           `json:"comment"`
+	}{
+		Matchers:  silence.Matchers,
+		StartsAt:  silence.StartsAt,
+		EndsAt:    silence.EndsAt,
+		CreatedBy: silence.CreatedBy,
+		Comment:   silence.Comment,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -152,7 +169,7 @@ func (c *alertmanagerClient) Create(ctx context.Context, silence domain.Silence)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		b, _ := io.ReadAll(resp.Body)
@@ -179,7 +196,7 @@ func (c *alertmanagerClient) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)

@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/syunkitada/myaitoolbox/mcpserve/internal/domain"
@@ -27,15 +28,28 @@ func (s *serverImpl) AddTool(tool *mcp.Tool, handler func(ctx context.Context, r
 		}
 		text := ""
 		if data != nil {
-			b, _ := json.MarshalIndent(data, "", "  ")
+			b, marshalErr := json.MarshalIndent(data, "", "  ")
+			if marshalErr != nil {
+				return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to encode tool result: %v", marshalErr)}},
+				}, nil
+			}
 			text = string(b)
 		}
+		structured := map[string]interface{}{
+			"meta": meta,
+			"data": data,
+		}
+		if _, marshalErr := json.Marshal(structured); marshalErr != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to encode tool result: %v", marshalErr)}},
+			}, nil
+		}
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: text}},
-			StructuredContent: map[string]interface{}{
-				"meta": meta,
-				"data": data,
-			},
+			Content:           []mcp.Content{&mcp.TextContent{Text: text}},
+			StructuredContent: structured,
 		}, nil
 	})
 }

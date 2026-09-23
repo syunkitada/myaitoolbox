@@ -30,12 +30,16 @@ func TestGetAlerts_Success(t *testing.T) {
 			{
 				"labels":      map[string]string{"alertname": "CPU", "host": "server-a"},
 				"annotations": map[string]string{"summary": "high CPU"},
-				"status":      map[string]string{"state": "firing"},
+				"status": map[string]interface{}{
+					"state":       "suppressed",
+					"silencedBy":  []string{"silence-1"},
+					"inhibitedBy": []string{"alert-1"},
+				},
 			},
 			{
 				"labels":      map[string]string{"alertname": "MEM", "host": "server-b"},
 				"annotations": map[string]string{},
-				"status":      map[string]string{"state": "resolved"},
+				"status":      map[string]string{"state": "active"},
 			},
 		}
 
@@ -58,15 +62,21 @@ func TestGetAlerts_Success(t *testing.T) {
 	if alerts[0].Labels["alertname"] != "CPU" {
 		t.Errorf("expected alertname CPU, got %v", alerts[0].Labels["alertname"])
 	}
-	if alerts[0].Status != domain.AlertStatus("firing") {
-		t.Errorf("expected status firing, got %v", alerts[0].Status)
+	if alerts[0].Status != domain.AlertStatus("suppressed") {
+		t.Errorf("expected status suppressed, got %v", alerts[0].Status)
 	}
 	if alerts[0].Annotations["summary"] != "high CPU" {
 		t.Errorf("expected annotation summary, got %v", alerts[0].Annotations["summary"])
 	}
+	if len(alerts[0].SilencedBy) != 1 || alerts[0].SilencedBy[0] != "silence-1" {
+		t.Errorf("expected silence id, got %v", alerts[0].SilencedBy)
+	}
+	if len(alerts[0].InhibitedBy) != 1 || alerts[0].InhibitedBy[0] != "alert-1" {
+		t.Errorf("expected inhibition id, got %v", alerts[0].InhibitedBy)
+	}
 
-	if alerts[1].Status != domain.AlertStatus("resolved") {
-		t.Errorf("expected status resolved, got %v", alerts[1].Status)
+	if alerts[1].Status != domain.AlertStatus("active") {
+		t.Errorf("expected status active, got %v", alerts[1].Status)
 	}
 }
 
@@ -82,7 +92,7 @@ func TestGetAlerts_WithFilter(t *testing.T) {
 		alerts := []map[string]interface{}{
 			{
 				"labels": map[string]string{"alertname": "CPU"},
-				"status": map[string]string{"state": "firing"},
+				"status": map[string]string{"state": "active"},
 			},
 		}
 
@@ -131,7 +141,7 @@ func TestListSilences_Success(t *testing.T) {
 			{
 				"id": "silence-1",
 				"status": map[string]string{
-					"state": "active",
+					"state": "expired",
 				},
 				"matchers": []map[string]interface{}{
 					{"name": "alertname", "value": "CPU", "isRegex": false, "isEqual": true},
@@ -166,6 +176,9 @@ func TestListSilences_Success(t *testing.T) {
 	}
 	if silences[0].Comment != "test silence" {
 		t.Errorf("expected comment 'test silence', got %s", silences[0].Comment)
+	}
+	if silences[0].Status != "expired" {
+		t.Errorf("expected status expired, got %s", silences[0].Status)
 	}
 	if silences[0].CreatedBy != "admin" {
 		t.Errorf("expected createdBy admin, got %s", silences[0].CreatedBy)

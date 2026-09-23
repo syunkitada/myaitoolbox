@@ -19,6 +19,10 @@ func NewRegistryWithProviders() *Registry {
 }
 
 func Run(registry *Registry, serverName, transport, host, port string) error {
+	if transport != "stdio" && transport != "http" {
+		return fmt.Errorf("invalid transport %q: expected stdio or http", transport)
+	}
+
 	p, exists := registry.Get(serverName)
 	if !exists {
 		return fmt.Errorf("server %q not found", serverName)

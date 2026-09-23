@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-mcpserve
+/mcpserve
 bin/
 
 # Test binary, built with `go test -c`

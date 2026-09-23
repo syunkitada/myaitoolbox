@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -155,6 +156,41 @@ func TestAddToolError(t *testing.T) {
 	// Structured content should be nil on error
 	if result.StructuredContent != nil {
 		t.Error("expected structured content to be nil on error")
+	}
+}
+
+func TestAddToolUnencodableResult(t *testing.T) {
+	s := NewMCServer(&mcp.Implementation{Name: "test", Version: "0.0.1"}, nil)
+	s.AddTool(&mcp.Tool{
+		Name:        "nan_tool",
+		Description: "A tool that returns a non-JSON number",
+		InputSchema: map[string]interface{}{"type": "object"},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (data, meta interface{}, err error) {
+		return math.NaN(), nil, nil
+	})
+
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverDone := make(chan error, 1)
+	go func() {
+		serverDone <- s.Run(context.Background(), serverTransport)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
+	session, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "nan_tool", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatalf("failed to call tool: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for an unencodable result")
+	}
+	if result.StructuredContent != nil {
+		t.Fatal("expected no structured content for an unencodable result")
 	}
 }
 

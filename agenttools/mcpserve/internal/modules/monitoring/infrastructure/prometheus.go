@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -91,6 +92,9 @@ func (c *grafanaClient) QuerySummary(ctx context.Context, query string, vars map
 			}
 			v, err := strconv.ParseFloat(valStr, 64)
 			if err != nil {
+				continue
+			}
+			if math.IsNaN(v) || math.IsInf(v, 0) {
 				continue
 			}
 
@@ -226,6 +230,9 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 					if err != nil {
 						continue
 					}
+					if math.IsNaN(v) || math.IsInf(v, 0) {
+						continue
+					}
 					ts := int64(tsFloat)
 					if _, ok := multiMap[legend][ts]; !ok {
 						multiMap[legend][ts] = make(map[string]float64)
@@ -250,6 +257,9 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 					}
 					v, err := strconv.ParseFloat(valStr, 64)
 					if err != nil {
+						continue
+					}
+					if math.IsNaN(v) || math.IsInf(v, 0) {
 						continue
 					}
 					ts := int64(tsFloat)
@@ -298,7 +308,12 @@ func (c *grafanaClient) QueryHistory(ctx context.Context, queries []string, vars
 			t := time.Unix(ts, 0).In(fromTime.Location())
 			item = append(item, domain.MapEntry{Key: "time", Value: FormatTime(t, duration, stepSeconds)})
 			for _, eq := range expandedQueries {
-				item = append(item, domain.MapEntry{Key: eq, Value: tsMap[ts][eq]})
+				value, ok := tsMap[ts][eq]
+				if !ok {
+					item = append(item, domain.MapEntry{Key: eq, Value: nil})
+					continue
+				}
+				item = append(item, domain.MapEntry{Key: eq, Value: value})
 			}
 			data = append(data, item)
 		}
@@ -372,7 +387,7 @@ func (c *grafanaClient) queryPrometheus(ctx context.Context, query string, fromT
 	if err != nil {
 		return nil, fmt.Errorf("request to Grafana failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)

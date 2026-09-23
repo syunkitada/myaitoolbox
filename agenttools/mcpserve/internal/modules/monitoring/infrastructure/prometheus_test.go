@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestQueryMetricSummary(t *testing.T) {
@@ -38,6 +37,7 @@ func TestQueryMetricSummary(t *testing.T) {
 					"host": "server-a",
 				},
 				Values: [][]interface{}{
+					{1688547585.0, "NaN"},
 					{1688547600.0, "10"},
 					{1688547615.0, "20"},
 					{1688547630.0, "30"},
@@ -65,12 +65,6 @@ func TestQueryMetricSummary(t *testing.T) {
 	defer mockServer.Close()
 
 	client := NewGrafanaClient(mockServer.URL, "test-token", "prom-123")
-
-	origLocal := time.Local
-	time.Local = time.UTC
-	defer func() {
-		time.Local = origLocal
-	}()
 
 	data, meta, err := client.QuerySummary(
 		context.Background(),
@@ -175,12 +169,6 @@ func TestQueryMetricHistory(t *testing.T) {
 
 	client := NewGrafanaClient(mockServer.URL, "test-token", "prom-123")
 
-	origLocal := time.Local
-	time.Local = time.UTC
-	defer func() {
-		time.Local = origLocal
-	}()
-
 	data, meta, err := client.QueryHistory(
 		context.Background(),
 		[]string{"cpu_usage"},
@@ -269,7 +257,6 @@ func TestQueryMetricHistoryMultiQuery(t *testing.T) {
 				{
 					Metric: map[string]string{"host": "host1"},
 					Values: [][]interface{}{
-						{1783270800.0, "20"},
 						{1783270860.0, "21"},
 					},
 				},
@@ -282,10 +269,6 @@ func TestQueryMetricHistoryMultiQuery(t *testing.T) {
 	defer mockServer.Close()
 
 	client := NewGrafanaClient(mockServer.URL, "test-token", "prom-123")
-
-	origLocal := time.Local
-	time.Local = time.UTC
-	defer func() { time.Local = origLocal }()
 
 	data, meta, err := client.QueryHistory(
 		context.Background(),
@@ -328,8 +311,13 @@ func TestQueryMetricHistoryMultiQuery(t *testing.T) {
 	if dp1[2].Key != "disk_usage" {
 		t.Errorf("Expected third key to be disk_usage, got %q", dp1[2].Key)
 	}
-	if dp1[2].Value != 20.0 {
-		t.Errorf("Expected disk_usage to be 20, got %v", dp1[2].Value)
+	if dp1[2].Value != nil {
+		t.Errorf("Expected disk_usage to be null for a missing sample, got %v", dp1[2].Value)
+	}
+
+	dp2 := data[1]
+	if dp2[2].Value != 21.0 {
+		t.Errorf("Expected disk_usage to be 21, got %v", dp2[2].Value)
 	}
 }
 
