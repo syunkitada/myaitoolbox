@@ -1,0 +1,1185 @@
+openapi: 3.0.3
+info:
+  title: mybox API
+  description: Markdown-based personal workspace API
+  version: 0.1.0
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /api/projects:
+    get:
+      operationId: listProjects
+      summary: List projects
+      responses:
+        "200":
+          description: list of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      summary: Register a directory as a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          description: path does not exist or is not a directory
+  /api/projects/paths:
+    get:
+      operationId: getProjectPaths
+      summary: List existing directory paths for project path autocompletion
+      parameters:
+        - name: prefix
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: candidate directory paths
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /api/projects/{name}:
+    delete:
+      operationId: deleteProject
+      summary: Remove a project
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: removed
+        "404":
+          description: project not found
+  /api/projects/reorder:
+    put:
+      operationId: reorderProjects
+      summary: Reorder projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderProjectsRequest"
+      responses:
+        "204":
+          description: reordered
+  /api/projects/git-status:
+    get:
+      operationId: getProjectGitStatus
+      summary: Get git status summary for all projects
+      responses:
+        "200":
+          description: git status per project
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/ProjectGitStatus"
+  /api/meta:
+    get:
+      operationId: getMeta
+      summary: Get workspace meta information
+      responses:
+        "200":
+          description: meta information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Meta"
+  /api/meta/favorites:
+    put:
+      operationId: updateFavorite
+      summary: Add or remove a favorite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFavoriteRequest"
+      responses:
+        "204":
+          description: updated
+  /api/meta/recent:
+    post:
+      operationId: recordRecent
+      summary: Record a recently opened file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordRecentRequest"
+      responses:
+        "204":
+          description: recorded
+  /api/meta/recent/delete:
+    post:
+      operationId: deleteRecent
+      summary: Remove a file from the recent list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordRecentRequest"
+      responses:
+        "204":
+          description: removed
+  /api/files:
+    get:
+      operationId: listFiles
+      summary: List files in the project directory tree
+      parameters:
+        - name: show_hidden
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: Whether to include hidden files (dotfiles) in the result
+        - name: path
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >
+            Directory path relative to the project root. When omitted the
+            complete tree is returned, otherwise only the direct children.
+      responses:
+        "200":
+          description: file tree
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FileEntry"
+    post:
+      operationId: createFile
+      summary: Create an empty file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilePathRequest"
+      responses:
+        "204":
+          description: created
+        "400":
+          description: invalid path
+        "409":
+          description: already exists
+  /api/files/dir:
+    post:
+      operationId: createDir
+      summary: Create an empty directory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilePathRequest"
+      responses:
+        "204":
+          description: created
+        "400":
+          description: invalid path
+        "409":
+          description: already exists
+  /api/files/upload:
+    post:
+      operationId: uploadFiles
+      summary: Upload one or more files to a project directory
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                directory:
+                  type: string
+                  description: Directory path relative to the project root; empty means the project root
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "204":
+          description: uploaded
+        "400":
+          description: invalid multipart form or path
+  /api/files/content:
+    get:
+      operationId: getFileContent
+      summary: Get file content
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: file content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileContent"
+        "400":
+          description: invalid path
+        "404":
+          description: not found
+    put:
+      operationId: saveFileContent
+      summary: Save file content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileContent"
+      responses:
+        "204":
+          description: saved
+  /api/files/move:
+    post:
+      operationId: moveFile
+      summary: Move a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveFileRequest"
+      responses:
+        "204":
+          description: moved
+        "400":
+          description: invalid path
+        "404":
+          description: not found
+  /api/files/copy:
+    post:
+      operationId: copyFile
+      summary: Copy a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveFileRequest"
+      responses:
+        "204":
+          description: copied
+        "400":
+          description: invalid path
+        "404":
+          description: not found
+  /api/files/delete:
+    post:
+      operationId: deleteFile
+      summary: Delete a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilePathRequest"
+      responses:
+        "204":
+          description: deleted
+        "400":
+          description: invalid path
+        "404":
+          description: not found
+  /api/files/git-status:
+    get:
+      operationId: getFileGitStatus
+      summary: Get git status for each file in the project
+      responses:
+        "200":
+          description: per-file git status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  description: Git status code (staged, modified, untracked, deleted)
+  /api/files/execute:
+    post:
+      operationId: executeFile
+      summary: Execute an executable file and return its output
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilePathRequest"
+      responses:
+        "200":
+          description: execution result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileExecuteResult"
+        "400":
+          description: invalid path or not executable
+        "404":
+          description: not found
+  /api/tasks:
+    get:
+      operationId: listTasks
+      summary: List tasks
+      parameters:
+        - name: all
+          in: query
+          schema:
+            type: boolean
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: tag
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
+      responses:
+        "201":
+          description: created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /api/tasks/{id}:
+    get:
+      operationId: getTask
+      summary: Get a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: not found
+    patch:
+      operationId: updateTask
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskRequest"
+      responses:
+        "200":
+          description: updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    delete:
+      operationId: deleteTask
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: deleted
+  /api/tasks/{id}/archive:
+    post:
+      operationId: archiveTask
+      summary: Archive a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: archived
+  /api/graph:
+    get:
+      operationId: getGraph
+      summary: Get graph data for Graph View
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: Optional root directory to scope the graph to (empty means the whole project)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: graph data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphData"
+  /api/herdr/overview:
+    get:
+      operationId: getHerdrOverview
+      summary: Get herdr workspaces and agents overview
+      responses:
+        "200":
+          description: herdr overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOverview"
+  /api/herdr/agents/read:
+    post:
+      operationId: readHerdrAgent
+      summary: Read agent terminal output
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrReadRequest"
+      responses:
+        "200":
+          description: agent terminal output
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrReadResponse"
+  /api/herdr/agents/prompt:
+    post:
+      operationId: promptHerdrAgent
+      summary: Submit a prompt to an agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPromptRequest"
+      responses:
+        "200":
+          description: accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrPromptResponse"
+  /api/herdr/agents/send-keys:
+    post:
+      operationId: sendKeysHerdrAgent
+      summary: Send key presses to a herdr agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrAgentSendKeysRequest"
+      responses:
+        "200":
+          description: sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/agents/rename:
+    post:
+      operationId: renameHerdrAgent
+      summary: Rename a herdr agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrAgentRenameRequest"
+      responses:
+        "200":
+          description: renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/tabs/create:
+    post:
+      operationId: createHerdrTab
+      summary: Create a herdr tab
+      description: >
+        When the request names a project and no herdr workspace carries that
+        label yet (e.g. herdr holds no tabs/panes at all), the project's first
+        workspace is bootstrapped instead; its root tab becomes the new tab.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrTabCreateRequest"
+      responses:
+        "200":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/tabs/rename:
+    post:
+      operationId: renameHerdrTab
+      summary: Rename a herdr tab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrTabRenameRequest"
+      responses:
+        "200":
+          description: renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/tabs/close:
+    post:
+      operationId: closeHerdrTab
+      summary: Close a herdr tab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrTabCloseRequest"
+      responses:
+        "200":
+          description: closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/split:
+    post:
+      operationId: splitHerdrPane
+      summary: Split a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneSplitRequest"
+      responses:
+        "200":
+          description: split
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/rename:
+    post:
+      operationId: renameHerdrPane
+      summary: Rename a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneRenameRequest"
+      responses:
+        "200":
+          description: renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/read:
+    post:
+      operationId: readHerdrPane
+      summary: Read herdr pane terminal output
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrReadRequest"
+      responses:
+        "200":
+          description: pane terminal output
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrReadResponse"
+  /api/herdr/panes/close:
+    post:
+      operationId: closeHerdrPane
+      summary: Close a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneCloseRequest"
+      responses:
+        "200":
+          description: closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/send-text:
+    post:
+      operationId: sendTextHerdrPane
+      summary: Send literal text to a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneSendTextRequest"
+      responses:
+        "200":
+          description: sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+  /api/herdr/panes/send-keys:
+    post:
+      operationId: sendKeysHerdrPane
+      summary: Send key presses to a herdr pane
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrPaneSendKeysRequest"
+      responses:
+        "200":
+          description: sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
+components:
+  schemas:
+    Project:
+      type: object
+      required: [name, path]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+    CreateProjectRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+    ReorderProjectsRequest:
+      type: object
+      required: [names]
+      properties:
+        names:
+          type: array
+          items:
+            type: string
+    Meta:
+      type: object
+      required: [project, projects, default_project, tags, favorites, recent_files]
+      properties:
+        project:
+          type: string
+        projects:
+          type: array
+          items:
+            type: string
+        default_project:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        favorites:
+          type: array
+          items:
+            type: string
+        recent_files:
+          type: array
+          items:
+            type: string
+    ProjectGitStatus:
+      type: object
+      required: [dirty, modified, staged, untracked]
+      properties:
+        dirty:
+          type: boolean
+          description: Whether the project has any uncommitted changes
+        modified:
+          type: integer
+          description: Number of modified files
+        staged:
+          type: integer
+          description: Number of staged files
+        untracked:
+          type: integer
+          description: Number of untracked files
+    UpdateFavoriteRequest:
+      type: object
+      required: [path, enabled]
+      properties:
+        path:
+          type: string
+        enabled:
+          type: boolean
+    RecordRecentRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+    Task:
+      type: object
+      required: [id, title, status, priority]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        agent_kind:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        assignee:
+          type: string
+        due:
+          type: string
+        pending_until:
+          type: string
+        pending_reason:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        project:
+          type: string
+        created:
+          type: string
+          format: date-time
+        body:
+          type: string
+        archived:
+          type: boolean
+    TaskStatus:
+      type: string
+      enum: ["todo", "doing", "blocked", "review", "done"]
+    TaskPriority:
+      type: string
+      enum: ["low", "medium", "high", "urgent"]
+    CreateTaskRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        agent_kind:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        assignee:
+          type: string
+        due:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+    UpdateTaskRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        agent_kind:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        assignee:
+          type: string
+        due:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+    FileEntry:
+      type: object
+      required: [path, name, kind]
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: ["file", "dir"]
+        status:
+          type: string
+          description: Front matter status metadata for markdown files, if present
+        executable:
+          type: boolean
+          description: Whether the file has the executable bit set
+    FileExecuteResult:
+      type: object
+      required: [path, exit_code, output]
+      properties:
+        path:
+          type: string
+        exit_code:
+          type: integer
+          description: Process exit code (124 when the run timed out)
+        output:
+          type: string
+          description: Combined stdout and stderr of the executed process
+        timed_out:
+          type: boolean
+          description: True when the process was killed after the timeout
+    FileContent:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+    MoveFileRequest:
+      type: object
+      required: [old_path, new_path]
+      properties:
+        old_path:
+          type: string
+        new_path:
+          type: string
+    FilePathRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+    GraphData:
+      type: object
+      required: [nodes, links]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphNode"
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphLink"
+    GraphNode:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+    GraphLink:
+      type: object
+      required: [source, target]
+      properties:
+        source:
+          type: string
+        target:
+          type: string
+    HerdrOverview:
+      type: object
+      required: [available, workspaces, agents, tabs, panes]
+      properties:
+        available:
+          type: boolean
+        workspaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/HerdrWorkspace"
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/HerdrAgent"
+        tabs:
+          type: array
+          items:
+            $ref: "#/components/schemas/HerdrTab"
+        panes:
+          type: array
+          items:
+            $ref: "#/components/schemas/HerdrPane"
+    HerdrWorkspace:
+      type: object
+      required: [workspace_id, label, agent_status]
+      properties:
+        workspace_id:
+          type: string
+        label:
+          type: string
+        number:
+          type: integer
+        agent_status:
+          type: string
+        focused:
+          type: boolean
+        tab_count:
+          type: integer
+        pane_count:
+          type: integer
+    HerdrAgent:
+      type: object
+      required: [name, status, workspace_id, pane_id]
+      properties:
+        name:
+          type: string
+        custom_name:
+          type: string
+        status:
+          type: string
+        workspace_id:
+          type: string
+        cwd:
+          type: string
+        title:
+          type: string
+        focused:
+          type: boolean
+        pane_id:
+          type: string
+    HerdrReadRequest:
+      type: object
+      required: [target]
+      properties:
+        target:
+          type: string
+    HerdrReadResponse:
+      type: object
+      required: [output]
+      properties:
+        output:
+          type: string
+    HerdrPromptRequest:
+      type: object
+      required: [target, text]
+      properties:
+        target:
+          type: string
+        text:
+          type: string
+    HerdrPromptResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    HerdrOpResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    HerdrTab:
+      type: object
+      required: [tab_id, workspace_id, label]
+      properties:
+        tab_id:
+          type: string
+        workspace_id:
+          type: string
+        label:
+          type: string
+        number:
+          type: integer
+        agent_status:
+          type: string
+        focused:
+          type: boolean
+        pane_count:
+          type: integer
+    HerdrPane:
+      type: object
+      required: [pane_id, tab_id, workspace_id]
+      properties:
+        pane_id:
+          type: string
+        tab_id:
+          type: string
+        workspace_id:
+          type: string
+        cwd:
+          type: string
+        agent_status:
+          type: string
+        title:
+          type: string
+        focused:
+          type: boolean
+    HerdrTabCreateRequest:
+      type: object
+      properties:
+        workspace_id:
+          type: string
+        label:
+          type: string
+        cwd:
+          type: string
+        project:
+          type: string
+          description: >-
+            Project name. When no herdr workspace has this label, the project's
+            first workspace (cwd of the project) is bootstrapped and its root
+            tab carries the requested label.
+    HerdrTabRenameRequest:
+      type: object
+      required: [tab_id, label]
+      properties:
+        tab_id:
+          type: string
+        label:
+          type: string
+    HerdrTabCloseRequest:
+      type: object
+      required: [tab_id]
+      properties:
+        tab_id:
+          type: string
+    HerdrPaneSplitRequest:
+      type: object
+      required: [pane_id, direction]
+      properties:
+        pane_id:
+          type: string
+        direction:
+          type: string
+          enum: [right, down]
+        cwd:
+          type: string
+    HerdrPaneRenameRequest:
+      type: object
+      required: [pane_id, label]
+      properties:
+        pane_id:
+          type: string
+        label:
+          type: string
+    HerdrPaneCloseRequest:
+      type: object
+      required: [pane_id]
+      properties:
+        pane_id:
+          type: string
+    HerdrPaneSendTextRequest:
+      type: object
+      required: [pane_id, text]
+      properties:
+        pane_id:
+          type: string
+        text:
+          type: string
+    HerdrPaneSendKeysRequest:
+      type: object
+      required: [pane_id, keys]
+      properties:
+        pane_id:
+          type: string
+        keys:
+          type: array
+          items:
+            type: string
+    HerdrAgentSendKeysRequest:
+      type: object
+      required: [target, keys]
+      properties:
+        target:
+          type: string
+        keys:
+          type: array
+          items:
+            type: string
+    HerdrAgentRenameRequest:
+      type: object
+      required: [target]
+      properties:
+        target:
+          type: string
+        name:
+          type: string
+        clear:
+          type: boolean

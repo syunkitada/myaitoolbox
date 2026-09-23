@@ -1,0 +1,10 @@
+/mybox
+./bin
+/web/node_modules
+/web/dist
+*.log
+
+# web-build で生成されるファイルは追跡しない（README.md と .gitkeep だけ例外）
+/internal/webui/dist/*
+!/internal/webui/dist/.gitkeep
+!/internal/webui/dist/README.md

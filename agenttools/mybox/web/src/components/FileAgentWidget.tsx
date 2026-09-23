@@ -1,0 +1,372 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { HerdrAgent, HerdrOverview, api } from '../api/client'
+import { StatusDot } from './herdr-status'
+import { Button } from './ui/button'
+import { taskAgentName, taskDirFromPath } from '../utils/herdr-file-agent'
+import { Bot, ChevronRight, Loader2, Square } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { SyntaxHighlighter } from './SyntaxHighlighter'
+import { paneColumnWidth } from '../utils/herdr-layout'
+import { AGENT_COMMANDS } from '../utils/herdr-agent-commands'
+
+const FILE_AGENT_KEYS: { label: string; key: string }[] = [
+  { label: 'Enter', key: 'enter' },
+  { label: 'Tab', key: 'tab' },
+  { label: '↑', key: 'up' },
+  { label: '↓', key: 'down' },
+  { label: 'Esc', key: 'esc' },
+  { label: 'Ctrl+C', key: 'C-c' },
+]
+
+const FILE_AGENT_KIND_OPTIONS = ['opencode', 'codex'] as const
+
+const KIND_STORAGE_KEY = 'mybox.herdr.file-agent-kind'
+
+export interface FileAgentWidgetProps {
+  /** Project-relative path of the open file the agent works on. Only files
+   *  inside a task directory (tasks/<dir>/...) can start an agent; otherwise
+   *  the widget is not rendered. */
+  path: string
+  overview: HerdrOverview | null
+  onRefresh: () => void
+}
+
+export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetProps) {
+  const dir = taskDirFromPath(path)
+  const name = taskAgentName(path)
+
+  const [open, setOpen] = useState(true)
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [output, setOutput] = useState<string | null>(null)
+  const [outputError, setOutputError] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const [keySending, setKeySending] = useState<string | null>(null)
+  const [commandSending, setCommandSending] = useState<string | null>(null)
+  const [kind, setKind] = useState<string>(() => {
+    const saved = window.localStorage.getItem(KIND_STORAGE_KEY)
+    return saved && (FILE_AGENT_KIND_OPTIONS as readonly string[]).includes(saved) ? saved : 'opencode'
+  })
+  const loadingRef = useRef(false)
+  const preRef = useRef<HTMLDivElement>(null)
+  const agentRef = useRef<HerdrAgent | undefined>(undefined)
+  const prevPaneIdRef = useRef<string | null>(null)
+  // Terminal column width of the agent's pane, so the output wraps at the same
+  // columns as the real herdr pane instead of the web pane's width.
+  const [cols, setCols] = useState<number | undefined>(undefined)
+
+  const agent = (overview?.agents ?? []).find((a) => a.name === name)
+  agentRef.current = agent
+
+  const loadOutput = useCallback(
+    async (reportError = true) => {
+      const a = agentRef.current
+      if (!a || loadingRef.current) return
+      loadingRef.current = true
+      try {
+        const res = await api.readHerdrAgent(a.pane_id)
+        setOutput(res.output)
+        setOutputError(null)
+      } catch (e) {
+        if (reportError) setOutputError(e instanceof Error ? e.message : String(e))
+      } finally {
+        loadingRef.current = false
+      }
+    },
+    [],
+  )
+
+  const stop = useCallback(() => {
+    if (!agent) return
+    setSending(true)
+    setError(null)
+    void api
+      .sendKeysHerdrAgent(agent.pane_id, ['C-c', 'C-c'])
+      .then(() => onRefresh())
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setSending(false))
+  }, [agent, onRefresh])
+
+  useEffect(() => {
+    const paneId = agent?.pane_id ?? null
+    if (prevPaneIdRef.current !== paneId) {
+      setOutput(null)
+      setOutputError(null)
+    }
+    prevPaneIdRef.current = paneId
+    if (!agent || !open || !overview?.available) return
+    void loadOutput()
+    const id = setInterval(() => {
+      if (!document.hidden) void loadOutput(false)
+    }, 1500)
+    return () => clearInterval(id)
+  }, [agent?.pane_id, open, overview?.available, loadOutput])
+
+  useEffect(() => {
+    const paneId = agent?.pane_id ?? null
+    if (!paneId || !overview?.available) {
+      setCols(undefined)
+      return
+    }
+    let cancelled = false
+    void api
+      .getHerdrLayouts()
+      .then((res) => {
+        if (!cancelled) setCols(paneColumnWidth(res.layouts, paneId))
+      })
+      .catch(() => {
+        if (!cancelled) setCols(undefined)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [agent?.pane_id, open, overview?.available])
+
+  useEffect(() => {
+    window.localStorage.setItem(KIND_STORAGE_KEY, kind)
+  }, [kind])
+
+  useEffect(() => {
+    const el = preRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [output])
+
+  const start = useCallback(() => {
+    if (starting) return
+    setStarting(true)
+    setError(null)
+    void api
+      .startHerdrFileAgent(path, kind)
+      .then(() => {
+        setOpen(true)
+        onRefresh()
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setStarting(false))
+  }, [path, kind, starting, onRefresh])
+
+  const sendPrompt = useCallback(async () => {
+    const text = draft.trim()
+    if (!text || !agent || sending) return
+    setSending(true)
+    setError(null)
+    try {
+      await api.promptHerdrAgent(agent.pane_id, text)
+      setDraft('')
+      void loadOutput()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSending(false)
+    }
+  }, [draft, agent, sending, loadOutput])
+
+  const sendKey = useCallback(
+    async (key: string) => {
+      if (!agent || keySending) return
+      setKeySending(key)
+      setError(null)
+      try {
+        await api.sendKeysHerdrAgent(agent.pane_id, [key])
+        void loadOutput()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setKeySending(null)
+      }
+    },
+    [agent, keySending, loadOutput],
+  )
+
+  const sendCommand = useCallback(
+    async (command: string) => {
+      if (!agent || commandSending) return
+      setCommandSending(command)
+      setError(null)
+      try {
+        await api.promptHerdrAgent(agent.pane_id, command)
+        void loadOutput()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setCommandSending(null)
+      }
+    },
+    [agent, commandSending, loadOutput],
+  )
+
+  // Files outside a task directory cannot start an agent: hide the widget.
+  if (dir === null) return null
+
+  const header = (
+    <button
+      type="button"
+      className="flex w-full cursor-pointer items-center gap-1.5 px-1 py-1.5 text-left"
+      onClick={() => setOpen((o) => !o)}
+      aria-expanded={open}
+      aria-label={open ? `Collapse agent for ${dir}` : `Expand agent for ${dir}`}
+    >
+      <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />
+      <Bot className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-xs font-semibold" title={dir}>
+        {dir}
+      </span>
+      {agent ? (
+        <StatusDot status={agent.status} />
+      ) : (
+        !starting && (
+          <span className="text-[10px] tracking-wider text-muted-foreground uppercase">off</span>
+        )
+      )}
+      {starting && <Loader2 className="size-3 shrink-0 animate-spin" />}
+    </button>
+  )
+
+  // herdr is unavailable: keep the header so the widget stays discoverable.
+  if (!overview?.available) {
+    return (
+      <div className="file-agent-widget min-w-0 w-full mb-3 rounded-md border border-border bg-muted/40">
+        {header}
+      </div>
+    )
+  }
+
+  if (!agent) {
+    return (
+      <div className="file-agent-widget min-w-0 w-full mb-3 rounded-md border border-border bg-muted/40">
+        {header}
+        {open && (
+          <div className="px-1.5 pb-1.5">
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <label className="text-[10px] tracking-wider text-muted-foreground uppercase">Agent kind</label>
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+                aria-label="Agent kind"
+                className="cursor-pointer rounded border bg-background px-1.5 py-0.5 text-xs outline-none"
+              >
+                {FILE_AGENT_KIND_OPTIONS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button
+              variant="outline"
+              size="xs"
+              className="w-full cursor-pointer"
+              onClick={start}
+              disabled={starting}
+              aria-label={`Start agent for ${dir}`}
+            >
+              {starting ? (
+                <>
+                  <Loader2 className="size-3 animate-spin" />
+                  Starting…
+                </>
+              ) : (
+                <>
+                  <Bot className="size-3" />
+                  Start agent
+                </>
+              )}
+            </Button>
+            {error && <p className="mt-1.5 text-[11px] text-red-600">{error}</p>}
+            <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+              herdr will open a tab named “{dir}” and run a {kind} agent shared by every file in
+              the task directory.
+            </p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const agentName: HerdrAgent = agent
+
+  return (
+    <div className="file-agent-widget min-w-0 w-full mb-3 rounded-md border border-border bg-muted/40">
+      {header}
+      {open && (
+        <>
+          {error && <p className="px-1.5 text-[11px] text-red-600">{error}</p>}
+          {outputError && <p className="px-1.5 text-[11px] text-red-600">{outputError}</p>}
+          <div
+            ref={preRef}
+            className="mx-1.5 max-h-80 overflow-auto rounded border bg-background p-1.5 text-[11px]"
+          >
+            <SyntaxHighlighter text={output ?? 'loading…'} cols={cols} />
+          </div>
+          <div className="flex flex-wrap items-center gap-1 px-1.5 pt-1.5">
+            {FILE_AGENT_KEYS.map((k) => (
+              <Button
+                key={k.key}
+                variant="outline"
+                size="xs"
+                className="cursor-pointer px-1.5 font-mono text-[10px]"
+                title={`Press ${k.label}`}
+                disabled={keySending !== null || sending}
+                onClick={() => void sendKey(k.key)}
+              >
+                [{keySending === k.key ? '…' : k.label}]
+              </Button>
+            ))}
+            <span aria-hidden="true" className="h-4 w-px bg-border" />
+            {AGENT_COMMANDS.map((c) => (
+              <Button
+                key={c.command}
+                variant="outline"
+                size="xs"
+                className="cursor-pointer px-1.5 font-mono text-[10px] text-muted-foreground"
+                title={`Run ${c.label}`}
+                disabled={commandSending !== null || sending}
+                onClick={() => void sendCommand(c.command)}
+              >
+                {commandSending === c.command ? '…' : c.label}
+              </Button>
+            ))}
+            <Button
+              variant="ghost"
+              size="xs"
+              className="ml-auto cursor-pointer text-[10px] text-muted-foreground"
+              onClick={stop}
+              disabled={sending}
+              aria-label={`Stop agent ${agentName.name}`}
+              title={`Stop ${agentName.name}`}
+            >
+              <Square className="size-3" />
+              Stop
+            </Button>
+          </div>
+          <div className="flex items-start gap-1.5 p-1.5">
+            <textarea
+              aria-label={`Prompt ${agentName.name}`}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault()
+                  void sendPrompt()
+                }
+              }}
+              placeholder="Prompt… (Ctrl+Enter to send)"
+              rows={2}
+              className="min-h-0 flex-1 resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            />
+            <Button
+              size="xs"
+              className="cursor-pointer"
+              onClick={() => void sendPrompt()}
+              disabled={sending || draft.trim() === ''}
+              aria-label={`Send prompt to ${agentName.name}`}
+            >
+              Send
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
