@@ -1,6 +1,6 @@
 # mygit 利用方法
 
-`mygit`は、複数のGit repositoryをmanifestとlockfileで管理するCLIです。`mygit.yaml`に取得したいrepositoryと要求するrevisionを記述し、`mygit.lock.yaml`に実際に使用するcommitを固定します。
+`mygit`は、複数のGit repositoryをmanifestとlockfileで管理するCLIです。`mygit.yaml`に取得したいrepositoryと要求するrevisionを記述し、通常は`mygit.lock.yaml`に実際に使用するcommitを固定します。
 
 ## 前提
 
@@ -56,7 +56,9 @@ repositories:
     path: ./skills/code-review
 ```
 
-`path`を省略したrepositoryは、`_repos/<name>`へcloneされます。`path`を指定した場合はWorkspaceからの相対パスとして扱います。`name`は単一のパス要素であり、`/`や`..`は使用できません。予約領域である`_repos/`配下を明示的な`path`にすることもできません。
+`path`を省略したrepositoryは、`_repos/<name>`へcloneされます。`path`を指定した場合はWorkspaceからの相対パスとして扱います。`~/`で始まるパスはHOMEディレクトリを基準に解決できます。`name`は単一のパス要素であり、`/`や`..`は使用できません。予約領域である`_repos/`配下を明示的な`path`にすることもできません。
+
+`unlock: true`を指定したrepositoryはlockfileへ記録されず、`sync`と`update`のたびに`revision`の最新commitへ更新されます。通常のrepositoryと`unlock: true`のrepositoryは同じWorkspaceで混在できます。
 
 ## 基本ワークフロー
 
@@ -130,11 +132,12 @@ mygit status
 | `drifted` | local HEADがlockfileと異なる |
 | `remote-outdated` | remoteのrevisionがlockfileより進んでいる |
 | `remote-unavailable` | remoteの状態を確認できない |
+| `unlocked` | lockfileでcommitを固定していない |
 | `invalid` | lockfile、remote、clone先の構成が不正 |
 
 ## lockfileの扱い
 
-`mygit.lock.yaml`はGitで管理してください。manifestのrevisionだけではなく、URL、正規化済みclone先、完全なcommit object IDを記録します。
+`mygit.lock.yaml`はGitで管理してください。`unlock: true`を指定していないrepositoryについて、manifestのrevisionだけではなく、URL、正規化済みclone先、完全なcommit object IDを記録します。`unlock: true`のrepositoryはlockfileに記録されません。
 
 通常は次の使い分けです。
 
@@ -148,6 +151,7 @@ mygit status  # 状態を確認するだけ
 
 - 既存clone先のremote URLがmanifestと異なる場合は処理しません。
 - 未コミット変更や未追跡ファイルがあるclone先では、`reset`や`clean`を実行せず失敗します。
+- `.gitignore`対象の未追跡ファイルはdirty判定の対象外です。ただし、checkout先の追跡ファイルとパスが衝突する場合はGitがcheckoutを拒否することがあります。
 - clone先がGit repositoryでない場合、既存ファイルを上書きしません。
 - 複数Workspace間でclone先が重複または親子関係になる場合は、処理開始前に失敗します。
 - `sync`と`update`はカレントディレクトリ配下のWorkspaceを再帰的に処理します。`_repos/`とclone済みの明示的`path`配下は探索しません。

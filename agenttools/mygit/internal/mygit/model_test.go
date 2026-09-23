@@ -51,6 +51,7 @@ func TestValidateManifestRejectsUnsafeNamesAndReservedPaths(t *testing.T) {
 		{name: ".."},
 		{name: "inside-repos", path: "_repos/inside"},
 		{name: "workspace", path: "."},
+		{name: "absolute", path: "/tmp/absolute"},
 	}
 
 	for _, tc := range cases {
@@ -83,6 +84,32 @@ func TestBuildWorkspaceDerivesNameFromHTTPSURL(t *testing.T) {
 	}
 	if got, want := workspace.Targets[0].Relative, "_repos/yennanliu_InvestSkill"; got != want {
 		t.Fatalf("derived path = %q, want %q", got, want)
+	}
+}
+
+func TestBuildWorkspaceExpandsHomePath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	manifest := Manifest{Repositories: []Repository{{
+		Name:     "example",
+		URL:      "https://example.test/repository.git",
+		Revision: "main",
+		Path:     "~/hoge",
+	}}}
+	workspace, err := BuildWorkspace(root, manifest, filepath.Join(root, ManifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := workspace.Targets[0].Path, filepath.Join(home, "hoge"); got != want {
+		t.Fatalf("expanded path = %q, want %q", got, want)
+	}
+	if got, want := workspace.Targets[0].Relative, "~/hoge"; got != want {
+		t.Fatalf("lockfile path = %q, want %q", got, want)
 	}
 }
 
@@ -195,5 +222,33 @@ func TestValidateLockReportsRepositorySetDifferences(t *testing.T) {
 		if !strings.Contains(err.Error(), detail) {
 			t.Fatalf("ValidateLock() error = %v, missing detail %q", err, detail)
 		}
+	}
+}
+
+func TestValidateLockDoesNotRequireUnlockedRepositories(t *testing.T) {
+	root := t.TempDir()
+	manifest := Manifest{Repositories: []Repository{{
+		Name:     "example",
+		URL:      "https://example.test/repository.git",
+		Revision: "main",
+		Unlock:   true,
+	}}}
+	workspace, err := BuildWorkspace(root, manifest, filepath.Join(root, ManifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ValidateLock(workspace, Lockfile{}); err != nil {
+		t.Fatalf("unlocked repository requires a lock entry: %v", err)
+	}
+	lock := Lockfile{Repositories: []LockedRepository{{
+		Name:     "example",
+		URL:      manifest.Repositories[0].URL,
+		Revision: manifest.Repositories[0].Revision,
+		Path:     "_repos/example",
+		Commit:   strings.Repeat("a", 40),
+	}}}
+	if err := ValidateLock(workspace, lock); err != nil {
+		t.Fatalf("stale lock entry for unlocked repository was not ignored: %v", err)
 	}
 }

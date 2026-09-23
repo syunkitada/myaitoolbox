@@ -34,6 +34,7 @@ type Repository struct {
 	URL      string `yaml:"url"`
 	Revision string `yaml:"revision"`
 	Path     string `yaml:"path,omitempty"`
+	Unlock   bool   `yaml:"unlock,omitempty"`
 }
 
 type Lockfile struct {
@@ -245,22 +246,36 @@ func isSafeName(name string) bool {
 
 func resolveTarget(root string, repository Repository) (Target, error) {
 	relative := repository.Path
+	homeRelative := false
 	if relative == "" {
 		relative = filepath.Join(DefaultRepoDir, repository.Name)
 	} else {
 		relative = filepath.FromSlash(relative)
-		if filepath.IsAbs(relative) {
+		if isHomePath(relative) {
+			var err error
+			relative, err = resolveHomePath(relative)
+			if err != nil {
+				return Target{}, fmt.Errorf("resolve repository %q path: %w", repository.Name, err)
+			}
+			homeRelative = true
+		} else if filepath.IsAbs(relative) {
 			return Target{}, fmt.Errorf("repository %q path must be relative", repository.Name)
 		}
 		relative = filepath.Clean(relative)
-		if relative == "." {
+		if relative == "." && !homeRelative {
 			return Target{}, fmt.Errorf("repository %q path cannot be the Workspace itself", repository.Name)
 		}
 	}
 
-	targetPath, err := filepath.Abs(filepath.Join(root, relative))
-	if err != nil {
-		return Target{}, fmt.Errorf("resolve repository %q path: %w", repository.Name, err)
+	var targetPath string
+	if homeRelative {
+		targetPath = relative
+	} else {
+		var err error
+		targetPath, err = filepath.Abs(filepath.Join(root, relative))
+		if err != nil {
+			return Target{}, fmt.Errorf("resolve repository %q path: %w", repository.Name, err)
+		}
 	}
 	targetPath = filepath.Clean(targetPath)
 	root = filepath.Clean(root)
@@ -275,11 +290,51 @@ func resolveTarget(root string, repository Repository) (Target, error) {
 	if err != nil {
 		return Target{}, fmt.Errorf("normalize repository %q path: %w", repository.Name, err)
 	}
+	if homeRelative {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return Target{}, fmt.Errorf("resolve repository %q path: %w", repository.Name, err)
+		}
+		home, err = filepath.Abs(home)
+		if err != nil {
+			return Target{}, fmt.Errorf("resolve repository %q path: %w", repository.Name, err)
+		}
+		homePath, err := filepath.Rel(filepath.Clean(home), targetPath)
+		if err != nil {
+			return Target{}, fmt.Errorf("normalize repository %q path: %w", repository.Name, err)
+		}
+		if homePath == "." {
+			normalized = "~"
+		} else {
+			normalized = "~/" + filepath.ToSlash(homePath)
+		}
+	}
 	return Target{Repository: repository, Path: targetPath, Relative: filepath.ToSlash(normalized)}, nil
 }
 
+func isHomePath(path string) bool {
+	separator := string(filepath.Separator)
+	return path == "~" || strings.HasPrefix(path, "~"+separator)
+}
+
+func resolveHomePath(path string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+	home, err = filepath.Abs(home)
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+	if path == "~" {
+		return filepath.Clean(home), nil
+	}
+	suffix := strings.TrimPrefix(path, "~"+string(filepath.Separator))
+	return filepath.Clean(filepath.Join(home, suffix)), nil
+}
+
 func ValidateLock(workspace Workspace, lock Lockfile) error {
-	byName, err := lockRepositories(lock)
+	byName, err := lockRepositoriesForWorkspace(workspace, lock)
 	if err != nil {
 		return err
 	}
@@ -288,11 +343,57 @@ func ValidateLock(workspace Workspace, lock Lockfile) error {
 }
 
 func missingLockTargets(workspace Workspace, lock Lockfile) ([]Target, error) {
-	byName, err := lockRepositories(lock)
+	byName, err := lockRepositoriesForWorkspace(workspace, lock)
 	if err != nil {
 		return nil, err
 	}
 	return validateLockTargets(workspace, byName, true)
+}
+
+func lockRepositoriesForWorkspace(workspace Workspace, lock Lockfile) (map[string]LockedRepository, error) {
+	byName, err := lockRepositories(lock)
+	if err != nil {
+		return nil, err
+	}
+	for _, target := range workspace.Targets {
+		if target.Repository.Unlock {
+			delete(byName, target.Repository.Name)
+		}
+	}
+	return byName, nil
+}
+
+func discardUnlockedRepositories(workspace Workspace, lock *Lockfile) bool {
+	unlocked := make(map[string]struct{})
+	for _, target := range workspace.Targets {
+		if target.Repository.Unlock {
+			unlocked[target.Repository.Name] = struct{}{}
+		}
+	}
+	if len(unlocked) == 0 {
+		return false
+	}
+
+	filtered := lock.Repositories[:0]
+	removed := false
+	for _, repository := range lock.Repositories {
+		if _, ok := unlocked[repository.Name]; ok {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, repository)
+	}
+	lock.Repositories = filtered
+	return removed
+}
+
+func workspaceHasLockedTargets(workspace Workspace) bool {
+	for _, target := range workspace.Targets {
+		if !target.Repository.Unlock {
+			return true
+		}
+	}
+	return false
 }
 
 func lockRepositories(lock Lockfile) (map[string]LockedRepository, error) {
@@ -311,8 +412,13 @@ func lockRepositories(lock Lockfile) (map[string]LockedRepository, error) {
 
 func validateLockTargets(workspace Workspace, byName map[string]LockedRepository, allowMissing bool) ([]Target, error) {
 	manifestNames := make(map[string]struct{}, len(workspace.Targets))
+	manifestCount := 0
 	for _, target := range workspace.Targets {
+		if target.Repository.Unlock {
+			continue
+		}
 		manifestNames[target.Repository.Name] = struct{}{}
+		manifestCount++
 	}
 	missing := make([]string, 0)
 	for name := range manifestNames {
@@ -329,11 +435,14 @@ func validateLockTargets(workspace Workspace, byName map[string]LockedRepository
 	if len(extra) > 0 || (!allowMissing && len(missing) > 0) {
 		return nil, fmt.Errorf(
 			"manifest and lockfile repositories differ (manifest: %d, lockfile: %d; missing from lockfile: %s; extra in lockfile: %s)",
-			len(workspace.Targets), len(byName), formatRepositoryNames(missing), formatRepositoryNames(extra),
+			manifestCount, len(byName), formatRepositoryNames(missing), formatRepositoryNames(extra),
 		)
 	}
 	missingTargets := make([]Target, 0, len(missing))
 	for _, target := range workspace.Targets {
+		if target.Repository.Unlock {
+			continue
+		}
 		locked, ok := byName[target.Repository.Name]
 		if !ok {
 			missingTargets = append(missingTargets, target)

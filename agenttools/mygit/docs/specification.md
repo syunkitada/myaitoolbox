@@ -196,6 +196,7 @@ Repositoryは以下の情報を持つ。
 | `url`      | Yes | Git repository URL        |
 | `revision` | Yes | branch / tag / commit SHA |
 | `path`     |  No | clone先                    |
+| `unlock`   |  No | `true` の場合はlockfileでcommitを固定しない |
 
 `name` を指定した場合は、その値をRepositoryの識別子として使用する。空文字、`.`、`..`、`/`、空白、制御文字を含む値は指定できず、単一のパス要素でなければならない。同一Workspace内で重複する `name` は許可しない。
 
@@ -203,7 +204,9 @@ Repositoryは以下の情報を持つ。
 
 HTTPS、HTTP、SSHなどhostとnamespaceを識別できるURLでは自動導出できる。`file://` URL、ローカルパス、namespaceを含まないURLでは `name` を明示しなければならない。自動導出された値はmanifestを読み込んだ時点で確定し、lockfileの `name` とclone先に保存する。
 
-`path` はWorkspaceを基準とする相対パスとする。絶対パス、Workspace自身をclone先とする指定、予約領域 `_repos/` 配下への明示的な指定、正規化後に同一となる指定は許可しない。`..` によるWorkspace外の指定は許可するが、すべてのWorkspaceで解決したclone先について、重複・親子関係・symlink経由の衝突を検出した場合は実行前に失敗させる。
+`path` は原則としてWorkspaceを基準とする相対パスとする。ただし、`~/`で始まるパスはHOMEディレクトリを基準に解決する。`~`単独の場合はHOMEディレクトリ自身をclone先とする。HOME基準以外の絶対パス、Workspace自身をclone先とする指定、予約領域 `_repos/` 配下への明示的な指定、正規化後に同一となる指定は許可しない。`..` によるWorkspace外の指定は許可するが、すべてのWorkspaceで解決したclone先について、重複・親子関係・symlink経由の衝突を検出した場合は実行前に失敗させる。
+
+`unlock` に `true` を指定したRepositoryはlockfileへ保存しない。`sync` と `update` は実行のたびに `revision` をremote上で解決し、その時点のcommitをclone先へ反映する。`unlock` を指定しないRepositoryは従来どおりlockfileでcommitを固定する。
 
 ---
 
@@ -292,6 +295,14 @@ Workspace/
 にcloneされる。
 
 `path` は **Workspaceを基準とした相対パス**として扱う。
+
+HOMEディレクトリを基準にする場合は、`~/`を先頭に付ける。
+
+```yaml
+path: ~/shared/code-review
+```
+
+このパスは実行時のHOMEディレクトリ配下へ解決される。
 
 ---
 
@@ -408,7 +419,7 @@ repositories:
     commit: 71ab82deabcdef1234567890abcdef1234567890
 ```
 
-`path` はmanifestの指定をWorkspace基準で正規化した値であり、未指定の場合は `_repos/<name>` を保存する。`commit` は省略形ではなく、Repositoryのobject formatに応じた完全なobject IDを保存する。
+`path` はmanifestの指定を正規化した値であり、未指定の場合は `_repos/<name>` を保存する。HOME基準の指定は`~/...`表記を維持する。`unlock: true` のRepositoryはlockfileに記録しない。記録するRepositoryの`commit`は省略形ではなく、Repositoryのobject formatに応じた完全なobject IDを保存する。
 
 ---
 
@@ -478,7 +489,7 @@ locked commit
 
 `sync` は、remoteの最新revisionを自動的に採用してはいけない。
 
-clone先が存在する場合はGit repositoryであることとremote URLが一致することを確認する。未コミット変更、未追跡ファイルとの衝突、異なるremote、またはlocked commitへ安全に移動できない状態がある場合は、resetやcleanを行わずに失敗する。
+clone先が存在する場合はGit repositoryであることとremote URLが一致することを確認する。未コミット変更、未追跡ファイルとの衝突、異なるremote、またはlocked commitへ安全に移動できない状態がある場合は、resetやcleanを行わずに失敗する。`.gitignore`対象の未追跡ファイルは事前のdirty判定では無視するが、checkout先の追跡ファイルとパスが衝突する場合はGit自体がcheckoutを拒否することがある。
 
 例えば、
 
@@ -577,7 +588,7 @@ mygit status
 
 `status` は現在の状態を確認するためのコマンドとする。
 
-少なくとも `missing`（clone先なし）、`locked`（locked commitと一致）、`dirty`（未コミット変更あり）、`drifted`（別commit）、`remote-outdated`（remoteのrevisionが更新済み）、`remote-unavailable`（remote確認不能）、`invalid`（remoteまたはlockfile不一致）を区別して表示する。`status` はremote確認に失敗した場合も、localで確認できた状態と失敗理由を表示し、lockfileを変更しない。
+少なくとも `missing`（clone先なし）、`locked`（locked commitと一致）、`unlocked`（lockfileでcommitを固定していない）、`dirty`（未コミット変更あり）、`drifted`（別commit）、`remote-outdated`（remoteのrevisionが更新済み）、`remote-unavailable`（remote確認不能）、`invalid`（remoteまたはlockfile不一致）を区別して表示する。`status` はremote確認に失敗した場合も、localで確認できた状態と失敗理由を表示し、lockfileを変更しない。
 
 例えば、
 

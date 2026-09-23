@@ -2,6 +2,8 @@
 
 複数のGit repositoryをmanifestとlockfileで再現可能に管理する`mygit`の仕様と実装をまとめるディレクトリです。
 
+Repositoryに`unlock: true`を指定すると、そのRepositoryはlockfileへ記録せず、`sync`・`update`の実行時に`revision`を再解決します。
+
 ## 簡単な使い方
 
 このディレクトリで実行ファイルをインストールします。

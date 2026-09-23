@@ -83,6 +83,7 @@ func (s *Service) syncWorkspace(ctx context.Context, workspace Workspace, output
 		return err
 	}
 	report(output, "sync: use lockfile %s", lockPath)
+	discardedUnlocks := discardUnlockedRepositories(workspace, &lock)
 	missing, err := missingLockTargets(workspace, lock)
 	if err != nil {
 		return err
@@ -109,11 +110,21 @@ func (s *Service) syncWorkspace(ctx context.Context, workspace Workspace, output
 	}
 	locked := lockedByName(lock)
 	for _, target := range workspace.Targets {
-		if err := s.syncTarget(ctx, target, locked[target.Repository.Name], output, "sync"); err != nil {
+		commit := locked[target.Repository.Name].Commit
+		if target.Repository.Unlock {
+			report(output, "sync: resolve unlocked %s (%s)", target.Repository.Name, target.Repository.Revision)
+			var err error
+			commit, err = ResolveRevision(ctx, s.Git, target.Repository.URL, target.Repository.Revision)
+			if err != nil {
+				return fmt.Errorf("resolve unlocked %q: %w", target.Repository.Name, err)
+			}
+			report(output, "sync: resolved unlocked %s -> %s", target.Repository.Name, commit)
+		}
+		if err := s.syncTarget(ctx, target, commit, output, "sync"); err != nil {
 			return err
 		}
 	}
-	if len(missing) > 0 {
+	if len(missing) > 0 || discardedUnlocks {
 		if err := WriteLockfile(lockPath, lock); err != nil {
 			return err
 		}
@@ -124,6 +135,7 @@ func (s *Service) syncWorkspace(ctx context.Context, workspace Workspace, output
 
 func (s *Service) updateWorkspace(ctx context.Context, workspace Workspace, output io.Writer, operation string) error {
 	locks := Lockfile{Repositories: make([]LockedRepository, 0, len(workspace.Targets))}
+	commits := make(map[string]string, len(workspace.Targets))
 	for _, target := range workspace.Targets {
 		report(output, "%s: resolve %s (%s)", operation, target.Repository.Name, target.Repository.Revision)
 		commit, err := ResolveRevision(ctx, s.Git, target.Repository.URL, target.Repository.Revision)
@@ -131,34 +143,46 @@ func (s *Service) updateWorkspace(ctx context.Context, workspace Workspace, outp
 			return fmt.Errorf("resolve %q: %w", target.Repository.Name, err)
 		}
 		report(output, "%s: resolved %s -> %s", operation, target.Repository.Name, commit)
-		locks.Repositories = append(locks.Repositories, LockedRepository{
-			Name:     target.Repository.Name,
-			URL:      target.Repository.URL,
-			Revision: target.Repository.Revision,
-			Path:     target.Relative,
-			Commit:   commit,
-		})
+		commits[target.Repository.Name] = commit
+		if !target.Repository.Unlock {
+			locks.Repositories = append(locks.Repositories, LockedRepository{
+				Name:     target.Repository.Name,
+				URL:      target.Repository.URL,
+				Revision: target.Repository.Revision,
+				Path:     target.Relative,
+				Commit:   commit,
+			})
+		}
 	}
 	if changed, err := ensureGitignore(workspace); err != nil {
 		return err
 	} else if changed {
 		report(output, "%s: update .gitignore %s", operation, filepath.Join(workspace.Root, ".gitignore"))
 	}
-	locked := lockedByName(locks)
 	for _, target := range workspace.Targets {
-		if err := s.syncTarget(ctx, target, locked[target.Repository.Name], output, operation); err != nil {
+		if err := s.syncTarget(ctx, target, commits[target.Repository.Name], output, operation); err != nil {
 			return err
 		}
 	}
 	lockPath := filepath.Join(workspace.Root, LockFilename)
-	if err := WriteLockfile(lockPath, locks); err != nil {
-		return err
+	writeLock := len(locks.Repositories) > 0
+	if !writeLock {
+		if _, err := os.Stat(lockPath); err == nil {
+			writeLock = true
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("inspect lockfile %s: %w", lockPath, err)
+		}
 	}
-	report(output, "%s: write lockfile %s", operation, lockPath)
+	if writeLock {
+		if err := WriteLockfile(lockPath, locks); err != nil {
+			return err
+		}
+		report(output, "%s: write lockfile %s", operation, lockPath)
+	}
 	return nil
 }
 
-func (s *Service) syncTarget(ctx context.Context, target Target, locked LockedRepository, output io.Writer, operation string) error {
+func (s *Service) syncTarget(ctx context.Context, target Target, commit string, output io.Writer, operation string) error {
 	info, err := os.Lstat(target.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
@@ -182,19 +206,19 @@ func (s *Service) syncTarget(ctx context.Context, target Target, locked LockedRe
 	if err := s.validateExistingTarget(ctx, target); err != nil {
 		return err
 	}
-	if err := s.ensureCommit(ctx, target.Path, locked.Commit, output, operation, target.Repository.Name); err != nil {
+	if err := s.ensureCommit(ctx, target.Path, commit, output, operation, target.Repository.Name); err != nil {
 		return fmt.Errorf("prepare locked commit for %q: %w", target.Repository.Name, err)
 	}
-	report(output, "%s: checkout %s -> %s", operation, target.Repository.Name, locked.Commit)
-	if _, err := s.Git.Run(ctx, target.Path, "checkout", "--detach", locked.Commit); err != nil {
-		return fmt.Errorf("checkout locked commit for %q: %w", target.Repository.Name, err)
+	report(output, "%s: checkout %s -> %s", operation, target.Repository.Name, commit)
+	if _, err := s.Git.Run(ctx, target.Path, "checkout", "--detach", commit); err != nil {
+		return fmt.Errorf("checkout commit for %q: %w", target.Repository.Name, err)
 	}
 	head, err := s.Git.Run(ctx, target.Path, "rev-parse", "HEAD")
 	if err != nil {
 		return fmt.Errorf("read HEAD for %q: %w", target.Repository.Name, err)
 	}
-	if !strings.EqualFold(strings.TrimSpace(head), locked.Commit) {
-		return fmt.Errorf("repository %q is at %s, want %s", target.Repository.Name, strings.TrimSpace(head), locked.Commit)
+	if !strings.EqualFold(strings.TrimSpace(head), commit) {
+		return fmt.Errorf("repository %q is at %s, want %s", target.Repository.Name, strings.TrimSpace(head), commit)
 	}
 	return nil
 }
@@ -215,7 +239,7 @@ func (s *Service) validateExistingTarget(ctx context.Context, target Target) err
 	if strings.TrimSpace(remote) != target.Repository.URL {
 		return fmt.Errorf("repository %q remote is %q, want %q", target.Repository.Name, strings.TrimSpace(remote), target.Repository.URL)
 	}
-	status, err := s.Git.Run(ctx, target.Path, "status", "--porcelain", "--untracked-files=all", "--ignored")
+	status, err := s.Git.Run(ctx, target.Path, "status", "--porcelain", "--untracked-files=all")
 	if err != nil {
 		return fmt.Errorf("read status for %q: %w", target.Repository.Name, err)
 	}
@@ -361,8 +385,12 @@ type repoStatus struct {
 func (s *Service) statusWorkspace(ctx context.Context, workspace Workspace, output io.Writer) error {
 	lock, err := LoadLockfile(filepath.Join(workspace.Root, LockFilename))
 	if errors.Is(err, ErrLockMissing) {
-		_, _ = fmt.Fprintf(output, "workspace: %s\nstatus: invalid\nreason: lockfile is missing\n\n", workspace.Root)
-		return nil
+		if workspaceHasLockedTargets(workspace) {
+			_, _ = fmt.Fprintf(output, "workspace: %s\nstatus: invalid\nreason: lockfile is missing\n\n", workspace.Root)
+			return nil
+		}
+		lock = Lockfile{}
+		err = nil
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(output, "workspace: %s\nstatus: invalid\nreason: %v\n\n", workspace.Root, err)
@@ -377,6 +405,9 @@ func (s *Service) statusWorkspace(ctx context.Context, workspace Workspace, outp
 	for _, target := range workspace.Targets {
 		entry := locked[target.Repository.Name]
 		state := "locked"
+		if target.Repository.Unlock {
+			state = "unlocked"
+		}
 		if info, statErr := os.Stat(target.Path); errors.Is(statErr, os.ErrNotExist) {
 			state = "missing"
 		} else if statErr != nil || !info.IsDir() {
@@ -389,20 +420,24 @@ func (s *Service) statusWorkspace(ctx context.Context, workspace Workspace, outp
 			}
 		} else if head, headErr := s.Git.Run(ctx, target.Path, "rev-parse", "HEAD"); headErr != nil {
 			state = "invalid"
-		} else if !strings.EqualFold(strings.TrimSpace(head), entry.Commit) {
+		} else if !target.Repository.Unlock && !strings.EqualFold(strings.TrimSpace(head), entry.Commit) {
 			state = "drifted"
 		}
 
 		remote := "unavailable"
 		if resolved, resolveErr := ResolveRevision(ctx, s.Git, target.Repository.URL, target.Repository.Revision); resolveErr == nil {
 			remote = resolved
-			if state == "locked" && !strings.EqualFold(resolved, entry.Commit) {
+			if !target.Repository.Unlock && state == "locked" && !strings.EqualFold(resolved, entry.Commit) {
 				state = "remote-outdated"
 			}
 		} else if state == "locked" {
 			state = "remote-unavailable"
 		}
-		statuses = append(statuses, repoStatus{Target: target, Locked: entry.Commit, Remote: remote, State: state})
+		lockedCommit := entry.Commit
+		if target.Repository.Unlock {
+			lockedCommit = "-"
+		}
+		statuses = append(statuses, repoStatus{Target: target, Locked: lockedCommit, Remote: remote, State: state})
 	}
 	sort.Slice(statuses, func(i, j int) bool { return statuses[i].Target.Repository.Name < statuses[j].Target.Repository.Name })
 	_, _ = fmt.Fprintf(output, "workspace: %s\n", workspace.Root)

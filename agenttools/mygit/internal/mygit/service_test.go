@@ -3,6 +3,7 @@ package mygit
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -92,6 +93,43 @@ func TestSyncResolvesRepositoriesMissingFromLockfile(t *testing.T) {
 	}
 }
 
+func TestUnlockedRepositoryIsNotWrittenToLockfile(t *testing.T) {
+	remote := createRemoteRepository(t)
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ManifestFilename), fmt.Sprintf("repositories:\n  - name: example\n    url: %s\n    revision: main\n    unlock: true\n", remote))
+
+	service := NewService()
+	ctx := context.Background()
+	if err := service.Update(ctx, root); err != nil {
+		t.Fatalf("initial Update() error = %v", err)
+	}
+	lockPath := filepath.Join(root, LockFilename)
+	if _, err := os.Stat(lockPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unlocked repository created a lockfile: %v", err)
+	}
+	var status bytes.Buffer
+	if err := service.Status(ctx, root, &status); err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !strings.Contains(status.String(), "status:   unlocked") {
+		t.Fatalf("unlocked repository status missing: %s", status.String())
+	}
+
+	target := filepath.Join(root, DefaultRepoDir, "example")
+	firstHead := strings.TrimSpace(gitOutput(t, target, "rev-parse", "HEAD"))
+	appendRemoteCommit(t, remote)
+	if err := service.Sync(ctx, root); err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	secondHead := strings.TrimSpace(gitOutput(t, target, "rev-parse", "HEAD"))
+	if firstHead == secondHead {
+		t.Fatalf("unlocked repository stayed at %s after remote update", firstHead)
+	}
+	if _, err := os.Stat(lockPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unlocked repository created a lockfile after sync: %v", err)
+	}
+}
+
 func TestUpdateSyncAndStatusWithLocalRemote(t *testing.T) {
 	remote := createRemoteRepository(t)
 	root := t.TempDir()
@@ -162,7 +200,7 @@ func TestUpdateSyncAndStatusWithLocalRemote(t *testing.T) {
 	}
 }
 
-func TestStatusAndUpdateProtectIgnoredUntrackedFiles(t *testing.T) {
+func TestStatusAndUpdateAllowIgnoredUntrackedFiles(t *testing.T) {
 	remote := createRemoteRepositoryWithIgnoredPath(t)
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, ManifestFilename), fmt.Sprintf("repositories:\n  - name: example\n    url: %s\n    revision: main\n", remote))
@@ -181,13 +219,13 @@ func TestStatusAndUpdateProtectIgnoredUntrackedFiles(t *testing.T) {
 	if err := service.Status(ctx, root, &status); err != nil {
 		t.Fatalf("Status() error = %v", err)
 	}
-	if !strings.Contains(status.String(), "status:   dirty") {
-		t.Fatalf("ignored untracked file was not reported as dirty: %s", status.String())
+	if !strings.Contains(status.String(), "status:   locked") {
+		t.Fatalf("ignored untracked file changed repository status: %s", status.String())
 	}
 
-	appendRemoteIgnoredCommit(t, remote)
-	if err := service.Update(ctx, root); err == nil {
-		t.Fatal("Update() accepted an ignored untracked file")
+	appendRemoteCommit(t, remote)
+	if err := service.Update(ctx, root); err != nil {
+		t.Fatalf("Update() rejected an ignored untracked file: %v", err)
 	}
 	if got := string(readFile(t, ignoredPath)); got != "local data\n" {
 		t.Fatalf("ignored untracked file was changed to %q", got)
@@ -248,18 +286,6 @@ func appendRemoteCommit(t *testing.T, remote string) {
 	writeFile(t, filepath.Join(work, "second.txt"), "second\n")
 	gitCommand(t, work, "add", "second.txt")
 	gitCommand(t, work, "commit", "-m", "second")
-	gitCommand(t, work, "push", "origin", "main")
-}
-
-func appendRemoteIgnoredCommit(t *testing.T, remote string) {
-	t.Helper()
-	work := filepath.Join(t.TempDir(), "work")
-	gitCommand(t, filepath.Dir(work), "clone", "-b", "main", remote, work)
-	gitCommand(t, work, "config", "user.email", "test@example.test")
-	gitCommand(t, work, "config", "user.name", "mygit test")
-	writeFile(t, filepath.Join(work, "generated.txt"), "remote data\n")
-	gitCommand(t, work, "add", "-f", "generated.txt")
-	gitCommand(t, work, "commit", "-m", "track generated file")
 	gitCommand(t, work, "push", "origin", "main")
 }
 
