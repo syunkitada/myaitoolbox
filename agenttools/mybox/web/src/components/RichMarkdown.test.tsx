@@ -36,6 +36,18 @@ describe('RichMarkdown', () => {
     }
   })
 
+  it('resolves anchors to headings containing inline code and underscores', () => {
+    const text = '[`list_alerts`](#list_alerts)\n\n### `list_alerts`'
+    const { container } = renderMd(<RichMarkdown text={text} />)
+
+    expect(container.querySelector('h3')).toHaveAttribute('id', 'list_alerts')
+    expect(container.querySelector('a')).not.toHaveClass('dead-anchor')
+    expect(container.querySelector('.dead-link-mark')).not.toBeInTheDocument()
+    expect(extractOutline(text)).toEqual([
+      { level: 3, id: 'list_alerts', text: 'list_alerts' },
+    ])
+  })
+
   it('resolves relative file links with a custom linkUrl', () => {
     const { container } = renderMd(
       <RichMarkdown

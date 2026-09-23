@@ -23,8 +23,8 @@ generate:
 
 web-build:
 	cd web && npm install && npm run build
-	rm -rf internal/webui/dist
 	mkdir -p internal/webui/dist
+	find internal/webui/dist -mindepth 1 ! -name README.md ! -name .gitkeep -exec rm -rf {} +
 	cp -r web/dist/. internal/webui/dist/
 	touch internal/webui/dist/.gitkeep
 

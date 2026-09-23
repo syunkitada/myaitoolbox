@@ -58,6 +58,7 @@ mcpserve monitoring --transport http --host localhost --port 8080
 
 - [アーキテクチャ・設計方針](docs/architecture.md)
 - [開発ガイド（サーバーの追加方法）](docs/development.md)
+- [サーバーごとの利用ガイドとツール一覧](docs/servers/)
 - [Go プロジェクトガイド（汎用）](../../docs/golang/golang_architecture.md)
 
 ## ディレクトリ構成

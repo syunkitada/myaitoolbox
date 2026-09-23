@@ -40,9 +40,14 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => {
 md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
   const token = tokens[idx]
   const inline = tokens[idx + 1]
-  const text = inline ? md.renderer.renderInlineAsText(inline.children ?? [], options, undefined) : ''
-  const plain = text.replace(/[*_`#]/g, '')
-  const slug = slugify(plain)
+  const text = (inline?.children ?? [])
+    .map((child) => (
+      child.type === 'code_inline'
+        ? child.content
+        : md.renderer.renderInlineAsText([child], options, undefined)
+    ))
+    .join('')
+  const slug = slugify(text)
   token.attrSet('id', slug)
   return self.renderToken(tokens, idx, options)
 }
@@ -203,7 +208,7 @@ export function extractOutline(text: string): Array<{ level: number; id: string;
     const m = /^ {0,3}(#{1,4})[ \t]+(.+)$/.exec(line)
     if (!m) continue
     const raw = m[2]
-    const plain = raw.replace(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g, '$1').replace(/[*_`#]/g, '')
+    const plain = raw.replace(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g, '$1').replace(/[*`#]/g, '')
     outline.push({ level: m[1].length, id: slugify(plain), text: plain.trim() })
   }
   return outline

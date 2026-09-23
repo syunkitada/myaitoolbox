@@ -1,6 +1,6 @@
-# `mybox` 開発ガイドライン
+# `mcpctl` 開発ガイドライン
 
-このディレクトリでは、MarkdownをデータソースとするCLI・Web UIワークスペースツール`mybox`を開発します。
+このディレクトリでは、人間とAIの両方が利用できるMCPツール管理・実行CLI `mcpctl`を開発します。
 
 ## README.mdの役割
 
@@ -36,43 +36,23 @@
 
 ## 実装時の確認
 
-- 仕様や利用方法を変更した場合は、関係するREADME.md、存在する場合は`docs/`内のファイルと、API仕様を同じ変更で更新する。
-- Goコードは`gofmt`で整形し、Web UIのコードは既存のnpm scriptsとプロジェクトの書式に従う。
-- Goテストは一時ディレクトリまたはローカルリポジトリを使い、Web UIテストも外部環境に依存させない。
-- `openapi.yaml`を変更した場合は、生成コードを直接編集せず`make generate`で再生成する。
+- 仕様や利用方法を変更した場合は、[`docs/`](./docs/)の仕様書・利用方法と、関係するREADME.mdを同じ変更で更新する。
+- Goコードは`gofmt`で整形し、テストは一時ディレクトリまたはローカルリポジトリを使って外部環境に依存させない。
 - ファイルやディレクトリを追加・削除・移動・改名した場合は、README.mdのIndexと相対リンクを更新する。
 - `internal/`の依存方向は、EntrypointからApplication・Domain・Infrastructure、ApplicationからDomain、InfrastructureからDomainの内向き依存を基本とする。DomainやApplicationからInfrastructureへ依存させない。
+- MCP操作の手順や安全上のルールは[`docs/AGENTS.md`](./docs/AGENTS.md)に従う。
 - 既存のユーザーデータや作業ツリーを壊す操作（広範囲の削除、無確認のresetなど）は行わない。
-
-## 生成物とWeb UI
-
-- `internal/entrypoint/api/`の生成コードは[`openapi.yaml`](./openapi.yaml)から生成されるため、生成ファイルを直接編集しない。
-- `internal/webui/dist/`は`web/`のビルド成果物を置くディレクトリで、実体は生成物として扱う。
-- `node_modules/`、`test-results/`など既存のGit管理下にある生成物は、機能追加やドキュメント更新で編集しない。
 
 ## 開発完了時の必須確認
 
-開発を完了する前に、このリポジトリのルートで次のコマンドを順番に実行する。Web UIをバイナリへ同梱するため、`make web-build`を先に実行する。
+開発を完了する前に、このリポジトリのルートで次のコマンドを順番に実行する。
 
 ```bash
-make web-build
 go test ./...
 go test -race ./...
 go vet ./...
 golangci-lint run ./...
-go install ./cmd/mybox
-```
-
-Web UIの変更を含む場合は、次の確認も実行する。
-
-```bash
-cd web && npm test
-```
-
-CLIまたはWeb UIのE2Eに関係する変更では、必要に応じて次も実行する。
-
-```bash
-make e2e
+go install ./cmd/mcpctl
 ```
 
 `golangci-lint`は、初回またはバージョン更新時に次のコマンドでインストールする。バージョンを固定して、開発者間で検証結果を揃える。
@@ -83,7 +63,11 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
 `go vet ./...`と`golangci-lint run ./...`を静的解析として実行する。`golangci-lint`の設定は[`.golangci.yml`](./.golangci.yml)で管理する。
 
-`go install ./cmd/mybox`が成功したことを確認してから、開発完了とする。インストール先は環境の`GOBIN`または`GOPATH/bin`に従う。
+`go install ./cmd/mcpctl`が成功したことを確認してから、開発完了とする。インストール先は環境の`GOBIN`または`GOPATH/bin`に従う。
+
+## 関連ガイド
+
+AIエージェントとして`mcpctl`を操作するときは、[`docs/AGENTS.md`](./docs/AGENTS.md)の`search` → `info` → `call`を優先するワークフローと、プロファイル利用ルールを確認する。
 
 ## AGENTS.mdのルール追加
 

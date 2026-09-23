@@ -141,6 +141,8 @@ main.go
 
 既存の唯一のプロバイダーで、Alertmanager と Prometheus (Grafana経由)、Grafana ダッシュボード管理との連携を提供します。
 
+利用者向けの起動方法、設定、ツール一覧は[monitoringサーバー利用ガイド](./servers/monitoring.md)を参照してください。
+
 ### プロバイダーアーキテクチャ
 
 ```
