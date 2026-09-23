@@ -95,14 +95,24 @@ MCPクライアントから `mcpserve example` に接続し、ツール一覧に
 go test ./internal/modules/example/...
 ```
 
+## サーバードキュメント
+
+サーバーを追加・変更した場合は、利用者向けドキュメントも更新します。
+
+- `docs/servers/<server-name>.md` にサーバーの起動方法、環境変数、提供ツール一覧、各ツールの入力パラメータを記載する
+- `docs/servers/README.md` のIndexにサーバードキュメントを追加する
+- `RegisterTools`で登録しているツール名・説明・入力スキーマとドキュメントの一覧を一致させる
+
 ## 6. 品質チェック
 
 実装後は、テストと静的解析を実行して確認します。
 
 ```bash
 go test ./...
+go test -race ./...
 go vet ./...
 golangci-lint run ./...
+go install ./cmd/mcpserve
 ```
 
 `golangci-lint` の設定は [`.golangci.yml`](../.golangci.yml) で管理し、バージョンを固定して導入しています。未インストールまたはバージョン更新時は、次のコマンドでインストールしてください。

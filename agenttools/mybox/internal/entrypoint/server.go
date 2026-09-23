@@ -838,7 +838,11 @@ func (s *Server) UploadFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.MultipartForm != nil {
-		defer r.MultipartForm.RemoveAll()
+		defer func() {
+			// MultipartForm cleanup happens after the response is determined;
+			// a cleanup failure cannot be reported as a new HTTP error here.
+			_ = r.MultipartForm.RemoveAll()
+		}()
 	}
 
 	directory := r.FormValue("directory")

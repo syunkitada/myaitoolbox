@@ -71,13 +71,14 @@ mcpctl profiles use prod
 
 ## 開発完了時の確認
 
-開発が完了したら、`agenttools/mcpctl`で次のコマンドを順番に実行する。
+開発が完了したら、`agenttools/mcpctl`で次のコマンドを順番に実行する。ルートの[`AGENTS.md`](../AGENTS.md)にも共通の開発ルールを記載しています。
 
 ```bash
 go test ./...
+go test -race ./...
 go vet ./...
 golangci-lint run ./...
-go build -o /dev/null ./cmd/mcpctl
+go install ./cmd/mcpctl
 ```
 
 `golangci-lint`は、初回またはバージョン更新時に次のコマンドでインストールする。バージョンを固定して、開発者間で検証結果を揃える。
@@ -86,4 +87,4 @@ go build -o /dev/null ./cmd/mcpctl
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 ```
 
-`go vet ./...`と`golangci-lint run ./...`を静解析チェックとして実行する。`golangci-lint`の設定は[`../.golangci.yml`](../.golangci.yml)で管理する。
+`go vet ./...`と`golangci-lint run ./...`を静的解析として実行する。`golangci-lint`の設定は[`../.golangci.yml`](../.golangci.yml)で管理する。

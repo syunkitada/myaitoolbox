@@ -6,6 +6,7 @@
 
 | パス | 役割 |
 | --- | --- |
+| [`AGENTS.md`](./AGENTS.md) | `mcpctl`固有の開発手順と完了時の検証コマンド。 |
 | [`cmd/`](./cmd/) | `mcpctl` CLIのエントリーポイント。 |
 | [`docs/README.md`](./docs/README.md) | 設定、仕様、AIエージェント向けガイド。 |
 | [`internal/README.md`](./internal/README.md) | CLIのアプリケーション、ドメイン、インフラ実装。 |
