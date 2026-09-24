@@ -234,6 +234,8 @@ paths:
           description: uploaded
         "400":
           description: invalid multipart form or path
+        "413":
+          description: upload exceeds the maximum request size
   /api/files/content:
     get:
       operationId: getFileContent

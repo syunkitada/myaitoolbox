@@ -6,7 +6,7 @@
 
 | パス | 役割 |
 | --- | --- |
-| [`BrowserPage.tsx`](./BrowserPage.tsx) | ファイルエクスプローラー、エディタ、ファイル名行から形式選択モーダルを開けるMarkdownプレビュー。 |
+| [`BrowserPage.tsx`](./BrowserPage.tsx) / [`BrowserPage.test.tsx`](./BrowserPage.test.tsx) | ファイルエクスプローラー、最大1GiBのファイルアップロード、進行中・結果ダイアログ、エディタ、ファイル名行から形式選択モーダルを開けるMarkdownプレビューとそのテスト。 |
 | [`Dashboard.tsx`](./Dashboard.tsx) | プロジェクトダッシュボード。 |
 | [`GitPage.tsx`](./GitPage.tsx) | Git状態、remote同期判定、fetch、差分、ログ、ブランチ操作。選択した変更ファイルのdiffを確認しながら編集・保存できる。 |
 | [`HerdrPage.tsx`](./HerdrPage.tsx) / [`HerdrPage.test.tsx`](./HerdrPage.test.tsx) | Herdrワークスペース・エージェント画面とテスト。 |

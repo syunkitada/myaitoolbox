@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"io"
 	"sort"
 
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
@@ -68,6 +69,13 @@ func (u *FileUseCase) SaveBytes(ctx context.Context, path string, content []byte
 		return err
 	}
 	return u.Files.SaveBytes(ctx, path, content)
+}
+
+func (u *FileUseCase) SaveReader(ctx context.Context, path string, content io.Reader) error {
+	if err := validatePath(path); err != nil {
+		return err
+	}
+	return u.Files.SaveReader(ctx, path, content)
 }
 
 func (u *FileUseCase) Create(ctx context.Context, path string) error {

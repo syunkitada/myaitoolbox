@@ -821,7 +821,12 @@ func (s *Server) SaveFileContent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-const maxUploadSize = 100 << 20
+const (
+	// Keep a finite request limit to avoid unbounded resource usage while
+	// allowing the large archives commonly stored in a workspace.
+	maxUploadSize   = 1 << 30
+	maxUploadMemory = 32 << 20
+)
 
 // UploadFiles stores one or more local files in a project directory. The
 // multipart endpoint is intentionally kept outside the generated JSON API
@@ -833,7 +838,15 @@ func (s *Server) UploadFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	if err := r.ParseMultipartForm(maxUploadMemory); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, &httpError{
+				status: http.StatusRequestEntityTooLarge,
+				err:    fmt.Errorf("upload exceeds the maximum size of %d GiB", maxUploadSize>>30),
+			})
+			return
+		}
 		writeError(w, fmt.Errorf("%w: invalid multipart form", domain.ErrInvalidArgument))
 		return
 	}
@@ -868,18 +881,14 @@ func (s *Server) UploadFiles(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err)
 			return
 		}
-		data, readErr := io.ReadAll(file)
+		saveErr := app.Files.SaveReader(r.Context(), path, file)
 		closeErr := file.Close()
-		if readErr != nil {
-			writeError(w, readErr)
+		if saveErr != nil {
+			writeError(w, saveErr)
 			return
 		}
 		if closeErr != nil {
 			writeError(w, closeErr)
-			return
-		}
-		if err := app.Files.SaveBytes(r.Context(), path, data); err != nil {
-			writeError(w, err)
 			return
 		}
 	}

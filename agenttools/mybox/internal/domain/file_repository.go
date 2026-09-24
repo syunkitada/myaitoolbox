@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 type FileKind string
 
@@ -31,6 +34,7 @@ type FileRepository interface {
 	Raw(ctx context.Context, path string) ([]byte, error)
 	Save(ctx context.Context, path string, content string) error
 	SaveBytes(ctx context.Context, path string, content []byte) error
+	SaveReader(ctx context.Context, path string, content io.Reader) error
 	Create(ctx context.Context, path string) error
 	CreateDir(ctx context.Context, path string) error
 	Move(ctx context.Context, oldPath string, newPath string) error

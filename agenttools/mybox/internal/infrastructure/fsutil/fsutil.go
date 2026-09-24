@@ -1,6 +1,8 @@
 package fsutil
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -10,6 +12,13 @@ import (
 // or partially-written file at path, which matters because the project files
 // (tasks, notes, config/state) are the only copy of the user's data.
 func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
+	return WriteFileAtomicReader(path, bytes.NewReader(data), perm)
+}
+
+// WriteFileAtomicReader is the streaming counterpart of WriteFileAtomic. It
+// keeps the temporary file in the destination directory so the final rename
+// remains atomic, without requiring the entire input to be held in memory.
+func WriteFileAtomicReader(path string, data io.Reader, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -24,7 +33,7 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 			_ = os.Remove(tmpName)
 		}
 	}()
-	if _, err := tmp.Write(data); err != nil {
+	if _, err := io.Copy(tmp, data); err != nil {
 		_ = tmp.Close()
 		return err
 	}
