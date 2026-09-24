@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -222,6 +223,16 @@ func TestFileRepositoryCreateDir(t *testing.T) {
 
 	err = repo.CreateDir(context.Background(), "../escape")
 	assert.ErrorIs(t, err, domain.ErrInvalidPath)
+}
+
+func TestFileRepositorySaveReader(t *testing.T) {
+	root := t.TempDir()
+	repo := NewFileRepository(root)
+
+	require.NoError(t, repo.SaveReader(context.Background(), "archives/archive.zip", bytes.NewReader([]byte("zip data"))))
+	data, err := os.ReadFile(filepath.Join(root, "archives", "archive.zip"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("zip data"), data)
 }
 
 func TestFileRepositoryMoveDir(t *testing.T) {

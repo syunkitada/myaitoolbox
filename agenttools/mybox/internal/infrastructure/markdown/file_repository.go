@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -314,10 +315,14 @@ func (r *FileRepository) Raw(ctx context.Context, path string) ([]byte, error) {
 }
 
 func (r *FileRepository) Save(ctx context.Context, path string, content string) error {
-	return r.SaveBytes(ctx, path, []byte(content))
+	return r.SaveReader(ctx, path, strings.NewReader(content))
 }
 
 func (r *FileRepository) SaveBytes(ctx context.Context, path string, content []byte) error {
+	return r.SaveReader(ctx, path, bytes.NewReader(content))
+}
+
+func (r *FileRepository) SaveReader(ctx context.Context, path string, content io.Reader) error {
 	file, err := r.safePath(path)
 	if err != nil {
 		return err
@@ -329,7 +334,7 @@ func (r *FileRepository) SaveBytes(ctx context.Context, path string, content []b
 		}
 		mode = info.Mode().Perm()
 	}
-	return fsutil.WriteFileAtomic(file, content, mode)
+	return fsutil.WriteFileAtomicReader(file, content, mode)
 }
 
 func (r *FileRepository) Create(ctx context.Context, path string) error {

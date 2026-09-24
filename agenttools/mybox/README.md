@@ -32,7 +32,7 @@ Markdown を唯一のデータソースとする個人ワークスペースツ�
   - Web UI: GTD ボード（Todo / Doing / Blocked / Review / Done）とドラッグ＆ドロップ
 - **ファイル管理** — プロジェクトルート起点で任意のファイル / ディレクトリを操作
   - CLI: 一覧・表示・作成（ファイル / ディレクトリ）・編集・移動・コピー・リネーム・削除
-  - Web UI: Files タブ（ツリー・ファイルタブ・Monaco エディタ・Markdown プレビュー・Mermaid・アウトライン・DnD・コンテキストメニュー・実行可能ファイルの実行・git 状態表示・お気に入り / 最近開いたファイル）と Graph タブ（Markdown ファイルのリンク構造図）
+  - Web UI: Files タブ（ツリー・ファイルタブ・Monaco エディタ・Markdown プレビュー・Mermaid・アウトライン・DnD・コンテキストメニュー・ファイルアップロード（1回あたり合計1GiBまで）・実行可能ファイルの実行・git 状態表示・お気に入り / 最近開いたファイル）と Graph タブ（Markdown ファイルのリンク構造図）
 - **Git** — ブランチ・ステージ / アンステージ・破棄・コミット（staged-only / amend 対応）・checkout・pull / push・ログ・diff、remoteとの差分判定・fetch をディレクトリスコープ付きで操作。変更ファイルはdiffを見ながら編集・保存できる
 - **Herdr エージェント連携** — `herdr` CLI と連携し、タスクディレクトリに AI エージェント（opencode 等）を割り当て
   - `task create --agent-kind opencode --prompt ...` でタスク作成と同時にエージェントを起動

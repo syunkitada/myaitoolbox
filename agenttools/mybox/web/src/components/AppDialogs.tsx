@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { useEscapeKey } from '../hooks/use-escape-key'
@@ -17,12 +17,15 @@ type DialogState =
   | { kind: 'prompt'; message: string; defaultValue: string }
   | { kind: 'confirm'; message: string }
   | { kind: 'alert'; message: string }
+  | { kind: 'progress'; message: string }
   | { kind: 'confirm3'; message: string; primary: string; secondary: string; cancel: string }
 
 interface DialogsApi {
   prompt: (message: string, defaultValue?: string) => Promise<string | null>
   confirm: (message: string) => Promise<boolean>
   alert: (message: string) => Promise<void>
+  showProgress: (message: string) => void
+  hideProgress: () => void
   // confirm3 shows a dialog with three choices (e.g. Save / Discard / Cancel).
   confirm3: (
     message: string,
@@ -63,6 +66,14 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const showProgress = useCallback((message: string) => {
+    setDialog({ kind: 'progress', message })
+  }, [])
+
+  const hideProgress = useCallback(() => {
+    setDialog((current) => (current?.kind === 'progress' ? null : current))
+  }, [])
+
   const confirm3 = useCallback(
     (message: string, options: { primary?: string; secondary?: string; cancel?: string } = {}) => {
       return new Promise<DialogChoice>((resolve) => {
@@ -79,11 +90,11 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  const api = { prompt, confirm, alert, confirm3 }
+  const api = { prompt, confirm, alert, showProgress, hideProgress, confirm3 }
   const cancelValue =
     dialog?.kind === 'prompt' ? null : dialog?.kind === 'confirm' ? false : dialog?.kind === 'confirm3' ? 'cancel' : undefined
 
-  useEscapeKey(() => close(cancelValue), Boolean(dialog))
+  useEscapeKey(() => close(cancelValue), Boolean(dialog) && dialog?.kind !== 'progress')
 
   return (
     <DialogsContext.Provider value={api}>
@@ -91,7 +102,9 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
       {dialog && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => close(cancelValue)}
+          onClick={() => {
+            if (dialog.kind !== 'progress') close(cancelValue)
+          }}
         >
           <div
             className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl"
@@ -99,17 +112,25 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
             role="dialog"
             aria-modal="true"
             data-testid="app-dialog"
-            aria-label={dialog.kind === 'prompt' ? 'Prompt' : dialog.kind === 'confirm' || dialog.kind === 'confirm3' ? 'Confirm' : 'Notice'}
+            data-dialog-kind={dialog.kind}
+            aria-label={dialog.kind === 'progress' ? 'Progress' : dialog.kind === 'prompt' ? 'Prompt' : dialog.kind === 'confirm' || dialog.kind === 'confirm3' ? 'Confirm' : 'Notice'}
           >
             <div className="mb-4 flex items-start gap-2">
-              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              {dialog.kind === 'progress' ? (
+                <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-primary" aria-hidden="true" />
+              ) : (
+                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              )}
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-                  {dialog.kind === 'prompt' ? 'Prompt' : dialog.kind === 'confirm' || dialog.kind === 'confirm3' ? 'Confirm' : 'Notice'}
+                  {dialog.kind === 'progress' ? 'In progress' : dialog.kind === 'prompt' ? 'Prompt' : dialog.kind === 'confirm' || dialog.kind === 'confirm3' ? 'Confirm' : 'Notice'}
                 </h2>
                 <p className="mt-1 text-sm break-words whitespace-pre-wrap">{dialog.message}</p>
               </div>
             </div>
+            {dialog.kind === 'progress' && (
+              <p className="text-xs text-muted-foreground">Please keep this window open until the operation finishes.</p>
+            )}
             {dialog.kind === 'prompt' && (
               <PromptField
                 key={dialog.message + dialog.defaultValue}

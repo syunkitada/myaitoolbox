@@ -299,8 +299,8 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onLoadDir, onClearSubtree }: ExplorerProps) {
-  const { prompt, confirm } = useDialogs()
+export function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onLoadDir, onClearSubtree }: ExplorerProps) {
+  const { prompt, confirm, alert, showProgress, hideProgress } = useDialogs()
   const [q, setQ] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverDir, setDragOverDir] = useState<string | null>(null)
@@ -349,8 +349,10 @@ function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, 
     }
   }, [ctxMenu])
 
+  const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e))
+
   const runError = (e: unknown) => {
-    onError?.(e instanceof Error ? e.message : String(e))
+    onError?.(errorMessage(e))
   }
 
   const newFileInDir = async () => {
@@ -403,16 +405,40 @@ function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, 
     e.target.value = ''
     if (files.length === 0) return
 
+    const count = files.length + ' file' + (files.length === 1 ? '' : 's')
+    const destination = directory || 'project root'
+    showProgress(`Uploading ${count} to ${destination}…`)
     setUploading(true)
-    void api
-      .uploadFiles(directory, files)
-      .then(async () => {
+    void (async () => {
+      try {
+        await api.uploadFiles(directory, files)
+      } catch (error) {
+        hideProgress()
+        setUploading(false)
+        await alert(`Upload failed.\n\n${errorMessage(error)}`)
+        return
+      }
+
+      hideProgress()
+      setUploading(false)
+      let refreshError: string | null = null
+      try {
         await onChanged?.()
         await onLoadDir?.(directory, true)
-        showNotice('Uploaded ' + files.length + ' file' + (files.length === 1 ? '' : 's') + ' to ' + (directory || 'project root'))
+      } catch (error) {
+        refreshError = errorMessage(error)
+      }
+
+      const refreshMessage = refreshError
+        ? `\n\nThe upload succeeded, but the file list could not be refreshed.\n${refreshError}`
+        : ''
+      await alert(`Upload succeeded: ${count} uploaded to ${destination}.${refreshMessage}`)
+    })()
+      .catch((error) => {
+        hideProgress()
+        setUploading(false)
+        void alert(`Upload failed.\n\n${errorMessage(error)}`)
       })
-      .catch(runError)
-      .finally(() => setUploading(false))
   }
 
   const copyRelativePath = () => {
