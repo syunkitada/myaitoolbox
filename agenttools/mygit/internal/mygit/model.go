@@ -30,12 +30,20 @@ type Manifest struct {
 }
 
 type Repository struct {
-	Name     string `yaml:"name"`
-	URL      string `yaml:"url"`
-	Revision string `yaml:"revision"`
-	Path     string `yaml:"path,omitempty"`
-	Unlock   bool   `yaml:"unlock,omitempty"`
+	Name     string       `yaml:"name"`
+	URL      string       `yaml:"url"`
+	Revision string       `yaml:"revision"`
+	Path     string       `yaml:"path,omitempty"`
+	Unlock   bool         `yaml:"unlock,omitempty"`
+	Checkout CheckoutMode `yaml:"checkout,omitempty"`
 }
+
+type CheckoutMode string
+
+const (
+	CheckoutDetached CheckoutMode = ""
+	CheckoutBranch   CheckoutMode = "branch"
+)
 
 type Lockfile struct {
 	Repositories []LockedRepository `yaml:"repositories"`
@@ -138,7 +146,8 @@ func BuildWorkspace(root string, manifest Manifest, manifestPath string) (Worksp
 }
 
 func normalizeManifest(manifest Manifest) (Manifest, error) {
-	for index, repository := range manifest.Repositories {
+	for index := range manifest.Repositories {
+		repository := manifest.Repositories[index]
 		if repository.Name == "" {
 			name, err := deriveRepositoryName(repository.URL)
 			if err != nil {
@@ -146,6 +155,10 @@ func normalizeManifest(manifest Manifest) (Manifest, error) {
 			}
 			manifest.Repositories[index].Name = name
 			repository.Name = name
+		}
+		if repository.Checkout == CheckoutBranch {
+			repository.Unlock = true
+			manifest.Repositories[index].Unlock = true
 		}
 		if err := validateRepository(repository); err != nil {
 			return Manifest{}, err
@@ -166,6 +179,14 @@ func validateRepository(repository Repository) error {
 	}
 	if repository.Revision == "" {
 		return fmt.Errorf("repository %q revision is required", repository.Name)
+	}
+	if repository.Checkout != CheckoutDetached && repository.Checkout != CheckoutBranch {
+		return fmt.Errorf("repository %q checkout must be %q when specified", repository.Name, CheckoutBranch)
+	}
+	if repository.Checkout == CheckoutBranch {
+		if _, err := branchNameFromRevision(repository.Revision); err != nil {
+			return fmt.Errorf("repository %q checkout: branch: %w", repository.Name, err)
+		}
 	}
 	return nil
 }

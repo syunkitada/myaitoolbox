@@ -23,6 +23,40 @@ func TestLoadManifestDoesNotRequireVersion(t *testing.T) {
 	}
 }
 
+func TestBranchCheckoutImpliesUnlock(t *testing.T) {
+	root := t.TempDir()
+	manifest := Manifest{Repositories: []Repository{{
+		Name:     "example",
+		URL:      "https://example.test/repository.git",
+		Revision: "main",
+		Checkout: CheckoutBranch,
+	}}}
+
+	workspace, err := BuildWorkspace(root, manifest, filepath.Join(root, ManifestFilename))
+	if err != nil {
+		t.Fatalf("BuildWorkspace() error = %v", err)
+	}
+	if !workspace.Targets[0].Repository.Unlock {
+		t.Fatal("branch checkout did not imply unlock")
+	}
+}
+
+func TestBranchCheckoutRejectsNonBranchRevision(t *testing.T) {
+	root := t.TempDir()
+	for _, revision := range []string{"refs/tags/v1.0.0", strings.Repeat("a", 40)} {
+		manifest := Manifest{Repositories: []Repository{{
+			Name:     "example",
+			URL:      "https://example.test/repository.git",
+			Revision: revision,
+			Checkout: CheckoutBranch,
+		}}}
+
+		if _, err := BuildWorkspace(root, manifest, filepath.Join(root, ManifestFilename)); err == nil {
+			t.Fatalf("branch checkout accepted non-branch revision %q", revision)
+		}
+	}
+}
+
 func TestLoadLockfileDoesNotRequireVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), LockFilename)
 	data := []byte("repositories:\n  - name: example\n    url: https://example.test/repository.git\n    revision: main\n    path: _repos/example\n    commit: " + strings.Repeat("a", 40) + "\n")

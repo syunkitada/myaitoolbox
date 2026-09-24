@@ -130,6 +130,45 @@ func TestUnlockedRepositoryIsNotWrittenToLockfile(t *testing.T) {
 	}
 }
 
+func TestBranchCheckoutFollowsRemoteBranch(t *testing.T) {
+	remote := createRemoteRepository(t)
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ManifestFilename), fmt.Sprintf("repositories:\n  - name: example\n    url: %s\n    revision: main\n    checkout: branch\n", remote))
+
+	service := NewService()
+	ctx := context.Background()
+	if err := service.Update(ctx, root); err != nil {
+		t.Fatalf("initial Update() error = %v", err)
+	}
+
+	lockPath := filepath.Join(root, LockFilename)
+	if _, err := os.Stat(lockPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("branch-follow repository created a lockfile: %v", err)
+	}
+	target := filepath.Join(root, DefaultRepoDir, "example")
+	if got := strings.TrimSpace(gitOutput(t, target, "branch", "--show-current")); got != "main" {
+		t.Fatalf("current branch = %q, want main", got)
+	}
+	if got := strings.TrimSpace(gitOutput(t, target, "rev-parse", "HEAD")); got != strings.TrimSpace(gitOutput(t, remote, "rev-parse", "refs/heads/main")) {
+		t.Fatalf("initial branch commit = %q, want remote main", got)
+	}
+	if got := strings.TrimSpace(gitOutput(t, target, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")); got != "origin/main" {
+		t.Fatalf("upstream = %q, want origin/main", got)
+	}
+
+	gitCommand(t, target, "checkout", "--detach", "HEAD")
+	appendRemoteCommit(t, remote)
+	if err := service.Sync(ctx, root); err != nil {
+		t.Fatalf("Sync() after remote update error = %v", err)
+	}
+	if got := strings.TrimSpace(gitOutput(t, target, "branch", "--show-current")); got != "main" {
+		t.Fatalf("current branch after sync = %q, want main", got)
+	}
+	if got := strings.TrimSpace(gitOutput(t, target, "rev-parse", "HEAD")); got != strings.TrimSpace(gitOutput(t, remote, "rev-parse", "refs/heads/main")) {
+		t.Fatalf("synced branch commit = %q, want remote main", got)
+	}
+}
+
 func TestUpdateSyncAndStatusWithLocalRemote(t *testing.T) {
 	remote := createRemoteRepository(t)
 	root := t.TempDir()

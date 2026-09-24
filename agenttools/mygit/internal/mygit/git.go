@@ -84,6 +84,42 @@ func ResolveRevision(ctx context.Context, git GitRunner, url, revision string) (
 	return "", fmt.Errorf("revision %q was not found in %s", revision, url)
 }
 
+func ResolveBranch(ctx context.Context, git GitRunner, url, revision string) (string, string, error) {
+	branch, err := branchNameFromRevision(revision)
+	if err != nil {
+		return "", "", err
+	}
+	if _, err := git.Run(ctx, "", "check-ref-format", "--branch", branch); err != nil {
+		return "", "", fmt.Errorf("invalid branch %q: %w", branch, err)
+	}
+	out, err := git.Run(ctx, "", "ls-remote", url, "refs/heads/"+branch)
+	if err != nil {
+		return "", "", err
+	}
+	commit := parseRemoteRefs(out)["refs/heads/"+branch]
+	if commit == "" {
+		return "", "", fmt.Errorf("branch %q was not found in %s", branch, url)
+	}
+	return branch, commit, nil
+}
+
+func branchNameFromRevision(revision string) (string, error) {
+	if isObjectID(revision) {
+		return "", fmt.Errorf("revision %q is a commit, not a branch", revision)
+	}
+	if strings.HasPrefix(revision, "refs/tags/") {
+		return "", fmt.Errorf("revision %q is a tag, not a branch", revision)
+	}
+	revision = strings.TrimPrefix(revision, "refs/heads/")
+	if strings.HasPrefix(revision, "refs/") || revision == "" {
+		return "", fmt.Errorf("revision %q is not a branch name", revision)
+	}
+	if strings.ContainsAny(revision, "*?[]\\\r\n\t ") {
+		return "", fmt.Errorf("revision %q contains invalid branch name characters", revision)
+	}
+	return revision, nil
+}
+
 func parseRemoteRefs(output string) map[string]string {
 	refs := make(map[string]string)
 	for _, line := range strings.Split(output, "\n") {

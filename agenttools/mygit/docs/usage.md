@@ -54,11 +54,18 @@ repositories:
     url: git@github.com:example/code-review.git
     revision: v1.2.0
     path: ./skills/code-review
+
+  - name: active-project
+    url: https://github.com/example/active-project.git
+    revision: main
+    checkout: branch
 ```
 
 `path`を省略したrepositoryは、`_repos/<name>`へcloneされます。`path`を指定した場合はWorkspaceからの相対パスとして扱います。`~/`で始まるパスはHOMEディレクトリを基準に解決できます。`name`は単一のパス要素であり、`/`や`..`は使用できません。予約領域である`_repos/`配下を明示的な`path`にすることもできません。
 
 `unlock: true`を指定したrepositoryはlockfileへ記録されず、`sync`と`update`のたびに`revision`の最新commitへ更新されます。通常のrepositoryと`unlock: true`のrepositoryは同じWorkspaceで混在できます。
+
+`checkout: branch`を指定すると、`unlock: true`を内包する形で、repositoryをdetached HEADにせず`revision`で指定したbranchにcheckoutします。`sync`と`update`はremote branchをfetchし、ローカルbranchを`--ff-only`で最新commitまで進めます。ローカルbranchが先行または分岐している場合は、resetや強制更新を行わずに失敗します。tagやcommit SHAはbranch checkoutに指定できません。`checkout: branch`と`unlock: true`を併記しても構いません。
 
 ## 基本ワークフロー
 
@@ -138,6 +145,8 @@ mygit status
 ## lockfileの扱い
 
 `mygit.lock.yaml`はGitで管理してください。`unlock: true`を指定していないrepositoryについて、manifestのrevisionだけではなく、URL、正規化済みclone先、完全なcommit object IDを記録します。`unlock: true`のrepositoryはlockfileに記録されません。
+
+`checkout: branch`のrepositoryはlockfileに記録されず、`sync`と`update`のたびに指定branchの最新commitへfast-forwardされます。
 
 通常は次の使い分けです。
 

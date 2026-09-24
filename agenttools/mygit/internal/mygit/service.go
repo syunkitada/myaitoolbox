@@ -114,7 +114,7 @@ func (s *Service) syncWorkspace(ctx context.Context, workspace Workspace, output
 		if target.Repository.Unlock {
 			report(output, "sync: resolve unlocked %s (%s)", target.Repository.Name, target.Repository.Revision)
 			var err error
-			commit, err = ResolveRevision(ctx, s.Git, target.Repository.URL, target.Repository.Revision)
+			commit, err = s.resolveTarget(ctx, target)
 			if err != nil {
 				return fmt.Errorf("resolve unlocked %q: %w", target.Repository.Name, err)
 			}
@@ -138,7 +138,7 @@ func (s *Service) updateWorkspace(ctx context.Context, workspace Workspace, outp
 	commits := make(map[string]string, len(workspace.Targets))
 	for _, target := range workspace.Targets {
 		report(output, "%s: resolve %s (%s)", operation, target.Repository.Name, target.Repository.Revision)
-		commit, err := ResolveRevision(ctx, s.Git, target.Repository.URL, target.Repository.Revision)
+		commit, err := s.resolveTarget(ctx, target)
 		if err != nil {
 			return fmt.Errorf("resolve %q: %w", target.Repository.Name, err)
 		}
@@ -206,12 +206,18 @@ func (s *Service) syncTarget(ctx context.Context, target Target, commit string, 
 	if err := s.validateExistingTarget(ctx, target); err != nil {
 		return err
 	}
-	if err := s.ensureCommit(ctx, target.Path, commit, output, operation, target.Repository.Name); err != nil {
-		return fmt.Errorf("prepare locked commit for %q: %w", target.Repository.Name, err)
-	}
-	report(output, "%s: checkout %s -> %s", operation, target.Repository.Name, commit)
-	if _, err := s.Git.Run(ctx, target.Path, "checkout", "--detach", commit); err != nil {
-		return fmt.Errorf("checkout commit for %q: %w", target.Repository.Name, err)
+	if target.Repository.Checkout == CheckoutBranch {
+		if err := s.syncBranch(ctx, target, commit, output, operation); err != nil {
+			return fmt.Errorf("prepare branch for %q: %w", target.Repository.Name, err)
+		}
+	} else {
+		if err := s.ensureCommit(ctx, target.Path, commit, output, operation, target.Repository.Name); err != nil {
+			return fmt.Errorf("prepare locked commit for %q: %w", target.Repository.Name, err)
+		}
+		report(output, "%s: checkout %s -> %s", operation, target.Repository.Name, commit)
+		if _, err := s.Git.Run(ctx, target.Path, "checkout", "--detach", commit); err != nil {
+			return fmt.Errorf("checkout commit for %q: %w", target.Repository.Name, err)
+		}
 	}
 	head, err := s.Git.Run(ctx, target.Path, "rev-parse", "HEAD")
 	if err != nil {
@@ -219,6 +225,53 @@ func (s *Service) syncTarget(ctx context.Context, target Target, commit string, 
 	}
 	if !strings.EqualFold(strings.TrimSpace(head), commit) {
 		return fmt.Errorf("repository %q is at %s, want %s", target.Repository.Name, strings.TrimSpace(head), commit)
+	}
+	return nil
+}
+
+func (s *Service) resolveTarget(ctx context.Context, target Target) (string, error) {
+	if target.Repository.Checkout == CheckoutBranch {
+		_, commit, err := ResolveBranch(ctx, s.Git, target.Repository.URL, target.Repository.Revision)
+		return commit, err
+	}
+	return ResolveRevision(ctx, s.Git, target.Repository.URL, target.Repository.Revision)
+}
+
+func (s *Service) syncBranch(ctx context.Context, target Target, commit string, output io.Writer, operation string) error {
+	branch, err := branchNameFromRevision(target.Repository.Revision)
+	if err != nil {
+		return err
+	}
+	refspec := "refs/heads/" + branch + ":refs/remotes/origin/" + branch
+	report(output, "%s: fetch branch %s -> %s", operation, target.Repository.Name, branch)
+	if _, err := s.Git.Run(ctx, target.Path, "fetch", "--no-tags", "origin", refspec); err != nil {
+		return err
+	}
+	remoteCommit, err := s.Git.Run(ctx, target.Path, "rev-parse", "refs/remotes/origin/"+branch)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(strings.TrimSpace(remoteCommit), commit) {
+		return fmt.Errorf("remote branch %q changed during resolution: resolved %s, fetched %s", branch, commit, strings.TrimSpace(remoteCommit))
+	}
+
+	localRef := "refs/heads/" + branch
+	if _, err := s.Git.Run(ctx, target.Path, "show-ref", "--verify", "--quiet", localRef); err != nil {
+		report(output, "%s: create branch %s -> %s", operation, branch, commit)
+		if _, err := s.Git.Run(ctx, target.Path, "checkout", "-b", branch, "--track", "refs/remotes/origin/"+branch); err != nil {
+			return err
+		}
+	} else {
+		report(output, "%s: checkout branch %s", operation, branch)
+		if _, err := s.Git.Run(ctx, target.Path, "checkout", branch); err != nil {
+			return err
+		}
+		if _, err := s.Git.Run(ctx, target.Path, "merge", "--ff-only", commit); err != nil {
+			return err
+		}
+		if _, err := s.Git.Run(ctx, target.Path, "branch", "--set-upstream-to=origin/"+branch, branch); err != nil {
+			return err
+		}
 	}
 	return nil
 }

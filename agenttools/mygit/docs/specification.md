@@ -197,6 +197,7 @@ Repositoryは以下の情報を持つ。
 | `revision` | Yes | branch / tag / commit SHA |
 | `path`     |  No | clone先                    |
 | `unlock`   |  No | `true` の場合はlockfileでcommitを固定しない |
+| `checkout` |  No | `branch` の場合はunlockを内包し、ブランチを維持してfast-forward更新。既定はdetached |
 
 `name` を指定した場合は、その値をRepositoryの識別子として使用する。空文字、`.`、`..`、`/`、空白、制御文字を含む値は指定できず、単一のパス要素でなければならない。同一Workspace内で重複する `name` は許可しない。
 
@@ -207,6 +208,8 @@ HTTPS、HTTP、SSHなどhostとnamespaceを識別できるURLでは自動導出�
 `path` は原則としてWorkspaceを基準とする相対パスとする。ただし、`~/`で始まるパスはHOMEディレクトリを基準に解決する。`~`単独の場合はHOMEディレクトリ自身をclone先とする。HOME基準以外の絶対パス、Workspace自身をclone先とする指定、予約領域 `_repos/` 配下への明示的な指定、正規化後に同一となる指定は許可しない。`..` によるWorkspace外の指定は許可するが、すべてのWorkspaceで解決したclone先について、重複・親子関係・symlink経由の衝突を検出した場合は実行前に失敗させる。
 
 `unlock` に `true` を指定したRepositoryはlockfileへ保存しない。`sync` と `update` は実行のたびに `revision` をremote上で解決し、その時点のcommitをclone先へ反映する。`unlock` を指定しないRepositoryは従来どおりlockfileでcommitを固定する。
+
+`checkout: branch` は `unlock: true` を内包する。`revision: main` または `revision: refs/heads/main` のようなbranch指定が必要で、tagやcommit SHAは指定できない。branch checkoutではlockfileによるcommit固定を行わず、remote branchをfetchしたうえでローカルbranchをfast-forwardする。ローカルbranchの先行・分岐を自動的に破棄しないため、その場合は処理に失敗する。既存の `unlock: true` を併記してもよい。
 
 ---
 
@@ -489,6 +492,8 @@ locked commit
 
 `sync` は、remoteの最新revisionを自動的に採用してはいけない。
 
+ただし、`unlock: true` のRepositoryは例外であり、`revision`をremoteから再解決する。さらに `checkout: branch` を指定した場合は、解決したcommitを指定branchへfast-forwardで反映し、detached HEADにしない。
+
 clone先が存在する場合はGit repositoryであることとremote URLが一致することを確認する。未コミット変更、未追跡ファイルとの衝突、異なるremote、またはlocked commitへ安全に移動できない状態がある場合は、resetやcleanを行わずに失敗する。`.gitignore`対象の未追跡ファイルは事前のdirty判定では無視するが、checkout先の追跡ファイルとパスが衝突する場合はGit自体がcheckoutを拒否することがある。
 
 例えば、
@@ -515,6 +520,8 @@ mygit update
 ```
 
 `update` は `mygit.yaml` の `revision` をremoteから再解決し、lockfileを更新する。
+
+`checkout: branch` のRepositoryはlockfileを更新せず、remote branchをfetchしてローカルbranchをfast-forwardする。
 
 既存clone先のremote URLがmanifestのURLと異なる場合、`update`は既存cloneのremoteを自動変更・削除せずに失敗する。repositoryのURLを変更する場合は、利用者が既存clone先の内容を確認して削除した後、`update`を再実行してcloneを再作成する。
 
