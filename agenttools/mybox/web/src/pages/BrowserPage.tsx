@@ -1,6 +1,6 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker } from 'react-router-dom'
-import { FileEntry, FileExecuteResult, HerdrOverview, api } from '../api/client'
+import { FileEntry, FileExecuteResult, FileSearchResult, HerdrOverview, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileAgentWidget } from '../components/FileAgentWidget'
 import { FileTabs } from '../components/FileTabs'
@@ -14,7 +14,7 @@ import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { Badge } from '../components/ui/badge'
-import { ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RefreshCw, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
+import { ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -81,6 +81,12 @@ export interface BrowserEntry {
   status?: string
   markdown: boolean
   executable?: boolean
+}
+
+export interface FileSearchHit {
+  path: string
+  line: number
+  query: string
 }
 
 interface BrowserPageProps {
@@ -260,6 +266,7 @@ interface ExplorerProps {
   onOpenGit?: (path: string) => void
   onLoadDir?: (dir: string, force?: boolean) => void | Promise<void>
   onClearSubtree?: (path: string) => void | Promise<void>
+  onSearchHit?: (hit: FileSearchHit) => void
 }
 
 interface ExplorerSectionProps {
@@ -299,9 +306,17 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-export function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onLoadDir, onClearSubtree }: ExplorerProps) {
+export function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onLoadDir, onClearSubtree, onSearchHit }: ExplorerProps) {
   const { prompt, confirm, alert, showProgress, hideProgress } = useDialogs()
   const [q, setQ] = useState('')
+  const [searchMode, setSearchMode] = useState<'name' | 'text'>('name')
+  const [textResults, setTextResults] = useState<FileSearchResult[]>([])
+  const [textSearchQuery, setTextSearchQuery] = useState('')
+  const [textSearchTotal, setTextSearchTotal] = useState(0)
+  const [textSearchTruncated, setTextSearchTruncated] = useState(false)
+  const [textSearchLoading, setTextSearchLoading] = useState(false)
+  const [textSearchError, setTextSearchError] = useState<string | null>(null)
+  const searchRequest = useRef(0)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverDir, setDragOverDir] = useState<string | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; kind: 'file' | 'dir'; executable?: boolean } | null>(null)
@@ -563,6 +578,70 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
 
   const filtering = q.trim() !== ''
 
+  const runTextSearch = useCallback((value: string) => {
+    const query = value.trim()
+    const requestId = ++searchRequest.current
+    if (!query) {
+      setTextResults([])
+      setTextSearchTotal(0)
+      setTextSearchTruncated(false)
+      setTextSearchLoading(false)
+      setTextSearchError(null)
+      return
+    }
+    setTextSearchLoading(true)
+    setTextSearchError(null)
+    setTextSearchQuery(query)
+    void api
+      .searchFiles({ q: query, showHidden: showHidden ?? true })
+      .then((response) => {
+        if (requestId !== searchRequest.current) return
+        setTextResults(response.results)
+        setTextSearchTotal(response.total)
+        setTextSearchTruncated(response.truncated)
+      })
+      .catch((e) => {
+        if (requestId !== searchRequest.current) return
+        setTextResults([])
+        setTextSearchTotal(0)
+        setTextSearchTruncated(false)
+        setTextSearchError(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (requestId === searchRequest.current) setTextSearchLoading(false)
+      })
+  }, [showHidden])
+
+  useEffect(() => {
+    if (searchMode !== 'text') {
+      ++searchRequest.current
+      setTextSearchLoading(false)
+      return
+    }
+    const query = q.trim()
+    if (!query) {
+      runTextSearch('')
+      return
+    }
+    setTextSearchLoading(true)
+    setTextSearchError(null)
+    const timer = window.setTimeout(() => runTextSearch(query), 350)
+    return () => window.clearTimeout(timer)
+  }, [q, runTextSearch, searchMode])
+
+  const selectSearchMode = (mode: 'name' | 'text') => {
+    setSearchMode(mode)
+    if (mode === 'name') {
+      ++searchRequest.current
+      setTextSearchLoading(false)
+      setTextSearchError(null)
+    }
+  }
+
+  const submitSearch = (value: string) => {
+    if (searchMode === 'text') runTextSearch(value)
+  }
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return entries.filter(
@@ -752,6 +831,22 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
 
   const fileMatches = filtered.filter((e) => e.kind === 'file')
 
+  const openTextResult = (result: FileSearchResult) => {
+    if (onSearchHit) {
+      onSearchHit({ path: result.path, line: result.line, query: textSearchQuery || q.trim() })
+    } else {
+      onSelect(result.path)
+    }
+  }
+
+  const highlightedSnippet = (snippet: string, query: string) => {
+    if (!query) return snippet
+    const parts = snippet.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})`, 'ig'))
+    return parts.map((part, index) =>
+      part.toLowerCase() === query.toLowerCase() ? <mark key={index} className="rounded bg-yellow-200 px-0.5 text-inherit dark:bg-yellow-700">{part}</mark> : part,
+    )
+  }
+
   return (
     <div className="knowledge-explorer flex h-full min-h-0 w-full flex-col overflow-y-auto bg-card p-2.5">
       <div className="page-header mb-1 flex flex-wrap items-center gap-3">
@@ -807,11 +902,71 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
           </Button>
         )}
       </div>
-      <div className="toolbar my-3 flex flex-wrap gap-2">
-        <SearchBar value={q} onChange={setQ} onSubmit={() => undefined} placeholder="Filter…" />
+      <div className="toolbar my-3 flex flex-col gap-2">
+        <div className="flex gap-1" role="group" aria-label="Search mode">
+          <Button
+            type="button"
+            variant={searchMode === 'name' ? 'secondary' : 'ghost'}
+            size="xs"
+            className="cursor-pointer"
+            aria-pressed={searchMode === 'name'}
+            onClick={() => selectSearchMode('name')}
+          >
+            Name
+          </Button>
+          <Button
+            type="button"
+            variant={searchMode === 'text' ? 'secondary' : 'ghost'}
+            size="xs"
+            className="cursor-pointer"
+            aria-pressed={searchMode === 'text'}
+            onClick={() => selectSearchMode('text')}
+          >
+            <Search />
+            Text
+          </Button>
+        </div>
+        <SearchBar
+          value={q}
+          onChange={setQ}
+          onSubmit={submitSearch}
+          placeholder={searchMode === 'text' ? 'Search file contents…' : 'Search file names…'}
+        />
       </div>
       {entries.length === 0 ? (
         <p className="muted text-sm text-muted-foreground">No files yet.</p>
+      ) : searchMode === 'text' && filtering ? (
+        <div className="flex min-h-0 flex-col gap-2">
+          {textSearchLoading && <p className="text-sm text-muted-foreground">Searching…</p>}
+          {textSearchError && <p className="text-sm text-destructive">{textSearchError}</p>}
+          {!textSearchLoading && !textSearchError && textResults.length > 0 && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                {textSearchTruncated ? `Showing first ${textResults.length} of ${textSearchTotal} files` : `${textSearchTotal} ${textSearchTotal === 1 ? 'file' : 'files'} found`}
+              </p>
+              <ul className="file-list m-0 flex list-none flex-col gap-2 p-0">
+                {textResults.map((result) => (
+                  <li key={result.path} className="min-w-0">
+                    <button
+                      type="button"
+                      className="flex min-w-0 w-full cursor-pointer flex-col items-start rounded-md px-1 py-1 text-left hover:bg-muted"
+                      onClick={() => openTextResult(result)}
+                      title={`Open ${result.path} at line ${result.line}`}
+                    >
+                      <span className="w-full truncate text-sm font-medium text-foreground hover:text-primary">{result.path}</span>
+                      <span className="w-full truncate text-xs text-muted-foreground">
+                        line {result.line} · {result.match_count} {result.match_count === 1 ? 'match' : 'matches'} · {highlightedSnippet(result.snippet, q.trim())}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {!textSearchLoading && !textSearchError && textResults.length === 0 && (
+            <p className="text-sm text-muted-foreground">No matches.</p>
+          )}
+        </div>
       ) : filtering ? (
         <ul className="file-list m-0 flex list-none flex-col gap-2 p-0">
           {fileMatches.map((e) => (
@@ -1076,9 +1231,10 @@ interface PaneProps {
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
   onOpenGit?: (path: string) => void
+  searchHit?: FileSearchHit | null
 }
 
-function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer, onRefresh, refreshKey, herdrOverview, refreshHerdr, onOpenGit }: PaneProps) {
+function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer, onRefresh, refreshKey, herdrOverview, refreshHerdr, onOpenGit, searchHit }: PaneProps) {
   const { prompt, confirm, confirm3 } = useDialogs()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
@@ -1351,6 +1507,10 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
   }
 
   const viewText = useForm ? fmSplit.body : content
+  const viewSourceLineOffset = useForm
+    ? content.slice(0, Math.max(0, content.length - fmSplit.body.length)).split(/\r?\n/).length - 1
+    : 0
+  const activeSearchHit = searchHit?.path === path ? searchHit : null
   const viewRelativeTo = isDir ? readmePath ?? `${path}/` : path
   const viewFileName = isDir && readmePath ? baseOf(readmePath) : null
 
@@ -1845,6 +2005,9 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
                     onTaskToggle={!isDir || Boolean(readmePath) ? toggleTask : undefined}
                     copyDialogOpen={copyDialogOpen}
                     onCopyDialogClose={() => setCopyDialogOpen(false)}
+                    focusLine={activeSearchHit?.line}
+                    searchQuery={activeSearchHit?.query}
+                    sourceLineOffset={viewSourceLineOffset}
                   />
                 ) : isImage ? (
                   <div className="file-image flex justify-center py-3">
@@ -1853,8 +2016,10 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
                 ) : (
                   <SyntaxHighlighter
                     text={viewText}
-                    language={languageFromPath(viewFileName ?? undefined)}
+                    language={languageFromPath(viewFileName ?? path)}
                     className="file-raw rounded-md bg-muted p-3"
+                    focusLine={activeSearchHit?.line}
+                    searchQuery={activeSearchHit?.query}
                   />
                 )}
               </CardContent>
@@ -1924,6 +2089,7 @@ export function BrowserPage({
   const [moveError, setMoveError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [openGitDir, setOpenGitDir] = useState<string | null>(null)
+  const [searchHit, setSearchHit] = useState<FileSearchHit | null>(null)
   const autoDefaulted = useRef(false)
   const loadedDirsRef = useRef(new Set<string>())
   const loadingDirsRef = useRef(new Set<string>())
@@ -1961,7 +2127,17 @@ export function BrowserPage({
 
   const handleSelect = useCallback(
     (p: string) => {
+      setSearchHit(null)
       onSelect(p)
+      if (isMobile) setExplorerOpen(false)
+    },
+    [isMobile, onSelect],
+  )
+
+  const handleSearchHit = useCallback(
+    (hit: FileSearchHit) => {
+      setSearchHit(hit)
+      onSelect(hit.path)
       if (isMobile) setExplorerOpen(false)
     },
     [isMobile, onSelect],
@@ -2190,6 +2366,7 @@ export function BrowserPage({
                     onOpenGit={setOpenGitDir}
                     onLoadDir={loadDir}
                     onClearSubtree={clearSubtree}
+                    onSearchHit={handleSearchHit}
                   />
                 </div>
               </div>
@@ -2216,6 +2393,7 @@ export function BrowserPage({
                     onOpenGit={setOpenGitDir}
                     onLoadDir={loadDir}
                     onClearSubtree={clearSubtree}
+                    onSearchHit={handleSearchHit}
                   />
               </SheetContent>
             </Sheet>
@@ -2254,6 +2432,7 @@ export function BrowserPage({
                   herdrOverview={herdrOverview}
                   refreshHerdr={refreshHerdr}
                   onOpenGit={setOpenGitDir}
+                  searchHit={searchHit}
                 />
               ) : (
                 <Card className="knowledge-empty items-center justify-center gap-2 p-12 text-center">

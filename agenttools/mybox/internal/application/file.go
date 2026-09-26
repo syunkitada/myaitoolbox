@@ -2,8 +2,10 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 )
@@ -11,6 +13,8 @@ import (
 type FileUseCase struct {
 	Files domain.FileRepository
 }
+
+const maxFileSearchResults = 100
 
 func NewFileUseCase(files domain.FileRepository) *FileUseCase {
 	return &FileUseCase{Files: files}
@@ -41,6 +45,22 @@ func (u *FileUseCase) Children(ctx context.Context, parent string, showHidden bo
 
 func (u *FileUseCase) MarkdownTags(ctx context.Context) ([]string, error) {
 	return u.Files.MarkdownTags(ctx)
+}
+
+func (u *FileUseCase) Search(ctx context.Context, query string, showHidden bool) ([]domain.FileSearchResult, int, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, 0, fmt.Errorf("%w: search query must not be empty", domain.ErrInvalidArgument)
+	}
+	results, err := u.Files.Search(ctx, query, showHidden)
+	if err != nil {
+		return nil, 0, err
+	}
+	total := len(results)
+	if len(results) > maxFileSearchResults {
+		results = results[:maxFileSearchResults]
+	}
+	return results, total, nil
 }
 
 func (u *FileUseCase) Content(ctx context.Context, path string) (string, error) {

@@ -153,6 +153,22 @@ type FilePathRequest struct {
 	Path string `json:"path"`
 }
 
+// FileSearchResponse defines model for FileSearchResponse.
+type FileSearchResponse struct {
+	Query     string             `json:"query"`
+	Results   []FileSearchResult `json:"results"`
+	Total     int                `json:"total"`
+	Truncated bool               `json:"truncated"`
+}
+
+// FileSearchResult defines model for FileSearchResult.
+type FileSearchResult struct {
+	Line       int    `json:"line"`
+	MatchCount int    `json:"match_count"`
+	Path       string `json:"path"`
+	Snippet    string `json:"snippet"`
+}
+
 // HerdrAgent defines model for HerdrAgent.
 type HerdrAgent struct {
 	CustomName  *string `json:"custom_name,omitempty"`
@@ -402,6 +418,14 @@ type ListFilesParams struct {
 	// Path Directory path relative to the project root. When omitted the
 	// complete tree is returned, otherwise only the direct children.
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// SearchFilesParams defines parameters for SearchFiles.
+type SearchFilesParams struct {
+	// Q Case-insensitive literal search query
+	Q string `form:"q" json:"q"`
+	// ShowHidden Whether to include hidden files (dotfiles) in the result
+	ShowHidden *bool `form:"show_hidden,omitempty" json:"show_hidden,omitempty"`
 }
 
 // GetProjectPathsParams defines parameters for GetProjectPaths.

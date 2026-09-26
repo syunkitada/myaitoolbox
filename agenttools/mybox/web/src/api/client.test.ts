@@ -70,4 +70,13 @@ describe('api client', () => {
       expect.objectContaining({ headers: { 'X-Project': 'other' } }),
     )
   })
+
+  it('searches file contents with the hidden-file setting', async () => {
+    mockFetch(200, { query: 'foo', results: [], total: 0, truncated: false })
+    await api.searchFiles({ q: 'foo bar', showHidden: false, project: 'other' })
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/files/search?q=foo+bar&show_hidden=false',
+      expect.objectContaining({ headers: { 'X-Project': 'other' } }),
+    )
+  })
 })

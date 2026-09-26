@@ -20,6 +20,13 @@ type FileEntry struct {
 	Executable bool
 }
 
+type FileSearchResult struct {
+	Path       string
+	Line       int
+	Snippet    string
+	MatchCount int
+}
+
 type FileExecResult struct {
 	ExitCode int
 	Output   string
@@ -30,6 +37,7 @@ type FileRepository interface {
 	Tree(ctx context.Context, showHidden bool) ([]FileEntry, error)
 	Children(ctx context.Context, parent string, showHidden bool) ([]FileEntry, error)
 	MarkdownTags(ctx context.Context) ([]string, error)
+	Search(ctx context.Context, query string, showHidden bool) ([]FileSearchResult, error)
 	Content(ctx context.Context, path string) (string, error)
 	Raw(ctx context.Context, path string) ([]byte, error)
 	Save(ctx context.Context, path string, content string) error

@@ -192,6 +192,33 @@ paths:
           description: invalid path
         "409":
           description: already exists
+  /api/files/search:
+    get:
+      operationId: searchFiles
+      summary: Search text file contents in the project
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Case-insensitive literal search query
+        - name: show_hidden
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+          description: Whether to include hidden files (dotfiles) in the result
+      responses:
+        "200":
+          description: matching text files
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileSearchResponse"
+        "400":
+          description: missing or empty query
   /api/files/dir:
     post:
       operationId: createDir
@@ -898,6 +925,37 @@ components:
         executable:
           type: boolean
           description: Whether the file has the executable bit set
+    FileSearchResponse:
+      type: object
+      required: [query, results, total, truncated]
+      properties:
+        query:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileSearchResult"
+        total:
+          type: integer
+          description: Total number of matching files before the response limit
+        truncated:
+          type: boolean
+          description: Whether the response was limited to the first 100 files
+    FileSearchResult:
+      type: object
+      required: [path, line, snippet, match_count]
+      properties:
+        path:
+          type: string
+        line:
+          type: integer
+          description: 1-based line number of the first match
+        snippet:
+          type: string
+          description: Representative line containing the first match
+        match_count:
+          type: integer
+          description: Number of non-overlapping matches in the file
     FileExecuteResult:
       type: object
       required: [path, exit_code, output]

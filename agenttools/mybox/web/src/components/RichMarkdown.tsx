@@ -1,4 +1,4 @@
-import { MouseEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import MarkdownIt from 'markdown-it'
@@ -31,10 +31,22 @@ const md: MarkdownIt = new MarkdownIt({
 const defaultFence = md.renderer.rules.fence
 
 md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
   const rendered = defaultFence
     ? defaultFence(tokens, idx, options, env, self)
     : `<pre><code>${md.utils.escapeHtml(tokens[idx].content)}</code></pre>\n`
-  return `<div class="markdown-code-block" data-code-block><button type="button" class="markdown-code-copy" data-copy-code aria-label="Copy code" title="Copy code">Copy</button>${rendered}</div>\n`
+  const lineOffset = (env as MarkdownRenderEnv | undefined)?.lineOffset ?? 0
+  const sourceLine = token.map?.[0] === undefined ? '' : ` data-source-line="${lineOffset + token.map[0] + 1}"`
+  return `<div class="markdown-code-block" data-code-block${sourceLine}><button type="button" class="markdown-code-copy" data-copy-code aria-label="Copy code" title="Copy code">Copy</button>${rendered}</div>\n`
+}
+
+interface MarkdownSourceLineEnv {
+  lineOffset?: number
+}
+
+function setSourceLine(token: { map?: [number, number] | null; attrSet: (name: string, value: string) => void }, env?: MarkdownSourceLineEnv) {
+  if (token.map?.[0] === undefined) return
+  token.attrSet('data-source-line', String((env?.lineOffset ?? 0) + token.map[0] + 1))
 }
 
 md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
@@ -49,7 +61,16 @@ md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
     .join('')
   const slug = slugify(text)
   token.attrSet('id', slug)
+  setSourceLine(token, _env as MarkdownSourceLineEnv | undefined)
   return self.renderToken(tokens, idx, options)
+}
+
+const defaultParagraphOpen = md.renderer.rules.paragraph_open
+md.renderer.rules.paragraph_open = (tokens, idx, options, env, self) => {
+  setSourceLine(tokens[idx], env as MarkdownSourceLineEnv | undefined)
+  return defaultParagraphOpen
+    ? defaultParagraphOpen(tokens, idx, options, env, self)
+    : self.renderToken(tokens, idx, options)
 }
 
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
@@ -95,6 +116,7 @@ interface MarkdownRenderEnv {
   preserveExtension?: boolean
   taskSource?: string
   taskLineOffset?: number
+  lineOffset?: number
   taskInteractive?: boolean
 }
 
@@ -223,15 +245,19 @@ export interface RichMarkdownProps {
   onTaskToggle?: (line: number, checked: boolean) => boolean | Promise<boolean>
   copyDialogOpen?: boolean
   onCopyDialogClose?: () => void
+  focusLine?: number
+  searchQuery?: string
+  sourceLineOffset?: number
 }
 
 interface Segment {
   kind: 'md' | 'mermaid'
   content: string
   lineOffset: number
+  sourceLineOffset: number
 }
 
-function splitSegments(text: string): Segment[] {
+function splitSegments(text: string, sourceLineOffset = 0): Segment[] {
   const segments: Segment[] = []
   const pattern = /^```\s*mermaid\s*\n([\s\S]*?)^```\s*$/gm
   let last = 0
@@ -241,12 +267,14 @@ function splitSegments(text: string): Segment[] {
         kind: 'md',
         content: text.slice(last, m.index),
         lineOffset: text.slice(0, last).split(/\r?\n/).length - 1,
+        sourceLineOffset: sourceLineOffset + text.slice(0, last).split(/\r?\n/).length - 1,
       })
     }
     segments.push({
       kind: 'mermaid',
       content: m[1].trim(),
       lineOffset: text.slice(0, m.index!).split(/\r?\n/).length - 1,
+      sourceLineOffset: sourceLineOffset + text.slice(0, m.index!).split(/\r?\n/).length - 1,
     })
     last = m.index! + m[0].length
   }
@@ -255,6 +283,7 @@ function splitSegments(text: string): Segment[] {
       kind: 'md',
       content: text.slice(last),
       lineOffset: text.slice(0, last).split(/\r?\n/).length - 1,
+      sourceLineOffset: sourceLineOffset + text.slice(0, last).split(/\r?\n/).length - 1,
     })
   }
   return segments
@@ -366,9 +395,25 @@ export function RichMarkdown({
   onTaskToggle,
   copyDialogOpen = false,
   onCopyDialogClose,
+  focusLine,
+  searchQuery,
+  sourceLineOffset = 0,
 }: RichMarkdownProps) {
-  const segments = useMemo(() => splitSegments(text), [text])
+  const segments = useMemo(() => splitSegments(text, sourceLineOffset), [sourceLineOffset, text])
   const navigate = useNavigate()
+  const viewerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!focusLine || focusLine < 1) return
+    const target = viewerRef.current?.querySelector<HTMLElement>(`[data-source-line="${focusLine}"]`)
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    target.classList.add('bg-yellow-100', 'dark:bg-yellow-900/50', 'rounded')
+    const timer = window.setTimeout(() => {
+      target.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/50')
+    }, 2500)
+    return () => window.clearTimeout(timer)
+  }, [focusLine, searchQuery, sourceLineOffset, text])
 
   const handleTaskToggle = useCallback((input: HTMLInputElement) => {
     if (!onTaskToggle || input.disabled) return
@@ -463,7 +508,7 @@ export function RichMarkdown({
   )
 
   return (
-    <div className="markdown-viewer">
+    <div ref={viewerRef} className="markdown-viewer">
       <div className="markdown-body" onClick={handleClick}>
         {segments.map((seg, i) => {
           if (seg.kind === 'mermaid') {
@@ -478,6 +523,7 @@ export function RichMarkdown({
                 preserveExtension,
                 taskSource: seg.content,
                 taskLineOffset: seg.lineOffset,
+                lineOffset: seg.sourceLineOffset,
                 taskInteractive: Boolean(onTaskToggle),
               } satisfies MarkdownRenderEnv),
             ),

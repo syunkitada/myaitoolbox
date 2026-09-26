@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/goccy/go-yaml"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
@@ -20,6 +21,25 @@ import (
 )
 
 const executeTimeout = 2 * time.Minute
+
+const maxSearchFileBytes = 5 << 20
+
+var searchableTextExtensions = map[string]struct{}{
+	".adoc": {}, ".bash": {}, ".c": {}, ".cc": {}, ".cfg": {}, ".conf": {}, ".cpp": {},
+	".css": {}, ".csv": {}, ".fish": {}, ".go": {}, ".h": {}, ".hh": {}, ".hpp": {},
+	".htm": {}, ".html": {}, ".ini": {}, ".java": {}, ".js": {}, ".json": {},
+	".jsx": {}, ".kts": {}, ".less": {}, ".lua": {}, ".markdown": {}, ".md": {},
+	".mjs": {}, ".org": {}, ".php": {}, ".pl": {}, ".ps1": {}, ".py": {},
+	".rb": {}, ".rs": {}, ".rst": {}, ".scss": {}, ".sh": {}, ".sql": {},
+	".svg": {}, ".swift": {}, ".text": {}, ".toml": {}, ".ts": {},
+	".tsx": {}, ".txt": {}, ".xml": {}, ".yaml": {}, ".yml": {},
+}
+
+var searchableTextNames = map[string]struct{}{
+	".dockerignore": {}, ".editorconfig": {}, ".env": {}, ".gitattributes": {}, ".gitignore": {},
+	".npmrc": {}, ".prettierrc": {}, ".yarnrc": {}, "agentrules": {}, "agents.md": {},
+	"dockerfile": {}, "gitignore": {}, "makefile": {}, "readme": {}, "license": {},
+}
 
 type FileRepository struct {
 	root string
@@ -124,6 +144,137 @@ func (r *FileRepository) Tree(ctx context.Context, showHidden bool) ([]domain.Fi
 		return entries[i].Path < entries[j].Path
 	})
 	return entries, nil
+}
+
+func (r *FileRepository) Search(ctx context.Context, query string, showHidden bool) ([]domain.FileSearchResult, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, fmt.Errorf("%w: search query must not be empty", domain.ErrInvalidArgument)
+	}
+	lowerQuery := strings.ToLower(query)
+	results := make([]domain.FileSearchResult, 0)
+	if _, err := os.Stat(r.root); err != nil {
+		if os.IsNotExist(err) {
+			return results, nil
+		}
+		return nil, err
+	}
+
+	err := filepath.WalkDir(r.root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if path == r.root {
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if !showHidden && strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() || !isSearchableTextPath(d.Name()) {
+			return nil
+		}
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		if info.Size() > maxSearchFileBytes {
+			return nil
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
+			return nil
+		}
+
+		lines := strings.Split(string(data), "\n")
+		for lineIndex, line := range lines {
+			lowerLine := strings.ToLower(line)
+			matchCount := strings.Count(lowerLine, lowerQuery)
+			if matchCount == 0 {
+				continue
+			}
+			rel, relErr := filepath.Rel(r.root, path)
+			if relErr != nil {
+				return relErr
+			}
+			results = append(results, domain.FileSearchResult{
+				Path:       filepath.ToSlash(rel),
+				Line:       lineIndex + 1,
+				Snippet:    searchSnippet(line, lowerQuery),
+				MatchCount: countMatches(lines, lowerQuery),
+			})
+			break
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].Path < results[j].Path })
+	return results, nil
+}
+
+func isSearchableTextPath(name string) bool {
+	lower := strings.ToLower(name)
+	if _, ok := searchableTextNames[lower]; ok {
+		return true
+	}
+	dot := strings.LastIndexByte(lower, '.')
+	if dot < 0 {
+		return false
+	}
+	_, ok := searchableTextExtensions[lower[dot:]]
+	return ok
+}
+
+func countMatches(lines []string, lowerQuery string) int {
+	count := 0
+	for _, line := range lines {
+		count += strings.Count(strings.ToLower(line), lowerQuery)
+	}
+	return count
+}
+
+func searchSnippet(line, lowerQuery string) string {
+	const maxSnippetChars = 240
+	line = strings.TrimSpace(line)
+	lowerLine := strings.ToLower(line)
+	if len([]rune(line)) <= maxSnippetChars {
+		return line
+	}
+	index := strings.Index(lowerLine, lowerQuery)
+	if index < 0 {
+		return string([]rune(line)[:maxSnippetChars]) + "…"
+	}
+	runes := []rune(line)
+	start := utf8.RuneCountInString(line[:index]) - 80
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxSnippetChars
+	if end > len(runes) {
+		end = len(runes)
+	}
+	return func() string {
+		snippet := string(runes[start:end])
+		if start > 0 {
+			snippet = "…" + snippet
+		}
+		if end < len(runes) {
+			snippet += "…"
+		}
+		return snippet
+	}()
 }
 
 // Children lists only the direct children of parent ("" = project root),

@@ -329,6 +329,18 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, api.FileEntry{Path: "README.md", Name: "README.md", Kind: api.FileEntryKind("file")}, files[4])
 	assert.Equal(t, api.FileEntry{Path: "docs/task.md", Name: "task.md", Kind: api.FileEntryKind("file"), Status: &status}, files[5])
 
+	rec = do(t, s, http.MethodGet, "/api/files/search?q=PROJECT&show_hidden=false", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	search := decode[api.FileSearchResponse](t, rec)
+	require.Len(t, search.Results, 1)
+	assert.Equal(t, "PROJECT", search.Query)
+	assert.Equal(t, 1, search.Total)
+	assert.False(t, search.Truncated)
+	assert.Equal(t, api.FileSearchResult{Path: "README.md", Line: 1, Snippet: "# Project", MatchCount: 1}, search.Results[0])
+
+	rec = do(t, s, http.MethodGet, "/api/files/search?q=", nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
 	rec = do(t, s, http.MethodGet, "/api/files/content?path=README.md", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	content := decode[api.FileContent](t, rec)

@@ -701,6 +701,38 @@ func (s *Server) ListFiles(w http.ResponseWriter, r *http.Request, params api.Li
 	writeJSONResponse(w, http.StatusOK, out)
 }
 
+func (s *Server) SearchFiles(w http.ResponseWriter, r *http.Request, params api.SearchFilesParams) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	showHidden := true
+	if params.ShowHidden != nil {
+		showHidden = *params.ShowHidden
+	}
+	results, total, err := app.Files.Search(r.Context(), params.Q, showHidden)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out := api.FileSearchResponse{
+		Query:     params.Q,
+		Results:   make([]api.FileSearchResult, 0, len(results)),
+		Total:     total,
+		Truncated: total > len(results),
+	}
+	for _, result := range results {
+		out.Results = append(out.Results, api.FileSearchResult{
+			Path:       result.Path,
+			Line:       result.Line,
+			Snippet:    result.Snippet,
+			MatchCount: result.MatchCount,
+		})
+	}
+	writeJSONResponse(w, http.StatusOK, out)
+}
+
 func (s *Server) ExecuteFile(w http.ResponseWriter, r *http.Request) {
 	app, err := s.getApp(r)
 	if err != nil {

@@ -83,4 +83,43 @@ describe('Explorer file upload', () => {
     await waitFor(() => expect(screen.getByRole('dialog')).toHaveTextContent('Upload failed'))
     expect(screen.getByRole('dialog')).toHaveTextContent('upload exceeds the maximum size')
   })
+
+  it('searches file contents and reports the selected hit', async () => {
+    const search = vi.spyOn(api, 'searchFiles').mockResolvedValue({
+      query: 'deploy',
+      results: [{ path: 'docs/guide.md', line: 4, snippet: 'Deploy here', match_count: 1 }],
+      total: 1,
+      truncated: false,
+    })
+    const onSearchHit = vi.fn()
+    const onSelect = vi.fn()
+
+    render(
+      <DialogsProvider>
+        <Explorer
+          entries={[{ kind: 'file', name: 'guide.md', path: 'docs/guide.md', markdown: true }]}
+          selected=""
+          onSelect={onSelect}
+          onSearchHit={onSearchHit}
+          title="Files"
+          favorites={[]}
+          recentFiles={[]}
+          onMoveFile={vi.fn()}
+          showHidden={false}
+          onToggleHidden={vi.fn()}
+        />
+      </DialogsProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Text' }))
+    const searchbox = screen.getByRole('searchbox')
+    fireEvent.change(searchbox, { target: { value: 'deploy' } })
+    fireEvent.submit(searchbox)
+
+    await waitFor(() => expect(search).toHaveBeenCalledWith({ q: 'deploy', showHidden: false }))
+    expect(await screen.findByText('docs/guide.md')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /docs\/guide\.md/ }))
+    expect(onSearchHit).toHaveBeenCalledWith({ path: 'docs/guide.md', line: 4, query: 'deploy' })
+    expect(onSelect).not.toHaveBeenCalled()
+  })
 })

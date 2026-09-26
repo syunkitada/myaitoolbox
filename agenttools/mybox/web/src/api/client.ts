@@ -50,6 +50,20 @@ export interface FileContent {
   content: string
 }
 
+export interface FileSearchResult {
+  path: string
+  line: number
+  snippet: string
+  match_count: number
+}
+
+export interface FileSearchResponse {
+  query: string
+  results: FileSearchResult[]
+  total: number
+  truncated: boolean
+}
+
 export interface FileExecuteResult {
   path: string
   exit_code: number
@@ -386,6 +400,8 @@ export const api = {
     const query = q.length ? '?' + q.join('&') : ''
     return request<FileEntry[]>('GET', '/api/files' + query, undefined, opts?.project)
   },
+  searchFiles: (opts: { q: string; showHidden?: boolean; project?: string }) =>
+    request<FileSearchResponse>('GET', '/api/files/search' + qs({ q: opts.q, show_hidden: opts.showHidden }), undefined, opts.project),
   getFileGitStatus: () => request<Record<string, string>>('GET', '/api/files/git-status'),
   createFile: (path: string) => request<void>('POST', '/api/files', { path }),
   createDir: (path: string) => request<void>('POST', '/api/files/dir', { path }),

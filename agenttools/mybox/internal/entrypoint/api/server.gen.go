@@ -45,6 +45,9 @@ type ServerInterface interface {
 	// MoveFile Move a file
 	// (POST /api/files/move)
 	MoveFile(w http.ResponseWriter, r *http.Request)
+	// SearchFiles Search text file contents in the project
+	// (GET /api/files/search)
+	SearchFiles(w http.ResponseWriter, r *http.Request, params SearchFilesParams)
 	// PromptHerdrAgent Submit a prompt to an agent
 	// (POST /api/herdr/agents/prompt)
 	PromptHerdrAgent(w http.ResponseWriter, r *http.Request)
@@ -318,6 +321,40 @@ func (siw *ServerInterfaceWrapper) MoveFile(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MoveFile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchFiles operation middleware
+func (siw *ServerInterfaceWrapper) SearchFiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	var params SearchFilesParams
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "show_hidden", r.URL.Query(), &params.ShowHidden, runtime.BindQueryParameterOptions{Type: "bool", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "show_hidden", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchFiles(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1009,6 +1046,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/move", wrapper.MoveFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/copy", wrapper.CopyFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/delete", wrapper.DeleteFile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/search", wrapper.SearchFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/git-status", wrapper.GetFileGitStatus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/execute", wrapper.ExecuteFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
