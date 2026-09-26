@@ -47,10 +47,15 @@ type gitDetail struct {
 // runGitRaw executes git and returns the raw combined output without any
 // whitespace trimming. It is used where every byte matters, such as parsing
 // `git status --porcelain` whose leading space in column 1 is significant.
+//
+// Git normally C-quotes non-ASCII pathnames in human-readable output. The
+// output is sent to the web UI as UTF-8, so disable that presentation behavior
+// for all commands handled by mybox.
 func runGitRaw(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	gitArgs := append([]string{"-c", "core.quotePath=false"}, args...)
+	cmd := exec.CommandContext(ctx, "git", gitArgs...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -171,20 +176,30 @@ func gitRepoDetail(dir string) gitDetail {
 	default:
 		d.SyncStatus = "up-to-date"
 	}
-	porcelain, _ := runGitRaw(dir, "status", "--porcelain", "--untracked-files=all")
+	// -z keeps pathnames unquoted and makes the status records unambiguous even
+	// when a pathname contains whitespace, quotes, or a newline. For renames
+	// and copies, Git emits the destination followed by the source pathname.
+	porcelain, _ := runGitRaw(dir, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	d.Staged = []*gitFile{}
 	d.Unstaged = []*gitFile{}
 	d.Untracked = []*gitFile{}
-	for _, line := range strings.Split(porcelain, "\n") {
-		if len(line) < 3 {
+	statusRecords := strings.Split(porcelain, "\x00")
+	for i := 0; i < len(statusRecords); i++ {
+		record := statusRecords[i]
+		// A porcelain v1 -z record consists of the two status bytes, a
+		// separator space, and the pathname.
+		if len(record) < 4 || record[2] != ' ' {
 			continue
 		}
-		x, y := line[0], line[1]
-		path := strings.TrimLeft(line[2:], " ")
-		// Renames are reported as "old -> new"; the new name is what the
-		// diff command (and the file manager) cares about.
-		if i := strings.Index(path, " -> "); i >= 0 {
-			path = path[i+4:]
+		x, y := record[0], record[1]
+		path := record[3:]
+		// With -z, rename/copy records contain a second NUL-terminated
+		// pathname for the source. The first pathname is the destination,
+		// which is what the diff command and file manager care about.
+		if x == 'R' || x == 'C' || y == 'R' || y == 'C' {
+			if i+1 < len(statusRecords) {
+				i++
+			}
 		}
 		// The porcelain output covers the whole repository, so restrict it to
 		// the scope directory reported by the working directory.
@@ -244,7 +259,7 @@ func gitFileDiff(dir, path string, cached bool) string {
 func untrackedDiff(dir, path string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "diff", "--no-index", "/dev/null", path)
+	cmd := exec.CommandContext(ctx, "git", "-c", "core.quotePath=false", "diff", "--no-index", "/dev/null", path)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

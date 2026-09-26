@@ -201,6 +201,41 @@ test('dashboard toggles the file explorer', async ({ page }) => {
   await expect(pane).toHaveAttribute('data-explorer-open', 'true')
 })
 
+test('dashboard resizes and remembers the file explorer width', async ({ page }) => {
+  await page.evaluate(() => localStorage.removeItem('mybox_files_explorer_width'))
+  await page.reload()
+
+  const pane = page.locator('.explorer-pane')
+  const handle = page.getByRole('separator', { name: 'Resize file explorer' })
+  await expect(handle).toHaveAttribute('aria-valuenow', '280')
+
+  const initialWidth = (await pane.boundingBox())!.width
+  let handleBox = (await handle.boundingBox())!
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 100, handleBox.y + handleBox.height / 2)
+  await page.mouse.up()
+  await expect.poll(async () => (await pane.boundingBox())!.width).toBeGreaterThan(initialWidth + 90)
+  await expect(handle).toHaveAttribute('aria-valuenow', '380')
+
+  handleBox = (await handle.boundingBox())!
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + handleBox.width / 2 - 500, handleBox.y + handleBox.height / 2)
+  await page.mouse.up()
+  await expect(handle).toHaveAttribute('aria-valuenow', '180')
+
+  handleBox = (await handle.boundingBox())!
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 500, handleBox.y + handleBox.height / 2)
+  await page.mouse.up()
+  await expect(handle).toHaveAttribute('aria-valuenow', '480')
+
+  await page.reload()
+  await expect(page.getByRole('separator', { name: 'Resize file explorer' })).toHaveAttribute('aria-valuenow', '480')
+})
+
 test('nav bar file actions open a terminal', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'New file' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()

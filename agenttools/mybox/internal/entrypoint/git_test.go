@@ -262,6 +262,38 @@ func TestGitAmend(t *testing.T) {
 	assert.Contains(t, result.Output, "You have nothing to amend")
 }
 
+func TestGitStatusPreservesUnicodePaths(t *testing.T) {
+	s, app := newTestServer(t)
+	dir := app.Project.Path
+	require.NoError(t, runGitErr(dir, "init"))
+	require.NoError(t, runGitErr(dir, "config", "user.email", "test@example.com"))
+	require.NoError(t, runGitErr(dir, "config", "user.name", "test"))
+
+	directory := filepath.Join(dir, "日本語")
+	oldPath := filepath.Join(directory, "未追跡 ファイル.md")
+	require.NoError(t, os.MkdirAll(directory, 0o755))
+	require.NoError(t, os.WriteFile(oldPath, []byte("hello\n"), 0o644))
+
+	rec := do(t, s, http.MethodGet, "/api/git/status", nil, "X-Project", "test")
+	detail := decode[apiGitDetail](t, rec)
+	require.Len(t, detail.Untracked, 1)
+	assert.Equal(t, "日本語/未追跡 ファイル.md", detail.Untracked[0].Path)
+	assert.Contains(t, detail.Untracked[0].Diff, "日本語/未追跡 ファイル.md")
+
+	// A staged rename uses the destination pathname from Git's second status
+	// record, while preserving its Unicode characters.
+	require.NoError(t, runGitErr(dir, "add", "-A"))
+	require.NoError(t, runGitErr(dir, "commit", "-m", "initial"))
+	newPath := filepath.Join(directory, "新しい 名前.md")
+	require.NoError(t, os.Rename(oldPath, newPath))
+	require.NoError(t, runGitErr(dir, "add", "-A"))
+
+	rec = do(t, s, http.MethodGet, "/api/git/status", nil, "X-Project", "test")
+	detail = decode[apiGitDetail](t, rec)
+	require.Len(t, detail.Staged, 1)
+	assert.Equal(t, "日本語/新しい 名前.md", detail.Staged[0].Path)
+}
+
 func nonEmptyLines(s string) []string {
 	var out []string
 	for _, line := range strings.Split(s, "\n") {

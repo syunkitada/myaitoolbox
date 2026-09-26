@@ -39,7 +39,23 @@ import {
 
 const OUTLINE_STORAGE_KEY = 'outline_open'
 const EXPLORER_STORAGE_KEY = 'explorer_open'
+const EXPLORER_WIDTH_STORAGE_KEY = 'mybox_files_explorer_width'
 const SHOW_HIDDEN_STORAGE_KEY = 'files_show_hidden'
+const DEFAULT_EXPLORER_WIDTH = 280
+const MIN_EXPLORER_WIDTH = 180
+const MAX_EXPLORER_WIDTH = 480
+
+function clampExplorerWidth(width: number): number {
+  return Math.min(MAX_EXPLORER_WIDTH, Math.max(MIN_EXPLORER_WIDTH, width))
+}
+
+function readExplorerWidth(): number {
+  if (typeof window === 'undefined') return DEFAULT_EXPLORER_WIDTH
+  const raw = window.localStorage.getItem(EXPLORER_WIDTH_STORAGE_KEY)
+  if (raw === null) return DEFAULT_EXPLORER_WIDTH
+  const saved = Number(raw)
+  return Number.isFinite(saved) ? clampExplorerWidth(saved) : DEFAULT_EXPLORER_WIDTH
+}
 
 function computeViewStartLine(viewText: string): number {
   const scroller = document.querySelector<HTMLElement>('.knowledge-files')
@@ -2106,6 +2122,9 @@ export function BrowserPage({
     if (saved !== null) return saved === '1'
     return true
   })
+  const [explorerWidth, setExplorerWidth] = useState(readExplorerWidth)
+  const [explorerResizing, setExplorerResizing] = useState(false)
+  const explorerResizeStart = useRef<{ clientX: number; width: number } | null>(null)
 
   const [showHidden, setShowHidden] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true
@@ -2116,6 +2135,61 @@ export function BrowserPage({
   useEffect(() => {
     if (!isMobile) window.localStorage.setItem(EXPLORER_STORAGE_KEY, explorerOpen ? '1' : '0')
   }, [explorerOpen, isMobile])
+
+  useEffect(() => {
+    window.localStorage.setItem(EXPLORER_WIDTH_STORAGE_KEY, String(explorerWidth))
+  }, [explorerWidth])
+
+  useEffect(() => {
+    if (!explorerResizing) return
+    const previousUserSelect = document.body.style.userSelect
+    const previousCursor = document.body.style.cursor
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    return () => {
+      document.body.style.userSelect = previousUserSelect
+      document.body.style.cursor = previousCursor
+    }
+  }, [explorerResizing])
+
+  const handleExplorerResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    explorerResizeStart.current = { clientX: event.clientX, width: explorerWidth }
+    setExplorerResizing(true)
+  }
+
+  useEffect(() => {
+    if (!explorerResizing) return
+    const handlePointerMove = (event: PointerEvent) => {
+      const start = explorerResizeStart.current
+      if (!start) return
+      setExplorerWidth(clampExplorerWidth(start.width + event.clientX - start.clientX))
+    }
+    const finishExplorerResize = () => {
+      explorerResizeStart.current = null
+      setExplorerResizing(false)
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', finishExplorerResize)
+    window.addEventListener('pointercancel', finishExplorerResize)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', finishExplorerResize)
+      window.removeEventListener('pointercancel', finishExplorerResize)
+    }
+  }, [explorerResizing])
+
+  const handleExplorerResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    let nextWidth: number | null = null
+    if (event.key === 'ArrowLeft') nextWidth = explorerWidth - 10
+    if (event.key === 'ArrowRight') nextWidth = explorerWidth + 10
+    if (event.key === 'Home') nextWidth = MIN_EXPLORER_WIDTH
+    if (event.key === 'End') nextWidth = MAX_EXPLORER_WIDTH
+    if (nextWidth === null) return
+    event.preventDefault()
+    setExplorerWidth(clampExplorerWidth(nextWidth))
+  }
 
   useEffect(() => {
     window.localStorage.setItem(SHOW_HIDDEN_STORAGE_KEY, showHidden ? '1' : '0')
@@ -2345,11 +2419,12 @@ export function BrowserPage({
               data-explorer-open={explorerOpen ? 'true' : 'false'}
               aria-hidden={!explorerOpen}
               className={cn(
-                'explorer-pane hidden shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-200 ease-linear md:block',
-                explorerOpen ? 'w-[280px] max-xl:w-[220px]' : 'w-0',
+                'explorer-pane relative hidden shrink-0 overflow-hidden border-r border-border bg-card md:block',
+                !explorerResizing && 'transition-[width] duration-200 ease-linear',
               )}
+              style={{ width: explorerOpen ? explorerWidth : 0 }}
             >
-              <div className="flex h-full w-[280px] max-w-[280px] flex-col overflow-hidden max-xl:w-[220px] max-xl:max-w-[220px]">
+              <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
                 <div className="flex-1 min-h-0 overflow-y-auto">
 <Explorer
                     entries={entries}
@@ -2370,6 +2445,24 @@ export function BrowserPage({
                   />
                 </div>
               </div>
+              {explorerOpen && (
+                <div
+                  data-testid="explorer-resize-handle"
+                  role="separator"
+                  aria-label="Resize file explorer"
+                  aria-orientation="vertical"
+                  aria-valuemin={MIN_EXPLORER_WIDTH}
+                  aria-valuemax={MAX_EXPLORER_WIDTH}
+                  aria-valuenow={explorerWidth}
+                  tabIndex={0}
+                  className={cn(
+                    'absolute top-0 right-0 z-10 h-full w-2 cursor-col-resize touch-none rounded-sm outline-none hover:bg-primary/20 focus-visible:bg-primary/30',
+                    explorerResizing && 'bg-primary/30',
+                  )}
+                  onPointerDown={handleExplorerResizeStart}
+                  onKeyDown={handleExplorerResizeKeyDown}
+                />
+              )}
             </div>
           )}
           {isMobile && (
