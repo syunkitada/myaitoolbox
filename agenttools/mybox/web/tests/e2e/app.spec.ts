@@ -290,6 +290,16 @@ test('nav bar file actions open a terminal', async ({ page }) => {
   await expect(page.locator('.terminal-panel')).toBeVisible()
 })
 
+test('terminal paste modal starts larger and supports horizontal resizing', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  await page.getByRole('button', { name: 'Paste' }).click()
+
+  const input = page.getByPlaceholder('Tap here, then long-press → Paste')
+  await expect(input).toHaveAttribute('rows', '6')
+  await expect(input).toHaveCSS('resize', 'both')
+  await expect(input).toHaveCSS('max-width', 'none')
+})
+
 test('terminal button toggles show/hide without creating new terminals', async ({ page }) => {
   const btn = page.getByRole('button', { name: 'Open terminal' })
   const panel = page.locator('.terminal-panel')
