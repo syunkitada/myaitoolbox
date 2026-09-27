@@ -928,6 +928,7 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
             aria-pressed={searchMode === 'name'}
             onClick={() => selectSearchMode('name')}
           >
+            <Search />
             Name
           </Button>
           <Button

@@ -111,7 +111,12 @@ describe('Explorer file upload', () => {
       </DialogsProvider>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Text' }))
+    const nameButton = screen.getByRole('button', { name: 'Name' })
+    const textButton = screen.getByRole('button', { name: 'Text' })
+    expect(nameButton.querySelectorAll('svg')).toHaveLength(1)
+    expect(textButton.querySelectorAll('svg')).toHaveLength(1)
+
+    fireEvent.click(textButton)
     const searchbox = screen.getByRole('searchbox')
     fireEvent.change(searchbox, { target: { value: 'deploy' } })
     fireEvent.submit(searchbox)
