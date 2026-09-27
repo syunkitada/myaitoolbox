@@ -20,6 +20,25 @@ import { DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '.
 
 const COLUMNS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
+function isPendingUntilActive(pendingUntil: string, now = new Date()): boolean {
+  const match = /^(\d{4})-?(\d{2})-?(\d{2})$/.exec(pendingUntil.trim())
+  if (!match) return true
+
+  const [, year, month, day] = match
+  const until = new Date(Number(year), Number(month) - 1, Number(day))
+  if (
+    until.getFullYear() !== Number(year) ||
+    until.getMonth() !== Number(month) - 1 ||
+    until.getDate() !== Number(day)
+  ) {
+    return true
+  }
+
+  const today = new Date(now)
+  today.setHours(0, 0, 0, 0)
+  return until >= today
+}
+
 function dueClass(due: string): string {
   const d = new Date(due)
   if (Number.isNaN(d.getTime())) return ''
@@ -50,7 +69,10 @@ function TaskCard({ task, onOpen, onArchive, onDelete, showProject, readonly }: 
   })
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const isPending = Boolean(task.pending_until || task.pending_reason)
+  const hasPendingMetadata = Boolean(task.pending_until || task.pending_reason)
+  const isPending = task.pending_until
+    ? isPendingUntilActive(task.pending_until)
+    : Boolean(task.pending_reason)
   const style = transform
     ? {
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
@@ -157,7 +179,7 @@ function TaskCard({ task, onOpen, onArchive, onDelete, showProject, readonly }: 
           <TagBadge key={t}>{t}</TagBadge>
         ))}
       </div>
-      {isPending && (
+      {hasPendingMetadata && (
         <div className="board-card-pending mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
           {task.pending_until && <PendingBadge>{task.pending_until}</PendingBadge>}
           {task.pending_reason && <span className="muted text-muted-foreground">{task.pending_reason}</span>}

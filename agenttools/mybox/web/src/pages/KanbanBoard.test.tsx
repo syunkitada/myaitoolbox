@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { KanbanBoard } from './KanbanBoard'
@@ -37,6 +37,10 @@ describe('KanbanBoard', () => {
     vi.mocked(api.listTasks).mockResolvedValue(tasks)
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('renders all status columns', async () => {
     renderBoard()
     expect(await screen.findByText('Todo item')).toBeInTheDocument()
@@ -58,6 +62,31 @@ describe('KanbanBoard', () => {
     const doneCol = screen.getByTestId('column-done')
     expect(within(doneCol).getByText('Done item')).toBeInTheDocument()
     expect(within(doneCol).queryByText('Archived item')).not.toBeInTheDocument()
+  })
+
+  it('dims a task only until its pending date, while keeping expired metadata visible', async () => {
+    vi.setSystemTime(new Date(2026, 8, 27, 12))
+    vi.mocked(api.listTasks).mockResolvedValue([
+      { id: 'future', title: 'Future pending item', status: 'todo', priority: 'medium', pending_until: '20260928' },
+      { id: 'today', title: 'Today pending item', status: 'todo', priority: 'medium', pending_until: '20260927' },
+      { id: 'expired', title: 'Expired pending item', status: 'todo', priority: 'medium', pending_until: '20260926' },
+      {
+        id: 'reason-only',
+        title: 'Reason-only pending item',
+        status: 'todo',
+        priority: 'medium',
+        pending_reason: 'Waiting for review',
+      },
+    ])
+
+    renderBoard()
+    await screen.findByText('Future pending item')
+
+    expect(screen.getByText('Future pending item').closest('.board-card')).toHaveClass('pending')
+    expect(screen.getByText('Today pending item').closest('.board-card')).toHaveClass('pending')
+    expect(screen.getByText('Expired pending item').closest('.board-card')).not.toHaveClass('pending')
+    expect(screen.getByText('Reason-only pending item').closest('.board-card')).toHaveClass('pending')
+    expect(screen.getByText('20260926')).toBeInTheDocument()
   })
 
   it('archives a task after a simple confirmation when tmp has no files', async () => {
