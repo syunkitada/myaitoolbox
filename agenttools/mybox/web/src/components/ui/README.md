@@ -17,8 +17,8 @@
 | [`separator.tsx`](./separator.tsx) | 区切り線。 |
 | [`sheet.tsx`](./sheet.tsx) | サイドシート・ドロワー。 |
 | [`sidebar.tsx`](./sidebar.tsx) | レスポンシブサイドバー。 |
+| [`sidebar.test.tsx`](./sidebar.test.tsx) | サイドバーのスクロール挙動のテスト。 |
 | [`skeleton.tsx`](./skeleton.tsx) | ローディング用プレースホルダー。 |
 | [`tabs.tsx`](./tabs.tsx) | タブ切り替え。 |
 | [`textarea.tsx`](./textarea.tsx) | 複数行入力。 |
 | [`tooltip.tsx`](./tooltip.tsx) | ツールチップ。 |
-
