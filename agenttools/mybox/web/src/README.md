@@ -16,8 +16,8 @@ Web UIのアプリケーションコードです。ページと再利用コン�
 | [`test/README.md`](./test/README.md) | テスト環境の初期化。 |
 | [`utils/README.md`](./utils/README.md) | Markdown、Herdr、レイアウト、パスなどの純粋な補助処理。 |
 | [`App.tsx`](./App.tsx) | ルーティングとアプリケーション全体のレイアウト。 |
+| [`App.test.tsx`](./App.test.tsx) | アプリケーション全体の git status 自動更新テスト。 |
 | [`globals.css`](./globals.css) | Tailwind/CSS変数を含むグローバルスタイル。 |
 | [`main.tsx`](./main.tsx) | ReactルートとBrowser Routerの起動。 |
 | [`monaco-setup.ts`](./monaco-setup.ts) | Monaco Editorの言語・ワーカー設定。 |
 | [`vite-env.d.ts`](./vite-env.d.ts) | Viteの型定義参照。 |
-

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Routes, Route, useLocation, Navigate, NavLink } from 'react-router-dom'
 import { api, Meta, ProjectGitStatus } from './api/client'
 import { getProject, projectUrl, rememberCurrentTab, rememberedFilesUrl } from './utils/routes'
@@ -25,30 +25,51 @@ import { cn } from '@/lib/utils'
 
 // Canonical project tab sections; position in this list is the tab index.
 const TAB_SECTIONS = ['dashboard', 'board', 'graph', 'git', 'herdr']
+const GIT_STATUS_REFRESH_INTERVAL_MS = 5000
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [gitStatus, setGitStatus] = useState<Record<string, ProjectGitStatus>>({})
   const [error, setError] = useState<string | null>(null)
+  const gitStatusRequestSeq = useRef(0)
   const { pathname } = useLocation()
   const project = getProject()
   const herdr = useHerdrOverview()
   useAgentFavicon(herdr.overview)
 
+  const refreshGitStatus = useCallback(async () => {
+    const seq = ++gitStatusRequestSeq.current
+    const next = await api.getProjectGitStatus()
+    if (seq === gitStatusRequestSeq.current) setGitStatus(next)
+  }, [])
+
   const refreshMeta = useCallback(async () => {
     try {
-      const [m, gs] = await Promise.all([api.getMeta(), api.getProjectGitStatus()])
+      const [m] = await Promise.all([api.getMeta(), refreshGitStatus()])
       setMeta(m)
-      setGitStatus(gs)
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [])
+  }, [refreshGitStatus])
 
   useEffect(() => {
     void refreshMeta()
   }, [refreshMeta, project])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (!document.hidden) void refreshGitStatus().catch(() => undefined)
+    }, GIT_STATUS_REFRESH_INTERVAL_MS)
+    const onVisible = () => {
+      if (!document.hidden) void refreshGitStatus().catch(() => undefined)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [refreshGitStatus])
 
   // Save the current tab path whenever the user navigates within a project
   useEffect(() => {
