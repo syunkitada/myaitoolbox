@@ -155,7 +155,7 @@ test('dashboard shows a content outline for markdown files', async ({ page }) =>
   await treeButton(explorer, 'tasks.md').click()
   await expect(page.getByText('Task tracking lives here.')).toBeVisible()
   const outline = page.locator('.outline')
-  await expect(outline).toContainText('Content')
+  await expect(outline).toContainText('Contents')
   await expect(outline.getByRole('link', { name: 'Tasks' })).toBeVisible()
   await expect(outline.getByText('Graph')).toHaveCount(0)
 })
@@ -165,6 +165,8 @@ test('the details pane stays visible while the file content scrolls', async ({ p
   await treeButton(explorer, 'tasks.md').click()
   const outlineHeader = page.locator('.outline-header')
   await expect(outlineHeader).toBeVisible()
+  await expect(outlineHeader).toHaveText('Outline')
+  await expect(outlineHeader).not.toContainText('On this page')
   const scroller = page.locator('.knowledge-files')
   const before = await outlineHeader.boundingBox()
   expect(before).not.toBeNull()
@@ -189,7 +191,7 @@ test('dashboard toggles the details sidebar', async ({ page }) => {
   await expect(pane).toHaveAttribute('data-outline-open', 'false')
   await page.getByRole('button', { name: 'Toggle details' }).click()
   await expect(pane).toHaveAttribute('data-outline-open', 'true')
-  await expect(page.locator('.outline')).toContainText('Content')
+  await expect(page.locator('.outline')).toContainText('Contents')
 })
 
 test('dashboard toggles the file explorer', async ({ page }) => {
@@ -1059,7 +1061,7 @@ test.describe('mobile viewport', () => {
   test('hides the details sidebar by default and opens it as a slide-over', async ({ page }) => {
     await expect(page.locator('.outline')).toHaveCount(0)
     await page.getByRole('button', { name: 'Toggle details' }).click()
-    await expect(page.locator('.outline')).toContainText('Content')
+    await expect(page.locator('.outline')).toContainText('Contents')
     await page.getByRole('button', { name: 'Close' }).click()
     await expect(page.locator('.outline')).toHaveCount(0)
   })

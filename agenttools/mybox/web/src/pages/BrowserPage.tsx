@@ -1631,20 +1631,16 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
 
   const outlinePanel = (
     <>
-      <div className="outline-header flex items-center gap-2.5 border-b border-border px-4 py-3 pr-10">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-          <PanelRight className="size-4" />
-        </div>
+      <div className="outline-header flex items-center border-b border-border px-4 py-3 pr-10">
         <div className="min-w-0">
-          <div className="text-sm font-semibold leading-tight">Details</div>
-          <div className="text-xs leading-tight text-muted-foreground">On this page</div>
+          <div className="text-sm font-semibold leading-tight">Outline</div>
         </div>
       </div>
       <div className="outline-body min-h-0 flex-1 overflow-y-auto px-3 py-3">
         <div className="outline-section mb-4 flex flex-col gap-1 border-b border-border pb-4 last:mb-0 last:border-b-0 last:pb-0">
           <div className="outline-title mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
             <ListTree className="size-3.5" />
-            Content
+            Contents
           </div>
           {outlineItems.map((h, i) => (
             <a
