@@ -29,11 +29,14 @@ import { DiffView } from '../components/DiffView'
 import { CommitDiffView } from '../components/CommitDiffView'
 import MonacoEditor from '../components/MonacoEditor'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { MAX_RESIZABLE_WIDTH, MIN_RESIZABLE_WIDTH, useResizableWidth } from '@/hooks/use-resizable-width'
 import { useDialogs } from '../components/AppDialogs'
 import { cn } from '@/lib/utils'
 
 const EXPLORER_STORAGE_KEY = 'git_explorer_open'
+const EXPLORER_WIDTH_STORAGE_KEY = 'mybox_git_explorer_width'
 const LOG_PAGE_SIZE = 30
+const DEFAULT_EXPLORER_WIDTH = 280
 
 type GitViewMode = 'working-tree' | 'log'
 
@@ -574,6 +577,15 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
     if (saved !== null) return saved === '1'
     return true
   })
+  const {
+    width: explorerWidth,
+    resizing: explorerResizing,
+    handlePointerDown: handleExplorerResizeStart,
+    handleKeyDown: handleExplorerResizeKeyDown,
+  } = useResizableWidth({
+    storageKey: EXPLORER_WIDTH_STORAGE_KEY,
+    defaultWidth: DEFAULT_EXPLORER_WIDTH,
+  })
 
   useEffect(() => {
     if (!isMobile) window.localStorage.setItem(EXPLORER_STORAGE_KEY, explorerOpen ? '1' : '0')
@@ -1051,13 +1063,35 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
                 data-explorer-open={explorerOpen ? 'true' : 'false'}
                 aria-hidden={!explorerOpen}
                 className={cn(
-                  'explorer-pane hidden shrink-0 overflow-hidden border-r border-border bg-card transition-[width] duration-200 ease-linear md:block',
-                  explorerOpen ? 'w-[280px] max-xl:w-[220px]' : 'w-0',
+                  'explorer-pane relative hidden shrink-0 overflow-hidden border-r border-border bg-card md:block',
+                  !explorerResizing && 'transition-[width] duration-200 ease-linear',
                 )}
+                style={{ width: explorerOpen ? explorerWidth : 0 }}
               >
-                <div className="flex h-full w-[280px] max-w-[280px] flex-col overflow-hidden max-xl:w-[220px] max-xl:max-w-[220px]">
+                <div
+                  className="flex h-full flex-col overflow-hidden"
+                  style={{ width: explorerWidth }}
+                >
                   <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">{workingTree}</div>
                 </div>
+                {explorerOpen && (
+                  <div
+                    data-testid="git-explorer-resize-handle"
+                    role="separator"
+                    aria-label="Resize git explorer"
+                    aria-orientation="vertical"
+                    aria-valuemin={MIN_RESIZABLE_WIDTH}
+                    aria-valuemax={MAX_RESIZABLE_WIDTH}
+                    aria-valuenow={explorerWidth}
+                    tabIndex={0}
+                    className={cn(
+                      'absolute top-0 right-0 z-10 h-full w-2 cursor-col-resize touch-none rounded-sm outline-none hover:bg-primary/20 focus-visible:bg-primary/30',
+                      explorerResizing && 'bg-primary/30',
+                    )}
+                    onPointerDown={handleExplorerResizeStart}
+                    onKeyDown={handleExplorerResizeKeyDown}
+                  />
+                )}
               </div>
             )}
             {isMobile && (

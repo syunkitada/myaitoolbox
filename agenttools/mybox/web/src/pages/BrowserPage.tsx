@@ -18,6 +18,7 @@ import { ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, Folde
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { MAX_RESIZABLE_WIDTH, MIN_RESIZABLE_WIDTH, useResizableWidth } from '@/hooks/use-resizable-width'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useDialogs } from '../components/AppDialogs'
 import { useEscapeKey } from '../hooks/use-escape-key'
@@ -40,22 +41,10 @@ import {
 const OUTLINE_STORAGE_KEY = 'outline_open'
 const EXPLORER_STORAGE_KEY = 'explorer_open'
 const EXPLORER_WIDTH_STORAGE_KEY = 'mybox_files_explorer_width'
+const DETAILS_WIDTH_STORAGE_KEY = 'mybox_files_details_width'
 const SHOW_HIDDEN_STORAGE_KEY = 'files_show_hidden'
 const DEFAULT_EXPLORER_WIDTH = 280
-const MIN_EXPLORER_WIDTH = 180
-const MAX_EXPLORER_WIDTH = 480
-
-function clampExplorerWidth(width: number): number {
-  return Math.min(MAX_EXPLORER_WIDTH, Math.max(MIN_EXPLORER_WIDTH, width))
-}
-
-function readExplorerWidth(): number {
-  if (typeof window === 'undefined') return DEFAULT_EXPLORER_WIDTH
-  const raw = window.localStorage.getItem(EXPLORER_WIDTH_STORAGE_KEY)
-  if (raw === null) return DEFAULT_EXPLORER_WIDTH
-  const saved = Number(raw)
-  return Number.isFinite(saved) ? clampExplorerWidth(saved) : DEFAULT_EXPLORER_WIDTH
-}
+const DEFAULT_DETAILS_WIDTH = 384
 
 function computeViewStartLine(viewText: string): number {
   const scroller = document.querySelector<HTMLElement>('.knowledge-files')
@@ -1289,6 +1278,16 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
     if (saved !== null) return saved === '1'
     return window.innerWidth >= 768
   })
+  const {
+    width: outlineWidth,
+    resizing: outlineResizing,
+    handlePointerDown: handleOutlineResizeStart,
+    handleKeyDown: handleOutlineResizeKeyDown,
+  } = useResizableWidth({
+    storageKey: DETAILS_WIDTH_STORAGE_KEY,
+    defaultWidth: DEFAULT_DETAILS_WIDTH,
+    handleSide: 'left',
+  })
 
   useEffect(() => {
     window.localStorage.setItem(OUTLINE_STORAGE_KEY, outlineOpen ? '1' : '0')
@@ -1687,7 +1686,10 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
   )
 
   return (
-    <div className={cn('min-w-0 w-full', outlineOpen && 'md:pr-96', editing && 'flex h-full flex-col')}>
+    <div
+      className={cn('min-w-0 w-full md:transition-[padding-right] md:duration-200 md:ease-linear', editing && 'flex h-full flex-col')}
+      style={{ paddingRight: outlineOpen && !isMobile ? outlineWidth : undefined }}
+    >
       {herdrOverview !== undefined && (
         <FileAgentWidget
           path={path}
@@ -2047,19 +2049,39 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
           <div
             data-outline-open={outlineOpen ? 'true' : 'false'}
             className={cn(
-              'outline-pane absolute right-0 top-0 bottom-0 z-40 hidden overflow-hidden transition-[width] duration-200 ease-linear md:block',
-              outlineOpen ? 'w-96' : 'w-0',
+              'outline-pane absolute right-0 top-0 bottom-0 z-40 hidden overflow-hidden md:block',
+              !outlineResizing && 'transition-[width] duration-200 ease-linear',
             )}
+            style={{ width: outlineOpen ? outlineWidth : 0 }}
           >
             <aside
               aria-hidden={!outlineOpen}
               className={cn(
-                'outline absolute top-0 right-0 flex h-full w-96 flex-col overflow-hidden border-l border-border bg-card transition-transform duration-200 ease-linear',
+                'outline absolute top-0 right-0 flex h-full flex-col overflow-hidden border-l border-border bg-card transition-transform duration-200 ease-linear',
                 outlineOpen ? 'translate-x-0' : 'translate-x-full',
               )}
+              style={{ width: outlineWidth }}
             >
               {outlinePanel}
             </aside>
+            {outlineOpen && (
+              <div
+                data-testid="details-resize-handle"
+                role="separator"
+                aria-label="Resize details"
+                aria-orientation="vertical"
+                aria-valuemin={MIN_RESIZABLE_WIDTH}
+                aria-valuemax={MAX_RESIZABLE_WIDTH}
+                aria-valuenow={outlineWidth}
+                tabIndex={0}
+                className={cn(
+                  'absolute top-0 left-0 z-10 h-full w-2 cursor-col-resize touch-none rounded-sm outline-none hover:bg-primary/20 focus-visible:bg-primary/30',
+                  outlineResizing && 'bg-primary/30',
+                )}
+                onPointerDown={handleOutlineResizeStart}
+                onKeyDown={handleOutlineResizeKeyDown}
+              />
+            )}
           </div>
         )}
       </div>
@@ -2123,9 +2145,15 @@ export function BrowserPage({
     if (saved !== null) return saved === '1'
     return true
   })
-  const [explorerWidth, setExplorerWidth] = useState(readExplorerWidth)
-  const [explorerResizing, setExplorerResizing] = useState(false)
-  const explorerResizeStart = useRef<{ clientX: number; width: number } | null>(null)
+  const {
+    width: explorerWidth,
+    resizing: explorerResizing,
+    handlePointerDown: handleExplorerResizeStart,
+    handleKeyDown: handleExplorerResizeKeyDown,
+  } = useResizableWidth({
+    storageKey: EXPLORER_WIDTH_STORAGE_KEY,
+    defaultWidth: DEFAULT_EXPLORER_WIDTH,
+  })
 
   const [showHidden, setShowHidden] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true
@@ -2137,60 +2165,6 @@ export function BrowserPage({
     if (!isMobile) window.localStorage.setItem(EXPLORER_STORAGE_KEY, explorerOpen ? '1' : '0')
   }, [explorerOpen, isMobile])
 
-  useEffect(() => {
-    window.localStorage.setItem(EXPLORER_WIDTH_STORAGE_KEY, String(explorerWidth))
-  }, [explorerWidth])
-
-  useEffect(() => {
-    if (!explorerResizing) return
-    const previousUserSelect = document.body.style.userSelect
-    const previousCursor = document.body.style.cursor
-    document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'col-resize'
-    return () => {
-      document.body.style.userSelect = previousUserSelect
-      document.body.style.cursor = previousCursor
-    }
-  }, [explorerResizing])
-
-  const handleExplorerResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return
-    event.preventDefault()
-    explorerResizeStart.current = { clientX: event.clientX, width: explorerWidth }
-    setExplorerResizing(true)
-  }
-
-  useEffect(() => {
-    if (!explorerResizing) return
-    const handlePointerMove = (event: PointerEvent) => {
-      const start = explorerResizeStart.current
-      if (!start) return
-      setExplorerWidth(clampExplorerWidth(start.width + event.clientX - start.clientX))
-    }
-    const finishExplorerResize = () => {
-      explorerResizeStart.current = null
-      setExplorerResizing(false)
-    }
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', finishExplorerResize)
-    window.addEventListener('pointercancel', finishExplorerResize)
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', finishExplorerResize)
-      window.removeEventListener('pointercancel', finishExplorerResize)
-    }
-  }, [explorerResizing])
-
-  const handleExplorerResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    let nextWidth: number | null = null
-    if (event.key === 'ArrowLeft') nextWidth = explorerWidth - 10
-    if (event.key === 'ArrowRight') nextWidth = explorerWidth + 10
-    if (event.key === 'Home') nextWidth = MIN_EXPLORER_WIDTH
-    if (event.key === 'End') nextWidth = MAX_EXPLORER_WIDTH
-    if (nextWidth === null) return
-    event.preventDefault()
-    setExplorerWidth(clampExplorerWidth(nextWidth))
-  }
 
   useEffect(() => {
     window.localStorage.setItem(SHOW_HIDDEN_STORAGE_KEY, showHidden ? '1' : '0')
@@ -2452,8 +2426,8 @@ export function BrowserPage({
                   role="separator"
                   aria-label="Resize file explorer"
                   aria-orientation="vertical"
-                  aria-valuemin={MIN_EXPLORER_WIDTH}
-                  aria-valuemax={MAX_EXPLORER_WIDTH}
+                  aria-valuemin={MIN_RESIZABLE_WIDTH}
+                  aria-valuemax={MAX_RESIZABLE_WIDTH}
                   aria-valuenow={explorerWidth}
                   tabIndex={0}
                   className={cn(

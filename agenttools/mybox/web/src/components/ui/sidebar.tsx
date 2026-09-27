@@ -4,6 +4,7 @@ import { PanelLeftIcon } from "lucide-react"
 import { Slot } from "radix-ui"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { MAX_RESIZABLE_WIDTH, MIN_RESIZABLE_WIDTH, useResizableWidth } from "@/hooks/use-resizable-width"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,10 +26,11 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+const SIDEBAR_WIDTH_STORAGE_KEY = "mybox_sidebar_width"
+const DEFAULT_SIDEBAR_WIDTH = 320
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -38,6 +40,10 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
+  sidebarWidth: number
+  sidebarResizing: boolean
+  handleSidebarResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void
+  handleSidebarResizeKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
@@ -66,6 +72,15 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
+  const {
+    width: sidebarWidth,
+    resizing: sidebarResizing,
+    handlePointerDown: handleSidebarResizeStart,
+    handleKeyDown: handleSidebarResizeKeyDown,
+  } = useResizableWidth({
+    storageKey: SIDEBAR_WIDTH_STORAGE_KEY,
+    defaultWidth: DEFAULT_SIDEBAR_WIDTH,
+  })
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -120,8 +135,24 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      sidebarWidth,
+      sidebarResizing,
+      handleSidebarResizeStart,
+      handleSidebarResizeKeyDown,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [
+      state,
+      open,
+      setOpen,
+      isMobile,
+      openMobile,
+      setOpenMobile,
+      toggleSidebar,
+      sidebarWidth,
+      sidebarResizing,
+      handleSidebarResizeStart,
+      handleSidebarResizeKeyDown,
+    ]
   )
 
   return (
@@ -131,9 +162,9 @@ function SidebarProvider({
           data-slot="sidebar-wrapper"
           style={
             {
-              "--sidebar-width": SIDEBAR_WIDTH,
               "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
               ...style,
+              "--sidebar-width": `${sidebarWidth}px`,
             } as React.CSSProperties
           }
           className={cn(
@@ -161,7 +192,16 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const {
+    isMobile,
+    state,
+    openMobile,
+    setOpenMobile,
+    sidebarWidth,
+    sidebarResizing,
+    handleSidebarResizeStart,
+    handleSidebarResizeKeyDown,
+  } = useSidebar()
 
   if (collapsible === "none") {
     return (
@@ -246,6 +286,24 @@ function Sidebar({
         >
           {children}
         </div>
+        {state === "expanded" && (
+          <div
+            data-testid="sidebar-resize-handle"
+            role="separator"
+            aria-label="Resize sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={MIN_RESIZABLE_WIDTH}
+            aria-valuemax={MAX_RESIZABLE_WIDTH}
+            aria-valuenow={sidebarWidth}
+            tabIndex={0}
+            className={cn(
+              "absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize touch-none rounded-sm outline-none hover:bg-sidebar-border/60 focus-visible:bg-sidebar-border",
+              sidebarResizing && "bg-sidebar-border/70",
+            )}
+            onPointerDown={handleSidebarResizeStart}
+            onKeyDown={handleSidebarResizeKeyDown}
+          />
+        )}
       </div>
     </div>
   )

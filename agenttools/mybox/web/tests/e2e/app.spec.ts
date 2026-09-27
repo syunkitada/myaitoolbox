@@ -236,6 +236,53 @@ test('dashboard resizes and remembers the file explorer width', async ({ page })
   await expect(page.getByRole('separator', { name: 'Resize file explorer' })).toHaveAttribute('aria-valuenow', '480')
 })
 
+test('dashboard resizes and remembers the details width', async ({ page }) => {
+  await page.evaluate(() => localStorage.removeItem('mybox_files_details_width'))
+  await page.reload()
+  await treeButton(page.locator('.knowledge-explorer'), 'tasks.md').click()
+
+  const pane = page.locator('.outline-pane')
+  const handle = page.getByRole('separator', { name: 'Resize details' })
+  await expect(handle).toHaveAttribute('aria-valuenow', '384')
+
+  const initialWidth = (await pane.boundingBox())!.width
+  const handleBox = (await handle.boundingBox())!
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + handleBox.width / 2 - 100, handleBox.y + handleBox.height / 2)
+  await page.mouse.up()
+
+  await expect.poll(async () => (await pane.boundingBox())!.width).toBeGreaterThan(initialWidth + 90)
+  await expect(handle).toHaveAttribute('aria-valuenow', '480')
+
+  await handle.focus()
+  await page.keyboard.press('Home')
+  await expect(handle).toHaveAttribute('aria-valuenow', '180')
+  await page.keyboard.press('End')
+  await expect(handle).toHaveAttribute('aria-valuenow', '480')
+
+  await page.reload()
+  await expect(page.getByRole('separator', { name: 'Resize details' })).toHaveAttribute('aria-valuenow', '480')
+})
+
+test('dashboard resizes and remembers the application sidebar width', async ({ page }) => {
+  await page.evaluate(() => localStorage.removeItem('mybox_sidebar_width'))
+  await page.reload()
+
+  const handle = page.getByRole('separator', { name: 'Resize sidebar' })
+  await expect(handle).toHaveAttribute('aria-valuenow', '320')
+
+  const handleBox = (await handle.boundingBox())!
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 100, handleBox.y + handleBox.height / 2)
+  await page.mouse.up()
+
+  await expect(handle).toHaveAttribute('aria-valuenow', '420')
+  await page.reload()
+  await expect(page.getByRole('separator', { name: 'Resize sidebar' })).toHaveAttribute('aria-valuenow', '420')
+})
+
 test('nav bar file actions open a terminal', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'New file' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
@@ -1027,6 +1074,36 @@ test.describe('mobile viewport', () => {
 })
 
 test.describe('git tab', () => {
+  test('resizes and remembers the git explorer width', async ({ page }) => {
+    await page.evaluate(() => localStorage.removeItem('mybox_git_explorer_width'))
+    await page.goto('/projects/proj/git')
+    const noRepo = page.getByRole('heading', { name: 'No git repository' })
+    try {
+      await noRepo.waitFor({ state: 'visible', timeout: 2000 })
+      await page.getByRole('button', { name: 'Initialize repository' }).click()
+      await expect(page.getByRole('heading', { name: 'Git', level: 1 })).toBeVisible()
+    } catch {
+      // The repository already exists from another Git test.
+    }
+
+    const pane = page.locator('.explorer-pane')
+    const handle = page.getByRole('separator', { name: 'Resize git explorer' })
+    await expect(handle).toHaveAttribute('aria-valuenow', '280')
+
+    const initialWidth = (await pane.boundingBox())!.width
+    const handleBox = (await handle.boundingBox())!
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handleBox.x + handleBox.width / 2 + 100, handleBox.y + handleBox.height / 2)
+    await page.mouse.up()
+
+    await expect.poll(async () => (await pane.boundingBox())!.width).toBeGreaterThan(initialWidth + 90)
+    await expect(handle).toHaveAttribute('aria-valuenow', '380')
+
+    await page.reload()
+    await expect(page.getByRole('separator', { name: 'Resize git explorer' })).toHaveAttribute('aria-valuenow', '380')
+  })
+
   test('initializes a repository, lists files, and commits the workspace', async ({ page }) => {
     await page.goto('/projects/proj/git')
     await expect(page.getByRole('heading', { name: 'No git repository' })).toBeVisible()
