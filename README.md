@@ -9,6 +9,7 @@ AIエージェント向けのツール、Go製のMCP実装、個人ワークス�
 - `mcpctl`: MCPツールの検索・情報表示・実行を行うCLI
 - `mcpserve`: 複数のMCPサーバ実装を束ねて起動するランタイム
 - `mybox`: ローカルプロジェクトのタスク・ファイル・Git・AIエージェントなどを一元管理するワークスペースツール
+- `myntfy`: 保存済みtopicでntfy通知を送受信するCLI
 
 設計・構成の参考資料は [`docs/`](./docs/) に、リポジトリ全体の運用スクリプトは [`scripts/`](./scripts/) にあります。
 
@@ -54,6 +55,6 @@ myboxを運用するには、次の実行環境・ツールを用意します。
 | [`agenttools/`](./agenttools/) | `mcpctl`、`mcpserve`、`mybox`などのエージェント関連ツール。 |
 | [`docs/`](./docs/) | Goプロジェクトで共有する設計・構成・技術スタックの参考資料。 |
 | [`inbox/`](./inbox/) | 作業中の検証環境、提案、メモ。READMEは必須ではない領域。 |
-| [`scripts/`](./scripts/) | myboxやTailscaleの起動・再インストール用スクリプト。 |
+| [`scripts/`](./scripts/) | mybox、Tailscale、myntfyの運用補助スクリプト。 |
 | [`.gitignore`](./.gitignore) | リポジトリ共通の除外設定。 |
 | [`README.md`](./README.md) | リポジトリ全体の入口。本文書。 |
