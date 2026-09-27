@@ -256,26 +256,34 @@ function applyDirStatus(nodes: TreeNode[]) {
 
 const gitStatusPriority = ['staged', 'modified', 'untracked', 'deleted']
 
-function applyDirGitStatus(nodes: TreeNode[]): boolean {
-  let hasDirty = false
-  for (const node of nodes) {
-    if (node.kind === 'file') {
-      if (node.gitStatus) {
-        hasDirty = true
-      }
-      continue
-    }
-    const childDirty = applyDirGitStatus(node.children)
-    if (childDirty) {
-      hasDirty = true
-      const best = node.children.reduce((acc, c) => {
-        if (c.kind !== 'dir' || !c.gitStatus) return acc
-        return gitStatusPriority.indexOf(c.gitStatus) < gitStatusPriority.indexOf(acc) ? c.gitStatus : acc
-      }, node.children.some((c) => c.kind === 'file' && c.gitStatus) ? 'modified' : 'modified')
-      node.gitStatus = best
+function gitStatusRank(status: string): number {
+  const rank = gitStatusPriority.indexOf(status)
+  return rank === -1 ? gitStatusPriority.length : rank
+}
+
+function preferGitStatus(current: string | undefined, candidate: string): string {
+  if (!current || gitStatusRank(candidate) < gitStatusRank(current)) return candidate
+  return current
+}
+
+function buildDirectoryGitStatuses(gitStatus: Record<string, string>): Map<string, string> {
+  const directoryStatuses = new Map<string, string>()
+  for (const [path, status] of Object.entries(gitStatus)) {
+    const parts = path.replace(/\/+$/, '').split('/').filter(Boolean)
+    for (let i = 1; i <= parts.length; i++) {
+      const dirPath = parts.slice(0, i).join('/')
+      directoryStatuses.set(dirPath, preferGitStatus(directoryStatuses.get(dirPath), status))
     }
   }
-  return hasDirty
+  return directoryStatuses
+}
+
+function applyDirGitStatus(nodes: TreeNode[], directoryStatuses: Map<string, string>) {
+  for (const node of nodes) {
+    if (node.kind !== 'dir') continue
+    node.gitStatus = directoryStatuses.get(node.dirPath)
+    applyDirGitStatus(node.children, directoryStatuses)
+  }
 }
 
 function buildTree(list: BrowserEntry[], gitStatus: Record<string, string>): TreeNode[] {
@@ -314,7 +322,7 @@ function buildTree(list: BrowserEntry[], gitStatus: Record<string, string>): Tre
     }
   }
   applyDirStatus(root)
-  applyDirGitStatus(root)
+  applyDirGitStatus(root, buildDirectoryGitStatuses(gitStatus))
   return root
 }
 

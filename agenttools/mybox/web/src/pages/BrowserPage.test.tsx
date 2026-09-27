@@ -131,6 +131,26 @@ describe('Explorer file upload', () => {
   })
 })
 
+describe('Explorer Git status', () => {
+  it('shows a Git badge for a collapsed directory with changed descendants', () => {
+    render(
+      <DialogsProvider>
+        <Explorer
+          entries={[{ kind: 'dir', name: 'docs', path: 'docs', markdown: false }]}
+          selected=""
+          onSelect={vi.fn()}
+          title="Files"
+          favorites={[]}
+          recentFiles={[]}
+          gitStatus={{ 'docs/reference/guide.md': 'modified' }}
+        />
+      </DialogsProvider>,
+    )
+
+    expect(screen.getByRole('img', { name: 'git: modified' })).toBeInTheDocument()
+  })
+})
+
 describe('file viewer Git diff', () => {
   const detail: GitDetail = {
     is_repo: true,
