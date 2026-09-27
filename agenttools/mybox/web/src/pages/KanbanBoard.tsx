@@ -17,6 +17,8 @@ import { useDialogs } from '../components/AppDialogs'
 import { Archive, ListPlus, MoreVertical, ExternalLink, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
+import { TaskProgress } from '../components/TaskProgress'
+import { extractMarkdownTaskProgress } from '../utils/markdown'
 
 const COLUMNS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
@@ -73,6 +75,7 @@ function TaskCard({ task, onOpen, onArchive, onDelete, showProject, readonly }: 
   const isPending = task.pending_until
     ? isPendingUntilActive(task.pending_until)
     : Boolean(task.pending_reason)
+  const taskProgress = extractMarkdownTaskProgress(task.body ?? '')
   const style = transform
     ? {
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
@@ -171,6 +174,7 @@ function TaskCard({ task, onOpen, onArchive, onDelete, showProject, readonly }: 
           </div>
         )}
       </div>
+      <TaskProgress {...taskProgress} className="mt-1.5" />
       <div className="board-card-meta mt-1.5 flex flex-wrap gap-1">
         {showProject && task.project && <ProjectBadge>{task.project}</ProjectBadge>}
         <PriorityBadge priority={task.priority} />

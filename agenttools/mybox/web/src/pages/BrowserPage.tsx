@@ -5,6 +5,7 @@ import { SearchBar } from '../components/SearchBar'
 import { FileAgentWidget } from '../components/FileAgentWidget'
 import { FileTabs } from '../components/FileTabs'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
+import { TaskProgress } from '../components/TaskProgress'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
 import { Button } from '../components/ui/button'
 import { Card, CardContent } from '../components/ui/card'
@@ -34,6 +35,7 @@ import {
   normalizePath,
   parseFrontmatter,
   replaceMarkdownBody,
+  extractMarkdownTaskProgress,
   setMarkdownTaskChecked,
   serializeFrontmatter,
   splitFrontmatter,
@@ -1641,6 +1643,8 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
   }
 
   const viewText = useForm ? fmSplit.body : content
+  const isTaskFile = !isDir && (path === 'task.md' || path.endsWith('/task.md'))
+  const taskProgress = isTaskFile ? extractMarkdownTaskProgress(viewText) : null
   const viewSourceLineOffset = useForm
     ? content.slice(0, Math.max(0, content.length - fmSplit.body.length)).split(/\r?\n/).length - 1
     : 0
@@ -2144,6 +2148,7 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
                     </>
                   )}
                   {useForm && <FrontmatterSummary data={fmParsed.data} />}
+                  {taskProgress && <TaskProgress {...taskProgress} className="my-3" />}
                   {isMarkdown ? (
                     <RichMarkdown
                       text={viewText}

@@ -74,6 +74,43 @@ export function replaceMarkdownBody(text: string, body: string): string {
 
 const taskListItemPattern = /^(\s*(?:(?:[-+*])|(?:\d+[.)]))\s+)\[([ xX])\](?=\s|$)/
 
+export interface MarkdownTaskItem {
+  checked: boolean
+  markerStart: number
+}
+
+export interface MarkdownTaskProgress {
+  completed: number
+  total: number
+}
+
+export function parseMarkdownTaskItem(line: string): MarkdownTaskItem | null {
+  const match = taskListItemPattern.exec(line)
+  if (!match) return null
+  return {
+    checked: match[2].toLowerCase() === 'x',
+    markerStart: match[1].length,
+  }
+}
+
+const taskProgressMarkdown = new MarkdownIt()
+
+export function extractMarkdownTaskProgress(text: string): MarkdownTaskProgress {
+  const lines = text.split(/\r?\n/)
+  let completed = 0
+  let total = 0
+
+  for (const token of taskProgressMarkdown.parse(text, {})) {
+    if (token.type !== 'list_item_open' || token.map?.[0] === undefined) continue
+    const item = parseMarkdownTaskItem(lines[token.map[0]] ?? '')
+    if (!item) continue
+    total += 1
+    if (item.checked) completed += 1
+  }
+
+  return { completed, total }
+}
+
 /**
  * Updates the task marker on a Markdown list item without changing the rest of
  * the document. The line number is relative to the supplied Markdown body.
@@ -82,13 +119,12 @@ export function setMarkdownTaskChecked(text: string, line: number, checked: bool
   const lines = text.split(/\r?\n/)
   if (!Number.isInteger(line) || line < 0 || line >= lines.length) return null
 
-  const match = taskListItemPattern.exec(lines[line])
-  if (!match) return null
+  const item = parseMarkdownTaskItem(lines[line])
+  if (!item) return null
 
   const eol = text.includes('\r\n') ? '\r\n' : '\n'
-  const markerStart = match[1].length
-  const markerEnd = markerStart + 3
-  lines[line] = lines[line].slice(0, markerStart) + `[${checked ? 'x' : ' '}]` + lines[line].slice(markerEnd)
+  const markerEnd = item.markerStart + 3
+  lines[line] = lines[line].slice(0, item.markerStart) + `[${checked ? 'x' : ' '}]` + lines[line].slice(markerEnd)
   return lines.join(eol)
 }
 

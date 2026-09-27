@@ -5,7 +5,7 @@ import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 import { Check, Copy, X } from 'lucide-react'
 import { Prism, hasGrammar } from '../utils/prism-langs'
-import { formatMarkdownForCopy, resolveMarkdownLink, type MarkdownCopyFormat } from '../utils/markdown'
+import { formatMarkdownForCopy, parseMarkdownTaskItem, resolveMarkdownLink, type MarkdownCopyFormat } from '../utils/markdown'
 import { filesUrl, getBasePath } from '../utils/routes'
 import { copyToClipboard } from '../utils/clipboard'
 import { Mermaid } from './Mermaid'
@@ -125,15 +125,13 @@ interface TaskListItem {
   checked: boolean
 }
 
-const taskListItemPattern = /^\s*(?:(?:[-+*])|(?:\d+[.)]))\s+\[([ xX])\](?=\s|$)/
-
 function findTaskListItem(tokens: Parameters<NonNullable<MarkdownIt['renderer']['rules']['list_item_open']>>[0], idx: number, env?: MarkdownRenderEnv): TaskListItem | null {
   const token = tokens[idx]
   const line = token.map?.[0]
   if (line === undefined || !env?.taskSource) return null
   const sourceLine = env.taskSource.split(/\r?\n/)[line]
-  const sourceMatch = sourceLine ? taskListItemPattern.exec(sourceLine) : null
-  if (!sourceMatch) return null
+  const sourceItem = sourceLine ? parseMarkdownTaskItem(sourceLine) : null
+  if (!sourceItem) return null
 
   const inline = tokens
     .slice(idx + 1)
@@ -149,7 +147,7 @@ function findTaskListItem(tokens: Parameters<NonNullable<MarkdownIt['renderer'][
 
   const task = {
     line: (env.taskLineOffset ?? 0) + line,
-    checked: sourceMatch[1].toLowerCase() === 'x',
+    checked: sourceItem.checked,
   }
   inline.meta = { ...(inline.meta ?? {}), task }
   if (inline.children?.[0]) {

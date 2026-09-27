@@ -64,6 +64,23 @@ describe('KanbanBoard', () => {
     expect(within(doneCol).queryByText('Archived item')).not.toBeInTheDocument()
   })
 
+  it('shows task checklist progress on each task card', async () => {
+    vi.mocked(api.listTasks).mockResolvedValue([
+      {
+        id: 'progress',
+        title: 'Progress item',
+        status: 'todo',
+        priority: 'medium',
+        body: '- [ ] first\n- [x] second\n- [X] third',
+      },
+    ])
+
+    renderBoard()
+    const card = (await screen.findByText('Progress item')).closest('.board-card') as HTMLElement
+
+    expect(within(card).getByTestId('task-progress')).toHaveTextContent('2/3')
+  })
+
   it('dims a task only until its pending date, while keeping expired metadata visible', async () => {
     vi.setSystemTime(new Date(2026, 8, 27, 12))
     vi.mocked(api.listTasks).mockResolvedValue([

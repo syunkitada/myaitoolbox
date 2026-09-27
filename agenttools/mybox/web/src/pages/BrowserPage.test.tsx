@@ -270,3 +270,85 @@ describe('file viewer Git diff', () => {
     expect(screen.getByText('git status failed')).toBeInTheDocument()
   })
 })
+
+describe('task progress in file viewer', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows progress for task.md in the file viewer', async () => {
+    const path = 'tasks/20260927_demo/task.md'
+    vi.spyOn(api, 'listFiles').mockResolvedValue([{ path, name: 'task.md', kind: 'file' }])
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({
+      path,
+      content: '---\ntitle: demo\n---\n\n- [ ] first\n- [x] second',
+    })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+
+    const router = createMemoryRouter(
+      [{
+        path: '*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected={path}
+            onSelect={vi.fn()}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+          />
+        ),
+      }],
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
+    )
+
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    expect(await screen.findByText('1/2')).toBeInTheDocument()
+    expect(screen.getByTestId('task-progress')).toBeInTheDocument()
+  })
+
+  it('does not show task progress for other Markdown files', async () => {
+    const path = 'docs/guide.md'
+    vi.spyOn(api, 'listFiles').mockResolvedValue([{ path, name: 'guide.md', kind: 'file' }])
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({
+      path,
+      content: '- [ ] checklist item',
+    })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+
+    const router = createMemoryRouter(
+      [{
+        path: '*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected={path}
+            onSelect={vi.fn()}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+          />
+        ),
+      }],
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
+    )
+
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    await screen.findByText('checklist item')
+    expect(screen.queryByTestId('task-progress')).not.toBeInTheDocument()
+  })
+})

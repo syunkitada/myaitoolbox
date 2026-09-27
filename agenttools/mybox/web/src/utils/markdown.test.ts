@@ -8,6 +8,7 @@ import {
   parseFrontmatter,
   serializeFrontmatter,
   buildMarkdown,
+  extractMarkdownTaskProgress,
   replaceMarkdownBody,
   setMarkdownTaskChecked,
   formatMarkdownForCopy,
@@ -79,6 +80,27 @@ describe('serializeFrontmatter + buildMarkdown', () => {
 
   it('returns body only when frontmatter is empty', () => {
     expect(buildMarkdown('', '# Body\n')).toBe('# Body\n')
+  })
+})
+
+describe('extractMarkdownTaskProgress', () => {
+  it('counts checked and unchecked standard task list items', () => {
+    expect(
+      extractMarkdownTaskProgress(
+        '- [ ] first\n- [x] second\n  - [X] nested\n1. [ ] fourth\n- regular item',
+      ),
+    ).toEqual({ completed: 2, total: 4 })
+  })
+
+  it('ignores task-looking lines inside fenced code blocks', () => {
+    expect(extractMarkdownTaskProgress('```md\n- [ ] example\n```\n\n- [ ] real')).toEqual({
+      completed: 0,
+      total: 1,
+    })
+  })
+
+  it('returns zero progress when there are no task list items', () => {
+    expect(extractMarkdownTaskProgress('# Notes\n\nplain text')).toEqual({ completed: 0, total: 0 })
   })
 })
 
