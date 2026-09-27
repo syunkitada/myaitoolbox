@@ -36,28 +36,11 @@ type taskFields struct {
 }
 
 func (r *TaskRepository) List(ctx context.Context) ([]domain.Task, error) {
-	tasks, err := r.list(filepath.Join(r.root, "tasks"), false)
-	if err != nil {
-		return nil, err
-	}
-	// 旧レイアウト（tasks/adhoc/<id>.md）のタスクも引き続き読む。
-	legacy, err := r.listAdhoc(filepath.Join(r.root, "tasks", "adhoc"), false)
-	if err != nil {
-		return nil, err
-	}
-	return append(tasks, legacy...), nil
+	return r.list(filepath.Join(r.root, "_tasks"), false)
 }
 
 func (r *TaskRepository) ListArchived(ctx context.Context) ([]domain.Task, error) {
-	tasks, err := r.list(filepath.Join(r.root, "archives", "tasks"), true)
-	if err != nil {
-		return nil, err
-	}
-	legacy, err := r.listAdhoc(filepath.Join(r.root, "archives", "tasks", "adhoc"), true)
-	if err != nil {
-		return nil, err
-	}
-	return append(tasks, legacy...), nil
+	return r.list(filepath.Join(r.root, "_archives", "tasks"), true)
 }
 
 func (r *TaskRepository) list(dir string, archived bool) ([]domain.Task, error) {
@@ -74,36 +57,6 @@ func (r *TaskRepository) list(dir string, archived bool) ([]domain.Task, error) 
 			continue
 		}
 		t, err := r.readTask(filepath.Join(dir, e.Name()), e.Name(), archived)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, err
-		}
-		tasks = append(tasks, *t)
-	}
-	return tasks, nil
-}
-
-func (r *TaskRepository) listAdhoc(dir string, archived bool) ([]domain.Task, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var tasks []domain.Task
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if !strings.HasSuffix(name, ".md") {
-			continue
-		}
-		id := strings.TrimSuffix(name, ".md")
-		t, err := r.readAdhocTask(filepath.Join(dir, name), id, archived)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -158,10 +111,6 @@ func (r *TaskRepository) readTaskFile(path string, id string, archived bool) (*d
 	}, nil
 }
 
-func (r *TaskRepository) readAdhocTask(path string, id string, archived bool) (*domain.Task, error) {
-	return r.readTaskFile(path, id, archived)
-}
-
 // createdFromTaskID derives the creation time from the leading YYYYMMDD
 // date prefix of the task directory name (e.g. 20260801_fix-login).
 func createdFromTaskID(id string) time.Time {
@@ -179,21 +128,13 @@ func (r *TaskRepository) Find(ctx context.Context, id string) (*domain.Task, err
 	if err := validateTaskID(id); err != nil {
 		return nil, err
 	}
-	active := filepath.Join(r.root, "tasks", id, "task.md")
+	active := filepath.Join(r.root, "_tasks", id, "task.md")
 	if _, err := os.Stat(active); err == nil {
-		return r.readTask(filepath.Join(r.root, "tasks", id), id, false)
+		return r.readTask(filepath.Join(r.root, "_tasks", id), id, false)
 	}
-	legacy := filepath.Join(r.root, "tasks", "adhoc", id+".md")
-	if _, err := os.Stat(legacy); err == nil {
-		return r.readAdhocTask(legacy, id, false)
-	}
-	archived := filepath.Join(r.root, "archives", "tasks", id, "task.md")
+	archived := filepath.Join(r.root, "_archives", "tasks", id, "task.md")
 	if _, err := os.Stat(archived); err == nil {
-		return r.readTask(filepath.Join(r.root, "archives", "tasks", id), id, true)
-	}
-	archivedLegacy := filepath.Join(r.root, "archives", "tasks", "adhoc", id+".md")
-	if _, err := os.Stat(archivedLegacy); err == nil {
-		return r.readAdhocTask(archivedLegacy, id, true)
+		return r.readTask(filepath.Join(r.root, "_archives", "tasks", id), id, true)
 	}
 	return nil, fmt.Errorf("%w: task %s", domain.ErrNotFound, id)
 }
@@ -202,7 +143,7 @@ func (r *TaskRepository) Create(ctx context.Context, id string, content string) 
 	if err := validateTaskID(id); err != nil {
 		return err
 	}
-	dir := filepath.Join(r.root, "tasks", id)
+	dir := filepath.Join(r.root, "_tasks", id)
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, id)
 	}
@@ -216,19 +157,9 @@ func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
 	if err := validateTaskID(task.ID); err != nil {
 		return err
 	}
-	path := filepath.Join(r.root, "tasks", task.ID, "task.md")
+	path := filepath.Join(r.root, "_tasks", task.ID, "task.md")
 	if task.Archived {
-		path = filepath.Join(r.root, "archives", "tasks", task.ID, "task.md")
-	}
-	if _, err := os.Stat(path); err != nil {
-		// 旧レイアウト（tasks/adhoc/<id>.md）へのフォールバック。
-		legacy := filepath.Join(r.root, "tasks", "adhoc", task.ID+".md")
-		if task.Archived {
-			legacy = filepath.Join(r.root, "archives", "tasks", "adhoc", task.ID+".md")
-		}
-		if _, lerr := os.Stat(legacy); lerr == nil {
-			path = legacy
-		}
+		path = filepath.Join(r.root, "_archives", "tasks", task.ID, "task.md")
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -276,15 +207,9 @@ func (r *TaskRepository) Archive(ctx context.Context, id string) error {
 	if err := validateTaskID(id); err != nil {
 		return err
 	}
-	src := filepath.Join(r.root, "tasks", id)
-	isLegacy := false
+	src := filepath.Join(r.root, "_tasks", id)
 	if _, err := os.Stat(src); err != nil {
-		legacy := filepath.Join(r.root, "tasks", "adhoc", id+".md")
-		if _, aerr := os.Stat(legacy); aerr == nil {
-			// 旧レイアウト（tasks/adhoc/<id>.md）のタスク。
-			src = legacy
-			isLegacy = true
-		} else if os.IsNotExist(err) {
+		if os.IsNotExist(err) {
 			return fmt.Errorf("%w: %s", domain.ErrNotFound, id)
 		} else {
 			return err
@@ -292,27 +217,15 @@ func (r *TaskRepository) Archive(ctx context.Context, id string) error {
 	}
 	// ファイルエージェントがタスクディレクトリ内に作る一時作業ディレクトリ
 	// （tmp/）はアーカイブ前に削除する。
-	if !isLegacy {
-		if err := removeTaskTmpDir(src); err != nil {
-			return err
-		}
+	if err := removeTaskTmpDir(src); err != nil {
+		return err
 	}
-	if isLegacy {
-		dst := filepath.Join(r.root, "archives", "tasks", "adhoc", id+".md")
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return err
-		}
-		if err := os.Rename(src, dst); err != nil {
-			return err
-		}
-	} else {
-		dst := filepath.Join(r.root, "archives", "tasks", id)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return err
-		}
-		if err := os.Rename(src, dst); err != nil {
-			return err
-		}
+	dst := filepath.Join(r.root, "_archives", "tasks", id)
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(src, dst); err != nil {
+		return err
 	}
 	// git mv は非追跡ファイル（未コミットの変更）を含むディレクトリで
 	// "source directory is empty" 等で失敗するため、os.Rename + git add -A（全体）で
@@ -344,12 +257,10 @@ func (r *TaskRepository) Delete(ctx context.Context, id string) error {
 	if err := validateTaskID(id); err != nil {
 		return err
 	}
-	regular := filepath.Join(r.root, "tasks", id)
-	adhoc := filepath.Join(r.root, "tasks", "adhoc", id+".md")
-	archivedRegular := filepath.Join(r.root, "archives", "tasks", id)
-	archivedAdhoc := filepath.Join(r.root, "archives", "tasks", "adhoc", id+".md")
+	regular := filepath.Join(r.root, "_tasks", id)
+	archivedRegular := filepath.Join(r.root, "_archives", "tasks", id)
 
-	targets := []string{regular, adhoc, archivedRegular, archivedAdhoc}
+	targets := []string{regular, archivedRegular}
 	var target string
 	for _, t := range targets {
 		if _, err := os.Stat(t); err == nil {

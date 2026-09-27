@@ -319,7 +319,7 @@ func (r *FileRepository) Children(ctx context.Context, parent string, showHidden
 		switch {
 		case kind == domain.FileKindFile && d.Name() == "task.md" && d.Type()&os.ModeSymlink == 0:
 			status = markdownStatus(filepath.Join(dir, d.Name()))
-		case kind == domain.FileKindDir && parent == "tasks":
+		case kind == domain.FileKindDir && parent == "_tasks":
 			taskPath := filepath.Join(dir, d.Name(), "task.md")
 			if taskInfo, statErr := os.Lstat(taskPath); statErr == nil && taskInfo.Mode()&os.ModeSymlink == 0 {
 				status = markdownStatus(taskPath)

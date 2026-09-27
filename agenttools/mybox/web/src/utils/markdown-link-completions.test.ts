@@ -42,7 +42,7 @@ describe('suggestLinkTargets', () => {
     item('notes/archive.md'),
     item('notes/design.md'),
     item('notes/sub/dep.md'),
-    item('tasks/todo.md'),
+    item('_tasks/todo.md'),
     item('docs', 'dir'),
     item('docs/readme.md'),
     item('docs/other.md'),
@@ -53,7 +53,7 @@ describe('suggestLinkTargets', () => {
     const labels = results.map((r) => r.label)
     expect(labels).toContain('docs/')
     expect(labels).toContain('notes/')
-    expect(labels).toContain('tasks/')
+    expect(labels).toContain('_tasks/')
     expect(labels).not.toContain('readme.md')
   })
 
@@ -62,7 +62,7 @@ describe('suggestLinkTargets', () => {
     const labels = results.map((r) => r.label)
     expect(labels).toContain('docs/')
     expect(labels).toContain('notes/')
-    expect(labels).toContain('tasks/')
+    expect(labels).toContain('_tasks/')
   })
 
   it('shows children of a named directory', () => {

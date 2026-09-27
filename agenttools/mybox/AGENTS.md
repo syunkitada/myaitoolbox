@@ -8,7 +8,7 @@
 
 - ルートの [README.md](./README.md) はリポジトリ全体のIndexとし、`## Index` にトップレベルのディレクトリとファイルを掲載する。
 - 各ディレクトリのREADME.mdには、直接の子ディレクトリとファイルの役割を記載する。子ディレクトリにREADME.mdがある場合はリンクし、詳細な説明はそのREADME.mdに委譲する。
-- `archives/`、`inbox/`, `_inbox/`、`tasks/`とその配下には、README.mdを必須としない。
+- `_archives/`、`inbox/`, `_inbox/`、`_tasks/`とその配下には、README.mdを必須としない。
 - README.mdから参照するパスは、原則として対象README.mdからの相対リンクにする。
 - Indexを作成するときは、Git管理対象のファイルとディレクトリだけを掲載し、Git管理対象外のものは除外する。
 - ディレクトリまたはファイルを追加・削除・移動・改名した場合は、同じ変更で関係するREADME.mdの構成説明・Index・リンクも更新する。

@@ -277,7 +277,7 @@ describe('task progress in file viewer', () => {
   })
 
   it('shows progress for task.md in the file viewer', async () => {
-    const path = 'tasks/20260927_demo/task.md'
+    const path = '_tasks/20260927_demo/task.md'
     vi.spyOn(api, 'listFiles').mockResolvedValue([{ path, name: 'task.md', kind: 'file' }])
     vi.spyOn(api, 'getFileContent').mockResolvedValue({
       path,

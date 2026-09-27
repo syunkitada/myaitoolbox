@@ -66,18 +66,18 @@ func TestTaskRepositoryArchiveRemovesTmpDir(t *testing.T) {
 
 	require.NoError(t, repo.Create(ctx, "20260802_cleanup", "---\ntitle: cleanup\n---\n\n"))
 
-	taskDir := filepath.Join(root, "tasks", "20260802_cleanup")
+	taskDir := filepath.Join(root, "_tasks", "20260802_cleanup")
 	tmpDir := filepath.Join(taskDir, "tmp")
 	require.NoError(t, os.MkdirAll(tmpDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "agent.log"), []byte("scratch"), 0o644))
 
 	require.NoError(t, repo.Archive(ctx, "20260802_cleanup"))
 
-	_, err := os.Stat(filepath.Join(root, "tasks", "20260802_cleanup", "tmp"))
+	_, err := os.Stat(filepath.Join(root, "_tasks", "20260802_cleanup", "tmp"))
 	assert.True(t, os.IsNotExist(err))
-	_, err = os.Stat(filepath.Join(root, "archives", "tasks", "20260802_cleanup", "tmp"))
+	_, err = os.Stat(filepath.Join(root, "_archives", "tasks", "20260802_cleanup", "tmp"))
 	assert.True(t, os.IsNotExist(err))
-	_, err = os.Stat(filepath.Join(root, "archives", "tasks", "20260802_cleanup", "task.md"))
+	_, err = os.Stat(filepath.Join(root, "_archives", "tasks", "20260802_cleanup", "task.md"))
 	require.NoError(t, err)
 }
 
@@ -90,7 +90,7 @@ func TestTaskRepositoryArchiveWithoutTmpDir(t *testing.T) {
 
 	require.NoError(t, repo.Archive(ctx, "20260802_no-tmp"))
 
-	_, err := os.Stat(filepath.Join(root, "archives", "tasks", "20260802_no-tmp", "task.md"))
+	_, err := os.Stat(filepath.Join(root, "_archives", "tasks", "20260802_no-tmp", "task.md"))
 	require.NoError(t, err)
 }
 
@@ -135,7 +135,7 @@ func TestTaskRepositoryPreservesCustomFrontMatter(t *testing.T) {
 	task.Status = domain.TaskStatusDone
 	require.NoError(t, repo.Update(ctx, *task))
 
-	data, err := os.ReadFile(filepath.Join(root, "tasks", "task1", "task.md"))
+	data, err := os.ReadFile(filepath.Join(root, "_tasks", "task1", "task.md"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "custom: keep-me")
 	assert.Contains(t, string(data), "status: done")
@@ -162,45 +162,31 @@ func TestTaskRepositoryReadsPendingFields(t *testing.T) {
 	assert.Equal(t, "waiting for review", got.PendingReason)
 }
 
-func TestTaskRepositoryLegacyLayoutLifecycle(t *testing.T) {
+func TestTaskRepositoryIgnoresLegacyLayout(t *testing.T) {
 	root := t.TempDir()
 	repo := NewTaskRepository(root)
 	ctx := context.Background()
 
-	// 旧レイアウト（tasks/adhoc/<id>.md）は type の区別なく通常のタスクとして読まれる。
-	content := "---\ntitle: review PR\nstatus: todo\npriority: high\n---\n\nbody"
-	legacyDir := filepath.Join(root, "tasks", "adhoc")
-	require.NoError(t, os.MkdirAll(legacyDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(legacyDir, "20260902_review-pr.md"), []byte(content), 0o644))
+	content := "---\ntitle: legacy task\nstatus: todo\npriority: high\n---\n\nbody"
+	legacyActive := filepath.Join(root, "tasks", "20260902_legacy")
+	require.NoError(t, os.MkdirAll(legacyActive, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(legacyActive, "task.md"), []byte(content), 0o644))
+	legacyArchived := filepath.Join(root, "archives", "tasks", "20260903_legacy")
+	require.NoError(t, os.MkdirAll(legacyArchived, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(legacyArchived, "task.md"), []byte(content), 0o644))
 
 	list, err := repo.List(ctx)
 	require.NoError(t, err)
-	require.Len(t, list, 1)
-	assert.Equal(t, "20260902_review-pr", list[0].ID)
-	assert.Equal(t, "review PR", list[0].Title)
+	assert.Empty(t, list)
 
-	task, err := repo.Find(ctx, "20260902_review-pr")
+	archived, err := repo.ListArchived(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "review PR", task.Title)
+	assert.Empty(t, archived)
 
-	task.Status = domain.TaskStatusDoing
-	require.NoError(t, repo.Update(ctx, *task))
-
-	got, err := repo.Find(ctx, "20260902_review-pr")
-	require.NoError(t, err)
-	assert.Equal(t, domain.TaskStatusDoing, got.Status)
-	assert.Equal(t, "body", got.Body)
-
-	require.NoError(t, repo.Archive(ctx, "20260902_review-pr"))
-
-	_, err = os.Stat(filepath.Join(root, "tasks", "adhoc", "20260902_review-pr.md"))
-	assert.True(t, os.IsNotExist(err))
-	_, err = os.Stat(filepath.Join(root, "archives", "tasks", "adhoc", "20260902_review-pr.md"))
-	require.NoError(t, err)
-
-	found, err := repo.Find(ctx, "20260902_review-pr")
-	require.NoError(t, err)
-	assert.True(t, found.Archived)
+	_, err = repo.Find(ctx, "20260902_legacy")
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	_, err = repo.Find(ctx, "20260903_legacy")
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
 func TestTaskRepositoryLegacyMetadataIgnored(t *testing.T) {
@@ -218,29 +204,8 @@ func TestTaskRepositoryLegacyMetadataIgnored(t *testing.T) {
 	// Update で task_kind / type キーはフロントマターから除去される。
 	task.Status = domain.TaskStatusDone
 	require.NoError(t, repo.Update(ctx, *task))
-	data, err := os.ReadFile(filepath.Join(root, "tasks", "20260904_legacy", "task.md"))
+	data, err := os.ReadFile(filepath.Join(root, "_tasks", "20260904_legacy", "task.md"))
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "task_kind")
 	assert.NotContains(t, string(data), "adhoc")
-}
-
-func TestTaskRepositoryMixedList(t *testing.T) {
-	root := t.TempDir()
-	repo := NewTaskRepository(root)
-	ctx := context.Background()
-	require.NoError(t, repo.Create(ctx, "20260901_090000_task1", "---\ntitle: task1\n---\n\n"))
-	legacyDir := filepath.Join(root, "tasks", "adhoc")
-	require.NoError(t, os.MkdirAll(legacyDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(legacyDir, "20260902_task2.md"), []byte("---\ntitle: task2\n---\n\n"), 0o644))
-
-	list, err := repo.List(ctx)
-	require.NoError(t, err)
-	require.Len(t, list, 2)
-
-	titles := map[string]bool{}
-	for _, tk := range list {
-		titles[tk.ID] = true
-	}
-	assert.True(t, titles["20260901_090000_task1"])
-	assert.True(t, titles["20260902_task2"])
 }

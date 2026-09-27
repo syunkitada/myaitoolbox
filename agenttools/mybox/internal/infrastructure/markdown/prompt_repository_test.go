@@ -23,9 +23,9 @@ func TestPromptRepositoryProjectOverride(t *testing.T) {
 		0o644,
 	))
 
-	out, err := repo.Render(context.Background(), "do-the-task", map[string]string{"task_file_path": "tasks/abc/task.md"})
+	out, err := repo.Render(context.Background(), "do-the-task", map[string]string{"task_file_path": "_tasks/abc/task.md"})
 	require.NoError(t, err)
-	assert.Equal(t, "project prompt for `tasks/abc/task.md`", out)
+	assert.Equal(t, "project prompt for `_tasks/abc/task.md`", out)
 }
 
 func TestPromptRepositoryFallbackToDefaultProject(t *testing.T) {
@@ -40,21 +40,21 @@ func TestPromptRepositoryFallbackToDefaultProject(t *testing.T) {
 		0o644,
 	))
 
-	out, err := repo.Render(context.Background(), "review", map[string]string{"task_file_path": "tasks/x/task.md"})
+	out, err := repo.Render(context.Background(), "review", map[string]string{"task_file_path": "_tasks/x/task.md"})
 	require.NoError(t, err)
-	assert.Equal(t, "from default: `tasks/x/task.md`", out)
+	assert.Equal(t, "from default: `_tasks/x/task.md`", out)
 }
 
 func TestPromptRepositoryBuiltinFallback(t *testing.T) {
 	repo := NewPromptRepository(t.TempDir(), "")
 
-	out, err := repo.Render(context.Background(), "do-the-task", map[string]string{"task_file_path": "tasks/x/task.md"})
+	out, err := repo.Render(context.Background(), "do-the-task", map[string]string{"task_file_path": "_tasks/x/task.md"})
 	require.NoError(t, err)
-	assert.Contains(t, out, "`tasks/x/task.md` を実施してください")
+	assert.Contains(t, out, "`_tasks/x/task.md` を実施してください")
 
-	out, err = repo.Render(context.Background(), "plan-the-task", map[string]string{"task_file_path": "tasks/x/task.md"})
+	out, err = repo.Render(context.Background(), "plan-the-task", map[string]string{"task_file_path": "_tasks/x/task.md"})
 	require.NoError(t, err)
-	assert.Contains(t, out, "`tasks/x/task.md` は未完成のドラフトです")
+	assert.Contains(t, out, "`_tasks/x/task.md` は未完成のドラフトです")
 }
 
 func TestPromptRepositoryNotFound(t *testing.T) {

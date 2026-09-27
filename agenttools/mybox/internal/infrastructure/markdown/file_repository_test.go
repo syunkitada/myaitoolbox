@@ -161,14 +161,14 @@ func TestFileRepositoryChildren(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "sub"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, ".hidden"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "tasks", "alpha"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "tasks", "beta"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "_tasks", "alpha"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "_tasks", "beta"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("# Project\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "notes.txt"), []byte("text\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "task.md"), []byte("---\nstatus: doing\n---\n\n# Task\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "sub", "deep.md"), []byte("# Deep\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".hidden", "secret.md"), []byte("# Secret\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "tasks", "alpha", "task.md"), []byte("---\nstatus: done\n---\n\n# Alpha\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "_tasks", "alpha", "task.md"), []byte("---\nstatus: done\n---\n\n# Alpha\n"), 0o644))
 
 	repo := NewFileRepository(root)
 
@@ -178,7 +178,7 @@ func TestFileRepositoryChildren(t *testing.T) {
 	for _, e := range rootEntries {
 		names = append(names, e.Name)
 	}
-	assert.ElementsMatch(t, []string{"docs", ".hidden", "tasks", "README.md", "notes.txt"}, names)
+	assert.ElementsMatch(t, []string{"docs", ".hidden", "_tasks", "README.md", "notes.txt"}, names)
 
 	docs, err := repo.Children(context.Background(), "docs", true)
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestFileRepositoryChildren(t *testing.T) {
 	assert.Equal(t, domain.FileKindFile, byName["task.md"].Kind)
 	assert.Equal(t, "doing", byName["task.md"].Status)
 
-	tasks, err := repo.Children(context.Background(), "tasks", true)
+	tasks, err := repo.Children(context.Background(), "_tasks", true)
 	require.NoError(t, err)
 	byName = map[string]domain.FileEntry{}
 	for _, e := range tasks {
@@ -216,8 +216,8 @@ func TestFileRepositoryRejectsSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o644))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "tasks", "linked"), 0o755))
-	require.NoError(t, os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(root, "tasks", "linked", "task.md")))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "_tasks", "linked"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(root, "_tasks", "linked", "task.md")))
 	require.NoError(t, os.Symlink(outside, filepath.Join(root, "link")))
 
 	repo := NewFileRepository(root)
@@ -226,7 +226,7 @@ func TestFileRepositoryRejectsSymlinkEscape(t *testing.T) {
 	assert.ErrorIs(t, repo.Save(context.Background(), "link/new.txt", "blocked"), domain.ErrInvalidPath)
 	_, err = repo.Children(context.Background(), "link", true)
 	assert.ErrorIs(t, err, domain.ErrInvalidPath)
-	entries, err := repo.Children(context.Background(), "tasks", true)
+	entries, err := repo.Children(context.Background(), "_tasks", true)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	assert.Empty(t, entries[0].Status)

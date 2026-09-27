@@ -34,7 +34,7 @@ const runningOverview: HerdrOverview = {
 describe('FileAgentWidget commands', () => {
   it('sends /new to the running agent when its button is pressed', async () => {
     render(
-      <FileAgentWidget path="tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
     )
     fireEvent.click(await screen.findByRole('button', { name: '/new' }))
     await waitFor(() => {
@@ -44,7 +44,7 @@ describe('FileAgentWidget commands', () => {
 
   it('renders the command buttons for a running agent', async () => {
     render(
-      <FileAgentWidget path="tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
     )
     for (const cmd of ['/new', '/init', '/compact', '/help']) {
       expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()

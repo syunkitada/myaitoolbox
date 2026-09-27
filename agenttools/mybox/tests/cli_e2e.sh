@@ -39,7 +39,7 @@ case "$show" in *Test\ task*) ok "task shown";; *) fail "task shown";; esac
 
 step "task set / archive"
 "$BIN" task set --project proj "$id" --status doing --priority high >/dev/null
-front="$(cat "$PROJ/tasks/$id/task.md")"
+front="$(cat "$PROJ/_tasks/$id/task.md")"
 case "$front" in *"status: doing"*) ok "task set wrote status";; *) fail "task set wrote status";; esac
 case "$front" in *"priority: high"*) ok "task set wrote priority";; *) fail "task set wrote priority";; esac
 "$BIN" task archive --project proj "$id" >/dev/null
@@ -48,17 +48,17 @@ case "$archived" in *test-task*) ok "archived task visible with --all";; *) fail
 active="$("$BIN" task list --project proj)"
 case "$active" in *test-task*) fail "archived task hidden by default";; *) ok "archived task hidden by default";; esac
 
-step "legacy adhoc layout read / create"
-adhoc_id="$("$BIN" task create --project proj --name 'Review PR #123' | tail -1)"
-[ -f "$PROJ/tasks/$adhoc_id/task.md" ] && ok "task stored in regular layout" || fail "task stored in regular layout"
-adhoc_front="$(cat "$PROJ/tasks/$adhoc_id/task.md")"
-case "$adhoc_front" in *"task_kind"*) fail "no task_kind in frontmatter";; *) ok "no task_kind in frontmatter";; esac
-adhoc_list="$("$BIN" task list --project proj)"
-case "$adhoc_list" in *review-pr-123*) ok "task listed";; *) fail "task listed";; esac
-"$BIN" task archive --project proj "$adhoc_id" >/dev/null
-[ -f "$PROJ/archives/tasks/$adhoc_id/task.md" ] && ok "task archived" || fail "task archived"
-archived_adhoc="$("$BIN" task list --project proj --all)"
-case "$archived_adhoc" in *review-pr-123*) ok "archived task listed with --all";; *) fail "archived task listed with --all";; esac
+step "second task create / archive"
+second_id="$("$BIN" task create --project proj --name 'Review PR #123' | tail -1)"
+[ -f "$PROJ/_tasks/$second_id/task.md" ] && ok "task stored in regular layout" || fail "task stored in regular layout"
+second_front="$(cat "$PROJ/_tasks/$second_id/task.md")"
+case "$second_front" in *"task_kind"*) fail "no task_kind in frontmatter";; *) ok "no task_kind in frontmatter";; esac
+second_list="$("$BIN" task list --project proj)"
+case "$second_list" in *review-pr-123*) ok "task listed";; *) fail "task listed";; esac
+"$BIN" task archive --project proj "$second_id" >/dev/null
+[ -f "$PROJ/_archives/tasks/$second_id/task.md" ] && ok "task archived" || fail "task archived"
+archived_second="$("$BIN" task list --project proj --all)"
+case "$archived_second" in *review-pr-123*) ok "archived task listed with --all";; *) fail "archived task listed with --all";; esac
 
 step "files create / show / mkdir / move / rename"
 path="$("$BIN" files create --project proj 'notes/alpha.md' | tail -1)"

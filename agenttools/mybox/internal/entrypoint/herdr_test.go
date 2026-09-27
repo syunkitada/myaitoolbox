@@ -701,7 +701,7 @@ func TestHerdrStartFileAgentReusesExistingAgent(t *testing.T) {
 		return nil, errors.New("unexpected args")
 	})
 
-	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "tasks/20260919_foo/task.md"})
+	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "_tasks/20260919_foo/task.md"})
 	require.Equal(t, 200, rec.Code)
 	res := decode[struct {
 		Ok    bool `json:"ok"`
@@ -739,7 +739,7 @@ func TestHerdrStartFileAgentCreatesTabAndStarts(t *testing.T) {
 		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
 	}
 
-	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "tasks/20260919_foo/task.md"})
+	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "_tasks/20260919_foo/task.md"})
 	require.Equal(t, 200, rec.Code)
 	res := decode[struct {
 		Ok    bool `json:"ok"`
@@ -781,7 +781,7 @@ func TestHerdrStartFileAgentHonorsKind(t *testing.T) {
 	}
 	_ = app
 
-	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "tasks/20260919_foo/notes.md", "kind": "claude"})
+	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "_tasks/20260919_foo/notes.md", "kind": "claude"})
 	require.Equal(t, 200, rec.Code)
 	assert.Equal(t, []string{"agent", "start", "f20260919_foo", "--kind", "claude", "--pane", "w7:p3"}, startArgs)
 }
@@ -810,7 +810,7 @@ func TestHerdrStartFileAgentReusesTab(t *testing.T) {
 		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
 	}
 
-	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "tasks/20260919_foo/notes.md"})
+	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "_tasks/20260919_foo/notes.md"})
 	require.Equal(t, 200, rec.Code)
 	assert.Equal(t, []string{"agent", "start", "f20260919_foo", "--kind", "opencode", "--pane", "w7:p4"}, startArgs)
 	for _, c := range calls {
@@ -851,7 +851,7 @@ func TestHerdrStartFileAgentSkippedOccupiedTab(t *testing.T) {
 		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
 	}
 
-	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "tasks/20260919_foo/task.md"})
+	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "_tasks/20260919_foo/task.md"})
 	require.Equal(t, 200, rec.Code)
 	assert.Equal(t, []string{"tab", "create", "--workspace", "w7", "--label", "20260919_foo", "--cwd", app.Project.Path}, calls[4])
 	assert.Equal(t, []string{"agent", "start", "f20260919_foo", "--kind", "opencode", "--pane", "w7:p3"}, startArgs)
@@ -882,7 +882,7 @@ func TestHerdrStartFileAgentBootstrapsWorkspace(t *testing.T) {
 		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
 	}
 
-	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "tasks/20260919_foo/task.md"})
+	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "_tasks/20260919_foo/task.md"})
 	require.Equal(t, 200, rec.Code)
 	require.Len(t, calls, 6)
 	assert.Equal(t, []string{"workspace", "list"}, calls[1])
@@ -905,7 +905,7 @@ func TestHerdrStartFileAgentValidation(t *testing.T) {
 		{"path": "README.md"},
 		{"path": "notes/idea.md"},
 		{"path": "tasks.md"},
-		{"path": "tasks/foo/../evil.md"},
+		{"path": "_tasks/foo/../evil.md"},
 		{"path": "x.go", "kind": "not-an-agent"},
 	} {
 		rec := do(t, s, "POST", "/api/herdr/agents/start-file", body)
@@ -914,7 +914,7 @@ func TestHerdrStartFileAgentValidation(t *testing.T) {
 
 	// A task-path whose slug is usable proceeds past validation; the stub
 	// runner then reports no agent and the request fails with 500.
-	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "tasks/20260919_has_space/task.md"})
+	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "_tasks/20260919_has_space/task.md"})
 	assert.Equal(t, 500, rec.Code)
 }
 

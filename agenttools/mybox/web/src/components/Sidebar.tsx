@@ -201,7 +201,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
   }
 
   // openAgent opens the agent's linked task file in the Files tab when the
-  // agent belongs to a task directory (tasks/<dir>/...); otherwise it opens
+	// agent belongs to a task directory (_tasks/<dir>/...); otherwise it opens
   // the Herdr tab of the agent's own workspace project (when it maps to a
   // known project) or falls back to the current/default project, with the
   // agent's operation panel pre-opened.

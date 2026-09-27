@@ -162,7 +162,7 @@ func TestTaskFilePaths(t *testing.T) {
 
 	task, err := uc.Create(ctx, TaskInput{Name: "some task"})
 	require.NoError(t, err)
-	assert.Equal(t, "tasks/"+task.ID+"/task.md", uc.RelativePathFor(task))
+	assert.Equal(t, "_tasks/"+task.ID+"/task.md", uc.RelativePathFor(task))
 }
 
 func TestTaskRenderPrompt(t *testing.T) {
@@ -181,12 +181,12 @@ func TestTaskRenderPrompt(t *testing.T) {
 	// Template matched by bare name.
 	rendered, err := uc.RenderPrompt(ctx, "do-the-task", task)
 	require.NoError(t, err)
-	assert.Equal(t, "`tasks/"+task.ID+"/task.md` を実施してください", rendered)
+	assert.Equal(t, "`_tasks/"+task.ID+"/task.md` を実施してください", rendered)
 
 	// Explicit @ template reference.
 	rendered, err = uc.RenderPrompt(ctx, "@do-the-task", task)
 	require.NoError(t, err)
-	assert.Equal(t, "`tasks/"+task.ID+"/task.md` を実施してください", rendered)
+	assert.Equal(t, "`_tasks/"+task.ID+"/task.md` を実施してください", rendered)
 
 	// Inline prompt that does not match any template.
 	rendered, err = uc.RenderPrompt(ctx, "DO IT NOW / do not $expand", task)

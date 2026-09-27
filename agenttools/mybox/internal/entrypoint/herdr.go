@@ -862,11 +862,11 @@ func validHerdrAgentKind(kind string) bool {
 }
 
 // herdrTaskDirFromPath validates that a project-relative file path lives
-// inside a task directory (tasks/<dir>/...) and returns the task directory
+// inside a task directory (_tasks/<dir>/...) and returns the task directory
 // name. Files outside a task directory cannot start a herdr agent.
 func herdrTaskDirFromPath(path string) (string, bool) {
 	parts := strings.Split(strings.TrimSpace(path), "/")
-	if len(parts) < 2 || parts[0] != "tasks" {
+	if len(parts) < 2 || parts[0] != "_tasks" {
 		return "", false
 	}
 	dir := parts[1]
@@ -921,7 +921,7 @@ func herdrTaskAgentName(dir string) string {
 
 type herdrStartFileAgentRequest struct {
 	// Path is the project-relative file the agent should work on. It must live
-	// inside a task directory (tasks/<dir>/...): the agent is bound to that
+	// inside a task directory (_tasks/<dir>/...): the agent is bound to that
 	// task directory, not to the individual file.
 	Path string `json:"path"`
 	// Kind selects the agent executable herdr launches (default: opencode).
@@ -1172,7 +1172,7 @@ func (s *Server) startHerdrFileAgent(ctx context.Context, app *App, path string,
 	}
 	dir, ok := herdrTaskDirFromPath(path)
 	if !ok {
-		return nil, &httpError{status: http.StatusBadRequest, err: errors.New("agents can only be started for files inside a task directory (tasks/<dir>/...)")}
+		return nil, &httpError{status: http.StatusBadRequest, err: errors.New("agents can only be started for files inside a task directory (_tasks/<dir>/...)")}
 	}
 	label, ok := validHerdrLabel(dir)
 	if !ok {

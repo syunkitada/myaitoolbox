@@ -61,7 +61,7 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
   }
 
   const onTaskCreated = (task: Task) =>
-    navigate(projectUrl(`/dashboard/files/tasks/${encodePath(task.id)}/task.md`))
+		navigate(projectUrl(`/dashboard/files/_tasks/${encodePath(task.id)}/task.md`))
 
   useEffect(
     () =>

@@ -94,7 +94,7 @@ export function terminalWsUrl(command?: string, session?: string): string {
 }
 
 // taskIdOf extracts the task id from a task graph node id, which is the task
-// file path without the extension (e.g. "tasks/20260811_x/task" -> "20260811_x").
+// file path without the extension (e.g. "_tasks/20260811_x/task" -> "20260811_x").
 export function taskIdOf(nodeId: string): string {
   const parts = nodeId.split('/')
   return parts[parts.length - 2] ?? nodeId

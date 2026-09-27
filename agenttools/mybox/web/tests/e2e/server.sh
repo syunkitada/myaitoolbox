@@ -325,9 +325,9 @@ printf '# Other\n\nA second project.\n' >"$OTHER/README.md"
 "$ROOT/mybox" task create --project proj --name "Ship the web UI"
 "$ROOT/mybox" task create --project proj --name "Write E2E tests"
 "$ROOT/mybox" task create --project proj --name "E2E status change target"
-mkdir -p "$PROJ/tasks/e2e-status-change-target"
+mkdir -p "$PROJ/_tasks/e2e-status-change-target"
 printf -- '---\nstatus: doing\n---\n\n# Drag me to done\n' \
-  >"$PROJ/tasks/e2e-status-change-target/task.md"
+  >"$PROJ/_tasks/e2e-status-change-target/task.md"
 mkdir -p "$PROJ/knowledge/notes"
 printf '# Mybox\n\nWelcome to the workspace.\n\nSee [phase 6](notes/phase6.md) and [tasks](../tasks.md).\n' \
   >"$PROJ/knowledge/index.md"

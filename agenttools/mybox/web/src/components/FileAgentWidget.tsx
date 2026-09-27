@@ -24,7 +24,7 @@ const KIND_STORAGE_KEY = 'mybox.herdr.file-agent-kind'
 
 export interface FileAgentWidgetProps {
   /** Project-relative path of the open file the agent works on. Only files
-   *  inside a task directory (tasks/<dir>/...) can start an agent; otherwise
+   *  inside a task directory (_tasks/<dir>/...) can start an agent; otherwise
    *  the widget is not rendered. */
   path: string
   overview: HerdrOverview | null

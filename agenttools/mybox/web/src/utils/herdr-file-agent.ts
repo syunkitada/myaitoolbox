@@ -5,11 +5,11 @@
 // herdrTaskAgentName in internal/entrypoint/herdr.go.
 
 // taskDirFromPath returns the task directory name for a project-relative path
-// inside tasks/<dir>/..., or null when the path is not in a task directory.
+// inside _tasks/<dir>/..., or null when the path is not in a task directory.
 // Only such files can start a herdr agent.
 export function taskDirFromPath(path: string): string | null {
   const parts = path.trim().split('/').filter(Boolean)
-  if (parts.length < 2 || parts[0] !== 'tasks') return null
+	if (parts.length < 2 || parts[0] !== '_tasks') return null
   if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/.test(parts[1])) return null
   if (parts.slice(2).some((p) => p === '' || p === '.' || p === '..')) return null
   return parts[1]
@@ -38,7 +38,7 @@ function slugAgentName(name: string): string {
 }
 
 // taskAgentName derives the herdr agent name for a task file path. The task
-// directory name (tasks/<dir>/...) is slugified as in herdrTaskAgentName, so
+// directory name (_tasks/<dir>/...) is slugified as in herdrTaskAgentName, so
 // every file in the same task directory shares one agent. Returns '' when the
 // path is not inside a task directory.
 export function taskAgentName(path: string): string {
@@ -48,7 +48,7 @@ export function taskAgentName(path: string): string {
 }
 
 // filePathForAgent finds the path whose derived agent name matches the given
-// herdr agent name. Each agent belongs to a task directory (tasks/<dir>/...);
+// herdr agent name. Each agent belongs to a task directory (_tasks/<dir>/...);
 // the canonical task.md under that directory is preferred, otherwise the
 // shallowest file in the directory is the link target.
 export function filePathForAgent(

@@ -127,8 +127,8 @@ describe('KanbanBoard', () => {
   it('warns about tmp deletion before archiving when a task has a tmp dir', async () => {
     window.history.replaceState({}, '', '/projects/test')
     vi.mocked(api.listFiles).mockResolvedValue([
-      { path: 'tasks/t1/tmp/agent.log', name: 'agent.log', kind: 'file' },
-      { path: 'tasks/t1/tmp/out', name: 'out', kind: 'file' },
+      { path: '_tasks/t1/tmp/agent.log', name: 'agent.log', kind: 'file' },
+      { path: '_tasks/t1/tmp/out', name: 'out', kind: 'file' },
     ])
     const archive = vi.mocked(api.archiveTask).mockResolvedValue(undefined)
     renderBoard()
@@ -148,7 +148,7 @@ describe('KanbanBoard', () => {
   it('does not archive when tmp deletion is declined', async () => {
     window.history.replaceState({}, '', '/projects/test')
     vi.mocked(api.listFiles).mockResolvedValue([
-      { path: 'tasks/t1/tmp/agent.log', name: 'agent.log', kind: 'file' },
+      { path: '_tasks/t1/tmp/agent.log', name: 'agent.log', kind: 'file' },
     ])
     const archive = vi.mocked(api.archiveTask).mockResolvedValue(undefined)
     renderBoard()

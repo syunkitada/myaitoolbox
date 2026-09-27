@@ -278,7 +278,7 @@ export function KanbanBoard() {
     (task: Task) => {
       const target = task.project || currentProject
       if (!target) return
-      const relPath = `tasks/${encodePath(task.id)}/task.md`
+		const relPath = `_tasks/${encodePath(task.id)}/task.md`
       const filePath = `/dashboard/files/${relPath}`
       if (target === currentProject) {
         navigate(projectUrl(filePath))
@@ -298,7 +298,7 @@ export function KanbanBoard() {
       void (async () => {
         let message = `「${task.title}」をアーカイブしますか？`
         try {
-          const tmpFiles = await api.listFiles({ path: `tasks/${encodePath(task.id)}/tmp` })
+			const tmpFiles = await api.listFiles({ path: `_tasks/${encodePath(task.id)}/tmp` })
           if (tmpFiles.length > 0) {
             const names = tmpFiles.slice(0, 5).map((f) => f.name).join(', ')
             const more = tmpFiles.length > 5 ? ` ほか${tmpFiles.length - 5}件` : ''

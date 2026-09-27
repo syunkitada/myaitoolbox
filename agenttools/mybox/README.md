@@ -27,7 +27,7 @@ CLI と Web UI の両方から操作でき、タスクは Markdown ファイル�
 
 ## 機能
 
-- **タスク管理** — `tasks/` 配下の Markdown ファイル（1 タスク＝1 ディレクトリ）で管理。ステータス（todo / doing / blocked / review / done）・優先度（low / medium / high / urgent）・担当者・期限・タグ・エージェント種別（`agent_kind`）をフロントマターで保持
+- **タスク管理** — `_tasks/` 配下の Markdown ファイル（1 タスク＝1 ディレクトリ）で管理。ステータス（todo / doing / blocked / review / done）・優先度（low / medium / high / urgent）・担当者・期限・タグ・エージェント種別（`agent_kind`）をフロントマターで保持
   - CLI: 作成・一覧（フィルタ / JSON 出力）・表示・編集・フィールド更新・アーカイブ
   - Web UI: GTD ボード（Todo / Doing / Blocked / Review / Done）とドラッグ＆ドロップ
 - **ファイル管理** — プロジェクトルート起点で任意のファイル / ディレクトリを操作
@@ -145,7 +145,9 @@ mybox serve --project proj --base-path /mybox
 
 ```
 myproject/
-├── tasks/
+├── _archives/
+│   └── tasks/
+├── _tasks/
 │   └── 20260802_design-the-login-flow/
 │       └── task.md          # フロントマターで status / priority / assignee / due / tags / agent_kind 等を保持
 ├── notes/
@@ -157,10 +159,10 @@ myproject/
     └── task/task.md
 ```
 
-- タスク ID は `YYYYMMDD_<slug>` 形式（例: `20260802_design-the-login-flow`）で、常に `tasks/<id>/task.md` に保存されます。
+- タスク ID は `YYYYMMDD_<slug>` 形式（例: `20260802_design-the-login-flow`）で、常に `_tasks/<id>/task.md` に保存されます。
 - タスクのメタデータはフロントマター、Markdown ファイル同士の関連付けは通常の Markdown リンクで記述します。
-- 従来の `tasks/adhoc/<id>.md`（アーカイブは `archives/tasks/adhoc/`）というレガシーレイアウトもそのまま読み込み・更新・アーカイブできます。
-- 完了後はアーカイブして `archives/tasks/<id>/` へ移動できます（`task archive`）。
+- myboxが管理する領域であることを示すため、タスクは `_tasks/`、アーカイブは `_archives/tasks/` に保存されます。
+- 完了後はアーカイブして `_archives/tasks/<id>/` へ移動できます（`task archive`）。
 
 ### テンプレート
 

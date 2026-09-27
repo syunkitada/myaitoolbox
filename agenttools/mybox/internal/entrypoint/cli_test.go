@@ -124,7 +124,7 @@ func TestCLITaskLifecycle(t *testing.T) {
 	out = runCLIOk(t, "task", "show", id)
 	assert.Contains(t, out, "doing")
 
-	raw, err := os.ReadFile(filepath.Join(e.projPath, "tasks", id, "task.md"))
+	raw, err := os.ReadFile(filepath.Join(e.projPath, "_tasks", id, "task.md"))
 	require.NoError(t, err)
 	content := string(raw)
 	assert.Contains(t, content, "status: doing")

@@ -628,21 +628,13 @@ func openBrowser(url string) {
 }
 
 func taskFilePath(app *App, id string) (string, error) {
-	active := filepath.Join(app.Project.Path, "tasks", id, "task.md")
+	active := filepath.Join(app.Project.Path, "_tasks", id, "task.md")
 	if _, err := os.Stat(active); err == nil {
 		return active, nil
 	}
-	legacy := filepath.Join(app.Project.Path, "tasks", "adhoc", id+".md")
-	if _, err := os.Stat(legacy); err == nil {
-		return legacy, nil
-	}
-	archived := filepath.Join(app.Project.Path, "archives", "tasks", id, "task.md")
+	archived := filepath.Join(app.Project.Path, "_archives", "tasks", id, "task.md")
 	if _, err := os.Stat(archived); err == nil {
 		return archived, nil
-	}
-	archivedLegacy := filepath.Join(app.Project.Path, "archives", "tasks", "adhoc", id+".md")
-	if _, err := os.Stat(archivedLegacy); err == nil {
-		return archivedLegacy, nil
 	}
 	return "", fmt.Errorf("%w: task %s", domain.ErrNotFound, id)
 }

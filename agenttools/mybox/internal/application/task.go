@@ -281,10 +281,10 @@ func (u *TaskUseCase) FilePathFor(task *domain.Task) string {
 }
 
 // RelativePathFor returns the task's markdown file path relative to the project
-// root (always slash-separated), e.g. tasks/20260101_xxx/task.md. This is the
+// root (always slash-separated), e.g. _tasks/20260101_xxx/task.md. This is the
 // path used by herdr file agents (which start in the project directory).
 func (u *TaskUseCase) RelativePathFor(task *domain.Task) string {
-	return "tasks/" + task.ID + "/task.md"
+	return "_tasks/" + task.ID + "/task.md"
 }
 
 // RenderPrompt resolves the prompt for a task. When raw starts with '@' it is

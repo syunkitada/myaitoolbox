@@ -46,12 +46,12 @@ test('dashboard shows project file explorer with README by default', async ({ pa
   const explorer = page.locator('.knowledge-explorer')
   await expect(explorer).toContainText('README.md')
   await expect(explorer).toContainText('knowledge')
-  await expect(explorer).toContainText('tasks')
+  await expect(explorer).toContainText('_tasks')
 })
 
 test('dashboard shows a task status badge on the containing directory', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
-  await explorer.getByRole('button', { name: 'Expand tasks' }).click()
+  await explorer.getByRole('button', { name: 'Expand _tasks' }).click()
   const dirRow = explorer.locator('.knowledge-tree-row', { hasText: 'e2e-status-change-target' })
   await expect(dirRow.locator('.badge.status-doing')).toBeVisible()
   await expect(dirRow.locator('.badge.status-doing')).toHaveText('doing')
@@ -961,7 +961,7 @@ test('clicking a sidebar agent linked to a task opens its file in the Files tab'
   await page.goto('/projects/proj/dashboard')
   await page.getByTestId('sidebar-agent-w7:p1').click()
   await expect(page).toHaveURL(
-    /\/projects\/proj\/dashboard\/files\/tasks\/e2e-status-change-target\/task\.md$/,
+    /\/projects\/proj\/dashboard\/files\/_tasks\/e2e-status-change-target\/task\.md$/,
   )
   await expect(page.getByRole('heading', { name: 'Drag me to done' })).toBeVisible()
 })
