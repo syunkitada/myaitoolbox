@@ -70,6 +70,50 @@ test('dashboard opens a markdown file from the explorer', async ({ page }) => {
   ).toHaveClass(/active/)
 })
 
+test('dashboard compares a changed file with its Git diff', async ({ page }) => {
+  const filePath = 'git-diff-viewer-test.txt'
+  const fileContent = Array.from({ length: 300 }, (_, index) => `current file line ${index + 1}`).join('\n') + '\n'
+  await page.request.post('/api/files', { data: { path: filePath } })
+  await page.request.put('/api/files/content', {
+    data: { path: filePath, content: fileContent },
+  })
+
+  try {
+    const gitStatus = await page.request.get('/api/git/status')
+    if (!(await gitStatus.json()).is_repo) {
+      await page.request.post('/api/git/init')
+    }
+    await page.goto(`/projects/proj/dashboard/files/${filePath}`)
+    const explorer = page.locator('.knowledge-explorer')
+    await treeButton(explorer, filePath).click()
+
+    const gitButton = page.getByRole('button', { name: 'Show Git diff' })
+    await expect(gitButton).toBeVisible()
+    await gitButton.click()
+
+    await expect(page.getByRole('button', { name: 'Hide Git diff' })).toBeVisible()
+    await expect(page.getByTestId('git-file-diff')).toContainText('Untracked')
+    await expect(page.getByTestId('git-file-diff')).toContainText('+current file line 1')
+
+    const contentPane = page.getByTestId('git-file-content-pane')
+    const diffPane = page.getByTestId('git-file-diff-pane')
+    await expect.poll(() => contentPane.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+    await expect.poll(() => diffPane.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+
+    const diffBefore = await diffPane.evaluate((el) => el.scrollTop)
+    await contentPane.evaluate((el) => { el.scrollTop = el.scrollHeight })
+    expect(await contentPane.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+    expect(await diffPane.evaluate((el) => el.scrollTop)).toBe(diffBefore)
+
+    const contentBefore = await contentPane.evaluate((el) => el.scrollTop)
+    await diffPane.evaluate((el) => { el.scrollTop = el.scrollHeight })
+    expect(await diffPane.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+    expect(await contentPane.evaluate((el) => el.scrollTop)).toBe(contentBefore)
+  } finally {
+    await page.request.post('/api/files/delete', { data: { path: filePath } })
+  }
+})
+
 test('markdown copy button sits on the file name row and switches formats in its dialog', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await treeButton(explorer, 'tasks.md').click()

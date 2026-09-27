@@ -1,6 +1,6 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker } from 'react-router-dom'
-import { FileEntry, FileExecuteResult, FileSearchResult, HerdrOverview, api } from '../api/client'
+import { FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileAgentWidget } from '../components/FileAgentWidget'
 import { FileTabs } from '../components/FileTabs'
@@ -25,6 +25,7 @@ import { useEscapeKey } from '../hooks/use-escape-key'
 import { filesUrl, getProject, rawFileUrl } from '../utils/routes'
 import { copyToClipboard } from '../utils/clipboard'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
+import { DiffView } from '../components/DiffView'
 import { languageFromPath } from '../utils/prism-langs'
 import {
   buildDirListing,
@@ -152,6 +153,69 @@ function GitFileBadge({ status }: { status?: string }) {
     >
       <GitBranch className="size-3.5" />
     </span>
+  )
+}
+
+const gitDiffStatusLabels: Record<GitFile['status'], string> = {
+  staged: 'Staged',
+  unstaged: 'Unstaged',
+  untracked: 'Untracked',
+}
+
+export function gitFilesForPath(detail: GitDetail, path: string): GitFile[] {
+  return [...detail.staged, ...detail.unstaged, ...detail.untracked].filter(
+    (file) => file.path === path,
+  )
+}
+
+interface GitDiffPanelProps {
+  files: GitFile[]
+  loading?: boolean
+  error?: string | null
+}
+
+export function GitDiffPanel({ files, loading = false, error = null }: GitDiffPanelProps) {
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground" data-testid="git-file-diff">
+        <Loader2 className="size-4 animate-spin" />
+        Loading Git diff…
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div
+        className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        role="alert"
+        data-testid="git-file-diff"
+      >
+        {error}
+      </div>
+    )
+  }
+
+  if (files.length === 0) {
+    return (
+      <p className="py-8 text-sm text-muted-foreground" data-testid="git-file-diff">
+        No Git diff available.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-4" data-testid="git-file-diff">
+      {files.map((file, index) => (
+        <section key={`${file.status}:${file.path}:${index}`} className="min-w-0">
+          <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+            {gitDiffStatusLabels[file.status]}
+            <span className="font-normal normal-case">({file.code})</span>
+          </h2>
+          <DiffView diff={file.diff} />
+        </section>
+      ))}
+    </div>
   )
 }
 
@@ -1234,13 +1298,15 @@ interface PaneProps {
   onToggleExplorer: () => void
   onRefresh: () => void
   refreshKey: number
+  gitStatus?: string
+  onGitDiffOpenChange?: (open: boolean) => void
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
   onOpenGit?: (path: string) => void
   searchHit?: FileSearchHit | null
 }
 
-function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer, onRefresh, refreshKey, herdrOverview, refreshHerdr, onOpenGit, searchHit }: PaneProps) {
+function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer, onRefresh, refreshKey, gitStatus, onGitDiffOpenChange, herdrOverview, refreshHerdr, onOpenGit, searchHit }: PaneProps) {
   const { prompt, confirm, confirm3 } = useDialogs()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
@@ -1248,6 +1314,11 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
   const [draftBody, setDraftBody] = useState('')
   const [editing, setEditing] = useState(false)
   const [showDiff, setShowDiff] = useState(false)
+  const [showGitDiff, setShowGitDiff] = useState(false)
+  const [gitDiffFiles, setGitDiffFiles] = useState<GitFile[]>([])
+  const [gitDiffLoading, setGitDiffLoading] = useState(false)
+  const [gitDiffError, setGitDiffError] = useState<string | null>(null)
+  const gitDiffRequest = useRef(0)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [crlf, setCrlf] = useState(false)
@@ -1319,9 +1390,14 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
   )
 
   useEffect(() => {
+    gitDiffRequest.current += 1
     setError(null)
     setEditing(false)
     setShowDiff(false)
+    setShowGitDiff(false)
+    setGitDiffFiles([])
+    setGitDiffLoading(false)
+    setGitDiffError(null)
     setSaved(false)
     setCrlf(false)
     setCopyDialogOpen(false)
@@ -1365,6 +1441,17 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
     void api.recordRecent(path).then(() => void refreshMeta()).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, isDir, isImage, readmePath, listing, refreshKey])
+
+  useEffect(() => {
+    if (gitStatus) return
+    gitDiffRequest.current += 1
+    setShowGitDiff(false)
+    setGitDiffFiles([])
+  }, [gitStatus])
+
+  useEffect(() => {
+    onGitDiffOpenChange?.(showGitDiff)
+  }, [onGitDiffOpenChange, showGitDiff])
 
   const isMarkdown =
     isDir || (entry?.markdown ?? /\.(md|markdown)$/i.test(path))
@@ -1493,6 +1580,27 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
 
   const openGit = () => onOpenGit?.(path)
 
+  const toggleGitDiff = async () => {
+    if (showGitDiff) {
+      setShowGitDiff(false)
+      return
+    }
+    const requestId = ++gitDiffRequest.current
+    setShowGitDiff(true)
+    setGitDiffLoading(true)
+    setGitDiffError(null)
+    try {
+      const detail = await api.getGitStatus()
+      if (requestId !== gitDiffRequest.current) return
+      setGitDiffFiles(gitFilesForPath(detail, path))
+    } catch (e) {
+      if (requestId !== gitDiffRequest.current) return
+      setGitDiffError(e instanceof Error ? e.message : String(e))
+    } finally {
+      if (requestId === gitDiffRequest.current) setGitDiffLoading(false)
+    }
+  }
+
   const persist = async (raw: string): Promise<boolean> => {
     setSaved(false)
     const out = normalizeLineEndings(raw)
@@ -1506,6 +1614,8 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
       setDraftFm(parseFrontmatter(split.frontmatter).data)
       setEditing(false)
       setShowDiff(false)
+      setShowGitDiff(false)
+      setGitDiffFiles([])
       setSaved(true)
       onChanged()
       onGitStatusChange()
@@ -1584,6 +1694,7 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
       ? { path, top: scroller.scrollTop, maxTop: Math.max(0, scroller.scrollHeight - scroller.clientHeight) }
       : null
     setShowDiff(true)
+    setShowGitDiff(false)
     setEditing(true)
   }
 
@@ -1683,7 +1794,7 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
 
   return (
     <div
-      className={cn('min-w-0 w-full md:transition-[padding-right] md:duration-200 md:ease-linear', editing && 'flex h-full flex-col')}
+      className={cn('min-w-0 w-full md:transition-[padding-right] md:duration-200 md:ease-linear', (editing || showGitDiff) && 'flex h-full flex-col')}
       style={{ paddingRight: outlineOpen && !isMobile ? outlineWidth : undefined }}
     >
       {herdrOverview !== undefined && (
@@ -1693,8 +1804,8 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
           onRefresh={refreshHerdr ?? (() => undefined)}
         />
       )}
-      <div className={cn('knowledge-body flex gap-4 max-md:flex-col', editing && 'min-h-0 flex-1')}>
-        <div className={cn('knowledge-main min-w-0 flex-1 md:transition-[margin]', editing && 'flex min-h-0 flex-col')}>
+      <div className={cn('knowledge-body flex gap-4 max-md:flex-col', (editing || showGitDiff) && 'min-h-0 flex-1')}>
+        <div className={cn('knowledge-main min-w-0 flex-1 md:transition-[margin]', (editing || showGitDiff) && 'flex min-h-0 flex-col')}>
           <div className="page-header note-toolbar sticky top-0 z-20 mb-3 flex shrink-0 items-center justify-between gap-3 border-b bg-card/95 py-2 backdrop-blur">
             <div className="actions flex flex-wrap gap-2">
               <Button
@@ -1734,6 +1845,20 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
               >
                 <RefreshCw />
               </Button>
+              {!editing && !isDir && gitStatus && (
+                <Button
+                  variant={showGitDiff ? 'default' : 'ghost'}
+                  size="sm"
+                  aria-label={showGitDiff ? 'Hide Git diff' : 'Show Git diff'}
+                  title={showGitDiff ? 'Hide Git diff' : 'Show Git diff'}
+                  onClick={() => void toggleGitDiff()}
+                  disabled={gitDiffLoading}
+                  data-testid="file-git-diff-button"
+                >
+                  <GitBranch />
+                  <span className="hidden sm:inline">Git</span>
+                </Button>
+              )}
               <div className="file-actions relative" ref={menuRef}>
                   <Button
                     variant="ghost"
@@ -1841,6 +1966,8 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
                         setDraftFm(parseFrontmatter(split.frontmatter).data)
                         setEditing(false)
                         setShowDiff(false)
+                        setShowGitDiff(false)
+                        setGitDiffFiles([])
                       }}
                     >
                       Cancel
@@ -1979,64 +2106,74 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
               )}
             </Card>
           ) : (
-            <Card className="gap-0 p-4">
-              <CardContent className="px-0 py-0">
-                <div className="meta-line my-2 flex items-center gap-2">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                    <span className="muted text-sm text-muted-foreground">{path}</span>
-                    {tags.map((t) => (
-                      <TagBadge key={t}>{t}</TagBadge>
-                    ))}
+            <div className={cn('grid min-w-0 gap-4', showGitDiff && 'min-h-0 flex-1 grid-rows-2 lg:grid-cols-2 lg:grid-rows-1')}>
+              <Card data-testid={showGitDiff ? 'git-file-content-pane' : undefined} className={cn('min-w-0 gap-0 p-4', showGitDiff && 'min-h-0 overflow-y-auto')}>
+                <CardContent className="px-0 py-0">
+                  <div className="meta-line my-2 flex items-center gap-2">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <span className="muted text-sm text-muted-foreground">{path}</span>
+                      {tags.map((t) => (
+                        <TagBadge key={t}>{t}</TagBadge>
+                      ))}
+                    </div>
+                    {isMarkdown && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="ml-auto"
+                        onClick={() => setCopyDialogOpen(true)}
+                        aria-label="Copy file contents"
+                        title="Copy file contents"
+                      >
+                        <Copy className="size-4" />
+                      </Button>
+                    )}
                   </div>
-                  {isMarkdown && (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="ml-auto"
-                      onClick={() => setCopyDialogOpen(true)}
-                      aria-label="Copy file contents"
-                      title="Copy file contents"
-                    >
-                      <Copy className="size-4" />
-                    </Button>
+                  {viewFileName && (
+                    <>
+                      <Separator className="my-2" />
+                      <div className="view-file-name mb-2 text-sm font-semibold text-muted-foreground">{viewFileName}</div>
+                    </>
                   )}
-                </div>
-                {viewFileName && (
-                  <>
-                    <Separator className="my-2" />
-                    <div className="view-file-name mb-2 text-sm font-semibold text-muted-foreground">{viewFileName}</div>
-                  </>
-                )}
-                {useForm && <FrontmatterSummary data={fmParsed.data} />}
-                {isMarkdown ? (
-                  <RichMarkdown
-                    text={viewText}
-                    relativeTo={viewRelativeTo}
-                    linkUrl={filesUrl}
-                    imageUrl={rawFileUrl}
-                    preserveExtension
-                    onTaskToggle={!isDir || Boolean(readmePath) ? toggleTask : undefined}
-                    copyDialogOpen={copyDialogOpen}
-                    onCopyDialogClose={() => setCopyDialogOpen(false)}
-                    focusLine={activeSearchHit?.line}
-                    searchQuery={activeSearchHit?.query}
-                    sourceLineOffset={viewSourceLineOffset}
-                  />
-                ) : isImage ? (
-                  <div className="file-image flex justify-center py-3">
-                    <img src={rawFileUrl(path)} alt={baseOf(path)} className="max-w-full rounded-md" />
-                  </div>
-                ) : (
-                  <SyntaxHighlighter
-                    text={viewText}
-                    language={languageFromPath(viewFileName ?? path)}
-                    className="file-raw rounded-md bg-muted p-3"
-                    focusLine={activeSearchHit?.line}
-                    searchQuery={activeSearchHit?.query}
-                  />
-                )}
-              </CardContent>
-            </Card>
+                  {useForm && <FrontmatterSummary data={fmParsed.data} />}
+                  {isMarkdown ? (
+                    <RichMarkdown
+                      text={viewText}
+                      relativeTo={viewRelativeTo}
+                      linkUrl={filesUrl}
+                      imageUrl={rawFileUrl}
+                      preserveExtension
+                      onTaskToggle={!isDir || Boolean(readmePath) ? toggleTask : undefined}
+                      copyDialogOpen={copyDialogOpen}
+                      onCopyDialogClose={() => setCopyDialogOpen(false)}
+                      focusLine={activeSearchHit?.line}
+                      searchQuery={activeSearchHit?.query}
+                      sourceLineOffset={viewSourceLineOffset}
+                    />
+                  ) : isImage ? (
+                    <div className="file-image flex justify-center py-3">
+                      <img src={rawFileUrl(path)} alt={baseOf(path)} className="max-w-full rounded-md" />
+                    </div>
+                  ) : (
+                    <SyntaxHighlighter
+                      text={viewText}
+                      language={languageFromPath(viewFileName ?? path)}
+                      className="file-raw rounded-md bg-muted p-3"
+                      focusLine={activeSearchHit?.line}
+                      searchQuery={activeSearchHit?.query}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+              {showGitDiff && (
+                <Card data-testid="git-file-diff-pane" className="min-h-0 min-w-0 gap-0 overflow-y-auto p-4">
+                  <CardContent className="px-0 py-0">
+                    <h2 className="mb-3 text-sm font-semibold">Git diff</h2>
+                    <GitDiffPanel files={gitDiffFiles} loading={gitDiffLoading} error={gitDiffError} />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           )}
         </div>
         {!isMobile && (
@@ -2122,6 +2259,7 @@ export function BrowserPage({
   const [moveError, setMoveError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [openGitDir, setOpenGitDir] = useState<string | null>(null)
+  const [gitDiffOpen, setGitDiffOpen] = useState(false)
   const [searchHit, setSearchHit] = useState<FileSearchHit | null>(null)
   const autoDefaulted = useRef(false)
   const loadedDirsRef = useRef(new Set<string>())
@@ -2166,6 +2304,7 @@ export function BrowserPage({
 
   useEffect(() => {
     setOpenGitDir(null)
+    setGitDiffOpen(false)
   }, [selected])
 
   const handleSelect = useCallback(
@@ -2473,7 +2612,9 @@ export function BrowserPage({
               onClose={handleCloseRecent}
             />
           <div
-            className="knowledge-files min-h-0 min-w-0 flex-1 overflow-y-auto"
+            data-testid="git-files-scroll-container"
+            data-git-diff-open={gitDiffOpen ? 'true' : 'false'}
+            className={cn('knowledge-files min-h-0 min-w-0 flex-1', gitDiffOpen ? 'overflow-hidden' : 'overflow-y-auto')}
             onClick={handleAnchorClick}
           >
             {selected ? (
@@ -2491,6 +2632,8 @@ export function BrowserPage({
                   onToggleExplorer={() => setExplorerOpen((o) => !o)}
                   onRefresh={handleRefresh}
                   refreshKey={refreshKey}
+                  gitStatus={gitStatus[selected]}
+                  onGitDiffOpenChange={setGitDiffOpen}
                   herdrOverview={herdrOverview}
                   refreshHerdr={refreshHerdr}
                   onOpenGit={setOpenGitDir}

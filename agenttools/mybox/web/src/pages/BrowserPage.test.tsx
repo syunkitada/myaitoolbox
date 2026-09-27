@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api } from '../api/client'
+import { api, GitDetail } from '../api/client'
 import { DialogsProvider } from '../components/AppDialogs'
-import { BrowserEntry, Explorer } from './BrowserPage'
+import { BrowserEntry, BrowserPage, Explorer, GitDiffPanel, gitFilesForPath } from './BrowserPage'
 
 vi.mock('../components/MonacoEditor', () => ({ default: () => null }))
+vi.mock('../hooks/use-mobile', () => ({ useIsMobile: () => false }))
 
 describe('Explorer file upload', () => {
   afterEach(() => {
@@ -126,5 +128,125 @@ describe('Explorer file upload', () => {
     fireEvent.click(screen.getByRole('button', { name: /docs\/guide\.md/ }))
     expect(onSearchHit).toHaveBeenCalledWith({ path: 'docs/guide.md', line: 4, query: 'deploy' })
     expect(onSelect).not.toHaveBeenCalled()
+  })
+})
+
+describe('file viewer Git diff', () => {
+  const detail: GitDetail = {
+    is_repo: true,
+    branch: 'main',
+    remote: '',
+    upstream: '',
+    sync_status: 'no-upstream',
+    ahead: 0,
+    behind: 0,
+    last_commit_message: '',
+    staged: [],
+    unstaged: [{ path: 'notes.txt', status: 'unstaged', code: 'M', diff: '+changed' }],
+    untracked: [],
+  }
+
+  const renderFileViewer = (status: Record<string, string>) => {
+    vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path: 'notes.txt', name: 'notes.txt', kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue(status)
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path: 'notes.txt', content: 'current body' })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    const refreshMeta = vi.fn().mockResolvedValue(undefined)
+    const router = createMemoryRouter(
+      [{ path: '*', element: (
+        <BrowserPage
+          title="Files"
+          selected="notes.txt"
+          onSelect={vi.fn()}
+          onBack={vi.fn()}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={refreshMeta}
+        />
+      ) }],
+      { initialEntries: ['/projects/proj/dashboard/files/notes.txt'] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+  }
+
+  it('keeps staged and unstaged diffs for the selected file', () => {
+    const detail: GitDetail = {
+      is_repo: true,
+      branch: 'main',
+      remote: '',
+      upstream: '',
+      sync_status: 'no-upstream',
+      ahead: 0,
+      behind: 0,
+      last_commit_message: '',
+      staged: [{ path: 'notes.md', status: 'staged', code: 'M', diff: '+staged' }],
+      unstaged: [{ path: 'notes.md', status: 'unstaged', code: 'M', diff: '+unstaged' }],
+      untracked: [{ path: 'other.md', status: 'untracked', code: '??', diff: '+other' }],
+    }
+
+    expect(gitFilesForPath(detail, 'notes.md')).toEqual([
+      detail.staged[0],
+      detail.unstaged[0],
+    ])
+  })
+
+  it('renders each selected Git diff with its status', () => {
+    render(
+      <GitDiffPanel
+        files={[
+          { path: 'notes.md', status: 'staged', code: 'M', diff: '+staged' },
+          { path: 'notes.md', status: 'unstaged', code: 'M', diff: '+unstaged' },
+        ]}
+      />,
+    )
+
+    expect(screen.getByTestId('git-file-diff')).toBeInTheDocument()
+    expect(screen.getByText('Staged')).toBeInTheDocument()
+    expect(screen.getByText('Unstaged')).toBeInTheDocument()
+    expect(screen.getByText('+staged')).toBeInTheDocument()
+    expect(screen.getByText('+unstaged')).toBeInTheDocument()
+  })
+
+  it('shows the Git button and compares the current file with its diff', async () => {
+    const getGitStatus = vi.spyOn(api, 'getGitStatus').mockResolvedValue(detail)
+    renderFileViewer({ 'notes.txt': 'modified' })
+
+    const button = await screen.findByRole('button', { name: 'Show Git diff' })
+    fireEvent.click(button)
+
+    await waitFor(() => expect(getGitStatus).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('current body')).toBeInTheDocument()
+    expect(screen.getByText('+changed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Git diff' })).toBeInTheDocument()
+    const scrollContainer = screen.getByTestId('git-files-scroll-container')
+    expect(scrollContainer).toHaveAttribute('data-git-diff-open', 'true')
+    expect(scrollContainer).toHaveClass('overflow-hidden')
+    expect(screen.getByTestId('git-file-content-pane')).toHaveClass('overflow-y-auto')
+    expect(screen.getByTestId('git-file-diff-pane')).toHaveClass('overflow-y-auto')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Git diff' }))
+    expect(scrollContainer).toHaveAttribute('data-git-diff-open', 'false')
+    expect(scrollContainer).toHaveClass('overflow-y-auto')
+  })
+
+  it('does not show the Git button for a clean file', async () => {
+    renderFileViewer({})
+
+    await screen.findByText('current body')
+    expect(screen.queryByRole('button', { name: 'Show Git diff' })).not.toBeInTheDocument()
+  })
+
+  it('shows loading and error states for the Git diff panel', () => {
+    const { rerender } = render(<GitDiffPanel files={[]} loading />)
+    expect(screen.getByText('Loading Git diff…')).toBeInTheDocument()
+
+    rerender(<GitDiffPanel files={[]} error="git status failed" />)
+    expect(screen.getByText('git status failed')).toBeInTheDocument()
   })
 })
