@@ -14,7 +14,7 @@ import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { Badge } from '../components/ui/badge'
-import { ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRight, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
+import { ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -1703,7 +1703,6 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
                 aria-label="Toggle file explorer"
                 title={explorerOpen ? 'Hide file explorer' : 'Show file explorer'}
                 onClick={onToggleExplorer}
-                className={cn(explorerOpen && 'text-primary')}
               >
                 {explorerOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
               </Button>
@@ -1713,9 +1712,8 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
                 aria-label="Toggle details"
                 title={outlineOpen ? 'Hide details' : 'Show details'}
                 onClick={() => setOutlineOpen((o) => !o)}
-                className={cn(outlineOpen && 'text-primary')}
               >
-                <PanelRight />
+                {outlineOpen ? <PanelRightClose /> : <PanelRightOpen />}
               </Button>
               <Button
                 variant="ghost"
