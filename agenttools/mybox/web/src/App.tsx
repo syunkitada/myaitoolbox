@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Routes, Route, useLocation, Navigate, NavLink } from 'react-router-dom'
 import { api, Meta, ProjectGitStatus } from './api/client'
 import { getProject, projectUrl, rememberCurrentTab, rememberedFilesUrl } from './utils/routes'
@@ -34,8 +34,13 @@ export default function App() {
   const gitStatusRequestSeq = useRef(0)
   const { pathname } = useLocation()
   const project = getProject()
+  const [webuiFocusedPaneId, setWebuiFocusedPaneId] = useState<string | null>(null)
   const herdr = useHerdrOverview()
   useAgentFavicon(herdr.overview)
+
+  const handleWebuiFocusChange = useCallback((paneId: string | null) => {
+    setWebuiFocusedPaneId(paneId)
+  }, [])
 
   const refreshGitStatus = useCallback(async () => {
     const seq = ++gitStatusRequestSeq.current
@@ -74,6 +79,12 @@ export default function App() {
   // Save the current tab path whenever the user navigates within a project
   useEffect(() => {
     if (project) rememberCurrentTab()
+  }, [project, pathname])
+
+  // WebUI focus is local to the current page. Herdr's own focus remains
+  // untouched when the user navigates to another project or section.
+  useLayoutEffect(() => {
+    setWebuiFocusedPaneId(null)
   }, [project, pathname])
 
   // Show <projectIndex>:<tabIndex> as the title; 0 outside a project
@@ -177,6 +188,8 @@ export default function App() {
                         recentFiles={meta?.recent_files ?? []}
                         herdrOverview={herdr.overview}
                         refreshHerdr={() => herdr.refresh()}
+                        webuiFocusedPaneId={webuiFocusedPaneId}
+                        onWebuiFocusChange={handleWebuiFocusChange}
                       />
                     }
                   />
@@ -190,6 +203,8 @@ export default function App() {
                         recentFiles={meta?.recent_files ?? []}
                         herdrOverview={herdr.overview}
                         refreshHerdr={() => herdr.refresh()}
+                        webuiFocusedPaneId={webuiFocusedPaneId}
+                        onWebuiFocusChange={handleWebuiFocusChange}
                       />
                     }
                   />
@@ -208,6 +223,8 @@ export default function App() {
                         error={herdr.error}
                         loading={herdr.loading}
                         refresh={() => herdr.refresh()}
+                        webuiFocusedPaneId={webuiFocusedPaneId}
+                        onWebuiFocusChange={handleWebuiFocusChange}
                       />
                     }
                   />

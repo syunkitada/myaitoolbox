@@ -26,6 +26,8 @@ interface HerdrPageProps {
   error: string | null
   loading: boolean
   refresh: () => Promise<void>
+  webuiFocusedPaneId?: string | null
+  onWebuiFocusChange?: (paneId: string | null) => void
 }
 
 interface AgentDetailProps {
@@ -928,7 +930,14 @@ function WorkspaceSection({
   )
 }
 
-export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps) {
+export function HerdrPage({
+  overview,
+  error,
+  loading,
+  refresh,
+  webuiFocusedPaneId,
+  onWebuiFocusChange,
+}: HerdrPageProps) {
   const project = getProject()
   const { prompt } = useDialogs()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -1091,6 +1100,10 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
       .catch((e) => onError(e instanceof Error ? e.message : String(e)))
   }, [openPane, onError, refresh])
 
+  useEffect(() => {
+    onWebuiFocusChange?.(openPane)
+  }, [openPane, onWebuiFocusChange])
+
   return (
     <div className="page p-4 md:p-6">
       <div className="page-header mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -1244,6 +1257,14 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
                         <StatusBadge status={a.status} />
                         {ws && <span className="text-xs text-muted-foreground">in {ws.label}</span>}
                         {a.focused && <span className="text-xs text-muted-foreground">· focused</span>}
+                        {webuiFocusedPaneId === a.pane_id && (
+                          <span
+                            data-testid={`webui-focus-${a.pane_id}`}
+                            className="text-xs font-medium text-sky-600 dark:text-sky-400"
+                          >
+                            · mybox focused
+                          </span>
+                        )}
                         <span className="truncate font-mono text-xs text-muted-foreground">
                           {a.pane_id}
                         </span>

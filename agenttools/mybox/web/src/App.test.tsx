@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import App from './App'
@@ -39,9 +39,25 @@ vi.mock('./hooks/use-herdr', () => ({
   }),
 }))
 
-vi.mock('./pages/Dashboard', () => ({ Dashboard: () => null }))
+vi.mock('./pages/Dashboard', () => ({
+  Dashboard: ({
+    webuiFocusedPaneId,
+    onWebuiFocusChange,
+  }: {
+    webuiFocusedPaneId: string | null
+    onWebuiFocusChange: (paneId: string | null) => void
+  }) => (
+    <button data-testid="dashboard-focus" onClick={() => onWebuiFocusChange('w1:p1')}>
+      {webuiFocusedPaneId ?? 'none'}
+    </button>
+  ),
+}))
 vi.mock('./pages/GitPage', () => ({ GitPage: () => null }))
-vi.mock('./pages/HerdrPage', () => ({ HerdrPage: () => null }))
+vi.mock('./pages/HerdrPage', () => ({
+  HerdrPage: ({ webuiFocusedPaneId }: { webuiFocusedPaneId: string | null }) => (
+    <div data-testid="herdr-focus">{webuiFocusedPaneId ?? 'none'}</div>
+  ),
+}))
 vi.mock('./pages/KanbanBoard', () => ({ KanbanBoard: () => null }))
 vi.mock('./pages/KnowledgeGraphPage', () => ({ KnowledgeGraphPage: () => null }))
 vi.mock('./pages/ProjectsPage', () => ({ ProjectsPage: () => null }))
@@ -99,5 +115,19 @@ describe('App project status refresh', () => {
 
     expect(api.getProjectGitStatus).toHaveBeenCalledTimes(2)
     expect(screen.getByTestId('app-sidebar-git-status')).toHaveTextContent('dirty')
+  })
+
+  it('clears WebUI focus when leaving the current page', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('dashboard-focus'))
+    expect(screen.getByTestId('dashboard-focus')).toHaveTextContent('w1:p1')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Herdr' }))
+    expect(screen.getByTestId('herdr-focus')).toHaveTextContent('none')
   })
 })

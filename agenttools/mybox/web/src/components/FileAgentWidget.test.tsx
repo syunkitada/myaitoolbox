@@ -33,6 +33,29 @@ const runningOverview: HerdrOverview = {
 }
 
 describe('FileAgentWidget commands', () => {
+  it('reports WebUI focus separately from herdr focus', async () => {
+    const onWebuiFocusChange = vi.fn()
+    render(
+      <FileAgentWidget
+        path="_tasks/20260919_foo/task.md"
+        overview={runningOverview}
+        onRefresh={() => undefined}
+        webuiFocusedPaneId="w1:p1"
+        onWebuiFocusChange={onWebuiFocusChange}
+      />,
+    )
+
+    expect(await screen.findByTestId('webui-focus-indicator')).toHaveTextContent('mybox focused')
+    await waitFor(() => {
+      expect(onWebuiFocusChange).toHaveBeenCalledWith('w1:p1')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse agent for 20260919_foo' }))
+    await waitFor(() => {
+      expect(onWebuiFocusChange).toHaveBeenCalledWith(null)
+    })
+  })
+
   it('focuses the herdr agent when its panel is open', async () => {
     render(
       <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,

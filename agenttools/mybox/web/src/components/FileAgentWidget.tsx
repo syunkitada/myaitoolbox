@@ -29,9 +29,17 @@ export interface FileAgentWidgetProps {
   path: string
   overview: HerdrOverview | null
   onRefresh: () => void
+  webuiFocusedPaneId?: string | null
+  onWebuiFocusChange?: (paneId: string | null) => void
 }
 
-export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetProps) {
+export function FileAgentWidget({
+  path,
+  overview,
+  onRefresh,
+  webuiFocusedPaneId,
+  onWebuiFocusChange,
+}: FileAgentWidgetProps) {
   const dir = taskDirFromPath(path)
   const name = taskAgentName(path)
 
@@ -53,6 +61,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
   const agentRef = useRef<HerdrAgent | undefined>(undefined)
   const refreshRef = useRef(onRefresh)
   const prevPaneIdRef = useRef<string | null>(null)
+  const reportedWebuiPaneIdRef = useRef<string | null>(null)
   // Terminal column width of the agent's pane, so the output wraps at the same
   // columns as the real herdr pane instead of the web pane's width.
   const [cols, setCols] = useState<number | undefined>(undefined)
@@ -133,6 +142,13 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
       .then(() => refreshRef.current())
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [agent?.pane_id, open, overview?.available])
+
+  useEffect(() => {
+    const paneId = open && overview?.available ? agent?.pane_id ?? null : null
+    if (reportedWebuiPaneIdRef.current === paneId) return
+    reportedWebuiPaneIdRef.current = paneId
+    onWebuiFocusChange?.(paneId)
+  }, [agent?.pane_id, open, overview?.available, onWebuiFocusChange])
 
   useEffect(() => {
     window.localStorage.setItem(KIND_STORAGE_KEY, kind)
@@ -229,6 +245,14 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
         !starting && (
           <span className="text-[10px] tracking-wider text-muted-foreground uppercase">off</span>
         )
+      )}
+      {agent?.pane_id === webuiFocusedPaneId && (
+        <span
+          data-testid="webui-focus-indicator"
+          className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300"
+        >
+          mybox focused
+        </span>
       )}
       {starting && <Loader2 className="size-3 shrink-0 animate-spin" />}
     </button>

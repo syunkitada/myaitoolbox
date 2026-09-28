@@ -115,6 +115,8 @@ interface BrowserPageProps {
   onClose?: () => void
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
+  webuiFocusedPaneId?: string | null
+  onWebuiFocusChange?: (paneId: string | null) => void
   revealPath?: string
   onRevealPathHandled?: (path: string) => void
 }
@@ -1438,11 +1440,35 @@ interface PaneProps {
   onGitDiffOpenChange?: (open: boolean) => void
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
+  webuiFocusedPaneId?: string | null
+  onWebuiFocusChange?: (paneId: string | null) => void
   onOpenGit?: (path: string) => void
   searchHit?: FileSearchHit | null
 }
 
-function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatusChange, onOpen, onDeleted, explorerOpen, onToggleExplorer, onRefresh, refreshKey, gitStatus, onGitDiffOpenChange, herdrOverview, refreshHerdr, onOpenGit, searchHit }: PaneProps) {
+function Pane({
+  path,
+  entry,
+  list,
+  favorites,
+  refreshMeta,
+  onChanged,
+  onGitStatusChange,
+  onOpen,
+  onDeleted,
+  explorerOpen,
+  onToggleExplorer,
+  onRefresh,
+  refreshKey,
+  gitStatus,
+  onGitDiffOpenChange,
+  herdrOverview,
+  refreshHerdr,
+  webuiFocusedPaneId,
+  onWebuiFocusChange,
+  onOpenGit,
+  searchHit,
+}: PaneProps) {
   const { prompt, confirm, confirm3 } = useDialogs()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
@@ -1940,6 +1966,8 @@ function Pane({ path, entry, list, favorites, refreshMeta, onChanged, onGitStatu
           path={path}
           overview={herdrOverview}
           onRefresh={refreshHerdr ?? (() => undefined)}
+          webuiFocusedPaneId={webuiFocusedPaneId}
+          onWebuiFocusChange={onWebuiFocusChange}
         />
       )}
       <div className={cn('knowledge-body flex gap-4 max-md:flex-col', (editing || showGitDiff) && 'min-h-0 flex-1')}>
@@ -2390,6 +2418,8 @@ export function BrowserPage({
   onClose,
   herdrOverview,
   refreshHerdr,
+  webuiFocusedPaneId,
+  onWebuiFocusChange,
   revealPath,
   onRevealPathHandled,
 }: BrowserPageProps) {
@@ -2816,6 +2846,8 @@ export function BrowserPage({
                   onGitDiffOpenChange={setGitDiffOpen}
                   herdrOverview={herdrOverview}
                   refreshHerdr={refreshHerdr}
+                  webuiFocusedPaneId={webuiFocusedPaneId}
+                  onWebuiFocusChange={onWebuiFocusChange}
                   onOpenGit={setOpenGitDir}
                   searchHit={searchHit}
                 />

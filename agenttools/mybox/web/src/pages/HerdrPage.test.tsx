@@ -70,15 +70,25 @@ describe('HerdrPage agent commands', () => {
   })
 
   it('sends /new from the expanded agent panel and omits /init', async () => {
+    const onWebuiFocusChange = vi.fn()
     render(
       <MemoryRouter initialEntries={['/projects/demo/herdr']}>
         <DialogsProvider>
-          <HerdrPage overview={overview} error={null} loading={false} refresh={() => Promise.resolve()} />
+          <HerdrPage
+            overview={overview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId="w1:p1"
+            onWebuiFocusChange={onWebuiFocusChange}
+          />
         </DialogsProvider>
       </MemoryRouter>,
     )
 
+    expect(screen.getByTestId('webui-focus-w1:p1')).toHaveTextContent('mybox focused')
     fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
+    expect(onWebuiFocusChange).toHaveBeenCalledWith(null)
     await vi.waitFor(() => {
       expect(api.focusHerdrAgent).toHaveBeenCalledWith('w1:p1')
     })
@@ -97,6 +107,29 @@ describe('HerdrPage agent commands', () => {
     fireEvent.click(await screen.findByRole('button', { name: '/status' }))
     await vi.waitFor(() => {
       expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/status')
+    })
+  })
+
+  it('reports WebUI focus when the agent detail panel opens', async () => {
+    const onWebuiFocusChange = vi.fn()
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={overview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId={null}
+            onWebuiFocusChange={onWebuiFocusChange}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
+    await vi.waitFor(() => {
+      expect(onWebuiFocusChange).toHaveBeenCalledWith('w1:p1')
     })
   })
 })

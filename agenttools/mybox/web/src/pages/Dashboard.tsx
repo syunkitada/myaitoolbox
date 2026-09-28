@@ -13,9 +13,19 @@ interface DashboardProps {
   recentFiles: string[]
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
+  webuiFocusedPaneId?: string | null
+  onWebuiFocusChange?: (paneId: string | null) => void
 }
 
-export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, refreshHerdr }: DashboardProps) {
+export function Dashboard({
+  refreshMeta,
+  favorites,
+  recentFiles,
+  herdrOverview,
+  refreshHerdr,
+  webuiFocusedPaneId,
+  onWebuiFocusChange,
+}: DashboardProps) {
   const params = useParams()
   const selected = (params['*'] ?? '').trim()
   const navigate = useNavigate()
@@ -96,6 +106,8 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
         onRevealPathHandled={onRevealPathHandled}
         herdrOverview={herdrOverview}
         refreshHerdr={refreshHerdr}
+        webuiFocusedPaneId={webuiFocusedPaneId}
+        onWebuiFocusChange={onWebuiFocusChange}
         defaultSelect={(entries) =>
           entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
         }
