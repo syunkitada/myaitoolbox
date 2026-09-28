@@ -6,6 +6,8 @@ import type { HerdrOverview } from '../api/client'
 
 vi.mock('../api/client', () => ({
   api: {
+    closeHerdrPane: vi.fn().mockResolvedValue({ ok: true }),
+    closeHerdrTab: vi.fn().mockResolvedValue({ ok: true }),
     readHerdrAgent: vi.fn().mockResolvedValue({ output: 'hello' }),
     focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
@@ -28,11 +30,52 @@ const runningOverview: HerdrOverview = {
       pane_id: 'w1:p1',
     },
   ],
-  tabs: [],
-  panes: [],
+  tabs: [{ tab_id: 'w1:t1', workspace_id: 'w1', label: '1', pane_count: 1 }],
+  panes: [{ pane_id: 'w1:p1', tab_id: 'w1:t1', workspace_id: 'w1', agent_status: 'idle' }],
 }
 
 describe('FileAgentWidget commands', () => {
+  it('stops the agent, removes its pane, and removes the empty tab', async () => {
+    vi.clearAllMocks()
+    const onRefresh = vi.fn()
+    render(
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={onRefresh} />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop and remove panel for f20260919_foo' }))
+    await waitFor(() => {
+      expect(api.sendKeysHerdrAgent).toHaveBeenCalledWith('w1:p1', ['C-c', 'C-c'])
+      expect(api.closeHerdrPane).toHaveBeenCalledWith('w1:p1')
+      expect(api.closeHerdrTab).toHaveBeenCalledWith('w1:t1')
+      expect(onRefresh).toHaveBeenCalled()
+    })
+  })
+
+  it('keeps the tab when another pane remains in it', async () => {
+    vi.clearAllMocks()
+    const overviewWithSiblingPane: HerdrOverview = {
+      ...runningOverview,
+      tabs: [{ ...runningOverview.tabs[0], pane_count: 2 }],
+      panes: [
+        ...runningOverview.panes,
+        { pane_id: 'w1:p2', tab_id: 'w1:t1', workspace_id: 'w1', agent_status: 'idle' },
+      ],
+    }
+    render(
+      <FileAgentWidget
+        path="_tasks/20260919_foo/task.md"
+        overview={overviewWithSiblingPane}
+        onRefresh={() => undefined}
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop and remove panel for f20260919_foo' }))
+    await waitFor(() => {
+      expect(api.closeHerdrPane).toHaveBeenCalledWith('w1:p1')
+    })
+    expect(api.closeHerdrTab).not.toHaveBeenCalled()
+  })
+
   it('reports WebUI focus separately from herdr focus', async () => {
     const onWebuiFocusChange = vi.fn()
     render(

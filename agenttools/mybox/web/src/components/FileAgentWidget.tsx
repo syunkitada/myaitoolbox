@@ -90,14 +90,23 @@ export function FileAgentWidget({
 
   const stop = useCallback(() => {
     if (!agent) return
+    const pane = (overview?.panes ?? []).find((p) => p.pane_id === agent.pane_id)
+    const tab = pane ? (overview?.tabs ?? []).find((t) => t.tab_id === pane.tab_id) : undefined
+    const isOnlyPaneInTab = pane
+      ? (overview?.panes ?? []).filter((p) => p.tab_id === pane.tab_id).length === 1
+      : false
     setSending(true)
     setError(null)
     void api
       .sendKeysHerdrAgent(agent.pane_id, ['C-c', 'C-c'])
-      .then(() => onRefresh())
+      .then(() => api.closeHerdrPane(agent.pane_id))
+      .then(async () => {
+        if (isOnlyPaneInTab && tab) await api.closeHerdrTab(tab.tab_id)
+        await onRefresh()
+      })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setSending(false))
-  }, [agent, onRefresh])
+  }, [agent, onRefresh, overview])
 
   useEffect(() => {
     const paneId = agent?.pane_id ?? null
@@ -369,8 +378,8 @@ export function FileAgentWidget({
               className="ml-auto cursor-pointer text-[10px] text-muted-foreground"
               onClick={stop}
               disabled={sending}
-              aria-label={`Stop agent ${agentName.name}`}
-              title={`Stop ${agentName.name}`}
+              aria-label={`Stop and remove panel for ${agentName.name}`}
+              title={`Stop and remove panel for ${agentName.name}`}
             >
               <Square className="size-3" />
               Stop
