@@ -37,7 +37,7 @@ CLI と Web UI の両方から操作でき、タスクは Markdown ファイル�
   - CLI: 一覧・表示・作成（ファイル / ディレクトリ）・編集・移動・コピー・リネーム・削除
   - Web UI: Files タブ（ツリー・ファイルタブ・Monaco エディタ・Markdown プレビュー・Mermaid・アウトライン・DnD・コンテキストメニュー・ファイルアップロード（1回あたり合計1GiBまで）・実行可能ファイルの実行・git 状態表示・変更ファイルの本文とGit差分の左右比較・お気に入り / 最近開いたファイル）と Graph タブ（Markdown ファイルのリンク構造図）
 - **Git** — ブランチ・ステージ / アンステージ・破棄・コミット（staged-only / amend 対応）・checkout・pull / push・ログ・diff、remoteとの差分判定・fetch をディレクトリスコープ付きで操作。変更ファイルはdiffを見ながら編集・保存できる
-- **Herdr エージェント連携** — `herdr` CLI と連携し、タスクディレクトリに AI エージェント（opencode 等）を割り当て。Web UI の agent パネルから `/init`・`/compact`・`/help` と、定型プロンプト「進めて」「次は何をするとよいですか？」をボタンで送信可能
+- **Herdr エージェント連携** — `herdr` CLI と連携し、タスクディレクトリに AI エージェント（opencode 等）を割り当て。Web UI の agent パネルから `/new`・`/compact`・`/help`・`/resume`・`/plan` と、定型プロンプト「進めて」「次は何をするとよいですか？」をボタンで送信可能
   - `task create --agent-kind opencode --prompt ...` でタスク作成と同時にエージェントを起動
   - Herdr タブでワークスペース / タブ / ペイン / エージェントを操作（プロンプト送信・出力参照・キー送信・分割・リサイズ）
 - **ターミナル** — プロジェクトディレクトリを cwd とする PTY シェルを WebSocket 経由で起動（リロード後も継続する永続セッション対応）

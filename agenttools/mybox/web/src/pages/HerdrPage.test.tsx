@@ -68,7 +68,7 @@ describe('HerdrPage agent commands', () => {
     vi.clearAllMocks()
   })
 
-  it('sends a quick prompt from the expanded agent panel and omits /new', async () => {
+  it('sends /new from the expanded agent panel and omits /init', async () => {
     render(
       <MemoryRouter initialEntries={['/projects/demo/herdr']}>
         <DialogsProvider>
@@ -78,11 +78,14 @@ describe('HerdrPage agent commands', () => {
     )
 
     fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
-    expect(screen.queryByRole('button', { name: '/new' })).not.toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: '進めて' }))
+    expect(screen.queryByRole('button', { name: '/init' })).not.toBeInTheDocument()
+    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '進めて', '次は何をするとよいですか？']) {
+      expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()
+    }
+    fireEvent.click(await screen.findByRole('button', { name: '/new' }))
 
     await vi.waitFor(() => {
-      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '進めて')
+      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/new')
     })
   })
 })

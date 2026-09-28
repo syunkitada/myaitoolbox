@@ -46,8 +46,8 @@ describe('FileAgentWidget commands', () => {
     render(
       <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
     )
-    expect(screen.queryByRole('button', { name: '/new' })).not.toBeInTheDocument()
-    for (const cmd of ['/init', '/compact', '/help', '進めて', '次は何をするとよいですか？']) {
+    expect(screen.queryByRole('button', { name: '/init' })).not.toBeInTheDocument()
+    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '進めて', '次は何をするとよいですか？']) {
       expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()
     }
   })
