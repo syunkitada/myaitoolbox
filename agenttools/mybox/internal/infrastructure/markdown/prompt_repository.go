@@ -70,40 +70,5 @@ func builtinPrompt(name string) (string, error) {
 // from vars. A literal "$" is escaped as "$$". Unresolved variables are left as
 // they appear in the template.
 func expandPromptVars(s string, vars map[string]string) string {
-	var b strings.Builder
-	for i := 0; i < len(s); {
-		c := s[i]
-		if c != '$' {
-			b.WriteByte(c)
-			i++
-			continue
-		}
-		if i+1 < len(s) && s[i+1] == '$' {
-			b.WriteByte('$')
-			i += 2
-			continue
-		}
-		j := i + 1
-		start := j
-		for j < len(s) && (isVarChar(s[j])) {
-			j++
-		}
-		if j == start {
-			b.WriteByte('$')
-			i++
-			continue
-		}
-		key := s[start:j]
-		if val, ok := vars[key]; ok {
-			b.WriteString(val)
-		} else {
-			b.WriteString("$" + key)
-		}
-		i = j
-	}
-	return b.String()
-}
-
-func isVarChar(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+	return domain.ExpandPromptVariables(s, vars)
 }

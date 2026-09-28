@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { LAST_SELECTED_FILE_KEY, encodePath, projectUrl, getProject, rememberedFilesUrl } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
-import { api, HerdrOverview, Task } from '../api/client'
+import { api, HerdrOverview, Task, TaskTrigger } from '../api/client'
 import { NewTaskDialog } from '../components/NewTaskDialog'
 import { useDialogs } from '../components/AppDialogs'
 import { subscribeNavActions } from '../lib/nav-actions'
@@ -20,6 +20,7 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
   const selected = (params['*'] ?? '').trim()
   const navigate = useNavigate()
   const [taskDialog, setTaskDialog] = useState(false)
+  const [revealPath, setRevealPath] = useState<string | undefined>()
   const { prompt, alert } = useDialogs()
 
   useEffect(() => {
@@ -63,6 +64,14 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
   const onTaskCreated = (task: Task) =>
 		navigate(projectUrl(`/dashboard/files/_tasks/${encodePath(task.id)}/task.md`))
 
+  const onTriggerCreated = useCallback((trigger: TaskTrigger) => {
+    setRevealPath(trigger.task_path)
+  }, [])
+
+  const onRevealPathHandled = useCallback((path: string) => {
+    setRevealPath((current) => (current === path ? undefined : current))
+  }, [])
+
   useEffect(
     () =>
       subscribeNavActions((action) => {
@@ -83,6 +92,8 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
         favorites={favorites}
         recentFiles={recentFiles}
         refreshMeta={refreshMeta}
+        revealPath={revealPath}
+        onRevealPathHandled={onRevealPathHandled}
         herdrOverview={herdrOverview}
         refreshHerdr={refreshHerdr}
         defaultSelect={(entries) =>
@@ -93,6 +104,7 @@ export function Dashboard({ refreshMeta, favorites, recentFiles, herdrOverview, 
         open={taskDialog}
         onOpenChange={setTaskDialog}
         onCreated={onTaskCreated}
+        onTriggerCreated={onTriggerCreated}
         onError={(message) => void alert(message)}
       />
     </>

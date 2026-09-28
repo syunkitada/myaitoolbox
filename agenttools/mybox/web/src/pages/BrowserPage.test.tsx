@@ -131,6 +131,109 @@ describe('Explorer file upload', () => {
   })
 })
 
+describe('Explorer task trigger actions', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('runs a trigger directory from the context menu and shows the run result', async () => {
+    const run = vi.spyOn(api, 'runTaskTrigger').mockResolvedValue({
+      id: 'run-1',
+      project: 'demo',
+      trigger_id: 'manual-report',
+      event_id: 'manual:event',
+      status: 'dispatched',
+      task_id: 'task-1',
+      agent_name: 'agent-1',
+      started_at: '2026-09-27T09:00:00Z',
+      finished_at: '2026-09-27T09:00:01Z',
+    })
+    const onChanged = vi.fn().mockResolvedValue(undefined)
+    const onSelect = vi.fn()
+
+    render(
+      <DialogsProvider>
+        <Explorer
+          entries={[
+            { kind: 'dir', name: '_task_triggers', path: '_task_triggers', markdown: false },
+            { kind: 'dir', name: 'manual-report', path: '_task_triggers/manual-report', markdown: false },
+            { kind: 'dir', name: 'incoming', path: '_task_triggers/manual-report/incoming', markdown: false },
+          ]}
+          selected=""
+          onSelect={onSelect}
+          title="Files"
+          favorites={[]}
+          recentFiles={[]}
+          onChanged={onChanged}
+          showHidden={true}
+          onToggleHidden={vi.fn()}
+        />
+      </DialogsProvider>,
+    )
+
+    fireEvent.click(screen.getByText('_task_triggers'))
+    fireEvent.click(screen.getByText('manual-report'))
+    fireEvent.contextMenu(screen.getByText('manual-report').closest('li')!)
+    expect(screen.getByTestId('task-trigger-run')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('task-trigger-run'))
+
+    await waitFor(() => expect(run).toHaveBeenCalledWith('manual-report'))
+    expect(await screen.findByRole('dialog', { name: 'Run trigger _task_triggers/manual-report' })).toHaveTextContent('task-1')
+    expect(onChanged).toHaveBeenCalledWith('_tasks/task-1/task.md')
+    expect(onSelect).toHaveBeenCalledWith('_tasks/task-1/task.md')
+
+    fireEvent.contextMenu(screen.getByText('incoming').closest('li')!)
+    expect(screen.queryByTestId('task-trigger-run')).not.toBeInTheDocument()
+  })
+})
+
+describe('BrowserPage file reveal', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('refreshes ancestor directories and reveals a requested file', async () => {
+    const path = '_task_triggers/daily-report/task.md'
+    const list = vi.spyOn(api, 'listFiles').mockImplementation(async (opts) => {
+      switch (opts?.path ?? '') {
+        case '':
+          return [{ path: '_task_triggers', name: '_task_triggers', kind: 'dir' }]
+        case '_task_triggers':
+          return [{ path: '_task_triggers/daily-report', name: 'daily-report', kind: 'dir' }]
+        case '_task_triggers/daily-report':
+          return [{ path, name: 'task.md', kind: 'file' }]
+        default:
+          return []
+      }
+    })
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    const onSelect = vi.fn()
+    const onRevealPathHandled = vi.fn()
+
+    render(
+      <DialogsProvider>
+        <BrowserPage
+          title="Files"
+          selected=""
+          onSelect={onSelect}
+          onBack={vi.fn()}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+          revealPath={path}
+          onRevealPathHandled={onRevealPathHandled}
+        />
+      </DialogsProvider>,
+    )
+
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith(path))
+    expect(list).toHaveBeenCalledWith({ path: '', showHidden: true })
+    expect(list).toHaveBeenCalledWith({ path: '_task_triggers', showHidden: true })
+    expect(list).toHaveBeenCalledWith({ path: '_task_triggers/daily-report', showHidden: true })
+    expect(onRevealPathHandled).toHaveBeenCalledWith(path)
+  })
+})
+
 describe('Explorer Git status', () => {
   it('shows a Git badge for a collapsed directory with changed descendants', () => {
     render(

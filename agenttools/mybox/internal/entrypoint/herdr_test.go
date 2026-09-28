@@ -174,10 +174,11 @@ func TestHerdrStartTaskAgentInlinePrompt(t *testing.T) {
 	})
 	require.Equal(t, http.StatusOK, rec.Code)
 	res := decode[herdrStartTaskAgentResponse](t, rec)
-	assert.Equal(t, "DO IT NOW $task_file_path", res.Prompt)
+	expectedPrompt := "DO IT NOW _tasks/" + task.ID + "/task.md"
+	assert.Equal(t, expectedPrompt, res.Prompt)
 	require.NotNil(t, gotPrompt)
 	assert.Equal(t, res.Agent.Name, gotPrompt[2])
-	assert.Equal(t, "DO IT NOW $task_file_path", gotPrompt[3])
+	assert.Equal(t, expectedPrompt, gotPrompt[3])
 }
 
 func TestHerdrStartTaskAgentValidation(t *testing.T) {

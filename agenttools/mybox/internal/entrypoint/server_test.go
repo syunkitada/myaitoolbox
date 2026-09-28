@@ -18,6 +18,7 @@ import (
 	"github.com/syunkitada/myaitoolbox/mybox/internal/application"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/entrypoint/api"
+	automationinfra "github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/automation"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/markdown"
 )
 
@@ -36,13 +37,30 @@ func newTestServer(t *testing.T) (*Server, *App) {
 			"test",
 			root,
 		),
+		TaskTriggers: application.NewTaskTriggerUseCase(
+			automationinfra.NewDefinitionRepository(root),
+			markdown.NewTemplateRenderer(root, root),
+		),
 		Files: application.NewFileUseCase(markdown.NewFileRepository(root)),
 		State: application.NewStateUseCase(&fakeStateStore{}),
 	}
+	app.Automation = application.NewAutomationUseCase(
+		"test",
+		root,
+		automationinfra.NewRunStore(filepath.Join(root, "state")),
+		app.Tasks,
+		&testAgentDispatcher{},
+	)
 	s := NewServer(app.Config, "test", "")
 	s.apps["test"] = app
 	s.projects = application.NewProjectUseCase(&fakeConfigStore{})
 	return s, app
+}
+
+type testAgentDispatcher struct{}
+
+func (*testAgentDispatcher) Start(_ context.Context, _ *domain.Task, _, _ string) (string, error) {
+	return "test-agent", nil
 }
 
 func newTestServerWithBase(t *testing.T, basePath string) (*Server, *App) {
@@ -131,7 +149,128 @@ func TestMetaAndLifecycle(t *testing.T) {
 	require.NotNil(t, task.Project)
 	assert.Equal(t, "test", *task.Project)
 
+	customContent := "---\ntitle: API draft\n---\n\n## Written in the dialog\n"
+	rec = do(t, s, http.MethodPost, "/api/tasks", map[string]any{
+		"name":    "from api with content",
+		"content": customContent,
+	})
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	customTask := decode[api.Task](t, rec)
+	data, err := os.ReadFile(filepath.Join(app.Project.Path, "_tasks", customTask.Id, "task.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "## Written in the dialog")
+
+	rec = do(t, s, http.MethodGet, "/api/task-template?name=Template%20task", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	templateResponse := decode[map[string]string](t, rec)
+	assert.Contains(t, templateResponse["content"], "title: Template task")
+	assert.Contains(t, templateResponse["content"], "## TODO")
+
 	rec = do(t, s, http.MethodPost, "/api/tasks", map[string]any{"name": ""})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCreateTaskTrigger(t *testing.T) {
+	s, app := newTestServer(t)
+
+	rec := do(t, s, http.MethodPost, "/api/task-triggers", map[string]any{
+		"id": "daily_report",
+		"task": map[string]any{
+			"name":       "Daily report",
+			"agent_kind": "opencode",
+			"prompt":     "do-the-task",
+			"content":    "---\ntitle: Daily report\n---\n\n## Custom trigger task\n",
+		},
+		"trigger": map[string]any{
+			"type":     "cron",
+			"cron":     "0 9 * * 1-5",
+			"timezone": "Asia/Tokyo",
+		},
+	})
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	response := decode[map[string]string](t, rec)
+	assert.Equal(t, "daily_report", response["id"])
+	assert.Equal(t, "cron", response["type"])
+	assert.Equal(t, "_task_triggers/daily_report/task.md", response["task_path"])
+
+	triggerDir := filepath.Join(app.Project.Path, "_task_triggers", "daily_report")
+	triggerYAML, err := os.ReadFile(filepath.Join(triggerDir, "trigger.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(triggerYAML), "cron: 0 9 * * 1-5")
+	task, err := os.ReadFile(filepath.Join(triggerDir, "task.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(task), "## Custom trigger task")
+
+	rec = do(t, s, http.MethodPost, "/api/task-triggers", map[string]any{
+		"id":      "daily_report",
+		"task":    map[string]any{"name": "Other", "agent_kind": "opencode"},
+		"trigger": map[string]any{"type": "cron", "cron": "0 10 * * *", "timezone": "UTC"},
+	})
+	assert.Equal(t, http.StatusConflict, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/task-triggers", map[string]any{
+		"id":      "watch_files",
+		"task":    map[string]any{"name": "Process files", "agent_kind": "codex"},
+		"trigger": map[string]any{"type": "file_created", "path": "incoming", "pattern": "*.md"},
+	})
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	_, err = os.Stat(filepath.Join(app.Project.Path, "_task_triggers", "watch_files", "incoming"))
+	require.NoError(t, err)
+
+	rec = do(t, s, http.MethodPost, "/api/task-triggers", map[string]any{
+		"id":      "unsafe",
+		"task":    map[string]any{"name": "Unsafe", "agent_kind": "opencode"},
+		"trigger": map[string]any{"type": "file_created", "path": "../outside"},
+	})
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestRunTaskTrigger(t *testing.T) {
+	s, app := newTestServer(t)
+
+	rec := do(t, s, http.MethodPost, "/api/task-triggers", map[string]any{
+		"id": "manual_report",
+		"task": map[string]any{
+			"name":       "Manual report",
+			"agent_kind": "opencode",
+		},
+		"trigger": map[string]any{"type": "manual"},
+	})
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	triggerYAML, err := os.ReadFile(filepath.Join(app.Project.Path, "_task_triggers", "manual_report", "trigger.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(triggerYAML), "'$task_file_path' を実施してください。")
+
+	rec = do(t, s, http.MethodPost, "/api/task-triggers/manual_report/run", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	result := decode[map[string]any](t, rec)
+	assert.Equal(t, "manual_report", result["trigger_id"])
+	assert.Equal(t, "dispatched", result["status"])
+	assert.NotEmpty(t, result["task_id"])
+
+	taskDir := filepath.Join(app.Project.Path, "_tasks", result["task_id"].(string))
+	assert.DirExists(t, taskDir)
+
+	rec = do(t, s, http.MethodPost, "/api/task-triggers/manual_report/run", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	second := decode[map[string]any](t, rec)
+	assert.NotEqual(t, result["task_id"], second["task_id"])
+
+	rec = do(t, s, http.MethodPost, "/api/task-triggers/missing/run", nil)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+
+	disabledDir := filepath.Join(app.Project.Path, "_task_triggers", "disabled_report")
+	require.NoError(t, os.MkdirAll(disabledDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(disabledDir, "trigger.yaml"), []byte(`
+version: 1
+enabled: false
+trigger:
+  type: manual
+task:
+  agent_kind: opencode
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(disabledDir, "task.md"), []byte("---\ntitle: Disabled\n---\n"), 0o644))
+	rec = do(t, s, http.MethodPost, "/api/task-triggers/disabled_report/run", nil)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
@@ -524,6 +663,12 @@ func TestBasePath(t *testing.T) {
 
 	rec := do(t, s, http.MethodGet, "/mybox/api/meta", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
+	rec = do(t, s, http.MethodPost, "/mybox/api/task-triggers", map[string]any{
+		"id":      "base-path-trigger",
+		"task":    map[string]any{"name": "Base path trigger", "agent_kind": "opencode"},
+		"trigger": map[string]any{"type": "cron", "cron": "0 9 * * *", "timezone": "UTC"},
+	})
+	assert.Equal(t, http.StatusCreated, rec.Code)
 
 	root := s.apps["test"].Project.Path
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "assets"), 0o755))

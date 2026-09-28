@@ -55,6 +55,48 @@ func TestTaskCreateUpdateArchive(t *testing.T) {
 	assert.True(t, all[0].Archived)
 }
 
+func TestTaskCreateFromContent(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+	content := "---\ntitle: Daily report\nstatus: done\npriority: high\ncustom: preserve\n---\n\nPrepare the report."
+
+	task, err := uc.CreateFromContent(ctx, "20260927_daily-report", content, "opencode", []string{"scheduled"})
+	require.NoError(t, err)
+	assert.Equal(t, "20260927_daily-report", task.ID)
+	assert.Equal(t, "Daily report", task.Title)
+	assert.Equal(t, domain.TaskStatusTodo, task.Status)
+	assert.Equal(t, domain.TaskPriorityHigh, task.Priority)
+	assert.Equal(t, "opencode", task.AgentKind)
+	assert.Equal(t, []string{"scheduled"}, task.Tags)
+
+	data, err := os.ReadFile(filepath.Join(uc.ProjectPath, "_tasks", task.ID, "task.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "custom: preserve")
+	assert.Contains(t, string(data), "Prepare the report.")
+}
+
+func TestTaskCreateUsesProvidedContent(t *testing.T) {
+	uc := newTaskUC(t)
+	content := "---\ntitle: Draft\n---\n\n## Custom body\n\n- supplied by the user\n"
+
+	task, err := uc.Create(context.Background(), TaskInput{Name: "Custom task", Content: &content})
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(uc.ProjectPath, "_tasks", task.ID, "task.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "## Custom body")
+	assert.Contains(t, string(data), "- supplied by the user")
+}
+
+func TestRenderTaskTemplate(t *testing.T) {
+	uc := newTaskUC(t)
+
+	content, err := uc.RenderTaskTemplate("Template task")
+	require.NoError(t, err)
+	assert.Contains(t, content, "title: Template task")
+	assert.Contains(t, content, "## TODO")
+}
+
 func TestTaskListFilter(t *testing.T) {
 	uc := newTaskUC(t)
 	ctx := context.Background()
@@ -192,6 +234,11 @@ func TestTaskRenderPrompt(t *testing.T) {
 	rendered, err = uc.RenderPrompt(ctx, "DO IT NOW / do not $expand", task)
 	require.NoError(t, err)
 	assert.Equal(t, "DO IT NOW / do not $expand", rendered)
+
+	// Inline prompts also expand task variables.
+	rendered, err = uc.RenderPrompt(ctx, "'$task_file_path' を実施してください。", task)
+	require.NoError(t, err)
+	assert.Equal(t, "'_tasks/"+task.ID+"/task.md' を実施してください。", rendered)
 
 	// Forced template that is missing surfaces the error.
 	_, err = uc.RenderPrompt(ctx, "@missing-template", task)

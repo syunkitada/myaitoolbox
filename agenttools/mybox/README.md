@@ -30,6 +30,9 @@ CLI と Web UI の両方から操作でき、タスクは Markdown ファイル�
 - **タスク管理** — `_tasks/` 配下の Markdown ファイル（1 タスク＝1 ディレクトリ）で管理。ステータス（todo / doing / blocked / review / done）・優先度（low / medium / high / urgent）・担当者・期限・タグ・エージェント種別（`agent_kind`）をフロントマターで保持
   - CLI: 作成・一覧（フィルタ / JSON 出力）・表示・編集・フィールド更新・アーカイブ
   - Web UI: GTD ボード（Todo / Doing / Blocked / Review / Done）とドラッグ＆ドロップ
+- **自動タスク実行** — `_task_triggers/<id>/trigger.yaml` と `task.md` で定義したcron・ファイル作成・manualトリガーから、`_tasks/` に実行タスクを生成
+  - CLI: `automation validate`、`list`、`run-once`、`daemon`、`runs`
+  - Web UI: 新規タスクモーダルからtriggerを作成し、triggerディレクトリの右クリックから即時実行
 - **ファイル管理** — プロジェクトルート起点で任意のファイル / ディレクトリを操作
   - CLI: 一覧・表示・作成（ファイル / ディレクトリ）・編集・移動・コピー・リネーム・削除
   - Web UI: Files タブ（ツリー・ファイルタブ・Monaco エディタ・Markdown プレビュー・Mermaid・アウトライン・DnD・コンテキストメニュー・ファイルアップロード（1回あたり合計1GiBまで）・実行可能ファイルの実行・git 状態表示・変更ファイルの本文とGit差分の左右比較・お気に入り / 最近開いたファイル）と Graph タブ（Markdown ファイルのリンク構造図）
@@ -83,6 +86,58 @@ mybox task edit --project proj <task-id>      # $EDITOR で編集
 mybox task archive --project proj <task-id>
 ```
 
+自動タスク実行を設定する場合は、プロジェクト直下にトリガー定義を作成します。
+
+```text
+_task_triggers/
+└── daily_report/
+    ├── trigger.yaml
+    └── task.md
+```
+
+`trigger.yaml` の例:
+
+```yaml
+version: 1
+enabled: true
+trigger:
+  type: cron
+  cron: "0 9 * * 1-5"
+  timezone: Asia/Tokyo
+task:
+  agent_kind: opencode
+  prompt: do-the-task
+```
+
+手動実行だけのtriggerは、`trigger` を次のように定義します。cronやファイル監視では自動発火せず、CLIまたはWeb UIから実行したときだけタスクを生成します。
+
+```yaml
+trigger:
+  type: manual
+```
+
+作成時にPromptを指定しない場合は、次のデフォルトプロンプトが`trigger.yaml`に保存されます。`$task_file_path`は実行時に生成されたタスクのパスへ展開されます。
+
+```yaml
+task:
+  prompt: "'$task_file_path' を実施してください。"
+```
+
+確認と手動実行は次のコマンドで行います。
+
+```bash
+mybox automation validate
+mybox automation list
+mybox automation run-once
+mybox automation run-once --id manual_report
+mybox automation daemon
+mybox automation runs
+```
+
+ファイル作成トリガーでは、`trigger.yaml` の `type` を `file_created`、`path` を `incoming` に設定し、`_task_triggers/<id>/incoming/` に対象ファイルを配置します。生成されたタスクは既存の `_tasks/` に保存されます。
+
+Web UIでは `_task_triggers/<id>` ディレクトリを右クリックして `Run trigger` を選択すると、trigger typeに関係なく1回実行できます。
+
 AI エージェントを起動してタスクを開始する場合:
 
 ```bash
@@ -121,8 +176,9 @@ mybox serve --project proj
 #### Web UI の構成
 
 - **グローバル（サイドバー）** — Workspaces（プロジェクト管理）/ Board（全プロジェクト横断のボード）/ Stats。各プロジェクトに git 状態・herdr ワークスペース状態が表示されます
-- **Files（プロジェクトタブ）** — エクスプローラー（パスフィルタ / お気に入り / 最近開いたファイル / git 状態 / 実行 / DnD / コンテキストメニュー）と、フロントマターと本文を分けて編集できるエディタ、Markdown プレビュー（Mermaid・アウトライン）を備えたファイルビューア。git 状態は折りたたまれたディレクトリにも配下の変更を集約して表示します。変更があるファイルではGitボタンから本文とGit差分を左右に並べて確認でき、各ペインを独立してスクロールできます
+- **Files（プロジェクトタブ）** — エクスプローラー（パスフィルタ / お気に入り / 最近開いたファイル / git 状態 / 実行 / DnD / コンテキストメニュー）と、フロントマターと本文を分けて編集できるエディタ、Markdown プレビュー（Mermaid・アウトライン）を備えたファイルビューア。git 状態は折りたたまれたディレクトリにも配下の変更を集約して表示します。変更があるファイルではGitボタンから本文とGit差分を左右に並べて確認でき、各ペインを独立してスクロールできます。task_triggerの作成後・実行後は、生成されたファイルを再読込してエクスプローラーに表示します
 - **Board** — タスクの GTD ボード。ドラッグ＆ドロップでステータスを変更（フロントマターに反映）
+- **タスク作成** — 新規タスクモーダルから`task`または`task_trigger`を作成。YAMLヘッダーを除く`task.md`本文はテンプレートを初期表示した編集欄で入力でき、`task_trigger`ではcron式または監視ディレクトリを指定できます
 - **Graph** — プロジェクト内の Markdown ファイル（タスク・ドキュメントなど）をノード、Markdown リンクをエッジとして描画するグラフ。ディレクトリをフレームとして表示し、エクスプローラーでスコープを絞れます
 - **Git** — リポジトリ初期化 / ステージ / アンステージ / 破棄 / コミット（staged-only・amend） / ブランチ / fetch / pull / push / ログ / diff。remoteとの差分から同期済み・Push必要・Pull必要・分岐を表示し、ディレクトリスコープにも対応。選択した変更ファイルのdiffを確認しながら編集・保存可能
 - **Herdr** — ワークスペース・タブ・ペイン・エージェントの一覧と操作（プロンプト送信・出力参照・キー送信・リネーム・分割・クローズ・リサイズ）。タスクのファイルからエージェントを起動できます
@@ -150,6 +206,10 @@ myproject/
 ├── _tasks/
 │   └── 20260802_design-the-login-flow/
 │       └── task.md          # フロントマターで status / priority / assignee / due / tags / agent_kind 等を保持
+├── _task_triggers/
+│   └── daily_report/
+│       ├── trigger.yaml     # 自動タスクの発動条件と実行設定
+│       └── task.md          # 実行タスクのテンプレート
 ├── notes/
 │   ├── index.md
 │   └── architecture.md
@@ -172,6 +232,7 @@ myproject/
 
 - `$XDG_CONFIG_HOME/mybox/config.yaml`（デフォルト `~/.config/mybox/config.yaml`）にプロジェクト一覧とデフォルトプロジェクトを保存します。`MYBOX_CONFIG` 環境変数でパスを変更できます。
 - お気に入り・最近開いたファイルなどの状態は同じディレクトリの `state.yaml` に保存されます。
+- 自動化の実行台帳と排他ロックは同じ設定ディレクトリの `automation/` に保存され、プロジェクトには生成されません。
 
 ## 開発
 

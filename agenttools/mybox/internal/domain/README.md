@@ -6,6 +6,7 @@
 
 | パス | 役割 |
 | --- | --- |
+| [`automation.go`](./automation.go) | 自動タスクトリガー、イベント、実行記録、外部実装の契約。 |
 | [`config_store.go`](./config_store.go) | プロジェクト設定を保存・読み込みする契約。 |
 | [`errors.go`](./errors.go) | ドメイン共通エラー。 |
 | [`file_repository.go`](./file_repository.go) | プロジェクトファイルを操作する契約。 |
@@ -15,4 +16,3 @@
 | [`task.go`](./task.go) | タスク、ステータス、優先度、テンプレートデータのモデル。 |
 | [`task_repository.go`](./task_repository.go) | タスクを保存・検索・アーカイブする契約。 |
 | [`template_renderer.go`](./template_renderer.go) | タスク雛形を描画する契約。 |
-

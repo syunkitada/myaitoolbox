@@ -6,6 +6,7 @@
 
 | パス | 役割 |
 | --- | --- |
+| [`automation.go`](./automation.go) | トリガーイベントまたは明示的なmanual実行からタスクを生成し、エージェントへディスパッチするユースケース。 |
 | [`file.go`](./file.go) | ファイル・ディレクトリの一覧、読み書き、移動、コピー、削除、実行。 |
 | [`helpers.go`](./helpers.go) | アプリケーション層で共有する補助処理。 |
 | [`project.go`](./project.go) | プロジェクトの登録、一覧、既定値、削除。 |
@@ -13,4 +14,5 @@
 | [`state.go`](./state.go) | お気に入り・最近使ったファイルなどの状態管理。 |
 | [`task.go`](./task.go) | タスクの作成、一覧、表示、更新、アーカイブ、エージェント起動。 |
 | [`task_test.go`](./task_test.go) | タスクユースケースのテスト。 |
-
+| [`task_trigger.go`](./task_trigger.go) | タスクトリガー定義の作成とタスク雛形の生成。 |
+| [`task_trigger_test.go`](./task_trigger_test.go) | タスクトリガー作成ユースケースのテスト。 |

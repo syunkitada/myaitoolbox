@@ -1,6 +1,6 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker } from 'react-router-dom'
-import { FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, api } from '../api/client'
+import { FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileAgentWidget } from '../components/FileAgentWidget'
 import { FileTabs } from '../components/FileTabs'
@@ -82,6 +82,12 @@ function handleAuxClick(e: ReactMouseEvent, path: string) {
   openFileInNewTab(path)
 }
 
+function taskTriggerIDFromDirectory(path: string): string | null {
+  const parts = path.split('/')
+  if (parts.length !== 2 || parts[0] !== '_task_triggers' || !parts[1]) return null
+  return parts[1]
+}
+
 export interface BrowserEntry {
   kind: 'file' | 'dir'
   name: string
@@ -109,6 +115,8 @@ interface BrowserPageProps {
   onClose?: () => void
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
+  revealPath?: string
+  onRevealPathHandled?: (path: string) => void
 }
 
 interface TreeFile {
@@ -338,7 +346,7 @@ interface ExplorerProps {
   gitStatus?: Record<string, string>
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void
-  onChanged?: () => void | Promise<void>
+  onChanged?: (revealPath?: string) => void | Promise<void>
   onError?: (message: string) => void
   showHidden?: boolean
   onToggleHidden?: () => void
@@ -400,6 +408,7 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
   const [dragOverDir, setDragOverDir] = useState<string | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; kind: 'file' | 'dir'; executable?: boolean } | null>(null)
   const [execState, setExecState] = useState<{ path: string; running: boolean; result?: FileExecuteResult; error?: string } | null>(null)
+  const [triggerRunState, setTriggerRunState] = useState<{ path: string; running: boolean; result?: TaskTriggerRun; error?: string } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const ctxRef = useRef<HTMLDivElement | null>(null)
@@ -629,6 +638,27 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
       .executeFile(path)
       .then((result) => setExecState({ path, running: false, result }))
       .catch((e) => setExecState({ path, running: false, error: e instanceof Error ? e.message : String(e) }))
+  }
+
+  const runTriggerEntry = () => {
+    if (!ctxMenu || ctxMenu.kind !== 'dir') return
+    const triggerID = taskTriggerIDFromDirectory(ctxMenu.path)
+    if (!triggerID) return
+    const path = ctxMenu.path
+    setCtxMenu(null)
+    setTriggerRunState({ path, running: true })
+    void api
+      .runTaskTrigger(triggerID)
+      .then((result) => {
+        setTriggerRunState({ path, running: false, result })
+        const taskPath = result.task_id?.trim() ? `_tasks/${result.task_id}/task.md` : undefined
+        void Promise.resolve(onChanged?.(taskPath))
+          .then(() => {
+            if (taskPath) onSelect(taskPath)
+          })
+          .catch((e) => onError?.(errorMessage(e)))
+      })
+      .catch((e) => setTriggerRunState({ path, running: false, error: errorMessage(e) }))
   }
 
   const duplicateEntry = async () => {
@@ -1132,6 +1162,17 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
                 <GitBranch className="size-3.5" />
                 Open Git
               </button>
+              {taskTriggerIDFromDirectory(ctxMenu.path) && (
+                <button
+                  role="menuitem"
+                  className="file-action-item"
+                  onClick={runTriggerEntry}
+                  data-testid="task-trigger-run"
+                >
+                  <Terminal className="size-3.5" />
+                  Run trigger
+                </button>
+              )}
               <div className="my-1 h-px bg-border" />
             </>
           )}
@@ -1191,6 +1232,91 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
           onClose={() => setExecState(null)}
         />
       )}
+      {triggerRunState && (
+        <TaskTriggerRunResultModal
+          path={triggerRunState.path}
+          running={triggerRunState.running}
+          result={triggerRunState.result}
+          error={triggerRunState.error}
+          onClose={() => setTriggerRunState(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function TaskTriggerRunResultModal({
+  path,
+  running,
+  result,
+  error,
+  onClose,
+}: {
+  path: string
+  running: boolean
+  result?: TaskTriggerRun
+  error?: string
+  onClose: () => void
+}) {
+  useEscapeKey(onClose)
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Run trigger ${path}`}
+    >
+      <div
+        className="flex w-full max-w-lg flex-col rounded-lg border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Terminal className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="truncate text-sm font-semibold">{path}</span>
+          </div>
+          <button
+            className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={onClose}
+            aria-label="Close trigger result"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="p-4">
+          {running ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              Running trigger…
+            </div>
+          ) : error ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+              {error}
+            </div>
+          ) : result ? (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <dt className="text-muted-foreground">Status</dt>
+              <dd className="font-medium">{result.status}</dd>
+              <dt className="text-muted-foreground">Run ID</dt>
+              <dd className="break-all font-mono text-xs">{result.id}</dd>
+              {result.task_id && (
+                <>
+                  <dt className="text-muted-foreground">Task ID</dt>
+                  <dd className="break-all font-mono text-xs">{result.task_id}</dd>
+                </>
+              )}
+              {result.agent_name && (
+                <>
+                  <dt className="text-muted-foreground">Agent</dt>
+                  <dd>{result.agent_name}</dd>
+                </>
+              )}
+            </dl>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
@@ -2264,6 +2390,8 @@ export function BrowserPage({
   onClose,
   herdrOverview,
   refreshHerdr,
+  revealPath,
+  onRevealPathHandled,
 }: BrowserPageProps) {
   const [childrenByDir, setChildrenByDir] = useState<Record<string, BrowserEntry[]>>({})
   const [gitStatus, setGitStatus] = useState<Record<string, string>>({})
@@ -2396,14 +2524,38 @@ export function BrowserPage({
       .catch(() => undefined)
   }, [])
 
-  const handleChanged = useCallback(() => {
-    const promises: Promise<void>[] = [loadDir('', true)]
+  const handleChanged = useCallback((pathToReveal?: string) => {
+    const directories = new Set<string>([''])
     if (selected) {
       const dir = selected.includes('/') ? selected.slice(0, selected.lastIndexOf('/')) : ''
-      if (dir) promises.push(loadDir(dir, true))
+      if (dir) directories.add(dir)
     }
-    return Promise.all(promises).then(() => undefined)
+    if (pathToReveal) {
+      const parts = pathToReveal.split('/').filter(Boolean)
+      let prefix = ''
+      for (let i = 0; i < parts.length - 1; i++) {
+        prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+        directories.add(prefix)
+      }
+    }
+    return Promise.all([...directories].map((dir) => loadDir(dir, true))).then(() => undefined)
   }, [loadDir, selected])
+
+  const revealFile = useCallback(
+    async (path: string) => {
+      const parts = path.split('/').filter(Boolean)
+      if (parts.length === 0) return
+      const directories = ['']
+      let prefix = ''
+      for (let i = 0; i < parts.length - 1; i++) {
+        prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+        directories.push(prefix)
+      }
+      for (const dir of directories) await loadDir(dir, true)
+      onSelect(path)
+    },
+    [loadDir, onSelect],
+  )
 
   const handleRefresh = useCallback(() => {
     const dirs = [...loadedDirsRef.current]
@@ -2416,6 +2568,17 @@ export function BrowserPage({
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!revealPath) return
+    let cancelled = false
+    void revealFile(revealPath).then(() => {
+      if (!cancelled) onRevealPathHandled?.(revealPath)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [revealPath, revealFile, onRevealPathHandled])
 
   // Fetch the ancestor directories of the selected entry one by one so a deep
   // file can be revealed without ever walking the whole tree. When a directory
@@ -2557,6 +2720,8 @@ export function BrowserPage({
                     gitStatus={gitStatus}
                     onClose={onClose}
                     onMoveFile={handleMoveFile}
+                    onChanged={handleChanged}
+                    onError={setError}
                     showHidden={showHidden}
                     onToggleHidden={() => setShowHidden((s) => !s)}
                     onOpenGit={setOpenGitDir}
@@ -2602,6 +2767,8 @@ export function BrowserPage({
                     gitStatus={gitStatus}
                     onClose={onClose}
                     onMoveFile={handleMoveFile}
+                    onChanged={handleChanged}
+                    onError={setError}
                     showHidden={showHidden}
                     onToggleHidden={() => setShowHidden((s) => !s)}
                     onOpenGit={setOpenGitDir}

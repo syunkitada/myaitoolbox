@@ -37,6 +37,56 @@ describe('api client', () => {
     )
   })
 
+  it('gets the rendered task template', async () => {
+    mockFetch(200, { content: '---\ntitle: Task\n---\n' })
+    await api.getTaskTemplate('Task')
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/task-template?name=Task',
+      expect.any(Object),
+    )
+  })
+
+  it('posts a task trigger definition', async () => {
+    mockFetch(201, {
+      id: 'daily-report',
+      type: 'cron',
+      directory: '_task_triggers/daily-report',
+      task_path: '_task_triggers/daily-report/task.md',
+    })
+    await api.createTaskTrigger({
+      id: 'daily-report',
+      task: { name: 'Daily report', agent_kind: 'opencode', prompt: 'do-the-task' },
+      trigger: { type: 'cron', cron: '0 9 * * 1-5', timezone: 'Asia/Tokyo' },
+    })
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/task-triggers',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'daily-report',
+          task: { name: 'Daily report', agent_kind: 'opencode', prompt: 'do-the-task' },
+          trigger: { type: 'cron', cron: '0 9 * * 1-5', timezone: 'Asia/Tokyo' },
+        }),
+      }),
+    )
+  })
+
+  it('runs a task trigger', async () => {
+    mockFetch(200, {
+      id: 'run-1',
+      trigger_id: 'manual-report',
+      event_id: 'manual:event',
+      status: 'dispatched',
+      task_id: 'task-1',
+    })
+    await api.runTaskTrigger('manual-report')
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/task-triggers/manual-report/run',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
   it('throws ApiError with server message', async () => {
     mockFetch(400, { error: 'bad request' })
     await expect(api.createTask({ name: 'T' })).rejects.toThrow(

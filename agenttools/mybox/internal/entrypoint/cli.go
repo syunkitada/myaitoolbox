@@ -38,6 +38,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newProjectCommand())
 	root.AddCommand(newTaskCommand(&project))
+	root.AddCommand(newAutomationCommand(&project))
 	root.AddCommand(newFilesCommand(&project))
 	root.AddCommand(newServeCommand())
 	return root

@@ -3,6 +3,7 @@ export { getBasePath, getProject, setProject, clearProject } from '../utils/rout
 
 export type TaskStatus = 'todo' | 'doing' | 'blocked' | 'review' | 'done'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type TaskTriggerType = 'cron' | 'file_created' | 'manual'
 
 export interface Task {
   id: string
@@ -24,6 +25,7 @@ export interface Task {
 
 export interface CreateTaskRequest {
   name: string
+  content?: string
   description?: string
   agent_kind?: string
   status?: TaskStatus
@@ -33,7 +35,45 @@ export interface CreateTaskRequest {
   tags?: string[]
 }
 
-export type UpdateTaskRequest = Partial<CreateTaskRequest>
+export type UpdateTaskRequest = Partial<Omit<CreateTaskRequest, 'content'>>
+
+export interface CreateTaskTriggerRequest {
+  id: string
+  task: {
+    name: string
+    agent_kind: string
+    prompt?: string
+    content?: string
+  }
+  trigger: {
+    type: TaskTriggerType
+    cron?: string
+    timezone?: string
+    path?: string
+    pattern?: string
+  }
+}
+
+export interface TaskTrigger {
+  id: string
+  type: TaskTriggerType
+  directory: string
+  task_path: string
+}
+
+export interface TaskTriggerRun {
+  id: string
+  project: string
+  trigger_id: string
+  event_id: string
+  status: string
+  task_id?: string
+  agent_name?: string
+  source_path?: string
+  started_at: string
+  finished_at: string
+  error_message?: string
+}
 
 export type FileKind = 'file' | 'dir'
 
@@ -47,6 +87,10 @@ export interface FileEntry {
 
 export interface FileContent {
   path: string
+  content: string
+}
+
+export interface TaskTemplate {
   content: string
 }
 
@@ -383,6 +427,15 @@ export const api = {
 
   createTask: (req: CreateTaskRequest) =>
     request<Task>('POST', '/api/tasks', req),
+
+  getTaskTemplate: (name = '') =>
+    request<TaskTemplate>('GET', '/api/task-template' + qs({ name })),
+
+  createTaskTrigger: (req: CreateTaskTriggerRequest) =>
+    request<TaskTrigger>('POST', '/api/task-triggers', req),
+
+  runTaskTrigger: (id: string) =>
+    request<TaskTriggerRun>('POST', `/api/task-triggers/${encodeURIComponent(id)}/run`),
 
   updateTask: (id: string, req: UpdateTaskRequest) =>
     request<Task>('PATCH', `/api/tasks/${encodeURIComponent(id)}`, req),

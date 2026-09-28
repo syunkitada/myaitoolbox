@@ -7,4 +7,5 @@ var (
 	ErrAlreadyExists   = errors.New("already exists")
 	ErrInvalidPath     = errors.New("invalid path")
 	ErrInvalidArgument = errors.New("invalid argument")
+	ErrAutomationBusy  = errors.New("automation is already running")
 )

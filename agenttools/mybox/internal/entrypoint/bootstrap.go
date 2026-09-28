@@ -6,17 +6,20 @@ import (
 
 	"github.com/syunkitada/myaitoolbox/mybox/internal/application"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
+	automationinfra "github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/automation"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/config"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/markdown"
 )
 
 type App struct {
-	Config   *domain.Config
-	Project  *domain.Project
-	Projects *application.ProjectUseCase
-	Tasks    *application.TaskUseCase
-	Files    *application.FileUseCase
-	State    *application.StateUseCase
+	Config       *domain.Config
+	Project      *domain.Project
+	Projects     *application.ProjectUseCase
+	Tasks        *application.TaskUseCase
+	TaskTriggers *application.TaskTriggerUseCase
+	Automation   *application.AutomationUseCase
+	Files        *application.FileUseCase
+	State        *application.StateUseCase
 }
 
 func NewApp(ctx context.Context, projectName string) (*App, error) {
@@ -49,20 +52,33 @@ func NewApp(ctx context.Context, projectName string) (*App, error) {
 			break
 		}
 	}
+	taskRepository := markdown.NewTaskRepository(project.Path)
+	templateRenderer := markdown.NewTemplateRenderer(project.Path, defaultPath)
 	app := &App{
 		Config:   cfg,
 		Project:  project,
 		Projects: application.NewProjectUseCase(store),
 		Tasks: application.NewTaskUseCase(
-			markdown.NewTaskRepository(project.Path),
-			markdown.NewTemplateRenderer(project.Path, defaultPath),
+			taskRepository,
+			templateRenderer,
 			markdown.NewPromptRepository(project.Path, defaultPath),
 			project.Name,
 			project.Path,
 		),
+		TaskTriggers: application.NewTaskTriggerUseCase(
+			automationinfra.NewDefinitionRepository(project.Path),
+			templateRenderer,
+		),
 		Files: application.NewFileUseCase(markdown.NewFileRepository(project.Path)),
 		State: application.NewStateUseCase(config.NewStateStore()),
 	}
+	app.Automation = application.NewAutomationUseCase(
+		app.Project.Name,
+		app.Project.Path,
+		automationinfra.NewRunStore(config.AutomationStateDir()),
+		app.Tasks,
+		&automationAgentDispatcher{app: app},
+	)
 	return app, nil
 }
 

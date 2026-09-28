@@ -424,6 +424,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+  /api/task-template:
+    get:
+      operationId: getTaskTemplate
+      summary: Get the rendered task template
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: rendered task template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskTemplate"
+  /api/task-triggers:
+    post:
+      operationId: createTaskTrigger
+      summary: Create an automatic task trigger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskTriggerRequest"
+      responses:
+        "201":
+          description: created task trigger
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskTrigger"
+        "400":
+          description: invalid trigger definition
+        "409":
+          description: trigger already exists
+  /api/task-triggers/{id}/run:
+    post:
+      operationId: runTaskTrigger
+      summary: Run a task trigger immediately
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: trigger run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskTriggerRun"
+        "400":
+          description: invalid or disabled trigger
+        "404":
+          description: trigger not found
+        "409":
+          description: automation is busy
   /api/tasks/{id}:
     get:
       operationId: getTask
@@ -871,6 +931,8 @@ components:
       properties:
         name:
           type: string
+        content:
+          type: string
         description:
           type: string
         agent_kind:
@@ -887,6 +949,91 @@ components:
           type: array
           items:
             type: string
+    CreateTaskTriggerRequest:
+      type: object
+      required: [id, task, trigger]
+      properties:
+        id:
+          type: string
+        task:
+          $ref: "#/components/schemas/TaskTriggerTask"
+        trigger:
+          $ref: "#/components/schemas/TaskTriggerCondition"
+    TaskTriggerTask:
+      type: object
+      required: [name, agent_kind]
+      properties:
+        name:
+          type: string
+        agent_kind:
+          type: string
+        prompt:
+          type: string
+          default: "'$task_file_path' を実施してください。"
+        content:
+          type: string
+    TaskTriggerCondition:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [cron, file_created, manual]
+        cron:
+          type: string
+        timezone:
+          type: string
+        path:
+          type: string
+        pattern:
+          type: string
+    TaskTemplate:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+    TaskTrigger:
+      type: object
+      required: [id, type, directory, task_path]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [cron, file_created, manual]
+        directory:
+          type: string
+        task_path:
+          type: string
+    TaskTriggerRun:
+      type: object
+      required: [id, project, trigger_id, event_id, status, started_at, finished_at]
+      properties:
+        id:
+          type: string
+        project:
+          type: string
+        trigger_id:
+          type: string
+        event_id:
+          type: string
+        status:
+          type: string
+        task_id:
+          type: string
+        agent_name:
+          type: string
+        source_path:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error_message:
+          type: string
     UpdateTaskRequest:
       type: object
       properties:

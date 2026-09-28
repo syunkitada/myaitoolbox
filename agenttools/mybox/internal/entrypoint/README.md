@@ -7,6 +7,7 @@
 | パス | 役割 |
 | --- | --- |
 | [`api/README.md`](./api/README.md) | `openapi.yaml` から生成されたAPI型・サーバーコード。 |
+| [`automation.go`](./automation.go) | 自動タスクトリガーのCLI、manual実行、デーモン、Herdrディスパッチ接続。 |
 | [`bootstrap.go`](./bootstrap.go) | 設定・リポジトリ・ユースケースを組み立てる初期化処理。 |
 | [`cli.go`](./cli.go) | CobraベースのCLIコマンドとオプション。 |
 | [`cli_test.go`](./cli_test.go) | CLIコマンドのテスト。 |
@@ -16,7 +17,7 @@
 | [`herdr_test.go`](./herdr_test.go) | Herdr連携のテスト。 |
 | [`osc.go`](./osc.go) | PTY出力に含まれるOSCシーケンスの処理。 |
 | [`osc_test.go`](./osc_test.go) | OSC処理のテスト。 |
-| [`server.go`](./server.go) | Echo HTTPサーバー、ファイルAPI、WebSocketの登録。 |
+| [`server.go`](./server.go) | Echo HTTPサーバー、ファイルAPI、taskテンプレート取得、task trigger作成・実行API、WebSocketの登録。 |
 | [`server_test.go`](./server_test.go) | HTTP APIとファイル操作のテスト。 |
 | [`stats.go`](./stats.go) | CPU、メモリ、ディスク、ネットワーク、プロセス統計の取得。 |
 | [`stats_test.go`](./stats_test.go) | Stats処理のテスト。 |

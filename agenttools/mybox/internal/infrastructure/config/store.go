@@ -35,6 +35,13 @@ func configPath() string {
 	return filepath.Join(dir, "mybox", "config.yaml")
 }
 
+// AutomationStateDir returns the user-local directory for automation locks
+// and run records. It intentionally lives beside config.yaml rather than in a
+// project so generated execution state does not pollute project Git history.
+func AutomationStateDir() string {
+	return filepath.Join(filepath.Dir(configPath()), "automation")
+}
+
 type fileConfig struct {
 	Projects       []projectEntry `yaml:"projects"`
 	DefaultProject string         `yaml:"default_project"`

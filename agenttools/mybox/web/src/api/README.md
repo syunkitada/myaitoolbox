@@ -6,6 +6,5 @@
 
 | パス | 役割 |
 | --- | --- |
-| [`client.ts`](./client.ts) | タスク、ファイル、Git、Herdr、StatsなどのAPI型と呼び出し。 |
+| [`client.ts`](./client.ts) | タスクテンプレート取得、タスク、task triggerの作成・即時実行、ファイル、Git、Herdr、StatsなどのAPI型と呼び出し。 |
 | [`client.test.ts`](./client.test.ts) | APIクライアントのリクエストとエラー処理のテスト。 |
-

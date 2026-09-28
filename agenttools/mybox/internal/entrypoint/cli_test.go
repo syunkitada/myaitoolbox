@@ -190,6 +190,30 @@ func TestCLIFilesLifecycle(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestCLIAutomationListAndValidate(t *testing.T) {
+	e := setupCLIProject(t)
+	triggerDir := filepath.Join(e.projPath, "_task_triggers", "daily_report")
+	require.NoError(t, os.MkdirAll(triggerDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(triggerDir, "trigger.yaml"), []byte(`
+version: 1
+enabled: true
+trigger:
+  type: cron
+  cron: "0 9 * * 1-5"
+  timezone: Asia/Tokyo
+task:
+  agent_kind: opencode
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(triggerDir, "task.md"), []byte("---\ntitle: Daily report\n---\n"), 0o644))
+
+	out := runCLIOk(t, "automation", "validate")
+	assert.Contains(t, out, "valid daily_report")
+
+	out = runCLIOk(t, "automation", "list", "--json")
+	assert.Contains(t, out, `"id": "daily_report"`)
+	assert.Contains(t, out, `"type": "cron"`)
+}
+
 func trimOutput(s string) string {
 	return strings.TrimSpace(s)
 }

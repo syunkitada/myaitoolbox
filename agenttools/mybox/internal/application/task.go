@@ -29,7 +29,10 @@ type TaskFilter struct {
 }
 
 type TaskInput struct {
-	Name        string
+	Name string
+	// Content nil uses the rendered template; a non-nil value can explicitly
+	// provide an empty task.md.
+	Content     *string
 	Description string
 	AgentKind   string
 	Status      string
@@ -120,6 +123,10 @@ func (u *TaskUseCase) Show(ctx context.Context, id string) (*domain.Task, error)
 	return u.Tasks.Find(ctx, id)
 }
 
+func (u *TaskUseCase) RenderTaskTemplate(name string) (string, error) {
+	return u.Template.RenderTask(domain.TaskTemplateData{Name: strings.TrimSpace(name)})
+}
+
 func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -147,16 +154,49 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 		Created:     now,
 	}
 	task.ID = now.Format("20060102") + "_" + slugify(name)
-	content, err := u.Template.RenderTask(domain.TaskTemplateData{
-		Name: task.Title,
-	})
-	if err != nil {
-		return nil, err
+	content := ""
+	if input.Content != nil {
+		content = *input.Content
+	} else {
+		content, err = u.RenderTaskTemplate(task.Title)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := u.Tasks.Create(ctx, task.ID, content); err != nil {
 		return nil, err
 	}
 	if err := u.Tasks.Update(ctx, *task); err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
+// CreateFromContent creates an execution task from an already rendered
+// Markdown template. The template's body and unknown frontmatter fields are
+// preserved, while runtime-owned status and automation fields are applied.
+func (u *TaskUseCase) CreateFromContent(ctx context.Context, id, content, agentKind string, tags []string) (*domain.Task, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("%w: task id is required", domain.ErrInvalidArgument)
+	}
+	if err := u.Tasks.Create(ctx, id, content); err != nil {
+		return nil, err
+	}
+	task, err := u.Tasks.Find(ctx, id)
+	if err != nil {
+		_ = u.Tasks.Delete(ctx, id)
+		return nil, err
+	}
+	task.Project = u.Project
+	task.Status = domain.TaskStatusTodo
+	if strings.TrimSpace(agentKind) != "" {
+		task.AgentKind = strings.TrimSpace(agentKind)
+	}
+	if tags != nil {
+		task.Tags = append([]string(nil), tags...)
+	}
+	if err := u.Tasks.Update(ctx, *task); err != nil {
+		_ = u.Tasks.Delete(ctx, id)
 		return nil, err
 	}
 	return task, nil
@@ -293,6 +333,12 @@ func (u *TaskUseCase) RelativePathFor(task *domain.Task) string {
 // value is used verbatim as an inline prompt. The variable $task_file_path is
 // expanded to the task's markdown file (relative to the project root).
 func (u *TaskUseCase) RenderPrompt(ctx context.Context, raw string, task *domain.Task) (string, error) {
+	return u.RenderPromptWithVars(ctx, raw, task, nil)
+}
+
+// RenderPromptWithVars is RenderPrompt with additional event variables used by
+// automation triggers. Existing prompt behavior remains unchanged.
+func (u *TaskUseCase) RenderPromptWithVars(ctx context.Context, raw string, task *domain.Task, extra map[string]string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", nil
@@ -300,8 +346,11 @@ func (u *TaskUseCase) RenderPrompt(ctx context.Context, raw string, task *domain
 	vars := map[string]string{
 		"task_file_path": u.RelativePathFor(task),
 	}
+	for key, value := range extra {
+		vars[key] = value
+	}
 	if u.Prompts == nil {
-		return raw, nil
+		return domain.ExpandPromptVariables(raw, vars), nil
 	}
 	forced := strings.HasPrefix(raw, "@")
 	name := strings.TrimPrefix(raw, "@")
@@ -317,7 +366,7 @@ func (u *TaskUseCase) RenderPrompt(ctx context.Context, raw string, task *domain
 			return "", err
 		}
 	}
-	return raw, nil
+	return domain.ExpandPromptVariables(raw, vars), nil
 }
 
 // isBarePromptName reports whether name can refer to a prompt template file

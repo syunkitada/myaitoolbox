@@ -15,12 +15,15 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/application"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/entrypoint/api"
+	automationinfra "github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/automation"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/config"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/webui"
 )
 
@@ -111,9 +114,18 @@ func (s *Server) Handler() http.Handler {
 	apiHandler := api.HandlerWithOptions(s, api.StdHTTPServerOptions{BaseURL: s.basePath})
 	rawFile := echo.WrapHandler(http.HandlerFunc(s.GetFileRaw))
 	uploadFiles := echo.WrapHandler(http.HandlerFunc(s.UploadFiles))
+	getTaskTemplate := echo.WrapHandler(http.HandlerFunc(s.GetTaskTemplate))
+	createTaskTrigger := echo.WrapHandler(http.HandlerFunc(s.CreateTaskTrigger))
+	runTaskTrigger := func(c echo.Context) error {
+		s.RunTaskTrigger(c.Response(), c.Request(), c.Param("id"))
+		return nil
+	}
 	if s.basePath == "" {
 		e.GET("/api/files/raw", rawFile)
 		e.POST("/api/files/upload", uploadFiles)
+		e.GET("/api/task-template", getTaskTemplate)
+		e.POST("/api/task-triggers", createTaskTrigger)
+		e.POST("/api/task-triggers/:id/run", runTaskTrigger)
 		e.GET("/api/terminal", s.Terminal)
 		e.DELETE("/api/terminal/destroy", s.DestroyTerminal)
 		e.GET("/api/stats", echo.WrapHandler(http.HandlerFunc(s.GetStats)))
@@ -127,6 +139,9 @@ func (s *Server) Handler() http.Handler {
 	g := e.Group(s.basePath)
 	g.GET("/api/files/raw", rawFile)
 	g.POST("/api/files/upload", uploadFiles)
+	g.GET("/api/task-template", getTaskTemplate)
+	g.POST("/api/task-triggers", createTaskTrigger)
+	g.POST("/api/task-triggers/:id/run", runTaskTrigger)
 	g.GET("/api/terminal", s.Terminal)
 	g.DELETE("/api/terminal/destroy", s.DestroyTerminal)
 	g.GET("/api/stats", echo.WrapHandler(http.HandlerFunc(s.GetStats)))
@@ -547,11 +562,12 @@ func (s *Server) CreateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	var req api.CreateTaskRequest
+	var req createTaskRequest
 	if !decodeBody(w, r, &req) {
 		return
 	}
 	input := application.TaskInput{Name: req.Name}
+	input.Content = req.Content
 	if req.Description != nil {
 		input.Description = *req.Description
 	}
@@ -579,6 +595,156 @@ func (s *Server) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSONResponse(w, http.StatusCreated, toAPITask(*task))
+}
+
+type createTaskRequest struct {
+	api.CreateTaskRequest
+	Content *string `json:"content,omitempty"`
+}
+
+type taskTemplateResponse struct {
+	Content string `json:"content"`
+}
+
+func (s *Server) GetTaskTemplate(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	content, err := app.Tasks.RenderTaskTemplate(r.URL.Query().Get("name"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, taskTemplateResponse{Content: content})
+}
+
+type taskTriggerCreateRequest struct {
+	ID      string                      `json:"id"`
+	Task    taskTriggerTaskRequest      `json:"task"`
+	Trigger taskTriggerConditionRequest `json:"trigger"`
+}
+
+type taskTriggerTaskRequest struct {
+	Name      string  `json:"name"`
+	AgentKind string  `json:"agent_kind"`
+	Prompt    string  `json:"prompt,omitempty"`
+	Content   *string `json:"content,omitempty"`
+}
+
+type taskTriggerConditionRequest struct {
+	Type     string `json:"type"`
+	Cron     string `json:"cron,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Pattern  string `json:"pattern,omitempty"`
+}
+
+type taskTriggerResponse struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Directory string `json:"directory"`
+	TaskPath  string `json:"task_path"`
+}
+
+type taskTriggerRunResponse struct {
+	ID           string    `json:"id"`
+	Project      string    `json:"project"`
+	TriggerID    string    `json:"trigger_id"`
+	EventID      string    `json:"event_id"`
+	Status       string    `json:"status"`
+	TaskID       string    `json:"task_id,omitempty"`
+	AgentName    string    `json:"agent_name,omitempty"`
+	SourcePath   string    `json:"source_path,omitempty"`
+	StartedAt    time.Time `json:"started_at"`
+	FinishedAt   time.Time `json:"finished_at"`
+	ErrorMessage string    `json:"error_message,omitempty"`
+}
+
+func (s *Server) CreateTaskTrigger(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if app.TaskTriggers == nil {
+		writeError(w, fmt.Errorf("task trigger use case is unavailable"))
+		return
+	}
+	var req taskTriggerCreateRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	triggerID := strings.TrimSpace(req.ID)
+	err = app.TaskTriggers.Create(r.Context(), application.TaskTriggerInput{
+		ID:        triggerID,
+		Name:      req.Task.Name,
+		Content:   req.Task.Content,
+		Type:      domain.TriggerType(req.Trigger.Type),
+		Cron:      req.Trigger.Cron,
+		Timezone:  req.Trigger.Timezone,
+		WatchPath: req.Trigger.Path,
+		Pattern:   req.Trigger.Pattern,
+		AgentKind: req.Task.AgentKind,
+		Prompt:    req.Task.Prompt,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	triggerDir := filepath.ToSlash(filepath.Join("_task_triggers", triggerID))
+	writeJSONResponse(w, http.StatusCreated, taskTriggerResponse{
+		ID:        triggerID,
+		Type:      req.Trigger.Type,
+		Directory: triggerDir,
+		TaskPath:  filepath.ToSlash(filepath.Join(triggerDir, "task.md")),
+	})
+}
+
+func (s *Server) RunTaskTrigger(w http.ResponseWriter, r *http.Request, id string) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if app.TaskTriggers == nil || app.Automation == nil {
+		writeError(w, fmt.Errorf("%w: automation is unavailable", domain.ErrInvalidArgument))
+		return
+	}
+	def, err := app.TaskTriggers.Find(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !def.Enabled {
+		writeError(w, fmt.Errorf("%w: trigger %s is disabled", domain.ErrInvalidArgument, def.ID))
+		return
+	}
+	release, err := automationinfra.AcquireProjectLock(config.AutomationStateDir(), app.Project.Name)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	defer release()
+	run, err := app.Automation.RunManual(r.Context(), *def)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, taskTriggerRunResponse{
+		ID:           run.ID,
+		Project:      run.Project,
+		TriggerID:    run.TriggerID,
+		EventID:      run.EventID,
+		Status:       string(run.Status),
+		TaskID:       run.TaskID,
+		AgentName:    run.AgentName,
+		SourcePath:   run.SourcePath,
+		StartedAt:    run.StartedAt,
+		FinishedAt:   run.FinishedAt,
+		ErrorMessage: run.ErrorMessage,
+	})
 }
 
 func (s *Server) GetTask(w http.ResponseWriter, r *http.Request, id string) {
@@ -1059,6 +1225,8 @@ func writeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrInvalidArgument), errors.Is(err, domain.ErrInvalidPath):
 		status = http.StatusBadRequest
 	case errors.Is(err, domain.ErrAlreadyExists):
+		status = http.StatusConflict
+	case errors.Is(err, domain.ErrAutomationBusy):
 		status = http.StatusConflict
 	}
 	writeJSONResponse(w, status, map[string]string{"error": err.Error()})
