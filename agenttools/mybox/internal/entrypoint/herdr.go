@@ -260,6 +260,24 @@ func (s *Server) ReadHerdrAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, api.HerdrReadResponse{Output: string(out)})
 }
 
+// FocusHerdrAgent marks the target agent's result as seen in herdr.
+func (s *Server) FocusHerdrAgent(w http.ResponseWriter, r *http.Request) {
+	var req api.HerdrReadRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	req.Target = strings.TrimSpace(req.Target)
+	if !herdrTargetPattern.MatchString(req.Target) {
+		writeError(w, fmt.Errorf("invalid agent target"))
+		return
+	}
+	if _, err := s.runHerdr(r.Context(), "agent", "focus", req.Target); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, api.HerdrOpResponse{Ok: true})
+}
+
 // PromptHerdrAgent submits a prompt to the target agent.
 func (s *Server) PromptHerdrAgent(w http.ResponseWriter, r *http.Request) {
 	var req api.HerdrPromptRequest
@@ -1111,14 +1129,15 @@ func (s *Server) findHerdrAgent(ctx context.Context, name string) *api.HerdrAgen
 	return nil
 }
 
-// registerHerdrRoutes registers herdr endpoints that are not part of the
-// oapi-codegen contract (manual echoes, mirroring registerGitRoutes).
+// registerHerdrRoutes registers herdr endpoints wired outside the generated
+// oapi-codegen router (manual echoes, mirroring registerGitRoutes).
 func (s *Server) registerHerdrRoutes(e *echo.Echo, basePath string) {
 	wrap := func(method, path string, h http.HandlerFunc) {
 		e.Add(method, basePath+path, echo.WrapHandler(h))
 	}
 	wrap(http.MethodPost, "/api/herdr/agents/start-file", s.StartHerdrFileAgent)
 	wrap(http.MethodPost, "/api/herdr/agents/start-task", s.StartTaskAgent)
+	wrap(http.MethodPost, "/api/herdr/agents/focus", s.FocusHerdrAgent)
 	wrap(http.MethodGet, "/api/herdr/agent-kinds", s.ListHerdrAgentKinds)
 	wrap(http.MethodGet, "/api/herdr/layouts", s.ListHerdrLayouts)
 	wrap(http.MethodPost, "/api/herdr/panes/resize", s.ResizeHerdrPane)

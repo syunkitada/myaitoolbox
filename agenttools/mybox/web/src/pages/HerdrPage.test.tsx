@@ -8,6 +8,7 @@ import { DialogsProvider } from '../components/AppDialogs'
 vi.mock('../api/client', () => ({
   api: {
     readHerdrAgent: vi.fn().mockResolvedValue({ output: 'hello' }),
+    focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
     listFiles: vi.fn().mockResolvedValue([]),
     promptHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
@@ -78,14 +79,24 @@ describe('HerdrPage agent commands', () => {
     )
 
     fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
+    await vi.waitFor(() => {
+      expect(api.focusHerdrAgent).toHaveBeenCalledWith('w1:p1')
+    })
     expect(screen.queryByRole('button', { name: '/init' })).not.toBeInTheDocument()
-    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '進めて', '次は何をするとよいですか？']) {
+    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '/status', '進めて', '次は何をするとよいですか？']) {
       expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()
     }
+    expect(screen.getByTestId('herdr-agent-output-w1:p1')).toHaveClass('resize-y')
+    expect(screen.getByTestId('herdr-prompt-input')).toHaveClass('resize-y')
     fireEvent.click(await screen.findByRole('button', { name: '/new' }))
 
     await vi.waitFor(() => {
       expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/new')
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: '/status' }))
+    await vi.waitFor(() => {
+      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/status')
     })
   })
 })

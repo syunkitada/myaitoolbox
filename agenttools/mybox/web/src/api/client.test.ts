@@ -46,6 +46,19 @@ describe('api client', () => {
     )
   })
 
+  it('focuses a herdr agent', async () => {
+    mockFetch(200, { ok: true })
+    await api.focusHerdrAgent('w7:p1')
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/herdr/agents/focus',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: 'w7:p1' }),
+      }),
+    )
+  })
+
   it('posts a task trigger definition', async () => {
     mockFetch(201, {
       id: 'daily-report',

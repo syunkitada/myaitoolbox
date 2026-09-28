@@ -51,6 +51,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
   const loadingRef = useRef(false)
   const preRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HerdrAgent | undefined>(undefined)
+  const refreshRef = useRef(onRefresh)
   const prevPaneIdRef = useRef<string | null>(null)
   // Terminal column width of the agent's pane, so the output wraps at the same
   // columns as the real herdr pane instead of the web pane's width.
@@ -58,6 +59,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
 
   const agent = (overview?.agents ?? []).find((a) => a.name === name)
   agentRef.current = agent
+  refreshRef.current = onRefresh
 
   const loadOutput = useCallback(
     async (reportError = true) => {
@@ -121,6 +123,15 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
     return () => {
       cancelled = true
     }
+  }, [agent?.pane_id, open, overview?.available])
+
+  useEffect(() => {
+    const paneId = agent?.pane_id
+    if (!paneId || !open || !overview?.available) return
+    void api
+      .focusHerdrAgent(paneId)
+      .then(() => refreshRef.current())
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [agent?.pane_id, open, overview?.available])
 
   useEffect(() => {
@@ -295,7 +306,8 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
           {outputError && <p className="px-1.5 text-[11px] text-red-600">{outputError}</p>}
           <div
             ref={preRef}
-            className="mx-1.5 max-h-80 overflow-auto rounded border bg-background p-1.5 text-[11px]"
+            data-testid="file-agent-output"
+            className="mx-1.5 h-80 min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-1.5 text-[11px]"
           >
             <SyntaxHighlighter text={output ?? 'loading…'} cols={cols} />
           </div>
@@ -343,6 +355,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
           <div className="flex items-start gap-1.5 p-1.5">
             <textarea
               aria-label={`Prompt ${agentName.name}`}
+              data-testid="file-agent-prompt-input"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -353,7 +366,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
               }}
               placeholder="Prompt… (Ctrl+Enter to send)"
               rows={2}
-              className="min-h-0 flex-1 resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="h-12 min-h-10 max-h-[40vh] min-w-0 flex-1 resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             />
             <Button
               size="xs"

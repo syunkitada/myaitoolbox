@@ -596,6 +596,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HerdrReadResponse"
+  /api/herdr/agents/focus:
+    post:
+      operationId: focusHerdrAgent
+      summary: Mark an agent result as seen in herdr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrReadRequest"
+      responses:
+        "200":
+          description: focused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrOpResponse"
   /api/herdr/agents/prompt:
     post:
       operationId: promptHerdrAgent

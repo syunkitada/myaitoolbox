@@ -7,6 +7,7 @@ import type { HerdrOverview } from '../api/client'
 vi.mock('../api/client', () => ({
   api: {
     readHerdrAgent: vi.fn().mockResolvedValue({ output: 'hello' }),
+    focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
     promptHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     sendKeysHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
@@ -32,6 +33,16 @@ const runningOverview: HerdrOverview = {
 }
 
 describe('FileAgentWidget commands', () => {
+  it('focuses the herdr agent when its panel is open', async () => {
+    render(
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+    )
+
+    await waitFor(() => {
+      expect(api.focusHerdrAgent).toHaveBeenCalledWith('w1:p1')
+    })
+  })
+
   it('sends a quick prompt to the running agent when its button is pressed', async () => {
     render(
       <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
@@ -47,8 +58,17 @@ describe('FileAgentWidget commands', () => {
       <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
     )
     expect(screen.queryByRole('button', { name: '/init' })).not.toBeInTheDocument()
-    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '進めて', '次は何をするとよいですか？']) {
+    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '/status', '進めて', '次は何をするとよいですか？']) {
       expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()
     }
+  })
+
+  it('allows the terminal output and prompt form to be resized vertically', async () => {
+    render(
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+    )
+
+    expect(await screen.findByTestId('file-agent-output')).toHaveClass('resize-y')
+    expect(screen.getByTestId('file-agent-prompt-input')).toHaveClass('resize-y')
   })
 })

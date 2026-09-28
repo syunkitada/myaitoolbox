@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/application"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/entrypoint/api"
 )
 
 func herdrTestServer(t *testing.T, run herdrRunFunc) *Server {
@@ -334,6 +335,28 @@ func TestHerdrPromptAgentValidation(t *testing.T) {
 		rec := do(t, s, "POST", "/api/herdr/agents/prompt", body)
 		assert.NotEqual(t, 200, rec.Code)
 	}
+}
+
+func TestHerdrFocusAgent(t *testing.T) {
+	var gotArgs []string
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		gotArgs = args
+		return []byte(`{"ok":true}`), nil
+	})
+
+	rec := do(t, s, "POST", "/api/herdr/agents/focus", map[string]string{"target": "w7:p1"})
+	require.Equal(t, http.StatusOK, rec.Code)
+	res := decode[api.HerdrOpResponse](t, rec)
+	assert.True(t, res.Ok)
+	assert.Equal(t, []string{"agent", "focus", "w7:p1"}, gotArgs)
+}
+
+func TestHerdrFocusAgentRejectsBadTarget(t *testing.T) {
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		return nil, errors.New("should not run")
+	})
+	rec := do(t, s, "POST", "/api/herdr/agents/focus", map[string]string{"target": "bad target; rm -rf"})
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
 func TestHerdrSendKeysAgent(t *testing.T) {

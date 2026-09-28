@@ -493,6 +493,9 @@ export const api = {
   readHerdrAgent: (target: string) =>
     request<{ output: string }>('POST', '/api/herdr/agents/read', { target }),
 
+  focusHerdrAgent: (target: string) =>
+    request<{ ok: boolean }>('POST', '/api/herdr/agents/focus', { target }),
+
   promptHerdrAgent: (target: string, text: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/agents/prompt', { target, text }),
 

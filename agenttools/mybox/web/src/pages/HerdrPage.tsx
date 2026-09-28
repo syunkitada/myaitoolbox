@@ -169,7 +169,8 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
       <div
         ref={preRef}
         onScroll={handlePreScroll}
-        className="max-h-64 overflow-auto rounded border bg-background p-2 text-xs"
+        data-testid={`herdr-agent-output-${agent.pane_id}`}
+        className="h-64 min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-2 text-xs"
       >
         <SyntaxHighlighter text={output ?? 'loading...'} cols={cols} />
       </div>
@@ -219,7 +220,7 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
           }}
           placeholder="Send a prompt to this agent (Ctrl+Enter to submit)"
           rows={2}
-          className="min-h-0 flex-1 resize-y rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="h-12 min-h-10 max-h-[40vh] min-w-0 flex-1 resize-y rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         />
         <Button size="sm" className="cursor-pointer self-end" disabled={sending || !draft.trim()} onClick={() => void sendPrompt()}>
           <Send />
@@ -1081,6 +1082,14 @@ export function HerdrPage({ overview, error, loading, refresh }: HerdrPageProps)
       setOpenPane(requestedAgent)
     }
   }, [requestedAgent, overview])
+
+  useEffect(() => {
+    if (!openPane) return
+    void api
+      .focusHerdrAgent(openPane)
+      .then(() => refresh())
+      .catch((e) => onError(e instanceof Error ? e.message : String(e)))
+  }, [openPane, onError, refresh])
 
   return (
     <div className="page p-4 md:p-6">
