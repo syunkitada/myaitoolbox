@@ -30,6 +30,34 @@ interface HerdrPageProps {
   onWebuiFocusChange?: (paneId: string | null) => void
 }
 
+const OPEN_AGENT_STORAGE_KEY = 'mybox:herdr-open-agent'
+
+function rememberedOpenAgent(project: string): string | null {
+  if (!project) return null
+  try {
+    const raw = localStorage.getItem(OPEN_AGENT_STORAGE_KEY)
+    if (!raw) return null
+    const stored = JSON.parse(raw) as Record<string, unknown>
+    const paneId = stored[project]
+    return typeof paneId === 'string' ? paneId : null
+  } catch {
+    return null
+  }
+}
+
+function rememberOpenAgent(project: string, paneId: string | null) {
+  if (!project) return
+  try {
+    const raw = localStorage.getItem(OPEN_AGENT_STORAGE_KEY)
+    const stored = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+    if (paneId) stored[project] = paneId
+    else delete stored[project]
+    localStorage.setItem(OPEN_AGENT_STORAGE_KEY, JSON.stringify(stored))
+  } catch {
+    // ignore malformed or unavailable local storage
+  }
+}
+
 interface AgentDetailProps {
   agent: HerdrAgent
   autoReload: boolean
@@ -946,7 +974,14 @@ export function HerdrPage({
   // reloading the browser restores exactly the same tab/pane focus.
   const urlTabId = searchParams.get('tab')
   const urlPaneId = searchParams.get('pane')
-  const [openPane, setOpenPane] = useState<string | null>(null)
+  const [openPane, setOpenPane] = useState<string | null>(() => rememberedOpenAgent(project))
+  const updateOpenPane = useCallback(
+    (paneId: string | null) => {
+      setOpenPane(paneId)
+      rememberOpenAgent(project, paneId)
+    },
+    [project],
+  )
   // Auto reload refreshes the focused pane's terminal output every second.
   const [autoReload, setAutoReload] = useState(true)
 
@@ -1087,10 +1122,10 @@ export function HerdrPage({
   // Auto-open the agent requested via ?agent=<pane_id> (sidebar deep link).
   useEffect(() => {
     if (!requestedAgent) return
-    if ((overview?.agents ?? []).some((a) => a.pane_id === requestedAgent)) {
-      setOpenPane(requestedAgent)
+    if (openPane !== requestedAgent && (overview?.agents ?? []).some((a) => a.pane_id === requestedAgent)) {
+      updateOpenPane(requestedAgent)
     }
-  }, [requestedAgent, overview])
+  }, [requestedAgent, overview, openPane, updateOpenPane])
 
   useEffect(() => {
     if (!openPane) return
@@ -1248,7 +1283,7 @@ export function HerdrPage({
                       <button
                         type="button"
                         className="herdr-agent-row flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2 text-left"
-                        onClick={() => setOpenPane(openPane === a.pane_id ? null : a.pane_id)}
+                        onClick={() => updateOpenPane(openPane === a.pane_id ? null : a.pane_id)}
                         aria-expanded={openPane === a.pane_id}
                         data-testid={`agent-row-${a.pane_id}`}
                       >

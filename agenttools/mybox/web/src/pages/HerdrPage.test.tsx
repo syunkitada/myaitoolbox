@@ -66,6 +66,7 @@ describe('HerdrPage agent commands', () => {
 
   afterEach(() => {
     window.history.replaceState({}, '', '/')
+    localStorage.clear()
     vi.clearAllMocks()
   })
 
@@ -131,5 +132,45 @@ describe('HerdrPage agent commands', () => {
     await vi.waitFor(() => {
       expect(onWebuiFocusChange).toHaveBeenCalledWith('w1:p1')
     })
+  })
+
+  it('restores the last open agent panel separately for each project', async () => {
+    localStorage.clear()
+    const otherOverview = {
+      ...overview,
+      workspaces: [{ ...overview.workspaces[0], workspace_id: 'w2', label: 'other' }],
+      agents: [{ ...overview.agents[0], workspace_id: 'w2', pane_id: 'w2:p1' }],
+      tabs: [{ ...overview.tabs[0], workspace_id: 'w2', tab_id: 'w2:t1' }],
+      panes: [{ ...overview.panes[0], workspace_id: 'w2', tab_id: 'w2:t1', pane_id: 'w2:p1' }],
+    }
+    const renderHerdr = (project: string, pageOverview: typeof overview) => {
+      window.history.pushState({}, '', `/projects/${project}/herdr`)
+      return render(
+        <MemoryRouter initialEntries={[`/projects/${project}/herdr`]}>
+          <DialogsProvider>
+            <HerdrPage
+              overview={pageOverview}
+              error={null}
+              loading={false}
+              refresh={() => Promise.resolve()}
+              webuiFocusedPaneId={null}
+              onWebuiFocusChange={() => undefined}
+            />
+          </DialogsProvider>
+        </MemoryRouter>,
+      )
+    }
+
+    const demoPage = renderHerdr('demo', overview)
+    fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
+    expect(await screen.findByTestId('agent-detail-w1:p1')).toBeInTheDocument()
+    demoPage.unmount()
+
+    const otherPage = renderHerdr('other', otherOverview)
+    expect(screen.queryByTestId('agent-detail-w2:p1')).not.toBeInTheDocument()
+    otherPage.unmount()
+
+    renderHerdr('demo', overview)
+    expect(await screen.findByTestId('agent-detail-w1:p1')).toBeInTheDocument()
   })
 })
