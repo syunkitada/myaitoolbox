@@ -316,7 +316,7 @@ export function FileAgentWidget({ path, overview, onRefresh }: FileAgentWidgetPr
             <span aria-hidden="true" className="h-4 w-px bg-border" />
             {AGENT_COMMANDS.map((c) => (
               <Button
-                key={c.command}
+                key={c.id}
                 variant="outline"
                 size="xs"
                 className="cursor-pointer px-1.5 font-mono text-[10px] text-muted-foreground"

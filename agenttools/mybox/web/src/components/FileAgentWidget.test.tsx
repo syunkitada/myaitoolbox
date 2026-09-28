@@ -32,13 +32,13 @@ const runningOverview: HerdrOverview = {
 }
 
 describe('FileAgentWidget commands', () => {
-  it('sends /new to the running agent when its button is pressed', async () => {
+  it('sends a quick prompt to the running agent when its button is pressed', async () => {
     render(
       <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
     )
-    fireEvent.click(await screen.findByRole('button', { name: '/new' }))
+    fireEvent.click(await screen.findByRole('button', { name: '次は何をするとよいですか？' }))
     await waitFor(() => {
-      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/new')
+      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '次は何をするとよいですか？')
     })
   })
 
@@ -46,7 +46,8 @@ describe('FileAgentWidget commands', () => {
     render(
       <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
     )
-    for (const cmd of ['/new', '/init', '/compact', '/help']) {
+    expect(screen.queryByRole('button', { name: '/new' })).not.toBeInTheDocument()
+    for (const cmd of ['/init', '/compact', '/help', '進めて', '次は何をするとよいですか？']) {
       expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()
     }
   })
