@@ -433,7 +433,7 @@ export function FileAgentWidget({
             className="mx-1.5 min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-1.5 text-[11px]"
             style={{ height: outputSize.height }}
           >
-            <SyntaxHighlighter text={output ?? 'loading…'} cols={cols} />
+            <SyntaxHighlighter text={output ?? 'loading…'} cols={cols} linkFilePaths />
           </div>
           <div className="flex flex-wrap items-center gap-1 px-1.5 pt-1.5">
             {FILE_AGENT_KEYS.map((k) => (

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Prism, hasGrammar } from '../utils/prism-langs'
+import { filesUrl, getProject } from '../utils/routes'
 
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/g
+const FILE_PATH_RE = /(?<![A-Za-z0-9_./-])((?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)(?![A-Za-z0-9_.-])/g
 
 function escapeHtml(str: string): string {
   return str
@@ -18,15 +20,27 @@ function linkifyUrls(html: string): string {
   })
 }
 
-function highlightText(text: string, language?: string): string {
+function linkifyFilePaths(html: string): string {
+  if (!getProject()) return html
+  return html.replace(FILE_PATH_RE, (path) => {
+    const href = escapeHtml(filesUrl(path))
+    return `<a href="${href}" class="syntax-link syntax-file-link">${path}</a>`
+  })
+}
+
+function highlightText(text: string, language?: string, linkFilePaths = false): string {
+  const decorate = (html: string) => {
+    const linked = linkifyUrls(html)
+    return linkFilePaths ? linkifyFilePaths(linked) : linked
+  }
   if (language && hasGrammar(language)) {
     try {
-      return linkifyUrls(Prism.highlight(text, Prism.languages[language], language))
+      return decorate(Prism.highlight(text, Prism.languages[language], language))
     } catch {
       // fall through to plaintext
     }
   }
-  return linkifyUrls(escapeHtml(text))
+  return decorate(escapeHtml(text))
 }
 
 export interface SyntaxHighlighterProps {
@@ -36,11 +50,20 @@ export interface SyntaxHighlighterProps {
   // Terminal column width the pre is forced to render at so long lines wrap at
   // (and only at) the same columns as the herdr pane they came from.
   cols?: number
+  linkFilePaths?: boolean
   focusLine?: number
   searchQuery?: string
 }
 
-export function SyntaxHighlighter({ text, language, className, cols, focusLine, searchQuery }: SyntaxHighlighterProps) {
+export function SyntaxHighlighter({
+  text,
+  language,
+  className,
+  cols,
+  linkFilePaths = false,
+  focusLine,
+  searchQuery,
+}: SyntaxHighlighterProps) {
   const lines = useMemo(() => text.split(/\r?\n/), [text])
   const lineRef = useRef<HTMLPreElement | null>(null)
   const fixedWidth =
@@ -66,7 +89,7 @@ export function SyntaxHighlighter({ text, language, className, cols, focusLine, 
               key={lineNumber}
               data-search-line={lineNumber}
               className={lineNumber === focusLine ? 'block rounded bg-yellow-100 px-1 dark:bg-yellow-900/50' : 'block'}
-              dangerouslySetInnerHTML={{ __html: highlightText(line, language) || '\u200b' }}
+              dangerouslySetInnerHTML={{ __html: highlightText(line, language, linkFilePaths) || '\u200b' }}
             />
           )
         })}

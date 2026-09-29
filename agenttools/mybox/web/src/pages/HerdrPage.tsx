@@ -290,7 +290,7 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
         className="min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-2 text-xs"
         style={{ height: outputSize.height }}
       >
-        <SyntaxHighlighter text={output ?? 'loading...'} cols={cols} />
+        <SyntaxHighlighter text={output ?? 'loading...'} cols={cols} linkFilePaths />
       </div>
       <div
         className="herdr-agent-keys mt-2 flex flex-wrap items-center gap-1"
@@ -646,7 +646,7 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, 
               fit ? 'min-h-0 flex-1' : 'max-h-64',
             )}
           >
-            <SyntaxHighlighter text={output ?? 'loading terminal output...'} cols={cols} />
+            <SyntaxHighlighter text={output ?? 'loading terminal output...'} cols={cols} linkFilePaths />
           </div>
         </div>
       ) : (

@@ -23,6 +23,26 @@ describe('SyntaxHighlighter', () => {
     }
   })
 
+  it('linkifies relative file paths when enabled', () => {
+    window.history.pushState({}, '', '/projects/demo/herdr')
+    const { container } = render(
+      <SyntaxHighlighter
+        text="See data/portfolio/benefits-and-dividends.md for details."
+        linkFilePaths
+      />,
+    )
+
+    const link = container.querySelector('a.syntax-file-link')
+    expect(link).not.toBeNull()
+    expect(link).toHaveTextContent('data/portfolio/benefits-and-dividends.md')
+    expect(link).toHaveAttribute(
+      'href',
+      '/projects/demo/dashboard/files/data/portfolio/benefits-and-dividends.md',
+    )
+
+    window.history.replaceState({}, '', '/')
+  })
+
   it('adds token spans when a grammar is available', () => {
     const { container } = render(
       <SyntaxHighlighter text={'const x = 1'} language="javascript" />,
