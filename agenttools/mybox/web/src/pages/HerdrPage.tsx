@@ -11,6 +11,11 @@ import { useDialogs } from '../components/AppDialogs'
 import { cn } from '@/lib/utils'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { useIsMobile } from '../hooks/use-mobile'
+import {
+  HERDR_AGENT_OUTPUT_HEIGHT_STORAGE_KEY,
+  HERDR_AGENT_PROMPT_HEIGHT_STORAGE_KEY,
+  useResizableHeight,
+} from '../hooks/use-resizable-height'
 import { filePathForAgent } from '../utils/herdr-file-agent'
 import { AGENT_COMMANDS } from '../utils/herdr-agent-commands'
 import {
@@ -98,7 +103,17 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
   const [notice, setNotice] = useState<string | null>(null)
   const loadingRef = useRef(false)
   const scheduledRevisionRef = useRef(0)
-  const preRef = useRef<HTMLDivElement>(null)
+  const preRef = useRef<HTMLDivElement | null>(null)
+  const outputSize = useResizableHeight<HTMLDivElement>({
+    storageKey: HERDR_AGENT_OUTPUT_HEIGHT_STORAGE_KEY,
+    defaultHeight: 256,
+    minHeight: 128,
+  })
+  const promptSize = useResizableHeight<HTMLTextAreaElement>({
+    storageKey: HERDR_AGENT_PROMPT_HEIGHT_STORAGE_KEY,
+    defaultHeight: 48,
+    minHeight: 40,
+  })
   // While true the viewport follows new output; scrolling up pauses the follow.
   const pinnedRef = useRef(true)
   const visibleScheduledPrompts = scheduledPrompts.filter(
@@ -266,10 +281,14 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
       </div>
       {outputError && <p className="mb-2 text-xs text-red-600">{outputError}</p>}
       <div
-        ref={preRef}
+        ref={(element) => {
+          preRef.current = element
+          outputSize.ref(element)
+        }}
         onScroll={handlePreScroll}
         data-testid={`herdr-agent-output-${agent.pane_id}`}
-        className="h-64 min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-2 text-xs"
+        className="min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-2 text-xs"
+        style={{ height: outputSize.height }}
       >
         <SyntaxHighlighter text={output ?? 'loading...'} cols={cols} />
       </div>
@@ -310,6 +329,7 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
       </div>
       <div className="mt-3 flex items-start gap-2">
         <textarea
+          ref={promptSize.ref}
           aria-label={`Prompt ${agent.name}`}
           data-testid="herdr-prompt-input"
           value={draft}
@@ -319,7 +339,8 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
           }}
           placeholder="Send a prompt to this agent (Ctrl+Enter to submit)"
           rows={2}
-          className="h-12 min-h-10 max-h-[40vh] min-w-0 flex-1 resize-y rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="min-h-10 max-h-[40vh] min-w-0 flex-1 resize-y rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          style={{ height: promptSize.height }}
         />
         <Button size="sm" className="cursor-pointer self-end" disabled={sending || !draft.trim()} onClick={() => void sendPrompt()}>
           <Send />

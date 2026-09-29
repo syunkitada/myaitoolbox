@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { HerdrPage } from './HerdrPage'
 import { api } from '../api/client'
@@ -46,6 +46,33 @@ const overview = {
   panes: [{ pane_id: 'w1:p1', tab_id: 'w1:t1', workspace_id: 'w1', cwd: '/proj', agent_status: 'idle' }],
 }
 
+class TestResizeObserver {
+  readonly callback: ResizeObserverCallback
+  target?: Element
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback
+    resizeObservers.push(this)
+  }
+
+  observe(target: Element) {
+    this.target = target
+  }
+
+  unobserve() {}
+
+  disconnect() {}
+}
+
+const resizeObservers: TestResizeObserver[] = []
+
+function notifyResize(target: Element, height: number) {
+  const entry = { target, contentRect: { height } } as ResizeObserverEntry
+  for (const observer of resizeObservers) {
+    if (observer.target === target) observer.callback([entry], {} as ResizeObserver)
+  }
+}
+
 function mockMatchMedia() {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -70,12 +97,15 @@ function localDateTimeValue(date: Date): string {
 describe('HerdrPage agent commands', () => {
   beforeEach(() => {
     mockMatchMedia()
+    vi.stubGlobal('ResizeObserver', TestResizeObserver)
     window.history.pushState({}, '', '/projects/demo/herdr')
   })
 
   afterEach(() => {
     window.history.replaceState({}, '', '/')
     localStorage.clear()
+    resizeObservers.length = 0
+    vi.unstubAllGlobals()
     vi.clearAllMocks()
     vi.useRealTimers()
   })
@@ -118,6 +148,42 @@ describe('HerdrPage agent commands', () => {
     fireEvent.click(await screen.findByRole('button', { name: '/status' }))
     await vi.waitFor(() => {
       expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/status')
+    })
+  })
+
+  it('restores and persists the vertical sizes of the agent panel controls', async () => {
+    localStorage.setItem('mybox:herdr-agent-output-height', '420')
+    localStorage.setItem('mybox:herdr-agent-prompt-height', '96')
+
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={overview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId={null}
+            onWebuiFocusChange={() => undefined}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
+    const output = await screen.findByTestId('herdr-agent-output-w1:p1')
+    const prompt = screen.getByTestId('herdr-prompt-input')
+    expect(output).toHaveStyle({ height: '420px' })
+    expect(prompt).toHaveStyle({ height: '96px' })
+
+    await act(async () => {
+      notifyResize(output, 444)
+      notifyResize(prompt, 88)
+    })
+
+    await waitFor(() => {
+      expect(localStorage.getItem('mybox:herdr-agent-output-height')).toBe('444')
+      expect(localStorage.getItem('mybox:herdr-agent-prompt-height')).toBe('88')
     })
   })
 

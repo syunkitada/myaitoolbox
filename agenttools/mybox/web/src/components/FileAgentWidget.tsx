@@ -9,6 +9,11 @@ import { SyntaxHighlighter } from './SyntaxHighlighter'
 import { paneColumnWidth } from '../utils/herdr-layout'
 import { AGENT_COMMANDS } from '../utils/herdr-agent-commands'
 import {
+  HERDR_AGENT_OUTPUT_HEIGHT_STORAGE_KEY,
+  HERDR_AGENT_PROMPT_HEIGHT_STORAGE_KEY,
+  useResizableHeight,
+} from '../hooks/use-resizable-height'
+import {
   formatDateTimeLocal,
   formatScheduledAt,
   fromScheduledPromptResponse,
@@ -67,7 +72,17 @@ export function FileAgentWidget({
   })
   const loadingRef = useRef(false)
   const scheduledRevisionRef = useRef(0)
-  const preRef = useRef<HTMLDivElement>(null)
+  const preRef = useRef<HTMLDivElement | null>(null)
+  const outputSize = useResizableHeight<HTMLDivElement>({
+    storageKey: HERDR_AGENT_OUTPUT_HEIGHT_STORAGE_KEY,
+    defaultHeight: 320,
+    minHeight: 128,
+  })
+  const promptSize = useResizableHeight<HTMLTextAreaElement>({
+    storageKey: HERDR_AGENT_PROMPT_HEIGHT_STORAGE_KEY,
+    defaultHeight: 48,
+    minHeight: 40,
+  })
   const agentRef = useRef<HerdrAgent | undefined>(undefined)
   const refreshRef = useRef(onRefresh)
   const prevPaneIdRef = useRef<string | null>(null)
@@ -410,9 +425,13 @@ export function FileAgentWidget({
           {error && <p className="px-1.5 text-[11px] text-red-600">{error}</p>}
           {outputError && <p className="px-1.5 text-[11px] text-red-600">{outputError}</p>}
           <div
-            ref={preRef}
+            ref={(element) => {
+              preRef.current = element
+              outputSize.ref(element)
+            }}
             data-testid="file-agent-output"
-            className="mx-1.5 h-80 min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-1.5 text-[11px]"
+            className="mx-1.5 min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-1.5 text-[11px]"
+            style={{ height: outputSize.height }}
           >
             <SyntaxHighlighter text={output ?? 'loading…'} cols={cols} />
           </div>
@@ -459,6 +478,7 @@ export function FileAgentWidget({
           </div>
           <div className="flex items-start gap-1.5 p-1.5">
             <textarea
+              ref={promptSize.ref}
               aria-label={`Prompt ${agentName.name}`}
               data-testid="file-agent-prompt-input"
               value={draft}
@@ -471,7 +491,8 @@ export function FileAgentWidget({
               }}
               placeholder="Prompt… (Ctrl+Enter to send)"
               rows={2}
-              className="h-12 min-h-10 max-h-[40vh] min-w-0 flex-1 resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="min-h-10 max-h-[40vh] min-w-0 flex-1 resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              style={{ height: promptSize.height }}
             />
             <Button
               size="xs"
