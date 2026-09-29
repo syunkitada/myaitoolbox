@@ -1527,6 +1527,7 @@ function Pane({
   const [menuOpen, setMenuOpen] = useState(false)
   const [taskStatusUpdating, setTaskStatusUpdating] = useState(false)
   const [copyDialogOpen, setCopyDialogOpen] = useState(false)
+  const [fileCopied, setFileCopied] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [execState, setExecState] = useState<{ path: string; running: boolean; output: string; result?: FileExecuteResult; error?: string } | null>(null)
   const executeCancel = useRef<(() => void) | null>(null)
@@ -1604,6 +1605,7 @@ function Pane({
     setSaved(false)
     setCrlf(false)
     setCopyDialogOpen(false)
+    setFileCopied(false)
     editStartLine.current = null
     setIsFav(favorites.includes(path))
     if (isImage) return
@@ -1808,6 +1810,15 @@ function Pane({
 
   const copyRelativePath = () => {
     void copyToClipboard(path).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }
+
+  const copyFileContents = () => {
+    void copyToClipboard(content)
+      .then(() => {
+        setFileCopied(true)
+        window.setTimeout(() => setFileCopied(false), 1500)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }
 
   const rename = async () => {
@@ -2423,16 +2434,16 @@ function Pane({
                         <TagBadge key={t}>{t}</TagBadge>
                       ))}
                     </div>
-                    {isMarkdown && (
+                    {(isMarkdown || (!isDir && !isImage)) && (
                       <Button
                         variant="ghost"
                         size="icon-sm"
                         className="ml-auto"
-                        onClick={() => setCopyDialogOpen(true)}
+                        onClick={isMarkdown ? () => setCopyDialogOpen(true) : copyFileContents}
                         aria-label="Copy file contents"
                         title="Copy file contents"
                       >
-                        <Copy className="size-4" />
+                        {fileCopied ? <Check className="size-4" /> : <Copy className="size-4" />}
                       </Button>
                     )}
                   </div>

@@ -269,12 +269,12 @@ describe('file viewer Git diff', () => {
     untracked: [],
   }
 
-  const renderFileViewer = (status: Record<string, string>) => {
+  const renderFileViewer = (status: Record<string, string>, fileContent = 'current body') => {
     vi.spyOn(api, 'listFiles').mockResolvedValue([
       { path: 'notes.txt', name: 'notes.txt', kind: 'file' },
     ])
     vi.spyOn(api, 'getFileGitStatus').mockResolvedValue(status)
-    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path: 'notes.txt', content: 'current body' })
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path: 'notes.txt', content: fileContent })
     vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
     const refreshMeta = vi.fn().mockResolvedValue(undefined)
     const router = createMemoryRouter(
@@ -363,6 +363,31 @@ describe('file viewer Git diff', () => {
 
     await screen.findByText('current body')
     expect(screen.queryByRole('button', { name: 'Show Git diff' })).not.toBeInTheDocument()
+  })
+
+  it('copies non-Markdown file contents as-is', async () => {
+    const originalClipboard = navigator.clipboard
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const fileContent = '## Keep this syntax\n\n**Do not convert this text.**'
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+
+    try {
+      renderFileViewer({}, fileContent)
+
+      const button = await screen.findByRole('button', { name: 'Copy file contents' })
+      fireEvent.click(button)
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(fileContent))
+      expect(screen.queryByRole('dialog', { name: 'Copy file contents' })).not.toBeInTheDocument()
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: originalClipboard,
+      })
+    }
   })
 
   it('shows loading and error states for the Git diff panel', () => {
