@@ -327,7 +327,7 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
           </Button>
         ))}
       </div>
-      <div className="mt-3 flex items-start gap-2">
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
         <textarea
           ref={promptSize.ref}
           aria-label={`Prompt ${agent.name}`}
@@ -339,33 +339,35 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
           }}
           placeholder="Send a prompt to this agent (Ctrl+Enter to submit)"
           rows={2}
-          className="min-h-10 max-h-[40vh] min-w-0 flex-1 resize-y rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="min-h-10 max-h-[40vh] w-full min-w-0 resize-y rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:flex-1"
           style={{ height: promptSize.height }}
         />
-        <Button size="sm" className="cursor-pointer self-end" disabled={sending || !draft.trim()} onClick={() => void sendPrompt()}>
-          <Send />
-          Send
-        </Button>
-        <div className="flex min-w-40 flex-col gap-1 self-end">
-          <input
-            type="datetime-local"
-            aria-label="Schedule send time"
-            value={scheduleAt}
-            min={formatDateTimeLocal(new Date())}
-            onChange={(e) => setScheduleAt(e.target.value)}
-            className="h-8 rounded-md border bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            className="cursor-pointer"
-            onClick={schedulePrompt}
-            disabled={sending || scheduling || !draft.trim() || scheduleAt === ''}
-            aria-label="Schedule send"
-          >
-            <CalendarClock />
-            Schedule
+        <div data-testid="herdr-prompt-actions" className="flex w-full flex-wrap items-start gap-2 sm:w-auto sm:flex-nowrap">
+          <Button size="sm" className="cursor-pointer self-end" disabled={sending || !draft.trim()} onClick={() => void sendPrompt()}>
+            <Send />
+            Send
           </Button>
+          <div className="flex min-w-0 flex-1 items-center gap-1 sm:min-w-40 sm:flex-col sm:items-stretch">
+            <input
+              type="datetime-local"
+              aria-label="Schedule send time"
+              value={scheduleAt}
+              min={formatDateTimeLocal(new Date())}
+              onChange={(e) => setScheduleAt(e.target.value)}
+              className="h-8 w-full min-w-0 rounded-md border bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 cursor-pointer"
+              onClick={schedulePrompt}
+              disabled={sending || scheduling || !draft.trim() || scheduleAt === ''}
+              aria-label="Schedule send"
+            >
+              <CalendarClock />
+              Schedule
+            </Button>
+          </div>
         </div>
       </div>
       {visibleScheduledPrompts.length > 0 && (

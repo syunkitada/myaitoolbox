@@ -476,7 +476,7 @@ export function FileAgentWidget({
               Stop
             </Button>
           </div>
-          <div className="flex items-start gap-1.5 p-1.5">
+          <div className="flex flex-col gap-1.5 p-1.5 sm:flex-row sm:items-start">
             <textarea
               ref={promptSize.ref}
               aria-label={`Prompt ${agentName.name}`}
@@ -491,38 +491,40 @@ export function FileAgentWidget({
               }}
               placeholder="Prompt… (Ctrl+Enter to send)"
               rows={2}
-              className="min-h-10 max-h-[40vh] min-w-0 flex-1 resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="min-h-10 max-h-[40vh] w-full min-w-0 resize-y rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:flex-1"
               style={{ height: promptSize.height }}
             />
-            <Button
-              size="xs"
-              className="cursor-pointer"
-              onClick={() => void sendPrompt()}
-              disabled={sending || draft.trim() === ''}
-              aria-label={`Send prompt to ${agentName.name}`}
-            >
-              Send
-            </Button>
-            <div className="flex min-w-40 flex-col gap-1">
-              <input
-                type="datetime-local"
-                aria-label="Schedule send time"
-                value={scheduleAt}
-                min={formatDateTimeLocal(new Date())}
-                onChange={(e) => setScheduleAt(e.target.value)}
-                className="h-6 rounded-md border border-input bg-background px-1.5 text-[11px] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              />
+            <div data-testid="file-agent-prompt-actions" className="flex w-full flex-wrap items-start gap-1.5 sm:w-auto sm:flex-nowrap">
               <Button
-                variant="outline"
                 size="xs"
-                className="cursor-pointer"
-                onClick={schedulePrompt}
-                disabled={sending || scheduling || draft.trim() === '' || scheduleAt === ''}
-                aria-label="Schedule send"
+                className="cursor-pointer self-end"
+                onClick={() => void sendPrompt()}
+                disabled={sending || draft.trim() === ''}
+                aria-label={`Send prompt to ${agentName.name}`}
               >
-                <CalendarClock className="size-3" />
-                Schedule
+                Send
               </Button>
+              <div className="flex min-w-0 flex-1 items-center gap-1 sm:min-w-40 sm:flex-col sm:items-stretch">
+                <input
+                  type="datetime-local"
+                  aria-label="Schedule send time"
+                  value={scheduleAt}
+                  min={formatDateTimeLocal(new Date())}
+                  onChange={(e) => setScheduleAt(e.target.value)}
+                  className="h-6 w-full min-w-0 rounded-md border border-input bg-background px-1.5 text-[11px] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                />
+                <Button
+                  variant="outline"
+                  size="xs"
+                  className="shrink-0 cursor-pointer"
+                  onClick={schedulePrompt}
+                  disabled={sending || scheduling || draft.trim() === '' || scheduleAt === ''}
+                  aria-label="Schedule send"
+                >
+                  <CalendarClock className="size-3" />
+                  Schedule
+                </Button>
+              </div>
             </div>
           </div>
           {visibleScheduledPrompts.length > 0 && (

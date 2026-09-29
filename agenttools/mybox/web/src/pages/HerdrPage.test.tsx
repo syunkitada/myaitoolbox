@@ -138,7 +138,8 @@ describe('HerdrPage agent commands', () => {
       expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()
     }
     expect(screen.getByTestId('herdr-agent-output-w1:p1')).toHaveClass('resize-y')
-    expect(screen.getByTestId('herdr-prompt-input')).toHaveClass('resize-y')
+    expect(screen.getByTestId('herdr-prompt-input')).toHaveClass('resize-y', 'w-full', 'sm:flex-1')
+    expect(screen.getByTestId('herdr-prompt-actions')).toHaveClass('w-full', 'sm:w-auto')
     fireEvent.click(await screen.findByRole('button', { name: '/new' }))
 
     await vi.waitFor(() => {
@@ -149,6 +150,28 @@ describe('HerdrPage agent commands', () => {
     await vi.waitFor(() => {
       expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/status')
     })
+  })
+
+  it('keeps the prompt input full width on narrow screens', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={overview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId={null}
+            onWebuiFocusChange={() => undefined}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
+
+    expect(screen.getByTestId('herdr-prompt-input')).toHaveClass('w-full', 'sm:flex-1')
+    expect(screen.getByTestId('herdr-prompt-actions')).toHaveClass('w-full', 'sm:w-auto')
   })
 
   it('restores and persists the vertical sizes of the agent panel controls', async () => {

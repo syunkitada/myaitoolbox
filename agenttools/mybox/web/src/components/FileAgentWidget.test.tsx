@@ -153,7 +153,8 @@ describe('FileAgentWidget commands', () => {
     )
 
     expect(await screen.findByTestId('file-agent-output')).toHaveClass('resize-y')
-    expect(screen.getByTestId('file-agent-prompt-input')).toHaveClass('resize-y')
+    expect(screen.getByTestId('file-agent-prompt-input')).toHaveClass('resize-y', 'w-full', 'sm:flex-1')
+    expect(screen.getByTestId('file-agent-prompt-actions')).toHaveClass('w-full', 'sm:w-auto')
   })
 
   it('persists a prompt schedule on the server', async () => {
