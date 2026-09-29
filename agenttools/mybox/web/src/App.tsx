@@ -35,7 +35,7 @@ export default function App() {
   const { pathname } = useLocation()
   const project = getProject()
   const [webuiFocusedPaneId, setWebuiFocusedPaneId] = useState<string | null>(null)
-  const herdr = useHerdrOverview()
+  const herdr = useHerdrOverview(5000, webuiFocusedPaneId)
   useAgentFavicon(herdr.overview)
 
   const handleWebuiFocusChange = useCallback((paneId: string | null) => {
@@ -187,7 +187,7 @@ export default function App() {
                         favorites={meta?.favorites ?? []}
                         recentFiles={meta?.recent_files ?? []}
                         herdrOverview={herdr.overview}
-                        refreshHerdr={() => herdr.refresh()}
+                        refreshHerdr={herdr.refresh}
                         webuiFocusedPaneId={webuiFocusedPaneId}
                         onWebuiFocusChange={handleWebuiFocusChange}
                       />
@@ -202,7 +202,7 @@ export default function App() {
                         favorites={meta?.favorites ?? []}
                         recentFiles={meta?.recent_files ?? []}
                         herdrOverview={herdr.overview}
-                        refreshHerdr={() => herdr.refresh()}
+                        refreshHerdr={herdr.refresh}
                         webuiFocusedPaneId={webuiFocusedPaneId}
                         onWebuiFocusChange={handleWebuiFocusChange}
                       />
@@ -222,7 +222,7 @@ export default function App() {
                         overview={herdr.overview}
                         error={herdr.error}
                         loading={herdr.loading}
-                        refresh={() => herdr.refresh()}
+                        refresh={herdr.refresh}
                         webuiFocusedPaneId={webuiFocusedPaneId}
                         onWebuiFocusChange={handleWebuiFocusChange}
                       />
