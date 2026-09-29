@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   DndContext,
@@ -9,7 +9,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { Task, TaskStatus, api } from '../api/client'
+import { HerdrOverview, Task, TaskStatus, api } from '../api/client'
 import { encodePath, getProject, projectUrl } from '../utils/routes'
 import { Button } from '../components/ui/button'
 import { NewTaskDialog } from '../components/NewTaskDialog'
@@ -17,8 +17,10 @@ import { useDialogs } from '../components/AppDialogs'
 import { Archive, ListPlus, MoreVertical, ExternalLink, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
+import { StatusBadge } from '../components/herdr-status'
 import { TaskProgress } from '../components/TaskProgress'
 import { extractMarkdownTaskProgress } from '../utils/markdown'
+import { taskAgentName } from '../utils/herdr-file-agent'
 
 const COLUMNS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
@@ -56,6 +58,7 @@ function dueClass(due: string): string {
 
 interface TaskCardProps {
   task: Task
+  herdrOverview?: HerdrOverview | null
   onOpen: (task: Task) => void
   onArchive?: (task: Task) => void
   onDelete?: (task: Task) => void
@@ -63,7 +66,7 @@ interface TaskCardProps {
   readonly?: boolean
 }
 
-function TaskCard({ task, onOpen, onArchive, onDelete, showProject, readonly }: TaskCardProps) {
+function TaskCard({ task, herdrOverview, onOpen, onArchive, onDelete, showProject, readonly }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { task },
@@ -75,6 +78,9 @@ function TaskCard({ task, onOpen, onArchive, onDelete, showProject, readonly }: 
   const isPending = task.pending_until
     ? isPendingUntilActive(task.pending_until)
     : Boolean(task.pending_reason)
+  const agent = herdrOverview?.available
+    ? herdrOverview.agents.find((candidate) => candidate.name === taskAgentName(`_tasks/${task.id}/task.md`))
+    : undefined
   const taskProgress = extractMarkdownTaskProgress(task.body ?? '')
   const style = transform
     ? {
@@ -178,6 +184,11 @@ function TaskCard({ task, onOpen, onArchive, onDelete, showProject, readonly }: 
       <div className="board-card-meta mt-1.5 flex flex-wrap gap-1">
         {showProject && task.project && <ProjectBadge>{task.project}</ProjectBadge>}
         <PriorityBadge priority={task.priority} />
+        {agent && (
+          <span data-testid="task-agent-status" title={`Agent ${agent.name}`}>
+            <StatusBadge status={agent.status} />
+          </span>
+        )}
         {task.due && <DueBadge due={task.due} dueClass={dueClass(task.due)} />}
         {(task.tags ?? []).slice(0, 3).map((t) => (
           <TagBadge key={t}>{t}</TagBadge>
@@ -196,6 +207,8 @@ function TaskCard({ task, onOpen, onArchive, onDelete, showProject, readonly }: 
 interface ColumnProps {
   status: TaskStatus
   tasks: Task[]
+  herdrOverview?: HerdrOverview | null
+  herdrOverviews?: Readonly<Record<string, HerdrOverview>>
   onOpen: (task: Task) => void
   onArchive?: (task: Task) => void
   onDelete?: (task: Task) => void
@@ -203,7 +216,17 @@ interface ColumnProps {
   readonly?: boolean
 }
 
-function Column({ status, tasks, onOpen, onArchive, onDelete, showProject, readonly }: ColumnProps) {
+function Column({
+  status,
+  tasks,
+  herdrOverview,
+  herdrOverviews,
+  onOpen,
+  onArchive,
+  onDelete,
+  showProject,
+  readonly,
+}: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status })
   return (
     <div
@@ -222,7 +245,16 @@ function Column({ status, tasks, onOpen, onArchive, onDelete, showProject, reado
       </h2>
       <div className="board-column-body flex flex-col gap-2">
         {tasks.map((t) => (
-          <TaskCard key={`${t.project ?? ''}/${t.id}`} task={t} onOpen={onOpen} onArchive={onArchive} onDelete={onDelete} showProject={showProject} readonly={readonly} />
+          <TaskCard
+            key={`${t.project ?? ''}/${t.id}`}
+            task={t}
+            herdrOverview={showProject ? herdrOverviews?.[t.project ?? ''] : herdrOverview}
+            onOpen={onOpen}
+            onArchive={onArchive}
+            onDelete={onDelete}
+            showProject={showProject}
+            readonly={readonly}
+          />
         ))}
         {tasks.length === 0 && (
           <div className="board-empty rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">
@@ -234,14 +266,26 @@ function Column({ status, tasks, onOpen, onArchive, onDelete, showProject, reado
   )
 }
 
-export function KanbanBoard() {
+export function KanbanBoard({ herdrOverview }: { herdrOverview?: HerdrOverview | null }) {
   const [tasks, setTasks] = useState<Task[]>([])
+  const [globalHerdrOverviews, setGlobalHerdrOverviews] = useState<Record<string, HerdrOverview>>({})
   const [error, setError] = useState<string | null>(null)
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   const navigate = useNavigate()
   const { confirm } = useDialogs()
   const currentProject = getProject()
   const isGlobal = !currentProject  // プロジェクト未選択 = 全プロジェクト横断モード
+  const globalProjects = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          tasks
+            .map((task) => task.project)
+            .filter((project): project is string => Boolean(project)),
+        ),
+      ).sort(),
+    [tasks],
+  )
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
@@ -259,6 +303,44 @@ export function KanbanBoard() {
     setError(null)
     load()
   }, [load, currentProject])
+
+  useEffect(() => {
+    if (!isGlobal) {
+      setGlobalHerdrOverviews({})
+      return
+    }
+
+    let cancelled = false
+    const refresh = async () => {
+      const entries = await Promise.all(
+        globalProjects.map(async (project) => {
+          try {
+            return [project, await api.getHerdrOverview(project)] as const
+          } catch {
+            return null
+          }
+        }),
+      )
+      if (cancelled) return
+      setGlobalHerdrOverviews(
+        Object.fromEntries(entries.filter((entry): entry is readonly [string, HerdrOverview] => entry !== null)),
+      )
+    }
+
+    void refresh()
+    const interval = window.setInterval(() => {
+      if (!document.hidden) void refresh()
+    }, 5000)
+    const onVisible = () => {
+      if (!document.hidden) void refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [globalProjects, isGlobal])
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -365,6 +447,8 @@ export function KanbanBoard() {
               key={s}
               status={s}
               tasks={byStatus(s)}
+              herdrOverview={herdrOverview}
+              herdrOverviews={globalHerdrOverviews}
               onOpen={handleOpen}
               onArchive={handleArchive}
               onDelete={handleDelete}

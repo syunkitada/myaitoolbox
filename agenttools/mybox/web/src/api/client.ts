@@ -474,7 +474,8 @@ export const api = {
   getFileContent: (path: string) =>
     request<FileContent>('GET', '/api/files/content' + qs({ path })),
 
-  getHerdrOverview: () => request<HerdrOverview>('GET', '/api/herdr/overview'),
+  getHerdrOverview: (project?: string) =>
+    request<HerdrOverview>('GET', '/api/herdr/overview', undefined, project),
 
   getHerdrLayouts: () => request<{ layouts: HerdrLayout[] }>('GET', '/api/herdr/layouts'),
 

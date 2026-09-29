@@ -208,7 +208,10 @@ export default function App() {
                       />
                     }
                   />
-                  <Route path="/projects/:project/board" element={<KanbanBoard key={project} />} />
+                  <Route
+                    path="/projects/:project/board"
+                    element={<KanbanBoard key={project} herdrOverview={herdr.overview} />}
+                  />
                   <Route path="/projects/:project/graph" element={<KnowledgeGraphPage key={project} />} />
                   <Route
                     path="/projects/:project/git"

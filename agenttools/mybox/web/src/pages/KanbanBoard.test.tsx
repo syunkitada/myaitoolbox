@@ -3,11 +3,12 @@ import { render, screen, within, fireEvent, waitFor } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import { KanbanBoard } from './KanbanBoard'
 import { DialogsProvider } from '../components/AppDialogs'
-import { api, Task } from '../api/client'
+import { api, HerdrOverview, Task } from '../api/client'
 
 vi.mock('../api/client', () => ({
   api: {
     listTasks: vi.fn(),
+    getHerdrOverview: vi.fn(),
     updateTask: vi.fn(),
     listFiles: vi.fn(),
     archiveTask: vi.fn(),
@@ -15,11 +16,12 @@ vi.mock('../api/client', () => ({
   },
 }))
 
-function renderBoard() {
+function renderBoard(herdrOverview?: HerdrOverview | null, path = '/projects/test') {
+  window.history.replaceState({}, '', path)
   return render(
     <MemoryRouter>
       <DialogsProvider>
-        <KanbanBoard />
+        <KanbanBoard herdrOverview={herdrOverview} />
       </DialogsProvider>
     </MemoryRouter>,
   )
@@ -35,6 +37,13 @@ const tasks: Task[] = [
 describe('KanbanBoard', () => {
   beforeEach(() => {
     vi.mocked(api.listTasks).mockResolvedValue(tasks)
+    vi.mocked(api.getHerdrOverview).mockResolvedValue({
+      available: false,
+      workspaces: [],
+      agents: [],
+      tabs: [],
+      panes: [],
+    })
   })
 
   afterEach(() => {
@@ -79,6 +88,94 @@ describe('KanbanBoard', () => {
     const card = (await screen.findByText('Progress item')).closest('.board-card') as HTMLElement
 
     expect(within(card).getByTestId('task-progress')).toHaveTextContent('2/3')
+  })
+
+  it('shows the linked agent status on a task card', async () => {
+    const linkedTask: Task = {
+      id: '20260929_linked-agent',
+      title: 'Linked agent task',
+      status: 'doing',
+      priority: 'high',
+      agent_kind: 'opencode',
+    }
+    vi.mocked(api.listTasks).mockResolvedValue([linkedTask])
+
+    renderBoard({
+      available: true,
+      workspaces: [],
+      tabs: [],
+      panes: [],
+      agents: [
+        {
+          name: 'f20260929_linked-agent',
+          status: 'working',
+          workspace_id: 'w1',
+          pane_id: 'w1:p1',
+        },
+      ],
+    })
+
+    const card = (await screen.findByText('Linked agent task')).closest('.board-card') as HTMLElement
+    expect(within(card).getByTestId('task-agent-status')).toHaveTextContent('working')
+  })
+
+  it('does not show an agent status when no agent is linked to the task', async () => {
+    const taskWithoutAgent: Task = {
+      id: '20260929_unlinked-agent',
+      title: 'Unlinked agent task',
+      status: 'todo',
+      priority: 'medium',
+    }
+    vi.mocked(api.listTasks).mockResolvedValue([taskWithoutAgent])
+
+    renderBoard({
+      available: true,
+      workspaces: [],
+      tabs: [],
+      panes: [],
+      agents: [
+        {
+          name: 'f20260929_different-task',
+          status: 'working',
+          workspace_id: 'w1',
+          pane_id: 'w1:p1',
+        },
+      ],
+    })
+
+    const card = (await screen.findByText('Unlinked agent task')).closest('.board-card') as HTMLElement
+    expect(within(card).queryByTestId('task-agent-status')).not.toBeInTheDocument()
+  })
+
+  it('shows linked agent status on the cross-project board', async () => {
+    const linkedTask: Task = {
+      id: '20260929_cross-project-agent',
+      title: 'Cross-project agent task',
+      status: 'doing',
+      priority: 'high',
+      project: 'other-project',
+    }
+    vi.mocked(api.listTasks).mockResolvedValue([linkedTask])
+    vi.mocked(api.getHerdrOverview).mockResolvedValue({
+      available: true,
+      workspaces: [],
+      tabs: [],
+      panes: [],
+      agents: [
+        {
+          name: 'f20260929_cross-project-agent',
+          status: 'blocked',
+          workspace_id: 'w2',
+          pane_id: 'w2:p1',
+        },
+      ],
+    })
+
+    renderBoard(null, '/')
+
+    const card = (await screen.findByText('Cross-project agent task')).closest('.board-card') as HTMLElement
+    await waitFor(() => expect(within(card).getByTestId('task-agent-status')).toHaveTextContent('blocked'))
+    expect(api.getHerdrOverview).toHaveBeenCalledWith('other-project')
   })
 
   it('dims a task only until its pending date, while keeping expired metadata visible', async () => {
