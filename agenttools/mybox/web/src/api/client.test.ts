@@ -46,6 +46,48 @@ describe('api client', () => {
     )
   })
 
+  it('streams file execution output before completion', () => {
+    class FakeWebSocket {
+      static latest: FakeWebSocket
+      readonly url: string
+      onmessage: ((event: MessageEvent) => void) | null = null
+      onerror: (() => void) | null = null
+      onclose: (() => void) | null = null
+      close = vi.fn()
+
+      constructor(url: string) {
+        this.url = url
+        FakeWebSocket.latest = this
+      }
+    }
+
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    const output: string[] = []
+    const complete = vi.fn()
+    const error = vi.fn()
+    api.executeFileStream('scripts/run.sh', {
+      onOutput: (chunk) => output.push(chunk),
+      onComplete: complete,
+      onError: error,
+    })
+
+    expect(FakeWebSocket.latest.url).toContain('/api/files/execute/stream?path=scripts%2Frun.sh')
+    FakeWebSocket.latest.onmessage?.({ data: JSON.stringify({ type: 'output', data: 'first\n' }) } as MessageEvent)
+    expect(output).toEqual(['first\n'])
+    expect(complete).not.toHaveBeenCalled()
+
+    FakeWebSocket.latest.onmessage?.({
+      data: JSON.stringify({ type: 'exit', path: 'scripts/run.sh', exit_code: 0 }),
+    } as MessageEvent)
+    expect(complete).toHaveBeenCalledWith({
+      path: 'scripts/run.sh',
+      exit_code: 0,
+      output: '',
+      timed_out: undefined,
+    })
+    expect(error).not.toHaveBeenCalled()
+  })
+
   it('focuses a herdr agent', async () => {
     mockFetch(200, { ok: true })
     await api.focusHerdrAgent('w7:p1')

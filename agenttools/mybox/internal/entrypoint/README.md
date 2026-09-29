@@ -11,6 +11,8 @@
 | [`bootstrap.go`](./bootstrap.go) | 設定・リポジトリ・ユースケースを組み立てる初期化処理。 |
 | [`cli.go`](./cli.go) | CobraベースのCLIコマンドとオプション。 |
 | [`cli_test.go`](./cli_test.go) | CLIコマンドのテスト。 |
+| [`file_execute.go`](./file_execute.go) | Filesタブからの実行可能ファイル実行とWebSocket出力ストリーム。 |
+| [`file_execute_test.go`](./file_execute_test.go) | Filesタブの実行ストリームの統合テスト。 |
 | [`git.go`](./git.go) | Git状態、remote同期差分、fetch、差分、ブランチ、ステージ、コミットの処理。 |
 | [`git_test.go`](./git_test.go) | Git操作のHTTPテスト。 |
 | [`herdr.go`](./herdr.go) | Herdrワークスペース、タブ、ペイン、エージェントの連携。 |

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -639,6 +640,16 @@ func (r *FileRepository) Delete(ctx context.Context, path string) error {
 }
 
 func (r *FileRepository) Execute(ctx context.Context, path string) (domain.FileExecResult, error) {
+	var buf bytes.Buffer
+	res, err := r.ExecuteStream(ctx, path, &buf)
+	if err != nil {
+		return domain.FileExecResult{}, err
+	}
+	res.Output = buf.String()
+	return res, nil
+}
+
+func (r *FileRepository) ExecuteStream(ctx context.Context, path string, output io.Writer) (domain.FileExecResult, error) {
 	file, err := r.safePath(path)
 	if err != nil {
 		return domain.FileExecResult{}, err
@@ -659,12 +670,15 @@ func (r *FileRepository) Execute(ctx context.Context, path string) (domain.FileE
 	ctx2, cancel := context.WithTimeout(ctx, executeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx2, file)
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
+	if output == nil {
+		output = io.Discard
+	}
+	writer := &lockedWriter{w: output}
+	cmd.Stdout = writer
+	cmd.Stderr = writer
 	cmd.Dir = filepath.Dir(file)
 	err = cmd.Run()
-	res := domain.FileExecResult{Output: buf.String()}
+	res := domain.FileExecResult{}
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -672,16 +686,33 @@ func (r *FileRepository) Execute(ctx context.Context, path string) (domain.FileE
 		} else if ctx2.Err() == context.DeadlineExceeded {
 			res.TimedOut = true
 			res.ExitCode = 124
-			out := buf.String()
-			if out != "" && !strings.HasSuffix(out, "\n") {
-				out += "\n"
+			if writer.wrote && writer.last != '\n' {
+				_, _ = writer.Write([]byte{'\n'})
 			}
-			res.Output = out + "[timed out after " + executeTimeout.String() + "]"
+			_, _ = writer.Write([]byte("[timed out after " + executeTimeout.String() + "]"))
 		} else {
 			return domain.FileExecResult{}, err
 		}
 	}
 	return res, nil
+}
+
+type lockedWriter struct {
+	mu    sync.Mutex
+	w     io.Writer
+	wrote bool
+	last  byte
+}
+
+func (w *lockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n, err := w.w.Write(p)
+	if n > 0 {
+		w.wrote = true
+		w.last = p[n-1]
+	}
+	return n, err
 }
 
 func validateFilePath(path string) error {

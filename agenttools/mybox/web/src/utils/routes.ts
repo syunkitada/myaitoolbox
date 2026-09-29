@@ -93,6 +93,17 @@ export function terminalWsUrl(command?: string, session?: string): string {
   return `${protocol}://${window.location.host}${base}/api/terminal${query ? `?${query}` : ''}`
 }
 
+// fileExecuteWsUrl points at the WebSocket endpoint that streams output from
+// an executable file in the current project.
+export function fileExecuteWsUrl(path: string): string {
+  const base = getBasePath()
+  const project = getProject()
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const params = new URLSearchParams({ path })
+  if (project) params.set('project', project)
+  return `${protocol}://${window.location.host}${base}/api/files/execute/stream?${params.toString()}`
+}
+
 // taskIdOf extracts the task id from a task graph node id, which is the task
 // file path without the extension (e.g. "_tasks/20260811_x/task" -> "20260811_x").
 export function taskIdOf(nodeId: string): string {

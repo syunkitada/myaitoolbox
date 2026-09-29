@@ -1,4 +1,4 @@
-import { getBasePath, getProject } from '../utils/routes'
+import { fileExecuteWsUrl, getBasePath, getProject } from '../utils/routes'
 export { getBasePath, getProject, setProject, clearProject } from '../utils/routes'
 
 export type TaskStatus = 'todo' | 'doing' | 'blocked' | 'review' | 'done'
@@ -113,6 +113,12 @@ export interface FileExecuteResult {
   exit_code: number
   output: string
   timed_out?: boolean
+}
+
+export interface FileExecuteStreamHandlers {
+  onOutput: (chunk: string) => void
+  onComplete: (result: FileExecuteResult) => void
+  onError: (error: Error) => void
 }
 
 export interface Meta {
@@ -583,6 +589,65 @@ export const api = {
 
   deleteFile: (path: string) => request<void>('POST', '/api/files/delete', { path }),
   executeFile: (path: string) => request<FileExecuteResult>('POST', '/api/files/execute', { path }),
+  executeFileStream: (path: string, handlers: FileExecuteStreamHandlers) => {
+    let settled = false
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      handlers.onError(error)
+    }
+    const ws = new WebSocket(fileExecuteWsUrl(path))
+    ws.onmessage = (event) => {
+      if (typeof event.data !== 'string') {
+        fail(new Error('Invalid file execution stream message'))
+        ws.close()
+        return
+      }
+      let message: {
+        type?: string
+        data?: string
+        path?: string
+        exit_code?: number
+        timed_out?: boolean
+        message?: string
+      }
+      try {
+        message = JSON.parse(event.data) as typeof message
+      } catch {
+        fail(new Error('Invalid file execution stream message'))
+        ws.close()
+        return
+      }
+      if (message.type === 'output') {
+        handlers.onOutput(message.data ?? '')
+        return
+      }
+      if (message.type === 'exit') {
+        settled = true
+        handlers.onComplete({
+          path: message.path ?? path,
+          exit_code: message.exit_code ?? 0,
+          output: '',
+          timed_out: message.timed_out,
+        })
+        ws.close()
+        return
+      }
+      if (message.type === 'error') {
+        fail(new Error(message.message || 'File execution failed'))
+        ws.close()
+      }
+    }
+    ws.onerror = () => fail(new Error('File execution stream failed'))
+    ws.onclose = () => {
+      if (!settled) fail(new Error('File execution stream closed unexpectedly'))
+    }
+    return () => {
+      if (settled) return
+      settled = true
+      ws.close()
+    }
+  },
   destroyTerminal: (session: string) =>
     request<void>('DELETE', '/api/terminal/destroy' + qs({ session })),
 

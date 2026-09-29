@@ -49,4 +49,5 @@ type FileRepository interface {
 	Copy(ctx context.Context, oldPath string, newPath string) error
 	Delete(ctx context.Context, path string) error
 	Execute(ctx context.Context, path string) (FileExecResult, error)
+	ExecuteStream(ctx context.Context, path string, output io.Writer) (FileExecResult, error)
 }

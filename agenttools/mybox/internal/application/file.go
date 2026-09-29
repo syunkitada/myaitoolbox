@@ -145,3 +145,10 @@ func (u *FileUseCase) Execute(ctx context.Context, path string) (domain.FileExec
 	}
 	return u.Files.Execute(ctx, path)
 }
+
+func (u *FileUseCase) ExecuteStream(ctx context.Context, path string, output io.Writer) (domain.FileExecResult, error) {
+	if err := validatePath(path); err != nil {
+		return domain.FileExecResult{}, err
+	}
+	return u.Files.ExecuteStream(ctx, path, output)
+}
