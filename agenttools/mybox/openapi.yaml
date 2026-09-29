@@ -630,6 +630,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HerdrPromptResponse"
+  /api/herdr/agents/scheduled-prompts:
+    get:
+      operationId: listHerdrScheduledPrompts
+      summary: List scheduled prompts for the current project
+      responses:
+        "200":
+          description: scheduled prompts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledPrompt"
+    post:
+      operationId: createHerdrScheduledPrompt
+      summary: Schedule a prompt for an agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHerdrScheduledPromptRequest"
+      responses:
+        "201":
+          description: scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledPrompt"
+  /api/herdr/agents/scheduled-prompts/{id}:
+    delete:
+      operationId: deleteHerdrScheduledPrompt
+      summary: Cancel a scheduled prompt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: cancelled
+        "404":
+          description: scheduled prompt not found
   /api/herdr/agents/send-keys:
     post:
       operationId: sendKeysHerdrAgent
@@ -1273,6 +1317,34 @@ components:
       properties:
         ok:
           type: boolean
+    CreateHerdrScheduledPromptRequest:
+      type: object
+      required: [target, text, scheduled_at]
+      properties:
+        target:
+          type: string
+          minLength: 1
+          maxLength: 64
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        scheduled_at:
+          type: string
+          format: date-time
+    ScheduledPrompt:
+      type: object
+      required: [id, target, text, scheduled_at]
+      properties:
+        id:
+          type: string
+        target:
+          type: string
+        text:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
     HerdrOpResponse:
       type: object
       required: [ok]

@@ -44,6 +44,7 @@ type Server struct {
 	basePath       string
 	herdrRun       herdrRunFunc
 	terminals      *terminalHub
+	scheduled      *promptScheduler
 }
 
 func NewServer(cfg *domain.Config, defaultProject string, basePath string) *Server {
@@ -51,13 +52,23 @@ func NewServer(cfg *domain.Config, defaultProject string, basePath string) *Serv
 		defaultProject = cfg.DefaultProject
 	}
 	basePath = normalizeBasePath(basePath)
-	return &Server{
+	s := &Server{
 		config:         cfg,
 		apps:           make(map[string]*App),
 		projects:       NewProjectApp(),
 		defaultProject: defaultProject,
 		basePath:       basePath,
 		terminals:      newTerminalHub(),
+	}
+	s.scheduled = newPromptScheduler(config.NewScheduledPromptStore(), s.runScheduledPrompt)
+	return s
+}
+
+// StartPromptScheduler starts the server-owned worker that delivers persisted
+// prompts even when no browser window is open.
+func (s *Server) StartPromptScheduler(ctx context.Context) {
+	if s.scheduled != nil {
+		s.scheduled.Start(ctx)
 	}
 }
 

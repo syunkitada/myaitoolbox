@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { HerdrPage } from './HerdrPage'
 import { api } from '../api/client'
@@ -12,6 +12,10 @@ vi.mock('../api/client', () => ({
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
     listFiles: vi.fn().mockResolvedValue([]),
     promptHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
+    listHerdrScheduledPrompts: vi.fn().mockResolvedValue([]),
+    createHerdrScheduledPrompt: vi.fn().mockImplementation((target: string, text: string, scheduled_at: string) =>
+      Promise.resolve({ id: 'scheduled-1', target, text, scheduled_at })),
+    deleteHerdrScheduledPrompt: vi.fn().mockResolvedValue(undefined),
   },
 }))
 
@@ -58,6 +62,11 @@ function mockMatchMedia() {
   })
 }
 
+function localDateTimeValue(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
 describe('HerdrPage agent commands', () => {
   beforeEach(() => {
     mockMatchMedia()
@@ -68,6 +77,7 @@ describe('HerdrPage agent commands', () => {
     window.history.replaceState({}, '', '/')
     localStorage.clear()
     vi.clearAllMocks()
+    vi.useRealTimers()
   })
 
   it('sends /new from the expanded agent panel and omits /init', async () => {
@@ -109,6 +119,70 @@ describe('HerdrPage agent commands', () => {
     await vi.waitFor(() => {
       expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/status')
     })
+  })
+
+  it('persists a prompt schedule on the server', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={overview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId={null}
+            onWebuiFocusChange={() => undefined}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('agent-row-w1:p1'))
+    fireEvent.change(screen.getByTestId('herdr-prompt-input'), { target: { value: 'send later' } })
+    fireEvent.change(screen.getByLabelText('Schedule send time'), {
+      target: { value: localDateTimeValue(new Date(Date.now() + 120_000)) },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule send' }))
+
+    await waitFor(() => expect(screen.getByTestId('scheduled-prompt')).toHaveTextContent('send later'))
+    expect(api.createHerdrScheduledPrompt).toHaveBeenCalledWith(
+      'w1:p1',
+      'send later',
+      expect.any(String),
+    )
+    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
+
+    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
+  })
+
+  it('cancels a scheduled prompt from the expanded agent panel', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={overview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId={null}
+            onWebuiFocusChange={() => undefined}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('agent-row-w1:p1'))
+    fireEvent.change(screen.getByTestId('herdr-prompt-input'), { target: { value: 'cancel me' } })
+    fireEvent.change(screen.getByLabelText('Schedule send time'), {
+      target: { value: localDateTimeValue(new Date(Date.now() + 60 * 60_000)) },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule send' }))
+    const row = await screen.findByTestId('scheduled-prompt')
+    fireEvent.click(within(row).getByRole('button', { name: 'Cancel scheduled prompt cancel me' }))
+
+    await waitFor(() => expect(screen.queryByText(/cancel me/)).not.toBeInTheDocument())
+    expect(api.deleteHerdrScheduledPrompt).toHaveBeenCalledWith('scheduled-1')
+    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
   })
 
   it('reports WebUI focus when the agent detail panel opens', async () => {

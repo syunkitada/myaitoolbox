@@ -8,3 +8,4 @@
 | --- | --- |
 | [`server.gen.go`](./server.gen.go) | OpenAPI定義から生成されたEchoサーバーの型・ルーティング補助。 |
 | [`types.gen.go`](./types.gen.go) | OpenAPI定義から生成されたリクエスト・レスポンス型。 |
+| [`generate.go`](./generate.go) | `openapi.yaml` から上記生成ファイルを再生成する `go generate` 定義。 |

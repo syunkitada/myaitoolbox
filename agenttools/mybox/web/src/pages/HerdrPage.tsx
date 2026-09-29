@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronDown, FileText, RefreshCw, Send } from 'lucide-react'
+import { CalendarClock, ChevronDown, FileText, RefreshCw, Send, X } from 'lucide-react'
 import { dirName, encodePath, getProject, projectUrl } from '../utils/routes'
 import type { HerdrAgent, HerdrLayout, HerdrOverview, HerdrPane, HerdrTab, HerdrWorkspace } from '../api/client'
 import { api } from '../api/client'
@@ -13,6 +13,13 @@ import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { useIsMobile } from '../hooks/use-mobile'
 import { filePathForAgent } from '../utils/herdr-file-agent'
 import { AGENT_COMMANDS } from '../utils/herdr-agent-commands'
+import {
+  formatDateTimeLocal,
+  formatScheduledAt,
+  fromScheduledPromptResponse,
+  migrateLegacyScheduledPrompts,
+  type ScheduledPrompt,
+} from '../utils/scheduled-prompts'
 import {
   edgeNeighborsForSplit,
   layoutBoxForTab,
@@ -82,14 +89,21 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
   const [output, setOutput] = useState<string | null>(null)
   const [outputError, setOutputError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [scheduleAt, setScheduleAt] = useState('')
+  const [scheduledPrompts, setScheduledPrompts] = useState<ScheduledPrompt[]>([])
   const [sending, setSending] = useState(false)
+  const [scheduling, setScheduling] = useState(false)
   const [keySending, setKeySending] = useState<string | null>(null)
   const [commandSending, setCommandSending] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const loadingRef = useRef(false)
+  const scheduledRevisionRef = useRef(0)
   const preRef = useRef<HTMLDivElement>(null)
   // While true the viewport follows new output; scrolling up pauses the follow.
   const pinnedRef = useRef(true)
+  const visibleScheduledPrompts = scheduledPrompts.filter(
+    (scheduled) => scheduled.target === agent.name || scheduled.target === agent.pane_id,
+  )
 
   const handlePreScroll = useCallback(() => {
     const el = preRef.current
@@ -147,6 +161,61 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
       setSending(false)
     }
   }, [draft, sending, agent.pane_id, loadOutput])
+
+  const loadScheduledPrompts = useCallback(async () => {
+    const revision = scheduledRevisionRef.current
+    try {
+      const prompts = await api.listHerdrScheduledPrompts()
+      const current = prompts.map(fromScheduledPromptResponse).filter((prompt): prompt is ScheduledPrompt => prompt !== null)
+      const migrated = await migrateLegacyScheduledPrompts((target, text, scheduledAt) =>
+        api.createHerdrScheduledPrompt(target, text, scheduledAt),
+      )
+      if (revision === scheduledRevisionRef.current) setScheduledPrompts([...current, ...migrated])
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadScheduledPrompts()
+    const id = setInterval(() => void loadScheduledPrompts(), 5000)
+    return () => clearInterval(id)
+  }, [loadScheduledPrompts])
+
+  const schedulePrompt = useCallback(async () => {
+    const text = draft.trim()
+    const timestamp = Date.parse(scheduleAt)
+    if (!text) return
+    if (!Number.isFinite(timestamp) || timestamp <= Date.now()) {
+      setNotice('Schedule time must be in the future')
+      return
+    }
+    scheduledRevisionRef.current += 1
+    setScheduling(true)
+    setNotice(null)
+    try {
+      const created = await api.createHerdrScheduledPrompt(agent.pane_id, text, new Date(timestamp).toISOString())
+      const scheduled = fromScheduledPromptResponse(created)
+      if (scheduled) setScheduledPrompts((current) => [...current, scheduled])
+      setDraft('')
+      setScheduleAt('')
+      setNotice('prompt scheduled')
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e))
+    } finally {
+      setScheduling(false)
+    }
+  }, [agent.pane_id, draft, scheduleAt])
+
+  const cancelScheduledPrompt = useCallback(async (id: string) => {
+    scheduledRevisionRef.current += 1
+    try {
+      await api.deleteHerdrScheduledPrompt(id)
+      setScheduledPrompts((current) => current.filter((scheduled) => scheduled.id !== id))
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
 
   const sendKey = useCallback(async (label: string, key: string) => {
     if (keySending) return
@@ -256,7 +325,57 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
           <Send />
           Send
         </Button>
+        <div className="flex min-w-40 flex-col gap-1 self-end">
+          <input
+            type="datetime-local"
+            aria-label="Schedule send time"
+            value={scheduleAt}
+            min={formatDateTimeLocal(new Date())}
+            onChange={(e) => setScheduleAt(e.target.value)}
+            className="h-8 rounded-md border bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="cursor-pointer"
+            onClick={schedulePrompt}
+            disabled={sending || scheduling || !draft.trim() || scheduleAt === ''}
+            aria-label="Schedule send"
+          >
+            <CalendarClock />
+            Schedule
+          </Button>
+        </div>
       </div>
+      {visibleScheduledPrompts.length > 0 && (
+        <div className="mt-2 space-y-1">
+          <p className="text-[11px] tracking-wider text-muted-foreground uppercase">Scheduled sends</p>
+          {visibleScheduledPrompts.map((scheduled) => (
+            <div
+              key={scheduled.id}
+              data-testid="scheduled-prompt"
+              className="flex min-w-0 items-center gap-1 rounded border bg-background px-1.5 py-1 text-xs"
+            >
+              <span className="min-w-0 flex-1 truncate" title={scheduled.text}>
+                {scheduled.text}
+              </span>
+              <time className="shrink-0 text-muted-foreground" dateTime={new Date(scheduled.scheduledAt).toISOString()}>
+                {formatScheduledAt(scheduled.scheduledAt)}
+              </time>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="size-5 shrink-0 cursor-pointer p-0"
+                onClick={() => cancelScheduledPrompt(scheduled.id)}
+                aria-label={`Cancel scheduled prompt ${scheduled.text}`}
+                title="Cancel scheduled prompt"
+              >
+                <X className="size-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
       {notice && <p className="herdr-prompt-notice mt-1 text-xs text-muted-foreground">{notice}</p>}
     </div>
   )

@@ -94,7 +94,12 @@ func (e TaskStatus) Valid() bool {
 	}
 }
 
-// Defines values for TaskStatus.
+// CreateHerdrScheduledPromptRequest defines model for CreateHerdrScheduledPromptRequest.
+type CreateHerdrScheduledPromptRequest struct {
+	ScheduledAt time.Time `json:"scheduled_at"`
+	Target      string    `json:"target"`
+	Text        string    `json:"text"`
+}
 
 // CreateProjectRequest defines model for CreateProjectRequest.
 type CreateProjectRequest struct {
@@ -105,6 +110,7 @@ type CreateProjectRequest struct {
 type CreateTaskRequest struct {
 	AgentKind   *string       `json:"agent_kind,omitempty"`
 	Assignee    *string       `json:"assignee,omitempty"`
+	Content     *string       `json:"content,omitempty"`
 	Description *string       `json:"description,omitempty"`
 	Due         *string       `json:"due,omitempty"`
 	Name        string        `json:"name"`
@@ -121,12 +127,11 @@ type FileContent struct {
 
 // FileEntry defines model for FileEntry.
 type FileEntry struct {
-	Kind FileEntryKind `json:"kind"`
-	Name string        `json:"name"`
-	Path string        `json:"path"`
-
 	// Executable Whether the file has the executable bit set
-	Executable *bool `json:"executable,omitempty"`
+	Executable *bool         `json:"executable,omitempty"`
+	Kind       FileEntryKind `json:"kind"`
+	Name       string        `json:"name"`
+	Path       string        `json:"path"`
 
 	// Status Front matter status metadata for markdown files, if present
 	Status *string `json:"status,omitempty"`
@@ -155,18 +160,27 @@ type FilePathRequest struct {
 
 // FileSearchResponse defines model for FileSearchResponse.
 type FileSearchResponse struct {
-	Query     string             `json:"query"`
-	Results   []FileSearchResult `json:"results"`
-	Total     int                `json:"total"`
-	Truncated bool               `json:"truncated"`
+	Query   string             `json:"query"`
+	Results []FileSearchResult `json:"results"`
+
+	// Total Total number of matching files before the response limit
+	Total int `json:"total"`
+
+	// Truncated Whether the response was limited to the first 100 files
+	Truncated bool `json:"truncated"`
 }
 
 // FileSearchResult defines model for FileSearchResult.
 type FileSearchResult struct {
-	Line       int    `json:"line"`
+	// Line 1-based line number of the first match
+	Line int `json:"line"`
+
+	// MatchCount Number of non-overlapping matches in the file
 	MatchCount int    `json:"match_count"`
 	Path       string `json:"path"`
-	Snippet    string `json:"snippet"`
+
+	// Snippet Representative line containing the first match
+	Snippet string `json:"snippet"`
 }
 
 // HerdrAgent defines model for HerdrAgent.
@@ -363,6 +377,14 @@ type ReorderProjectsRequest struct {
 	Names []string `json:"names"`
 }
 
+// ScheduledPrompt defines model for ScheduledPrompt.
+type ScheduledPrompt struct {
+	Id          string    `json:"id"`
+	ScheduledAt time.Time `json:"scheduled_at"`
+	Target      string    `json:"target"`
+	Text        string    `json:"text"`
+}
+
 // Task defines model for Task.
 type Task struct {
 	AgentKind     *string      `json:"agent_kind,omitempty"`
@@ -406,24 +428,25 @@ type UpdateTaskRequest struct {
 	Tags        *[]string     `json:"tags,omitempty"`
 }
 
-// GetFileContentParams defines parameters for GetFileContent.
-type GetFileContentParams struct {
-	Path string `form:"path" json:"path"`
-}
-
 // ListFilesParams defines parameters for ListFiles.
 type ListFilesParams struct {
 	// ShowHidden Whether to include hidden files (dotfiles) in the result
 	ShowHidden *bool `form:"show_hidden,omitempty" json:"show_hidden,omitempty"`
-	// Path Directory path relative to the project root. When omitted the
-	// complete tree is returned, otherwise only the direct children.
+
+	// Path Directory path relative to the project root. When omitted the complete tree is returned, otherwise only the direct children.
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// GetFileContentParams defines parameters for GetFileContent.
+type GetFileContentParams struct {
+	Path string `form:"path" json:"path"`
 }
 
 // SearchFilesParams defines parameters for SearchFiles.
 type SearchFilesParams struct {
 	// Q Case-insensitive literal search query
 	Q string `form:"q" json:"q"`
+
 	// ShowHidden Whether to include hidden files (dotfiles) in the result
 	ShowHidden *bool `form:"show_hidden,omitempty" json:"show_hidden,omitempty"`
 }
@@ -455,6 +478,9 @@ type DeleteFileJSONRequestBody = FilePathRequest
 // CreateDirJSONRequestBody defines body for CreateDir for application/json ContentType.
 type CreateDirJSONRequestBody = FilePathRequest
 
+// ExecuteFileJSONRequestBody defines body for ExecuteFile for application/json ContentType.
+type ExecuteFileJSONRequestBody = FilePathRequest
+
 // MoveFileJSONRequestBody defines body for MoveFile for application/json ContentType.
 type MoveFileJSONRequestBody = MoveFileRequest
 
@@ -466,6 +492,9 @@ type ReadHerdrAgentJSONRequestBody = HerdrReadRequest
 
 // RenameHerdrAgentJSONRequestBody defines body for RenameHerdrAgent for application/json ContentType.
 type RenameHerdrAgentJSONRequestBody = HerdrAgentRenameRequest
+
+// CreateHerdrScheduledPromptJSONRequestBody defines body for CreateHerdrScheduledPrompt for application/json ContentType.
+type CreateHerdrScheduledPromptJSONRequestBody = CreateHerdrScheduledPromptRequest
 
 // SendKeysHerdrAgentJSONRequestBody defines body for SendKeysHerdrAgent for application/json ContentType.
 type SendKeysHerdrAgentJSONRequestBody = HerdrAgentSendKeysRequest

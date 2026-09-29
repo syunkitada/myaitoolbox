@@ -12,6 +12,7 @@
 | [`file_repository.go`](./file_repository.go) | プロジェクトファイルを操作する契約。 |
 | [`project.go`](./project.go) | プロジェクト、設定のモデル。 |
 | [`prompt_repository.go`](./prompt_repository.go) | プロンプトテンプレートを描画する契約。 |
+| [`scheduled_prompt.go`](./scheduled_prompt.go) | Herdrへの予約プロンプトと永続化リポジトリの契約。 |
 | [`state_store.go`](./state_store.go) | UI状態を保存・読み込みする契約。 |
 | [`task.go`](./task.go) | タスク、ステータス、優先度、テンプレートデータのモデル。 |
 | [`task_repository.go`](./task_repository.go) | タスクを保存・検索・アーカイブする契約。 |

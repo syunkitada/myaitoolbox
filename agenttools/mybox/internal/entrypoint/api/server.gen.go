@@ -36,12 +36,12 @@ type ServerInterface interface {
 	// CreateDir Create an empty directory
 	// (POST /api/files/dir)
 	CreateDir(w http.ResponseWriter, r *http.Request)
-	// GetFileGitStatus Get git status for each file in the project
-	// (GET /api/files/git-status)
-	GetFileGitStatus(w http.ResponseWriter, r *http.Request)
 	// ExecuteFile Execute an executable file and return its output
 	// (POST /api/files/execute)
 	ExecuteFile(w http.ResponseWriter, r *http.Request)
+	// GetFileGitStatus Get git status for each file in the project
+	// (GET /api/files/git-status)
+	GetFileGitStatus(w http.ResponseWriter, r *http.Request)
 	// MoveFile Move a file
 	// (POST /api/files/move)
 	MoveFile(w http.ResponseWriter, r *http.Request)
@@ -57,6 +57,15 @@ type ServerInterface interface {
 	// RenameHerdrAgent Rename a herdr agent
 	// (POST /api/herdr/agents/rename)
 	RenameHerdrAgent(w http.ResponseWriter, r *http.Request)
+	// ListHerdrScheduledPrompts List scheduled prompts for the current project
+	// (GET /api/herdr/agents/scheduled-prompts)
+	ListHerdrScheduledPrompts(w http.ResponseWriter, r *http.Request)
+	// CreateHerdrScheduledPrompt Schedule a prompt for an agent
+	// (POST /api/herdr/agents/scheduled-prompts)
+	CreateHerdrScheduledPrompt(w http.ResponseWriter, r *http.Request)
+	// DeleteHerdrScheduledPrompt Cancel a scheduled prompt
+	// (DELETE /api/herdr/agents/scheduled-prompts/{id})
+	DeleteHerdrScheduledPrompt(w http.ResponseWriter, r *http.Request, id string)
 	// SendKeysHerdrAgent Send key presses to a herdr agent
 	// (POST /api/herdr/agents/send-keys)
 	SendKeysHerdrAgent(w http.ResponseWriter, r *http.Request)
@@ -160,17 +169,27 @@ func (siw *ServerInterfaceWrapper) ListFiles(w http.ResponseWriter, r *http.Requ
 
 	// ------------- Optional query parameter "show_hidden" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", false, false, "show_hidden", r.URL.Query(), &params.ShowHidden, runtime.BindQueryParameterOptions{Type: "bool", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "show_hidden", r.URL.Query(), &params.ShowHidden, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "show_hidden", Err: err})
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "show_hidden"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "show_hidden", Err: err})
+		}
 		return
 	}
 
 	// ------------- Optional query parameter "path" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", false, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
 		return
 	}
 
@@ -288,11 +307,11 @@ func (siw *ServerInterfaceWrapper) CreateDir(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
-// GetFileGitStatus operation middleware
-func (siw *ServerInterfaceWrapper) GetFileGitStatus(w http.ResponseWriter, r *http.Request) {
+// ExecuteFile operation middleware
+func (siw *ServerInterfaceWrapper) ExecuteFile(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetFileGitStatus(w, r)
+		siw.Handler.ExecuteFile(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -302,11 +321,11 @@ func (siw *ServerInterfaceWrapper) GetFileGitStatus(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
-// ExecuteFile operation middleware
-func (siw *ServerInterfaceWrapper) ExecuteFile(w http.ResponseWriter, r *http.Request) {
+// GetFileGitStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetFileGitStatus(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ExecuteFile(w, r)
+		siw.Handler.GetFileGitStatus(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -336,7 +355,11 @@ func (siw *ServerInterfaceWrapper) SearchFiles(w http.ResponseWriter, r *http.Re
 	var err error
 	_ = err
 
+	// Parameter object where we will unmarshal all parameters from the context
 	var params SearchFilesParams
+
+	// ------------- Required query parameter "q" -------------
+
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
@@ -347,9 +370,17 @@ func (siw *ServerInterfaceWrapper) SearchFiles(w http.ResponseWriter, r *http.Re
 		}
 		return
 	}
-	err = runtime.BindQueryParameterWithOptions("form", false, false, "show_hidden", r.URL.Query(), &params.ShowHidden, runtime.BindQueryParameterOptions{Type: "bool", Format: ""})
+
+	// ------------- Optional query parameter "show_hidden" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "show_hidden", r.URL.Query(), &params.ShowHidden, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "show_hidden", Err: err})
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "show_hidden"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "show_hidden", Err: err})
+		}
 		return
 	}
 
@@ -397,6 +428,60 @@ func (siw *ServerInterfaceWrapper) RenameHerdrAgent(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameHerdrAgent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListHerdrScheduledPrompts operation middleware
+func (siw *ServerInterfaceWrapper) ListHerdrScheduledPrompts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHerdrScheduledPrompts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateHerdrScheduledPrompt operation middleware
+func (siw *ServerInterfaceWrapper) CreateHerdrScheduledPrompt(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateHerdrScheduledPrompt(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteHerdrScheduledPrompt operation middleware
+func (siw *ServerInterfaceWrapper) DeleteHerdrScheduledPrompt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteHerdrScheduledPrompt(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1040,13 +1125,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/meta/recent/delete", wrapper.DeleteRecent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files", wrapper.ListFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files", wrapper.CreateFile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/search", wrapper.SearchFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/dir", wrapper.CreateDir)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/content", wrapper.GetFileContent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/files/content", wrapper.SaveFileContent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/move", wrapper.MoveFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/copy", wrapper.CopyFile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/delete", wrapper.DeleteFile)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/search", wrapper.SearchFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/files/git-status", wrapper.GetFileGitStatus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/files/execute", wrapper.ExecuteFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
@@ -1058,6 +1143,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/herdr/overview", wrapper.GetHerdrOverview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/read", wrapper.ReadHerdrAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/prompt", wrapper.PromptHerdrAgent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/herdr/agents/scheduled-prompts", wrapper.ListHerdrScheduledPrompts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/scheduled-prompts", wrapper.CreateHerdrScheduledPrompt)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/herdr/agents/scheduled-prompts/{id}", wrapper.DeleteHerdrScheduledPrompt)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/send-keys", wrapper.SendKeysHerdrAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/rename", wrapper.RenameHerdrAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/tabs/create", wrapper.CreateHerdrTab)

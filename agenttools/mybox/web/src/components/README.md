@@ -13,7 +13,7 @@
 | [`CommitDiffView.tsx`](./CommitDiffView.tsx) / [`CommitDiffView.test.tsx`](./CommitDiffView.test.tsx) | コミット差分表示とそのテスト。 |
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
 | [`DiffView.tsx`](./DiffView.tsx) / [`DiffView.test.tsx`](./DiffView.test.tsx) | unified diff表示とそのテスト。 |
-| [`FileAgentWidget.tsx`](./FileAgentWidget.tsx) / [`FileAgentWidget.test.tsx`](./FileAgentWidget.test.tsx) | ファイルからHerdrエージェントを起動し、Herdrの生ステータスと独立したWeb UI focusを表示する部品。Stop時のペイン削除と空タブ削除、およびテストを含む。 |
+| [`FileAgentWidget.tsx`](./FileAgentWidget.tsx) / [`FileAgentWidget.test.tsx`](./FileAgentWidget.test.tsx) | ファイルからHerdrエージェントを起動し、Herdrの生ステータスと独立したWeb UI focusを表示する部品。通常送信に加えてサーバー永続化された日時指定送信（予約一覧・キャンセル）を提供し、Stop時のペイン削除と空タブ削除、およびテストを含む。 |
 | [`FileTabs.tsx`](./FileTabs.tsx) / [`FileTabs.test.tsx`](./FileTabs.test.tsx) | 開いているファイルのタブとテスト。 |
 | [`FrontmatterForm.tsx`](./FrontmatterForm.tsx) | タスクフロントマターの編集フォーム。 |
 | [`GitViewer.tsx`](./GitViewer.tsx) | Git状態・差分画面を埋め込むビュー。 |

@@ -19,6 +19,7 @@ import (
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/entrypoint/api"
 	automationinfra "github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/automation"
+	configinfra "github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/config"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/markdown"
 )
 
@@ -52,6 +53,7 @@ func newTestServer(t *testing.T) (*Server, *App) {
 		&testAgentDispatcher{},
 	)
 	s := NewServer(app.Config, "test", "")
+	s.scheduled.store = configinfra.NewScheduledPromptStoreAt(filepath.Join(root, "scheduled-prompts.yaml"))
 	s.apps["test"] = app
 	s.projects = application.NewProjectUseCase(&fakeConfigStore{})
 	return s, app

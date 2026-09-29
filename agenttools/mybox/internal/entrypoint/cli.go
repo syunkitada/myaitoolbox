@@ -585,6 +585,7 @@ func newServeCommand() *cobra.Command {
 			srv := &http.Server{Addr: addr, Handler: server.Handler()}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
+			server.StartPromptScheduler(ctx)
 			go func() {
 				<-ctx.Done()
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -1,0 +1,8 @@
+package api
+
+// Keep the generated server surface limited to the operations implemented by
+// the mybox HTTP entrypoint. The OpenAPI document also describes a few legacy
+// routes that are registered outside the generated handler.
+//
+//go:generate oapi-codegen -generate types -include-operation-ids listFiles,createFile,getFileContent,saveFileContent,copyFile,deleteFile,createDir,getFileGitStatus,executeFile,moveFile,searchFiles,promptHerdrAgent,readHerdrAgent,renameHerdrAgent,sendKeysHerdrAgent,getHerdrOverview,closeHerdrPane,readHerdrPane,renameHerdrPane,sendKeysHerdrPane,sendTextHerdrPane,splitHerdrPane,closeHerdrTab,createHerdrTab,renameHerdrTab,getMeta,updateFavorite,recordRecent,deleteRecent,listProjects,createProject,getProjectGitStatus,getProjectPaths,reorderProjects,deleteProject,listTasks,createTask,deleteTask,getTask,updateTask,archiveTask,listHerdrScheduledPrompts,createHerdrScheduledPrompt,deleteHerdrScheduledPrompt -package api -o types.gen.go ../../../openapi.yaml
+//go:generate oapi-codegen -generate std-http -include-operation-ids listFiles,createFile,getFileContent,saveFileContent,copyFile,deleteFile,createDir,getFileGitStatus,executeFile,moveFile,searchFiles,promptHerdrAgent,readHerdrAgent,renameHerdrAgent,sendKeysHerdrAgent,getHerdrOverview,closeHerdrPane,readHerdrPane,renameHerdrPane,sendKeysHerdrPane,sendTextHerdrPane,splitHerdrPane,closeHerdrTab,createHerdrTab,renameHerdrTab,getMeta,updateFavorite,recordRecent,deleteRecent,listProjects,createProject,getProjectGitStatus,getProjectPaths,reorderProjects,deleteProject,listTasks,createTask,deleteTask,getTask,updateTask,archiveTask,listHerdrScheduledPrompts,createHerdrScheduledPrompt,deleteHerdrScheduledPrompt -package api -o server.gen.go ../../../openapi.yaml

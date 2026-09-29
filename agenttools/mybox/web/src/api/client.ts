@@ -211,6 +211,13 @@ export interface HerdrAgent {
   pane_id: string
 }
 
+export interface ScheduledPrompt {
+  id: string
+  target: string
+  text: string
+  scheduled_at: string
+}
+
 export interface HerdrTab {
   tab_id: string
   workspace_id: string
@@ -498,6 +505,19 @@ export const api = {
 
   promptHerdrAgent: (target: string, text: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/agents/prompt', { target, text }),
+
+  listHerdrScheduledPrompts: () =>
+    request<ScheduledPrompt[]>('GET', '/api/herdr/agents/scheduled-prompts'),
+
+  createHerdrScheduledPrompt: (target: string, text: string, scheduledAt: string) =>
+    request<ScheduledPrompt>('POST', '/api/herdr/agents/scheduled-prompts', {
+      target,
+      text,
+      scheduled_at: scheduledAt,
+    }),
+
+  deleteHerdrScheduledPrompt: (id: string) =>
+    request<void>('DELETE', `/api/herdr/agents/scheduled-prompts/${encodeURIComponent(id)}`),
 
   sendKeysHerdrAgent: (target: string, keys: string[]) =>
     request<{ ok: boolean }>('POST', '/api/herdr/agents/send-keys', { target, keys }),

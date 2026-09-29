@@ -15,6 +15,8 @@
 | [`git_test.go`](./git_test.go) | Git操作のHTTPテスト。 |
 | [`herdr.go`](./herdr.go) | Herdrワークスペース、タブ、ペイン、エージェントの連携。 |
 | [`herdr_test.go`](./herdr_test.go) | Herdr連携のテスト。 |
+| [`prompt_scheduler.go`](./prompt_scheduler.go) | 永続化されたHerdr予約プロンプトを指定時刻に送信するサーバーワーカー。 |
+| [`prompt_scheduler_test.go`](./prompt_scheduler_test.go) | 予約ワーカーの送信、未到来、リトライのテスト。 |
 | [`osc.go`](./osc.go) | PTY出力に含まれるOSCシーケンスの処理。 |
 | [`osc_test.go`](./osc_test.go) | OSC処理のテスト。 |
 | [`server.go`](./server.go) | Echo HTTPサーバー、ファイルAPI、taskテンプレート取得、task trigger作成・実行API、WebSocketの登録。 |

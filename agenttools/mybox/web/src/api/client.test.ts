@@ -59,6 +59,35 @@ describe('api client', () => {
     )
   })
 
+  it('schedules and cancels a herdr prompt', async () => {
+    const scheduled = {
+      id: 'sp-1',
+      target: 'w7:p1',
+      text: 'send later',
+      scheduled_at: '2026-09-29T12:00:00Z',
+    }
+    mockFetch(201, scheduled)
+    await api.createHerdrScheduledPrompt('w7:p1', 'send later', scheduled.scheduled_at)
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/herdr/agents/scheduled-prompts',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          target: 'w7:p1',
+          text: 'send later',
+          scheduled_at: scheduled.scheduled_at,
+        }),
+      }),
+    )
+
+    mockFetch(204, undefined)
+    await api.deleteHerdrScheduledPrompt('sp-1')
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/herdr/agents/scheduled-prompts/sp-1',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+  })
+
   it('posts a task trigger definition', async () => {
     mockFetch(201, {
       id: 'daily-report',

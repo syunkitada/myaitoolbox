@@ -16,3 +16,4 @@
 | [`markdown.ts`](./markdown.ts) / [`markdown.test.ts`](./markdown.test.ts) | Markdown変換・リンク処理・Jira wiki markupへのコピー変換とテスト。 |
 | [`prism-langs.ts`](./prism-langs.ts) | Prism対応言語の登録。 |
 | [`routes.ts`](./routes.ts) | base pathとプロジェクトURLの構築。 |
+| [`scheduled-prompts.ts`](./scheduled-prompts.ts) | サーバーAPIの予約プロンプトを画面表示用へ変換し、旧ブラウザ保存データを扱う補助。 |

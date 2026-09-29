@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { FileAgentWidget } from './FileAgentWidget'
 import { api } from '../api/client'
 import type { HerdrOverview } from '../api/client'
@@ -12,6 +12,10 @@ vi.mock('../api/client', () => ({
     focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
     promptHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
+    listHerdrScheduledPrompts: vi.fn().mockResolvedValue([]),
+    createHerdrScheduledPrompt: vi.fn().mockImplementation((target: string, text: string, scheduled_at: string) =>
+      Promise.resolve({ id: 'scheduled-1', target, text, scheduled_at })),
+    deleteHerdrScheduledPrompt: vi.fn().mockResolvedValue(undefined),
     sendKeysHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     startHerdrFileAgent: vi.fn().mockResolvedValue({ ok: true }),
   },
@@ -34,7 +38,21 @@ const runningOverview: HerdrOverview = {
   panes: [{ pane_id: 'w1:p1', tab_id: 'w1:t1', workspace_id: 'w1', agent_status: 'idle' }],
 }
 
+function localDateTimeValue(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
 describe('FileAgentWidget commands', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('stops the agent, removes its pane, and removes the empty tab', async () => {
     vi.clearAllMocks()
     const onRefresh = vi.fn()
@@ -136,5 +154,85 @@ describe('FileAgentWidget commands', () => {
 
     expect(await screen.findByTestId('file-agent-output')).toHaveClass('resize-y')
     expect(screen.getByTestId('file-agent-prompt-input')).toHaveClass('resize-y')
+  })
+
+  it('persists a prompt schedule on the server', async () => {
+    const scheduledAt = new Date(Date.now() + 120_000)
+    const localDateTime = localDateTimeValue(scheduledAt)
+    render(
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+    )
+
+    fireEvent.change(screen.getByTestId('file-agent-prompt-input'), { target: { value: 'send later' } })
+    fireEvent.change(screen.getByLabelText('Schedule send time'), { target: { value: localDateTime } })
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule send' }))
+
+    await waitFor(() => expect(screen.getByTestId('scheduled-prompt')).toHaveTextContent('send later'))
+    expect(api.createHerdrScheduledPrompt).toHaveBeenCalledWith(
+      'w1:p1',
+      'send later',
+      expect.any(String),
+    )
+    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
+
+    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
+    expect(screen.getByTestId('scheduled-prompt')).toHaveTextContent('send later')
+  })
+
+  it('cancels a scheduled prompt without sending it', async () => {
+    const scheduledAt = localDateTimeValue(new Date(Date.now() + 60 * 60_000))
+    render(
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+    )
+
+    fireEvent.change(screen.getByTestId('file-agent-prompt-input'), { target: { value: 'cancel me' } })
+    fireEvent.change(screen.getByLabelText('Schedule send time'), { target: { value: scheduledAt } })
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule send' }))
+    const row = await screen.findByTestId('scheduled-prompt')
+    fireEvent.click(within(row).getByRole('button', { name: 'Cancel scheduled prompt cancel me' }))
+
+    await waitFor(() => expect(screen.queryByText(/cancel me/)).not.toBeInTheDocument())
+    expect(api.deleteHerdrScheduledPrompt).toHaveBeenCalledWith('scheduled-1')
+    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
+  })
+
+  it('restores scheduled prompts after the widget is remounted', async () => {
+    const scheduledAt = localDateTimeValue(new Date(Date.now() + 60 * 60_000))
+    const first = render(
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+    )
+
+    fireEvent.change(screen.getByTestId('file-agent-prompt-input'), { target: { value: 'restore me' } })
+    fireEvent.change(screen.getByLabelText('Schedule send time'), { target: { value: scheduledAt } })
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule send' }))
+    await waitFor(() => expect(screen.getByTestId('scheduled-prompt')).toHaveTextContent('restore me'))
+    first.unmount()
+
+    vi.mocked(api.listHerdrScheduledPrompts).mockResolvedValueOnce([
+      {
+        id: 'scheduled-1',
+        target: 'f20260919_foo',
+        text: 'restore me',
+        scheduled_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      },
+    ])
+    render(
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+    )
+    expect(await screen.findByTestId('scheduled-prompt')).toHaveTextContent('restore me')
+  })
+
+  it('rejects a prompt scheduled in the past', async () => {
+    const scheduledAt = localDateTimeValue(new Date(Date.now() - 60_000))
+    render(
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+    )
+
+    fireEvent.change(screen.getByTestId('file-agent-prompt-input'), { target: { value: 'too late' } })
+    fireEvent.change(screen.getByLabelText('Schedule send time'), { target: { value: scheduledAt } })
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule send' }))
+
+    expect(await screen.findByText('Schedule time must be in the future')).toBeInTheDocument()
+    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
   })
 })
