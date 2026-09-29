@@ -1,6 +1,6 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useBlocker } from 'react-router-dom'
-import { FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskTriggerRun, api } from '../api/client'
+import { FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileAgentWidget } from '../components/FileAgentWidget'
 import { FileTabs } from '../components/FileTabs'
@@ -15,7 +15,7 @@ import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { Badge } from '../components/ui/badge'
-import { ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
+import { Archive, ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -87,6 +87,14 @@ function taskTriggerIDFromDirectory(path: string): string | null {
   if (parts.length !== 2 || parts[0] !== '_task_triggers' || !parts[1]) return null
   return parts[1]
 }
+
+function taskIDFromPath(path: string): string | null {
+  const parts = path.split('/')
+  if (parts.length !== 3 || parts[0] !== '_tasks' || parts[2] !== 'task.md' || !parts[1]) return null
+  return parts[1]
+}
+
+const TASK_STATUS_OPTIONS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
 export interface BrowserEntry {
   kind: 'file' | 'dir'
@@ -1517,6 +1525,7 @@ function Pane({
   const [crlf, setCrlf] = useState(false)
   const [isFav, setIsFav] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [taskStatusUpdating, setTaskStatusUpdating] = useState(false)
   const [copyDialogOpen, setCopyDialogOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [execState, setExecState] = useState<{ path: string; running: boolean; output: string; result?: FileExecuteResult; error?: string } | null>(null)
@@ -1705,6 +1714,51 @@ function Pane({
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }
 
+  const taskID = isDir ? null : taskIDFromPath(path)
+  const isTaskFile = taskID !== null
+  const taskStatus = TASK_STATUS_OPTIONS.includes(fmParsed.data.status as TaskStatus)
+    ? (fmParsed.data.status as TaskStatus)
+    : 'todo'
+
+  const updateTaskStatus = async (status: TaskStatus) => {
+    if (!taskID || taskStatusUpdating || status === fmParsed.data.status) return
+    setTaskStatusUpdating(true)
+    setError(null)
+    try {
+      await api.updateTask(taskID, { status })
+      onRefresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setTaskStatusUpdating(false)
+    }
+  }
+
+  const archiveTask = async () => {
+    if (!taskID) return
+    let message = `「${String(fmParsed.data.title ?? taskID)}」をアーカイブしますか？`
+    try {
+      const tmpFiles = await api.listFiles({ path: `_tasks/${taskID}/tmp` })
+      if (tmpFiles.length > 0) {
+        const names = tmpFiles.slice(0, 5).map((file) => file.name).join(', ')
+        const more = tmpFiles.length > 5 ? ` ほか${tmpFiles.length - 5}件` : ''
+        message = `「${String(fmParsed.data.title ?? taskID)}」をアーカイブしますか？\nタスク内の tmp ディレクトリ（${tmpFiles.length}件: ${names}${more}）も削除されます。元に戻せません。`
+      }
+    } catch {
+      // tmp の確認に失敗してもアーカイブ確認自体は続行する
+    }
+    if (!(await confirm(message))) return
+    try {
+      await api.archiveTask(taskID)
+      onRefresh()
+      onOpen('')
+      await api.deleteRecent(path).catch(() => undefined)
+      await refreshMeta()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const execute = () => {
     executeCancel.current?.()
     setExecState({ path, running: true, output: '' })
@@ -1851,7 +1905,6 @@ function Pane({
   }
 
   const viewText = useForm ? fmSplit.body : content
-  const isTaskFile = !isDir && (path === 'task.md' || path.endsWith('/task.md'))
   const taskProgress = isTaskFile ? extractMarkdownTaskProgress(viewText) : null
   const viewSourceLineOffset = useForm
     ? content.slice(0, Math.max(0, content.length - fmSplit.body.length)).split(/\r?\n/).length - 1
@@ -2067,6 +2120,24 @@ function Pane({
               >
                 <RefreshCw />
               </Button>
+              {taskID && !editing && (
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span>Status</span>
+                  <select
+                    value={taskStatus}
+                    onChange={(e) => void updateTaskStatus(e.target.value as TaskStatus)}
+                    disabled={taskStatusUpdating}
+                    aria-label="Task status"
+                    className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {TASK_STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {!editing && !isDir && gitStatus && (
                 <Button
                   variant={showGitDiff ? 'default' : 'ghost'}
@@ -2126,6 +2197,20 @@ function Pane({
                           >
                             <Terminal className="size-3.5" />
                             Execute
+                          </button>
+                          <div className="my-1 h-px bg-border" />
+                        </>
+                      )}
+                      {taskID && !editing && (
+                        <>
+                          <button
+                            role="menuitem"
+                            className="file-action-item"
+                            onClick={() => runAction(archiveTask)}
+                            data-testid="task-archive"
+                          >
+                            <Archive className="size-3.5" />
+                            Archive task
                           </button>
                           <div className="my-1 h-px bg-border" />
                         </>

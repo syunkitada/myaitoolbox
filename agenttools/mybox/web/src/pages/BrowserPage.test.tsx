@@ -455,3 +455,81 @@ describe('task progress in file viewer', () => {
     expect(screen.queryByTestId('task-progress')).not.toBeInTheDocument()
   })
 })
+
+describe('task actions in file viewer', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const path = '_tasks/20260927_demo/task.md'
+  const content = '---\ntitle: demo\nstatus: doing\npriority: medium\n---\n\nTask body'
+
+  const renderTaskFile = (onSelect = vi.fn()) => {
+    vi.spyOn(api, 'listFiles').mockImplementation(async (opts) => {
+      if (opts?.path === `_tasks/20260927_demo/tmp`) return []
+      return [
+        { path: '_tasks', name: '_tasks', kind: 'dir' },
+        { path, name: 'task.md', kind: 'file' },
+      ]
+    })
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path, content })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+
+    const router = createMemoryRouter(
+      [{
+        path: '*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected={path}
+            onSelect={onSelect}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+          />
+        ),
+      }],
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
+    )
+
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    return onSelect
+  }
+
+  it('changes the task status from the Files tab', async () => {
+    const update = vi.spyOn(api, 'updateTask').mockResolvedValue({
+      id: '20260927_demo',
+      title: 'demo',
+      status: 'review',
+      priority: 'medium',
+    })
+    renderTaskFile()
+
+    const status = await screen.findByRole('combobox', { name: 'Task status' })
+    expect(status).toHaveValue('doing')
+    fireEvent.change(status, { target: { value: 'review' } })
+
+    await waitFor(() => expect(update).toHaveBeenCalledWith('20260927_demo', { status: 'review' }))
+  })
+
+  it('archives the task from the Files tab after confirmation', async () => {
+    const archive = vi.spyOn(api, 'archiveTask').mockResolvedValue(undefined)
+    vi.spyOn(api, 'deleteRecent').mockResolvedValue(undefined)
+    const onSelect = renderTaskFile()
+
+    await screen.findByRole('combobox', { name: 'Task status' })
+    fireEvent.click(screen.getByRole('button', { name: 'File actions' }))
+    fireEvent.click(screen.getByTestId('task-archive'))
+    fireEvent.click(await screen.findByTestId('app-dialog-ok'))
+
+    await waitFor(() => expect(archive).toHaveBeenCalledWith('20260927_demo'))
+    expect(onSelect).toHaveBeenCalledWith('')
+  })
+})
