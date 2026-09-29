@@ -1383,6 +1383,12 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
           <Textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault()
+                handleCommit()
+              }
+            }}
             placeholder="Commit message"
             className="min-h-16 flex-1 basis-64"
             aria-label="Commit message"

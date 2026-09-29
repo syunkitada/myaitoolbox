@@ -1194,8 +1194,10 @@ test.describe('git tab', () => {
     // "Stage all before commit" enabled captures the whole workspace.
     const commit = page.getByRole('button', { name: 'Commit', exact: true })
     await expect(commit).toBeDisabled()
-    await page.getByTestId('git-commit-message').fill('Initial commit')
-    await commit.click()
+    const commitMessage = page.getByTestId('git-commit-message')
+    await commitMessage.fill('Initial commit')
+    await expect(commit).toBeEnabled()
+    await commitMessage.press('Control+Enter')
     await expect(page.getByTestId('git-output')).toContainText('Initial commit')
     await expect(page.getByText('Working tree is clean.')).toBeVisible()
   })
