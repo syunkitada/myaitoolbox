@@ -10,6 +10,7 @@ vi.mock('../api/client', () => ({
     readHerdrAgent: vi.fn().mockResolvedValue({ output: 'hello' }),
     focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
+    sendKeysHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     listFiles: vi.fn().mockResolvedValue([]),
     promptHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     listHerdrScheduledPrompts: vi.fn().mockResolvedValue([]),
@@ -159,6 +160,11 @@ describe('HerdrPage agent commands', () => {
     expect(screen.getByTestId('herdr-agent-output-w1:p1')).toHaveClass('resize-y')
     expect(screen.getByTestId('herdr-prompt-input')).toHaveClass('resize-y', 'w-full', 'sm:flex-1')
     expect(screen.getByTestId('herdr-prompt-actions')).toHaveClass('w-full', 'sm:w-auto')
+    fireEvent.click(await screen.findByRole('button', { name: 'Press PageDown on myagent' }))
+
+    await vi.waitFor(() => {
+      expect(api.sendKeysHerdrAgent).toHaveBeenCalledWith('w1:p1', ['PageDown'])
+    })
     fireEvent.click(await screen.findByRole('button', { name: '/new' }))
 
     await vi.waitFor(() => {

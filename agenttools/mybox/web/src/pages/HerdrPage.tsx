@@ -88,6 +88,7 @@ const AGENT_QUICK_KEYS: { label: string; key: string }[] = [
   { label: 'Tab', key: 'Tab' },
   { label: '↑', key: 'Up' },
   { label: '↓', key: 'Down' },
+  { label: 'PageDown', key: 'PageDown' },
 ]
 
 function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {

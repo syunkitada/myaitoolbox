@@ -147,6 +147,17 @@ describe('FileAgentWidget commands', () => {
     }
   })
 
+  it('sends PageDown to the running agent when its button is pressed', async () => {
+    render(
+      <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
+    )
+
+    fireEvent.click(await screen.findByTitle('Press PageDown'))
+    await waitFor(() => {
+      expect(api.sendKeysHerdrAgent).toHaveBeenCalledWith('w1:p1', ['PageDown'])
+    })
+  })
+
   it('allows the terminal output and prompt form to be resized vertically', async () => {
     render(
       <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
