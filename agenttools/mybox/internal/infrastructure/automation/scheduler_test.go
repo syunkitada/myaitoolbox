@@ -81,3 +81,49 @@ func TestFileWatcherEmitsCreatedFile(t *testing.T) {
 		t.Fatal("timed out waiting for file event")
 	}
 }
+
+func TestFileWatcherEmitsCreatedFileForEachDefinitionSharingWatchPath(t *testing.T) {
+	root := t.TempDir()
+	watch := filepath.Join(root, "incoming")
+	require.NoError(t, os.MkdirAll(watch, 0o755))
+	definitions := []domain.TriggerDefinition{
+		{
+			ID:          "watch_reports",
+			ProjectRoot: root,
+			Enabled:     true,
+			Type:        domain.TriggerTypeFileCreated,
+			WatchPath:   watch,
+			Pattern:     "*.md",
+			SettleFor:   0,
+		},
+		{
+			ID:          "watch_logs",
+			ProjectRoot: root,
+			Enabled:     true,
+			Type:        domain.TriggerTypeFileCreated,
+			WatchPath:   watch,
+			Pattern:     "*.txt",
+			SettleFor:   0,
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events, err := NewFileWatcher(definitions).Events(ctx)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(watch, "report.md"), []byte("report"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(watch, "worker.txt"), []byte("log"), 0o644))
+
+	got := make(map[string]bool)
+	deadline := time.After(3 * time.Second)
+	for len(got) < len(definitions) {
+		select {
+		case event := <-events:
+			got[event.TriggerID] = true
+		case <-deadline:
+			t.Fatalf("timed out waiting for events, got %v", got)
+		}
+	}
+	assert.True(t, got["watch_reports"])
+	assert.True(t, got["watch_logs"])
+}

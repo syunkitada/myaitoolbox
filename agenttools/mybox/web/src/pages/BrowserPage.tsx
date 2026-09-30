@@ -2601,7 +2601,11 @@ export function BrowserPage({
   const loadingDirsRef = useRef(new Set<string>())
   const autoLoadSeq = useRef(0)
   const gitStatusLoaded = useRef(false)
-  const completionTreeLoaded = useRef(false)
+  const fullTreeCacheRef = useRef<{ showHidden: boolean; grouped: Record<string, BrowserEntry[]> } | null>(null)
+  const fullTreeRequestRef = useRef<{
+    showHidden: boolean
+    promise: Promise<Record<string, BrowserEntry[]>>
+  } | null>(null)
 
   const entries = useMemo(() => Object.values(childrenByDir).flat(), [childrenByDir])
 
@@ -2642,32 +2646,6 @@ export function BrowserPage({
     setOpenGitDir(null)
     setGitDiffOpen(false)
   }, [selected])
-
-  // The explorer loads directories lazily, but Markdown link completion needs
-  // to see targets below a directory before the user expands it. Fetch the
-  // recursive file tree once after a Markdown file is opened and keep it in
-  // the same directory buckets used by the explorer.
-  useEffect(() => {
-    if (!selected || !/\.(md|markdown)$/i.test(selected) || completionTreeLoaded.current) return
-    completionTreeLoaded.current = true
-    let cancelled = false
-    void api
-      .listFiles({ showHidden })
-      .then((list) => {
-        if (cancelled) return
-        const grouped = groupEntriesByDirectory(list)
-        for (const parent of Object.keys(grouped)) {
-          loadedDirsRef.current.add(parent)
-        }
-        setChildrenByDir((prev) => ({ ...prev, ...grouped }))
-      })
-      .catch(() => {
-        completionTreeLoaded.current = false
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [selected, showHidden])
 
   const handleSelect = useCallback(
     (p: string) => {
@@ -2713,6 +2691,35 @@ export function BrowserPage({
     [showHidden],
   )
 
+  const loadFullTree = useCallback(() => {
+    // Markdown link completion needs recursive entries; share both the cache
+    // and any in-flight request with the page/editor instead of scanning twice.
+    const cached = fullTreeCacheRef.current
+    if (cached?.showHidden === showHidden) return Promise.resolve(cached.grouped)
+
+    const pending = fullTreeRequestRef.current
+    if (pending?.showHidden === showHidden) return pending.promise
+
+    const promise = api
+      .listFiles({ showHidden })
+      .then((list) => {
+        const grouped = groupEntriesByDirectory(list)
+        fullTreeCacheRef.current = { showHidden, grouped }
+        return grouped
+      })
+    const request = { showHidden, promise }
+    fullTreeRequestRef.current = request
+    void promise.then(
+      () => {
+        if (fullTreeRequestRef.current === request) fullTreeRequestRef.current = null
+      },
+      () => {
+        if (fullTreeRequestRef.current === request) fullTreeRequestRef.current = null
+      },
+    )
+    return promise
+  }, [showHidden])
+
   const clearSubtree = useCallback(
     (path: string) => {
       loadedDirsRef.current.delete(path)
@@ -2737,24 +2744,20 @@ export function BrowserPage({
     setLoaded(false)
     setChildrenByDir({})
     if (selected && /\.(md|markdown)$/i.test(selected)) {
-      void api
-        .listFiles({ showHidden })
-        .then((list) => {
-          const grouped = groupEntriesByDirectory(list)
+      void loadFullTree()
+        .then((grouped) => {
           for (const parent of Object.keys(grouped)) loadedDirsRef.current.add(parent)
-          completionTreeLoaded.current = true
           setChildrenByDir(grouped)
           setLoaded(true)
         })
         .catch((e) => {
-          completionTreeLoaded.current = false
           setError(e instanceof Error ? e.message : String(e))
           setLoaded(true)
         })
       return
     }
     void loadDir('').then(() => setLoaded(true))
-  }, [loadDir, selected, showHidden])
+  }, [loadDir, loadFullTree, selected])
 
   const refreshGitStatus = useCallback(() => {
     void api
@@ -2764,6 +2767,7 @@ export function BrowserPage({
   }, [])
 
   const handleChanged = useCallback((pathToReveal?: string) => {
+    fullTreeCacheRef.current = null
     const directories = new Set<string>([''])
     if (selected) {
       const dir = selected.includes('/') ? selected.slice(0, selected.lastIndexOf('/')) : ''
@@ -2797,6 +2801,7 @@ export function BrowserPage({
   )
 
   const handleRefresh = useCallback(() => {
+    fullTreeCacheRef.current = null
     const dirs = [...loadedDirsRef.current]
     loadingDirsRef.current.clear()
     for (const d of dirs) void loadDir(d, true)

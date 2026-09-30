@@ -228,10 +228,13 @@ func (r *TaskRepository) Archive(ctx context.Context, id string) error {
 		return err
 	}
 	// git mv は非追跡ファイル（未コミットの変更）を含むディレクトリで
-	// "source directory is empty" 等で失敗するため、os.Rename + git add -A（全体）で
-	// 追跡・非追跡どちらでも移動を正しくステージする。
+	// "source directory is empty" 等で失敗するため、os.Rename + 対象パスだけの
+	// git add -A で、追跡・非追跡どちらでも移動を正しくステージする。
 	if isGitRepo(r.root) {
-		return runGit(ctx, r.root, "add", "-A")
+		if err := stageGitPaths(ctx, r.root, dst); err != nil {
+			return err
+		}
+		return stageDeletedGitPaths(ctx, r.root, src)
 	}
 	return nil
 }
@@ -275,15 +278,64 @@ func (r *TaskRepository) Delete(ctx context.Context, id string) error {
 	if err := os.RemoveAll(target); err != nil {
 		return err
 	}
-	// 追跡されていた場合は git add -A（パス無し）で削除をステージする。
-	// パス指定の git add は、非追跡ファイル（アーカイブ前のタスクなど）に対して
-	// "pathspec did not match any files" で失敗するため、全体指定にする。
+	// 追跡されていた場合は対象パスだけをステージする。リポジトリ全体を
+	// git add -A すると、利用者の無関係な変更までステージしてしまう。
 	if isGitRepo(r.root) {
-		if err := runGit(ctx, r.root, "add", "-A"); err != nil {
+		if err := stageDeletedGitPaths(ctx, r.root, target); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func stageGitPaths(ctx context.Context, root string, paths ...string) error {
+	relPaths, err := relativeGitPaths(root, paths...)
+	if err != nil {
+		return err
+	}
+	args := []string{"add", "-A", "--"}
+	args = append(args, relPaths...)
+	return runGit(ctx, root, args...)
+}
+
+func stageDeletedGitPaths(ctx context.Context, root string, paths ...string) error {
+	relPaths, err := relativeGitPaths(root, paths...)
+	if err != nil {
+		return err
+	}
+	tracked := make([]string, 0, len(relPaths))
+	for _, path := range relPaths {
+		cmd := exec.CommandContext(ctx, "git", "ls-files", "--error-unmatch", "--", path)
+		cmd.Dir = root
+		if err := cmd.Run(); err == nil {
+			tracked = append(tracked, path)
+		} else {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if _, ok := err.(*exec.ExitError); !ok {
+				return fmt.Errorf("git ls-files %s: %w", path, err)
+			}
+		}
+	}
+	if len(tracked) == 0 {
+		return nil
+	}
+	args := []string{"add", "-u", "--"}
+	args = append(args, tracked...)
+	return runGit(ctx, root, args...)
+}
+
+func relativeGitPaths(root string, paths ...string) ([]string, error) {
+	relPaths := make([]string, 0, len(paths))
+	for _, path := range paths {
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			return nil, fmt.Errorf("%w: git path %s", domain.ErrInvalidPath, path)
+		}
+		relPaths = append(relPaths, filepath.ToSlash(rel))
+	}
+	return relPaths, nil
 }
 
 func validateTaskID(id string) error {

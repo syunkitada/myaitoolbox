@@ -124,20 +124,23 @@ func (w *FileWatcher) Events(ctx context.Context) (<-chan domain.TriggerEvent, e
 	if err != nil {
 		return nil, err
 	}
-	byPath := make(map[string]domain.TriggerDefinition)
+	byPath := make(map[string][]domain.TriggerDefinition)
 	for _, def := range w.definitions {
 		if !def.Enabled || def.Type != domain.TriggerTypeFileCreated {
 			continue
 		}
+		watchPath := filepath.Clean(def.WatchPath)
 		if err := os.MkdirAll(def.WatchPath, 0o755); err != nil {
 			_ = watcher.Close()
 			return nil, err
 		}
-		if err := watcher.Add(def.WatchPath); err != nil {
-			_ = watcher.Close()
-			return nil, err
+		if len(byPath[watchPath]) == 0 {
+			if err := watcher.Add(def.WatchPath); err != nil {
+				_ = watcher.Close()
+				return nil, err
+			}
 		}
-		byPath[def.WatchPath] = def
+		byPath[watchPath] = append(byPath[watchPath], def)
 	}
 
 	out := make(chan domain.TriggerEvent)
@@ -147,17 +150,19 @@ func (w *FileWatcher) Events(ctx context.Context) (<-chan domain.TriggerEvent, e
 		pending := make(map[string]time.Time)
 		seen := make(map[string]struct{})
 		now := time.Now()
-		for _, def := range byPath {
-			events, scanErr := ScanFileEvents(context.Background(), def, now)
-			if scanErr != nil {
-				continue
-			}
-			for _, event := range events {
-				seen[event.ID] = struct{}{}
-				select {
-				case out <- event:
-				case <-ctx.Done():
-					return
+		for _, definitions := range byPath {
+			for _, def := range definitions {
+				events, scanErr := ScanFileEvents(context.Background(), def, now)
+				if scanErr != nil {
+					continue
+				}
+				for _, event := range events {
+					seen[event.ID] = struct{}{}
+					select {
+					case out <- event:
+					case <-ctx.Done():
+						return
+					}
 				}
 			}
 		}
@@ -181,14 +186,8 @@ func (w *FileWatcher) Events(ctx context.Context) (<-chan domain.TriggerEvent, e
 				if event.Op&(fsnotify.Create|fsnotify.Rename) == 0 {
 					continue
 				}
-				if _, ok := byPath[event.Name]; !ok {
+				if _, ok := byPath[filepath.Clean(filepath.Dir(event.Name))]; ok {
 					pending[event.Name] = time.Now().Add(250 * time.Millisecond)
-				}
-				for watchPath := range byPath {
-					if filepath.Dir(event.Name) == filepath.Clean(watchPath) {
-						pending[event.Name] = time.Now().Add(byPath[watchPath].SettleFor)
-						break
-					}
 				}
 			case now := <-ticker.C:
 				for path, due := range pending {
@@ -196,16 +195,17 @@ func (w *FileWatcher) Events(ctx context.Context) (<-chan domain.TriggerEvent, e
 						continue
 					}
 					delete(pending, path)
-					for _, def := range byPath {
-						if filepath.Dir(path) != filepath.Clean(def.WatchPath) {
-							continue
-						}
+					definitions := byPath[filepath.Clean(filepath.Dir(path))]
+					for _, def := range definitions {
 						info, statErr := os.Lstat(path)
 						if statErr != nil || !info.Mode().IsRegular() {
 							continue
 						}
 						if def.SettleFor > 0 && now.Sub(info.ModTime()) < def.SettleFor {
-							pending[path] = now.Add(def.SettleFor)
+							next := now.Add(def.SettleFor)
+							if current, exists := pending[path]; !exists || next.After(current) {
+								pending[path] = next
+							}
 							continue
 						}
 						matched, matchErr := filepath.Match(def.Pattern, filepath.Base(path))

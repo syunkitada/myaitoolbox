@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import { api } from '../api/client'
+import { computeLineDiff } from '../utils/line-diff'
 import { setMarkdownLinkCompletions } from '../utils/markdown-completions'
 
 interface MonacoEditorProps {
@@ -100,50 +101,6 @@ function useIsDark() {
   return dark
 }
 
-// computeLineDiff returns the set of modified (current) line numbers that are
-// newly added vs the original, and the set that changed in place. Used to draw
-// inline diff decorations on a live, editable Monaco editor.
-function computeLineDiff(original: string, modified: string) {
-  const a = original.split('\n')
-  const b = modified.split('\n')
-  const n = a.length
-  const m = b.length
-  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
-    }
-  }
-
-  const matchedB = new Set<number>()
-  const addedB = new Set<number>()
-  const changedB = new Set<number>()
-  let i = 0
-  let j = 0
-  while (i < n && j < m) {
-    if (a[i] === b[j]) {
-      matchedB.add(j)
-      i++
-      j++
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      // Line a[i] was removed from this position -> the current line changed.
-      changedB.add(j)
-      i++
-    } else {
-      addedB.add(j)
-      j++
-    }
-  }
-  while (j < m) {
-    addedB.add(j)
-    j++
-  }
-  for (let k = 0; k < m; k++) {
-    if (!matchedB.has(k) && !addedB.has(k)) changedB.add(k)
-  }
-  return { added: addedB, changed: changedB }
-}
-
 function MonacoEditorInner({
   value,
   onChange,
@@ -186,33 +143,35 @@ function MonacoEditorInner({
     const orig = originalRef.current
     const val = valueRef.current
     if (orig !== undefined && val !== orig) {
-      const { added, changed } = computeLineDiff(orig, val)
-      const mk = (line: number) => ({
-        startLineNumber: line,
-        startColumn: 1,
-        endLineNumber: line,
-        endColumn: 1,
-      })
-      for (const line of added) {
-        decorations.push({
-          range: mk(line),
-          options: {
-            isWholeLine: true,
-            className: 'editor-diff-added',
-            linesDecorationsClassName: 'editor-diff-added-line',
-            marginClassName: 'editor-diff-added-margin',
-          },
+      const diff = computeLineDiff(orig, val)
+      if (diff) {
+        const mk = (line: number) => ({
+          startLineNumber: line,
+          startColumn: 1,
+          endLineNumber: line,
+          endColumn: 1,
         })
-      }
-      for (const line of changed) {
-        decorations.push({
-          range: mk(line),
-          options: {
-            isWholeLine: true,
-            className: 'editor-diff-changed',
-            marginClassName: 'editor-diff-changed-margin',
-          },
-        })
+        for (const line of diff.added) {
+          decorations.push({
+            range: mk(line),
+            options: {
+              isWholeLine: true,
+              className: 'editor-diff-added',
+              linesDecorationsClassName: 'editor-diff-added-line',
+              marginClassName: 'editor-diff-added-margin',
+            },
+          })
+        }
+        for (const line of diff.changed) {
+          decorations.push({
+            range: mk(line),
+            options: {
+              isWholeLine: true,
+              className: 'editor-diff-changed',
+              marginClassName: 'editor-diff-changed-margin',
+            },
+          })
+        }
       }
     }
 
@@ -320,8 +279,10 @@ function MonacoEditorInner({
     }
   }, [path, completions, resolvedLanguage])
 
+  // BrowserPage supplies the already-loaded tree. Keep a fallback for other
+  // editor callers, while avoiding a second recursive scan in the browser.
   useEffect(() => {
-    if (resolvedLanguage !== 'markdown' || !path) return
+    if (resolvedLanguage !== 'markdown' || !path || completions !== undefined) return
     let cancelled = false
     void api
       .listFiles({ showHidden: true })
@@ -336,7 +297,7 @@ function MonacoEditorInner({
     return () => {
       cancelled = true
     }
-  }, [path, resolvedLanguage])
+  }, [completions, path, resolvedLanguage])
 
   return (
     <div className={className}>

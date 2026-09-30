@@ -232,6 +232,43 @@ describe('BrowserPage file reveal', () => {
     expect(list).toHaveBeenCalledWith({ path: '_task_triggers/daily-report', showHidden: true })
     expect(onRevealPathHandled).toHaveBeenCalledWith(path)
   })
+
+  it('shares the recursive Markdown tree load between the page and its editor', async () => {
+    const path = 'notes/readme.md'
+    const list = vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path, name: 'readme.md', kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path, content: '# Notes' })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    const router = createMemoryRouter(
+      [{
+        path: '*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected={path}
+            onSelect={vi.fn()}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+          />
+        ),
+      }],
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    await waitFor(() => expect(list).toHaveBeenCalledWith({ showHidden: true }))
+    const recursiveLoads = list.mock.calls.filter(([options]) => !options?.path)
+    expect(recursiveLoads).toHaveLength(1)
+  })
 })
 
 describe('Explorer Git status', () => {

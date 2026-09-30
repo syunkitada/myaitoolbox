@@ -3,13 +3,31 @@ package markdown
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 )
+
+func runGitForTest(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(out)))
+	return string(out)
+}
+
+func initGitRepoForTest(t *testing.T, root string) {
+	t.Helper()
+	runGitForTest(t, root, "init")
+	runGitForTest(t, root, "config", "user.email", "test@example.com")
+	runGitForTest(t, root, "config", "user.name", "test")
+}
 
 func TestTaskRepositoryLifecycle(t *testing.T) {
 	root := t.TempDir()
@@ -92,6 +110,65 @@ func TestTaskRepositoryArchiveWithoutTmpDir(t *testing.T) {
 
 	_, err := os.Stat(filepath.Join(root, "_archives", "tasks", "20260802_no-tmp", "task.md"))
 	require.NoError(t, err)
+}
+
+func TestTaskRepositoryArchiveStagesOnlyTaskPaths(t *testing.T) {
+	root := t.TempDir()
+	initGitRepoForTest(t, root)
+	repo := NewTaskRepository(root)
+
+	const id = "20260802_scoped-archive"
+	require.NoError(t, repo.Create(context.Background(), id, "---\ntitle: scoped archive\n---\n\n"))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "unrelated.md"), []byte("keep unstaged"), 0o644))
+
+	require.NoError(t, repo.Archive(context.Background(), id))
+
+	staged := runGitForTest(t, root, "diff", "--cached", "--name-status", "--no-renames")
+	assert.Contains(t, staged, "_archives/tasks/"+id+"/task.md")
+	assert.NotContains(t, staged, "unrelated.md")
+	status := runGitForTest(t, root, "status", "--porcelain")
+	assert.Contains(t, status, "?? unrelated.md")
+}
+
+func TestTaskRepositoryArchiveStagesTrackedTaskDeletion(t *testing.T) {
+	root := t.TempDir()
+	initGitRepoForTest(t, root)
+	repo := NewTaskRepository(root)
+
+	const id = "20260802_tracked-archive"
+	require.NoError(t, repo.Create(context.Background(), id, "---\ntitle: tracked archive\n---\n\n"))
+	runGitForTest(t, root, "add", "_tasks/"+id)
+	runGitForTest(t, root, "commit", "-m", "add task")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "unrelated.md"), []byte("keep unstaged"), 0o644))
+
+	require.NoError(t, repo.Archive(context.Background(), id))
+
+	staged := runGitForTest(t, root, "diff", "--cached", "--name-status", "--no-renames")
+	assert.Contains(t, staged, "_tasks/"+id+"/task.md")
+	assert.Contains(t, staged, "_archives/tasks/"+id+"/task.md")
+	assert.NotContains(t, staged, "unrelated.md")
+	status := runGitForTest(t, root, "status", "--porcelain")
+	assert.Contains(t, status, "?? unrelated.md")
+}
+
+func TestTaskRepositoryDeleteStagesOnlyTaskPaths(t *testing.T) {
+	root := t.TempDir()
+	initGitRepoForTest(t, root)
+	repo := NewTaskRepository(root)
+
+	const id = "20260802_scoped-delete"
+	require.NoError(t, repo.Create(context.Background(), id, "---\ntitle: scoped delete\n---\n\n"))
+	runGitForTest(t, root, "add", "_tasks/"+id)
+	runGitForTest(t, root, "commit", "-m", "add task")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "unrelated.md"), []byte("keep unstaged"), 0o644))
+
+	require.NoError(t, repo.Delete(context.Background(), id))
+
+	staged := runGitForTest(t, root, "diff", "--cached", "--name-only")
+	assert.Contains(t, staged, "_tasks/"+id+"/task.md")
+	assert.NotContains(t, staged, "unrelated.md")
+	status := runGitForTest(t, root, "status", "--porcelain")
+	assert.Contains(t, status, "?? unrelated.md")
 }
 
 func TestTaskRepositoryFindMissing(t *testing.T) {
