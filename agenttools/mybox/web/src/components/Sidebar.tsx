@@ -259,10 +259,10 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
       <SidebarContent className="gap-1">
         <SidebarMenu className="sidebar-nav mt-1">
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Workspaces" isActive={pathname === '/projects'}>
+            <SidebarMenuButton asChild tooltip="Projects" isActive={pathname === '/projects'}>
               <NavLink to="/projects" end onClick={handleNav}>
                 <Boxes />
-                <span>Workspaces</span>
+                <span>Projects</span>
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -319,7 +319,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
                       <span
                         className={`herdr-workspace-status inline-block size-2 shrink-0 rounded-full ${statusDotClass(status)} ${status === 'working' ? 'animate-pulse' : ''}`}
                         role="img"
-                        aria-label={`workspace status ${status}`}
+                        aria-label={`Herdr workspace status ${status}`}
                       />
                     )}
                   </span>
@@ -329,7 +329,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
           })}
           {!meta || meta.projects.length === 0 ? (
             <p className="px-2 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
-              No workspaces yet.
+              No projects yet.
             </p>
           ) : null}
         </SidebarMenu>

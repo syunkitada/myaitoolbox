@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: mybox API
-  description: Markdown-based personal workspace API
+  description: Markdown-based personal project management API
   version: 0.1.0
 servers:
   - url: http://127.0.0.1:8080
@@ -100,7 +100,7 @@ paths:
   /api/meta:
     get:
       operationId: getMeta
-      summary: Get workspace meta information
+      summary: Get mybox metadata
       responses:
         "200":
           description: meta information

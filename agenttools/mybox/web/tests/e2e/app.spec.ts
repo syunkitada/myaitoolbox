@@ -663,7 +663,7 @@ test('clicking the mybox brand returns to the unselected projects page', async (
   await page.locator('.sidebar-nav').getByRole('link', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()
   await page.getByRole('button', { name: 'Go to top' }).click()
-  await expect(page.getByRole('heading', { name: 'Workspaces', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()
   await expect(page.locator('.sidebar-projects')).toContainText('proj')
   await expect(page.locator('.sidebar-nav').getByRole('link', { name: 'Dashboard' })).toHaveCount(0)
 })
@@ -740,7 +740,7 @@ test('favicon mirrors the aggregated agent status and updates dynamically', asyn
   await expect(favicon).not.toHaveAttribute('href', workingHref!, { timeout: 10000 })
 })
 
-test('herdr tab shows workspaces and operates agents', async ({ page }) => {
+test('herdr tab shows Herdr workspaces and operates agents', async ({ page }) => {
   await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
   await expect(page.getByRole('heading', { name: 'Herdr', level: 1 })).toBeVisible()
   await expect(page.getByTestId('herdr-workspace-w7')).toContainText('proj')
@@ -907,14 +907,14 @@ test('dragging a split divider resizes the neighboring panes', async ({ page }) 
   await expect(tab).toHaveCount(0)
 })
 
-test('sidebar shows workspace status and herdr agents', async ({ page }) => {
+test('sidebar shows Herdr workspace status and agents', async ({ page }) => {
   await page.goto('/projects/proj/dashboard')
   const projRow = page
     .locator('.sidebar-projects button')
     .filter({ hasText: 'proj' })
     .first()
   await expect(
-    projRow.locator('.herdr-workspace-status[aria-label="workspace status working"]'),
+    projRow.locator('.herdr-workspace-status[aria-label="Herdr workspace status working"]'),
   ).toBeVisible()
 
   const agents = page.locator('.sidebar-agents')
@@ -978,7 +978,7 @@ test('herdr offers a new tab when no tabs or panes exist at all', async ({ page 
   await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
 
   // close every visible tab; the last tab of a workspace also removes the
-  // workspace. (Workspaces of other projects are not shown on this page and
+  // workspace. (Herdr workspaces of other projects are not shown on this page and
   // do not count as tabs/panes of this project.)
   for (const tabId of ['w7:t1', 'w7:t2']) {
     const tab = page.getByTestId(`herdr-tab-${tabId}`)
@@ -1187,7 +1187,7 @@ test.describe('git tab', () => {
     await expect(page.getByRole('separator', { name: 'Resize git explorer' })).toHaveAttribute('aria-valuenow', '380')
   })
 
-  test('initializes a repository, lists files, and commits the workspace', async ({ page }) => {
+  test('initializes a repository, lists files, and commits the project', async ({ page }) => {
     await page.goto('/projects/proj/git')
     await expect(page.getByRole('heading', { name: 'No git repository' })).toBeVisible()
     await page.getByRole('button', { name: 'Initialize repository' }).click()
@@ -1199,7 +1199,7 @@ test.describe('git tab', () => {
     await expect(page.locator('.knowledge-tree').getByRole('button', { name: 'index.md' })).toHaveCount(1)
 
     // The commit box is disabled until a message is entered; committing with
-    // "Stage all before commit" enabled captures the whole workspace.
+    // "Stage all before commit" enabled captures the whole project.
     const commit = page.getByRole('button', { name: 'Commit', exact: true })
     await expect(commit).toBeDisabled()
     const commitMessage = page.getByTestId('git-commit-message')
@@ -1294,10 +1294,10 @@ test.describe('project selection at /', () => {
     await page.goto('/')
   })
 
-  test('shows projects with an unselected project box and a Workspaces-only menu', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'Workspaces' })).toBeVisible()
+  test('shows projects with an unselected project box and a Projects-only menu', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible()
     const nav = page.locator('.sidebar-nav')
-    await expect(nav.getByRole('link', { name: 'Workspaces' })).toBeVisible()
+    await expect(nav.getByRole('link', { name: 'Projects' })).toBeVisible()
     await expect(nav.getByRole('link', { name: 'Board' })).toBeVisible()
     await expect(nav.getByRole('link', { name: 'Dashboard' })).toHaveCount(0)
     await expect(page.locator('.project-tabs')).toHaveCount(0)

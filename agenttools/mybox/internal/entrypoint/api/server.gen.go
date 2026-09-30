@@ -99,7 +99,7 @@ type ServerInterface interface {
 	// RenameHerdrTab Rename a herdr tab
 	// (POST /api/herdr/tabs/rename)
 	RenameHerdrTab(w http.ResponseWriter, r *http.Request)
-	// GetMeta Get workspace meta information
+	// GetMeta Get mybox metadata
 	// (GET /api/meta)
 	GetMeta(w http.ResponseWriter, r *http.Request)
 	// UpdateFavorite Add or remove a favorite

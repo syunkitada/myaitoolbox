@@ -839,7 +839,7 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
         <div className="flex max-w-md flex-col items-start gap-3 rounded-lg border bg-card p-6">
           <h1 className="text-lg font-semibold">No git repository</h1>
           <p className="text-sm text-muted-foreground">
-            This workspace directory is not a git repository yet. Initialize one to track changes, commit, pull and push.
+            This project directory is not a git repository yet. Initialize one to track changes, commit, pull and push.
           </p>
           <Button
             variant="default"
