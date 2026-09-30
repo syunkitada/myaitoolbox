@@ -42,10 +42,13 @@ type Server struct {
 	mu             sync.RWMutex
 	defaultProject string
 	basePath       string
+	newApp         func(context.Context, string) (*App, error)
 	herdrRun       herdrRunFunc
 	terminals      *terminalHub
 	scheduled      *promptScheduler
 }
+
+const maxJSONBodySize = 16 << 20
 
 func NewServer(cfg *domain.Config, defaultProject string, basePath string) *Server {
 	if defaultProject == "" {
@@ -58,6 +61,7 @@ func NewServer(cfg *domain.Config, defaultProject string, basePath string) *Serv
 		projects:       NewProjectApp(),
 		defaultProject: defaultProject,
 		basePath:       basePath,
+		newApp:         NewApp,
 		terminals:      newTerminalHub(),
 	}
 	s.scheduled = newPromptScheduler(config.NewScheduledPromptStore(), s.runScheduledPrompt)
@@ -92,14 +96,26 @@ func (s *Server) getApp(r *http.Request) (*App, error) {
 	if ok {
 		return app, nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if app, ok := s.apps[project]; ok {
-		return app, nil
+	return s.loadAndCacheApp(r.Context(), project)
+}
+
+// loadAndCacheApp deliberately constructs the app before taking s.mu. NewApp
+// loads project configuration, which uses the config store mutex. Keeping
+// that work outside the server lock avoids an inverse lock order with
+// refreshDefaultProject (config store -> s.mu).
+func (s *Server) loadAndCacheApp(ctx context.Context, project string) (*App, error) {
+	loader := s.newApp
+	if loader == nil {
+		loader = NewApp
 	}
-	app, err := NewApp(r.Context(), project)
+	app, err := loader(ctx, project)
 	if err != nil {
 		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cached, ok := s.apps[project]; ok {
+		return cached, nil
 	}
 	s.apps[project] = app
 	return app, nil
@@ -556,17 +572,7 @@ func (s *Server) getAppByProject(ctx context.Context, project string) (*App, err
 	if ok {
 		return app, nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if app, ok := s.apps[project]; ok {
-		return app, nil
-	}
-	app, err := NewApp(ctx, project)
-	if err != nil {
-		return nil, err
-	}
-	s.apps[project] = app
-	return app, nil
+	return s.loadAndCacheApp(ctx, project)
 }
 
 func (s *Server) CreateTask(w http.ResponseWriter, r *http.Request) {
@@ -1213,8 +1219,17 @@ func (e *httpError) Unwrap() error {
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodySize)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(dst); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, &httpError{
+				status: http.StatusRequestEntityTooLarge,
+				err:    fmt.Errorf("request body exceeds the maximum size of %d MiB", maxJSONBodySize>>20),
+			})
+			return false
+		}
 		writeError(w, fmt.Errorf("%w: invalid request body", domain.ErrInvalidArgument))
 		return false
 	}
@@ -1237,6 +1252,8 @@ func writeError(w http.ResponseWriter, err error) {
 		status = http.StatusNotFound
 	case errors.Is(err, domain.ErrInvalidArgument), errors.Is(err, domain.ErrInvalidPath):
 		status = http.StatusBadRequest
+	case errors.Is(err, domain.ErrResourceTooLarge):
+		status = http.StatusRequestEntityTooLarge
 	case errors.Is(err, domain.ErrAlreadyExists):
 		status = http.StatusConflict
 	case errors.Is(err, domain.ErrAutomationBusy):

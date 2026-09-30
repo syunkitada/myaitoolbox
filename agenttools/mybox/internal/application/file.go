@@ -16,6 +16,10 @@ type FileUseCase struct {
 
 const maxFileSearchResults = 100
 
+type limitedFileSearcher interface {
+	SearchLimited(ctx context.Context, query string, showHidden bool, limit int) ([]domain.FileSearchResult, int, error)
+}
+
 func NewFileUseCase(files domain.FileRepository) *FileUseCase {
 	return &FileUseCase{Files: files}
 }
@@ -51,6 +55,9 @@ func (u *FileUseCase) Search(ctx context.Context, query string, showHidden bool)
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, 0, fmt.Errorf("%w: search query must not be empty", domain.ErrInvalidArgument)
+	}
+	if searcher, ok := u.Files.(limitedFileSearcher); ok {
+		return searcher.SearchLimited(ctx, query, showHidden, maxFileSearchResults)
 	}
 	results, err := u.Files.Search(ctx, query, showHidden)
 	if err != nil {

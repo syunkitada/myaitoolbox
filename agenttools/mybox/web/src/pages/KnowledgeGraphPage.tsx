@@ -6,7 +6,7 @@ import { ExplorerTree } from '../components/Explorer/ExplorerTree'
 import { GraphView } from '../components/GraphView/GraphView'
 import { GraphController } from '../graph/reconcile'
 import { buildFileTree, allFilePaths, isMarkdownFile, subtreeDirIds } from '../graph/tree'
-import { buildProjection } from '../graph/projection'
+import { buildProjection, missingContentPaths } from '../graph/projection'
 import { nodeKindOf, nodePathOf } from '../graph/nodeId'
 import { encodePath, projectUrl } from '../utils/routes'
 import { loadLayout, saveLayout } from '../state/graphViewState'
@@ -61,9 +61,13 @@ function KnowledgeGraphBody() {
 
   useEffect(() => {
     const visible = projection.nodes.filter((n) => n.kind === 'file').map((n) => n.path)
-    const missing = visible.filter((p) => !contents.has(p) && !inFlight.current.has(p))
+    const missing = missingContentPaths(visible, contents, inFlight.current)
     if (missing.length === 0) return
     for (const p of missing) {
+      // Mark the path before starting the request. Updating contents when any
+      // request completes reruns this effect; without this guard, the other
+      // still-pending paths are fetched again on every completion.
+      inFlight.current.add(p)
       void api
         .getFileContent(p)
         .then((res) => {

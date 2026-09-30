@@ -651,8 +651,10 @@ export const api = {
   destroyTerminal: (session: string) =>
     request<void>('DELETE', '/api/terminal/destroy' + qs({ session })),
 
-  getGitStatus: (scope?: string) =>
-    request<GitDetail>('GET', '/api/git/status' + qs({ path: scope })),
+  getGitStatus: (scope?: string, includeDiff = true) =>
+    request<GitDetail>('GET', '/api/git/status' + qs({ path: scope, include_diff: includeDiff })),
+  getGitFileDiff: (scope: string | undefined, path: string, status: GitFileStatus) =>
+    request<{ diff: string }>('GET', '/api/git/file-diff' + qs({ path: scope, file: path, status })),
   getGitLog: (scope?: string, offset?: number, count?: number) =>
     request<GitLogResult>('GET', '/api/git/log' + qs({ path: scope, offset, count })),
   getGitCommitDiff: (scope: string | undefined, ref: string) =>

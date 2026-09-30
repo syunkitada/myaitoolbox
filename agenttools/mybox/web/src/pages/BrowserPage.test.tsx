@@ -375,6 +375,7 @@ describe('file viewer Git diff', () => {
 
   it('shows the Git button and compares the current file with its diff', async () => {
     const getGitStatus = vi.spyOn(api, 'getGitStatus').mockResolvedValue(detail)
+    vi.spyOn(api, 'getGitFileDiff').mockResolvedValue({ diff: '+changed' })
     renderFileViewer({ 'notes.txt': 'modified' })
 
     const button = await screen.findByRole('button', { name: 'Show Git diff' })

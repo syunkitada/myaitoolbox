@@ -74,6 +74,7 @@ func (s *Server) registerGitRoutes(e *echo.Echo, basePath string) {
 		e.Add(method, basePath+path, echo.WrapHandler(h))
 	}
 	wrap(http.MethodGet, "/api/git/status", s.GetGitStatus)
+	wrap(http.MethodGet, "/api/git/file-diff", s.GetGitFileDiff)
 	wrap(http.MethodGet, "/api/git/log", s.GetGitLog)
 	wrap(http.MethodGet, "/api/git/diff", s.GetGitCommitDiff)
 	wrap(http.MethodGet, "/api/git/branches", s.GetGitBranches)
@@ -130,7 +131,7 @@ func (s *Server) gitScope(r *http.Request, app *App) (string, error) {
 	return gitScopeDir(app, r.URL.Query().Get("path"))
 }
 
-func gitRepoDetail(dir string) gitDetail {
+func gitRepoDetail(dir string, includeDiff bool) gitDetail {
 	d := gitDetail{}
 	if !isInsideWorkTree(dir) {
 		return d
@@ -220,19 +221,25 @@ func gitRepoDetail(dir string) gitDetail {
 		}
 		switch {
 		case x == '?' && y == '?':
-			d.Untracked = append(d.Untracked, &gitFile{
-				Path: path, Status: "untracked", Code: "??", Diff: untrackedDiff(dir, path),
-			})
+			file := &gitFile{Path: path, Status: "untracked", Code: "??"}
+			if includeDiff {
+				file.Diff = untrackedDiff(dir, path)
+			}
+			d.Untracked = append(d.Untracked, file)
 		default:
 			if x != ' ' && x != '?' {
-				d.Staged = append(d.Staged, &gitFile{
-					Path: path, Status: "staged", Code: string(x), Diff: gitFileDiff(dir, path, true),
-				})
+				file := &gitFile{Path: path, Status: "staged", Code: string(x)}
+				if includeDiff {
+					file.Diff = gitFileDiff(dir, path, true)
+				}
+				d.Staged = append(d.Staged, file)
 			}
 			if y != ' ' && y != '?' {
-				d.Unstaged = append(d.Unstaged, &gitFile{
-					Path: path, Status: "unstaged", Code: string(y), Diff: gitFileDiff(dir, path, false),
-				})
+				file := &gitFile{Path: path, Status: "unstaged", Code: string(y)}
+				if includeDiff {
+					file.Diff = gitFileDiff(dir, path, false)
+				}
+				d.Unstaged = append(d.Unstaged, file)
 			}
 		}
 	}
@@ -290,6 +297,10 @@ type gitCommitDiffResult struct {
 	Diff string `json:"diff"`
 }
 
+type gitFileDiffResult struct {
+	Diff string `json:"diff"`
+}
+
 // gitBranchInfo describes a single local branch.
 type gitBranchInfo struct {
 	Name     string `json:"name"`
@@ -344,9 +355,47 @@ func (s *Server) GetGitStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	gitOpsMu.Lock()
-	detail := gitRepoDetail(dir)
+	includeDiff := r.URL.Query().Get("include_diff") != "false"
+	detail := gitRepoDetail(dir, includeDiff)
 	gitOpsMu.Unlock()
 	writeJSONResponse(w, http.StatusOK, detail)
+}
+
+func (s *Server) GetGitFileDiff(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	path := r.URL.Query().Get("file")
+	if err := validateGitPath(path); err != nil {
+		writeError(w, err)
+		return
+	}
+	status := r.URL.Query().Get("status")
+	if status != "staged" && status != "unstaged" && status != "untracked" {
+		writeError(w, fmt.Errorf("%w: invalid git file status", domain.ErrInvalidArgument))
+		return
+	}
+	if !isInsideWorkTree(dir) {
+		writeJSONResponse(w, http.StatusOK, gitFileDiffResult{})
+		return
+	}
+
+	gitOpsMu.Lock()
+	var diff string
+	if status == "untracked" {
+		diff = untrackedDiff(dir, path)
+	} else {
+		diff = gitFileDiff(dir, path, status == "staged")
+	}
+	gitOpsMu.Unlock()
+	writeJSONResponse(w, http.StatusOK, gitFileDiffResult{Diff: diff})
 }
 
 // gitLogEntry represents a single commit line in the log format.

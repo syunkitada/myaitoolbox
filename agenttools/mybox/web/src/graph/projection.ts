@@ -19,6 +19,14 @@ export interface BuildProjectionInput {
   linkContext: LinkResolveContext
 }
 
+export function missingContentPaths(
+  visiblePaths: readonly string[],
+  contents: ReadonlyMap<string, string>,
+  inFlight: ReadonlySet<string>,
+): string[] {
+  return visiblePaths.filter((path) => !contents.has(path) && !inFlight.has(path))
+}
+
 export function buildProjection(input: BuildProjectionInput): GraphProjection {
   const { tree, state, contents, linkContext } = input
   const { nodes, edges: containsEdges } = computeProjection(tree, state)

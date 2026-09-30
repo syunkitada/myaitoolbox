@@ -75,6 +75,36 @@ func TestFileRepositorySearchSkipsLargeFiles(t *testing.T) {
 	assert.Empty(t, results)
 }
 
+func TestFileRepositorySearchLimitedRetainsTotal(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"a.md", "b.md", "c.md"} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte("deployment\n"), 0o644))
+	}
+
+	results, total, err := NewFileRepository(root).SearchLimited(context.Background(), "deployment", true, 2)
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+	assert.Equal(t, 3, total)
+	assert.Equal(t, "a.md", results[0].Path)
+}
+
+func TestFileRepositoryReadLimits(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "large.txt")
+	require.NoError(t, os.WriteFile(path, []byte("x"), 0o644))
+	require.NoError(t, os.Truncate(path, maxContentFileBytes+1))
+
+	repo := NewFileRepository(root)
+	_, err := repo.Content(context.Background(), "large.txt")
+	assert.ErrorIs(t, err, domain.ErrResourceTooLarge)
+
+	rawPath := filepath.Join(root, "large-image.bin")
+	require.NoError(t, os.WriteFile(rawPath, []byte("x"), 0o644))
+	require.NoError(t, os.Truncate(rawPath, maxRawFileBytes+1))
+	_, err = repo.Raw(context.Background(), "large-image.bin")
+	assert.ErrorIs(t, err, domain.ErrResourceTooLarge)
+}
+
 func TestFileRepositoryTreeStatusInvalidFrontMatter(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "broken.md"),

@@ -1,15 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Routes, Route, useLocation, Navigate, NavLink } from 'react-router-dom'
 import { api, Meta, ProjectGitStatus } from './api/client'
 import { getProject, projectUrl, rememberCurrentTab, rememberedFilesUrl } from './utils/routes'
 import { AppSidebar } from './components/Sidebar'
-import { Dashboard } from './pages/Dashboard'
-import { KnowledgeGraphPage } from './pages/KnowledgeGraphPage'
-import { KanbanBoard } from './pages/KanbanBoard'
-import { StatsPage } from './pages/StatsPage'
-import { ProjectsPage } from './pages/ProjectsPage'
-import { HerdrPage } from './pages/HerdrPage'
-import { GitPage } from './pages/GitPage'
 import { useHerdrOverview } from './hooks/use-herdr'
 import { useAgentFavicon } from './hooks/use-agent-favicon'
 import { Button } from './components/ui/button'
@@ -18,10 +11,20 @@ import { Separator } from './components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
 import { DialogsProvider } from './components/AppDialogs'
+import { HerdrPage } from './pages/HerdrPage'
 import { Bot, Folder, GitBranch, Network, SquareKanban, TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
+
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
+const KnowledgeGraphPage = lazy(() =>
+  import('./pages/KnowledgeGraphPage').then((m) => ({ default: m.KnowledgeGraphPage })),
+)
+const KanbanBoard = lazy(() => import('./pages/KanbanBoard').then((m) => ({ default: m.KanbanBoard })))
+const StatsPage = lazy(() => import('./pages/StatsPage').then((m) => ({ default: m.StatsPage })))
+const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
+const GitPage = lazy(() => import('./pages/GitPage').then((m) => ({ default: m.GitPage })))
 
 // Canonical project tab sections; position in this list is the tab index.
 const TAB_SECTIONS = ['dashboard', 'board', 'graph', 'git', 'herdr']
@@ -57,6 +60,16 @@ export default function App() {
       setError(e instanceof Error ? e.message : String(e))
     }
   }, [refreshGitStatus])
+
+  const handleRecentChanged = useCallback((path: string) => {
+    setMeta((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        recent_files: [path, ...current.recent_files.filter((item) => item !== path)].slice(0, 50),
+      }
+    })
+  }, [])
 
   useEffect(() => {
     void refreshMeta()
@@ -173,7 +186,8 @@ export default function App() {
             </div>
           )}
           <div className="min-h-0 flex-1">
-            <Routes>
+            <Suspense fallback={<div className="page p-4 text-muted-foreground md:p-6">Loading…</div>}>
+              <Routes>
               <Route path="/projects" element={<ProjectsPage onChanged={refreshMeta} />} />
               <Route path="/stats" element={<StatsPage />} />
               {project ? (
@@ -184,6 +198,7 @@ export default function App() {
                       <Dashboard
                         key={project}
                         refreshMeta={refreshMeta}
+                        onRecentChanged={handleRecentChanged}
                         favorites={meta?.favorites ?? []}
                         recentFiles={meta?.recent_files ?? []}
                         herdrOverview={herdr.overview}
@@ -199,6 +214,7 @@ export default function App() {
                       <Dashboard
                         key={project}
                         refreshMeta={refreshMeta}
+                        onRecentChanged={handleRecentChanged}
                         favorites={meta?.favorites ?? []}
                         recentFiles={meta?.recent_files ?? []}
                         herdrOverview={herdr.overview}
@@ -243,7 +259,8 @@ export default function App() {
                   <Route path="*" element={<Navigate to="/projects" replace />} />
                 </>
               )}
-            </Routes>
+              </Routes>
+            </Suspense>
           </div>
           {project && <TerminalPanel />}
         </div>

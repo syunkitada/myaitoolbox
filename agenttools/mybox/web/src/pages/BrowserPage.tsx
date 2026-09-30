@@ -119,6 +119,7 @@ interface BrowserPageProps {
   favorites: string[]
   recentFiles: string[]
   refreshMeta: () => Promise<void>
+  onRecentChanged?: (path: string) => void
   defaultSelect?: (entries: BrowserEntry[]) => string | undefined
   onClose?: () => void
   herdrOverview?: HerdrOverview | null
@@ -1477,6 +1478,7 @@ interface PaneProps {
   list: BrowserEntry[]
   favorites: string[]
   refreshMeta: () => Promise<void>
+  onRecentChanged?: (path: string) => void
   onChanged: () => void
   onGitStatusChange: () => void
   onOpen: (path: string) => void
@@ -1501,6 +1503,7 @@ function Pane({
   list,
   favorites,
   refreshMeta,
+  onRecentChanged,
   onChanged,
   onGitStatusChange,
   onOpen,
@@ -1653,7 +1656,7 @@ function Pane({
         setDraftFm(parseFrontmatter(split.frontmatter).data)
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-    void api.recordRecent(path).then(() => void refreshMeta()).catch(() => undefined)
+    void api.recordRecent(path).then(() => onRecentChanged?.(path)).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, isDir, isImage, readmePath, listing, refreshKey])
 
@@ -1883,9 +1886,17 @@ function Pane({
     setGitDiffLoading(true)
     setGitDiffError(null)
     try {
-      const detail = await api.getGitStatus()
+      const detail = await api.getGitStatus(undefined, false)
       if (requestId !== gitDiffRequest.current) return
-      setGitDiffFiles(gitFilesForPath(detail, path))
+      const files = gitFilesForPath(detail, path)
+      const withDiffs = await Promise.all(
+        files.map(async (file) => {
+          const result = await api.getGitFileDiff(undefined, path, file.status)
+          return { ...file, diff: result.diff }
+        }),
+      )
+      if (requestId !== gitDiffRequest.current) return
+      setGitDiffFiles(withDiffs)
     } catch (e) {
       if (requestId !== gitDiffRequest.current) return
       setGitDiffError(e instanceof Error ? e.message : String(e))
@@ -2578,6 +2589,7 @@ export function BrowserPage({
   favorites,
   recentFiles,
   refreshMeta,
+  onRecentChanged,
   defaultSelect,
   onClose,
   herdrOverview,
@@ -3048,6 +3060,7 @@ export function BrowserPage({
                   list={entries}
                   favorites={favorites}
                   refreshMeta={refreshMeta}
+                  onRecentChanged={onRecentChanged}
                   onChanged={handleChanged}
                   onGitStatusChange={refreshGitStatus}
                   onOpen={onSelect}

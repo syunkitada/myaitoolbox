@@ -11,7 +11,7 @@ import {
 } from './nodeId'
 import { buildFileTree, computeProjection, allFilePaths, isMarkdownFile, visibleMarkdownPaths } from './tree'
 import { resolveLinkTarget, parseMarkdownLinks } from './links'
-import { buildProjection } from './projection'
+import { buildProjection, missingContentPaths } from './projection'
 import { GraphController } from './reconcile'
 import type { ExplorerState, TreeInputEntry } from './types'
 
@@ -193,6 +193,18 @@ describe('parseMarkdownLinks', () => {
 })
 
 describe('buildProjection', () => {
+  it('does not return paths already being fetched', () => {
+    const inFlight = new Set<string>()
+    const visible = ['a.md', 'b.md']
+    const contents = new Map<string, string>()
+
+    const first = missingContentPaths(visible, contents, inFlight)
+    first.forEach((path) => inFlight.add(path))
+
+    expect(first).toEqual(visible)
+    expect(missingContentPaths(visible, contents, inFlight)).toEqual([])
+  })
+
   const tree = buildFileTree(list)
   const ctx = { knownMarkdown: new Set(['README.md', 'docs/guide.md', 'knowledge/phase1.md']) }
 

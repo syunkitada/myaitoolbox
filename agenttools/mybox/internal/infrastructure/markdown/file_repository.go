@@ -24,6 +24,8 @@ import (
 const executeTimeout = 2 * time.Minute
 
 const maxSearchFileBytes = 5 << 20
+const maxContentFileBytes = 32 << 20
+const maxRawFileBytes = 128 << 20
 
 var searchableTextExtensions = map[string]struct{}{
 	".adoc": {}, ".bash": {}, ".c": {}, ".cc": {}, ".cfg": {}, ".conf": {}, ".cpp": {},
@@ -148,17 +150,30 @@ func (r *FileRepository) Tree(ctx context.Context, showHidden bool) ([]domain.Fi
 }
 
 func (r *FileRepository) Search(ctx context.Context, query string, showHidden bool) ([]domain.FileSearchResult, error) {
+	results, _, err := r.search(ctx, query, showHidden, 0)
+	return results, err
+}
+
+// SearchLimited keeps the complete match count while retaining only the
+// first limit results. The application layer exposes at most this many hits,
+// so avoiding a second, unbounded result slice matters for large projects.
+func (r *FileRepository) SearchLimited(ctx context.Context, query string, showHidden bool, limit int) ([]domain.FileSearchResult, int, error) {
+	return r.search(ctx, query, showHidden, limit)
+}
+
+func (r *FileRepository) search(ctx context.Context, query string, showHidden bool, limit int) ([]domain.FileSearchResult, int, error) {
 	if strings.TrimSpace(query) == "" {
-		return nil, fmt.Errorf("%w: search query must not be empty", domain.ErrInvalidArgument)
+		return nil, 0, fmt.Errorf("%w: search query must not be empty", domain.ErrInvalidArgument)
 	}
 	lowerQuery := strings.ToLower(query)
 	results := make([]domain.FileSearchResult, 0)
 	if _, err := os.Stat(r.root); err != nil {
 		if os.IsNotExist(err) {
-			return results, nil
+			return results, 0, nil
 		}
-		return nil, err
+		return nil, 0, err
 	}
+	total := 0
 
 	err := filepath.WalkDir(r.root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -208,21 +223,24 @@ func (r *FileRepository) Search(ctx context.Context, query string, showHidden bo
 			if relErr != nil {
 				return relErr
 			}
-			results = append(results, domain.FileSearchResult{
-				Path:       filepath.ToSlash(rel),
-				Line:       lineIndex + 1,
-				Snippet:    searchSnippet(line, lowerQuery),
-				MatchCount: countMatches(lines, lowerQuery),
-			})
+			total++
+			if limit <= 0 || len(results) < limit {
+				results = append(results, domain.FileSearchResult{
+					Path:       filepath.ToSlash(rel),
+					Line:       lineIndex + 1,
+					Snippet:    searchSnippet(line, lowerQuery),
+					MatchCount: countMatches(lines, lowerQuery),
+				})
+			}
 			break
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].Path < results[j].Path })
-	return results, nil
+	return results, total, nil
 }
 
 func isSearchableTextPath(name string) bool {
@@ -441,6 +459,9 @@ func (r *FileRepository) Content(ctx context.Context, path string) (string, erro
 	if info.IsDir() {
 		return "", fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
 	}
+	if info.Size() > maxContentFileBytes {
+		return "", fmt.Errorf("%w: %s exceeds the %d MiB content limit", domain.ErrResourceTooLarge, path, maxContentFileBytes>>20)
+	}
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return "", err
@@ -462,6 +483,9 @@ func (r *FileRepository) Raw(ctx context.Context, path string) ([]byte, error) {
 	}
 	if info.IsDir() {
 		return nil, fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
+	}
+	if info.Size() > maxRawFileBytes {
+		return nil, fmt.Errorf("%w: %s exceeds the %d MiB raw file limit", domain.ErrResourceTooLarge, path, maxRawFileBytes>>20)
 	}
 	return os.ReadFile(file)
 }

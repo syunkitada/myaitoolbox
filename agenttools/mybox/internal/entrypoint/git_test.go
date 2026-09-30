@@ -134,6 +134,24 @@ func TestGitCommitCycle(t *testing.T) {
 	assert.False(t, result.Ok)
 }
 
+func TestGitStatusCanDeferFileDiffs(t *testing.T) {
+	s, app := newTestServer(t)
+	dir := app.Project.Path
+	require.NoError(t, runGitErr(dir, "init"))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("hello\n"), 0o644))
+
+	rec := do(t, s, http.MethodGet, "/api/git/status?include_diff=false", nil, "X-Project", "test")
+	assert.Equal(t, http.StatusOK, rec.Code)
+	detail := decode[apiGitDetail](t, rec)
+	require.Len(t, detail.Untracked, 1)
+	assert.Empty(t, detail.Untracked[0].Diff)
+
+	rec = do(t, s, http.MethodGet, "/api/git/file-diff?file=a.md&status=untracked", nil, "X-Project", "test")
+	assert.Equal(t, http.StatusOK, rec.Code)
+	diff := decode[gitFileDiffResult](t, rec)
+	assert.Contains(t, diff.Diff, "hello")
+}
+
 func TestGitRemoteSyncStatusAndFetch(t *testing.T) {
 	s, app := newTestServer(t)
 	dir := app.Project.Path

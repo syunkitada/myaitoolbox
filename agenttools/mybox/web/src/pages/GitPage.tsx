@@ -563,6 +563,8 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
   const [detail, setDetail] = useState<GitDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [fileDiffs, setFileDiffs] = useState<Record<string, string>>({})
+  const [fileDiffLoading, setFileDiffLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [stageAll, setStageAll] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -710,8 +712,9 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
 
   const refresh = useCallback(async () => {
     try {
-      const d = await api.getGitStatus(scope)
+      const d = await api.getGitStatus(scope, false)
       setDetail(d)
+      setFileDiffs({})
       setError(null)
       setSelectedKey((key) => {
         if (!key) return null
@@ -762,6 +765,29 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
     [detail],
   )
   const selected = allFiles.find((f) => f.status + ':' + f.path === selectedKey) ?? null
+  useEffect(() => {
+    if (!selected || selected.diff) {
+      setFileDiffLoading(false)
+      return
+    }
+    let cancelled = false
+    setFileDiffLoading(true)
+    api
+      .getGitFileDiff(scope, selected.path, selected.status)
+      .then((res) => {
+        if (!cancelled) {
+          setFileDiffs((current) => ({ ...current, [selected.status + ':' + selected.path]: res.diff }))
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setFileDiffLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [scope, selected?.diff, selected?.path, selected?.status])
+  const selectedDiff = selected ? fileDiffs[selected.status + ':' + selected.path] ?? selected.diff ?? '' : ''
   const selectedNonStagedIndex = selected
     ? nonStagedFiles.findIndex((f) => f.status + ':' + f.path === selectedKey)
     : -1
@@ -1328,7 +1354,11 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
                                   Git diff
                                   <span className="font-normal normal-case">(saved file)</span>
                                 </h2>
-                                <DiffView diff={selected.diff ?? ''} className="min-h-0 flex-1" />
+                                {fileDiffLoading ? (
+                                  <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">Loading diff…</div>
+                                ) : (
+                                  <DiffView diff={selectedDiff} className="min-h-0 flex-1" />
+                                )}
                               </section>
                               <section className="flex h-[60vh] min-h-[320px] max-h-[720px] min-w-0 flex-col">
                                 <h2 className="mb-2 flex shrink-0 items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
@@ -1352,7 +1382,11 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
                             </div>
                           </div>
                         ) : (
-                          <DiffView diff={selected.diff ?? ''} />
+                          fileDiffLoading ? (
+                            <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">Loading diff…</div>
+                          ) : (
+                            <DiffView diff={selectedDiff} />
+                          )
                         )}
                       </>
                     ) : (

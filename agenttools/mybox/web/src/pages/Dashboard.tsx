@@ -9,6 +9,7 @@ import { subscribeNavActions } from '../lib/nav-actions'
 
 interface DashboardProps {
   refreshMeta: () => Promise<void>
+  onRecentChanged?: (path: string) => void
   favorites: string[]
   recentFiles: string[]
   herdrOverview?: HerdrOverview | null
@@ -19,6 +20,7 @@ interface DashboardProps {
 
 export function Dashboard({
   refreshMeta,
+  onRecentChanged,
   favorites,
   recentFiles,
   herdrOverview,
@@ -106,6 +108,7 @@ export function Dashboard({
         favorites={favorites}
         recentFiles={recentFiles}
         refreshMeta={refreshMeta}
+        onRecentChanged={onRecentChanged}
         revealPath={revealPath}
         onRevealPathHandled={onRevealPathHandled}
         herdrOverview={herdrOverview}

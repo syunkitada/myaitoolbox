@@ -11,7 +11,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,6 +72,57 @@ func newTestServerWithBase(t *testing.T, basePath string) (*Server, *App) {
 	s, app := newTestServer(t)
 	s.basePath = normalizeBasePath(basePath)
 	return s, app
+}
+
+func TestAppLoadingDoesNotHoldServerLock(t *testing.T) {
+	s, app := newTestServer(t)
+	s.apps = make(map[string]*App)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	s.newApp = func(context.Context, string) (*App, error) {
+		close(started)
+		<-release
+		return app, nil
+	}
+
+	loadDone := make(chan error, 1)
+	go func() {
+		_, err := s.getApp(httptest.NewRequest(http.MethodGet, "/", nil))
+		loadDone <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("app loader did not start")
+	}
+
+	refreshDone := make(chan struct{})
+	go func() {
+		s.refreshDefaultProject(context.Background())
+		close(refreshDone)
+	}()
+	select {
+	case <-refreshDone:
+	case <-time.After(time.Second):
+		t.Fatal("refreshDefaultProject waited for the app loader while the loader was blocked")
+	}
+
+	close(release)
+	select {
+	case err := <-loadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("app loader did not complete")
+	}
+}
+
+func TestDecodeBodyRejectsOversizedJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	body := `{"content":"` + strings.Repeat("x", maxJSONBodySize) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+
+	assert.False(t, decodeBody(rec, req, &map[string]any{}))
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 }
 
 type fakeConfigStore struct{}
