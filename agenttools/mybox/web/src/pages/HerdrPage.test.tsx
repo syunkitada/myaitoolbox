@@ -154,16 +154,17 @@ describe('HerdrPage agent commands', () => {
       expect(api.focusHerdrAgent).toHaveBeenCalledWith('w1:p1')
     })
     expect(screen.queryByRole('button', { name: '/init' })).not.toBeInTheDocument()
-    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '/status', '進めて', '次は何をするとよいですか？']) {
+    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '/status', '進めて', '次は何をするとよいですか？', 'Commitして']) {
       expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()
     }
     expect(screen.getByTestId('herdr-agent-output-w1:p1')).toHaveClass('resize-y')
     expect(screen.getByTestId('herdr-prompt-input')).toHaveClass('resize-y', 'w-full', 'sm:flex-1')
     expect(screen.getByTestId('herdr-prompt-actions')).toHaveClass('w-full', 'sm:w-auto')
-    fireEvent.click(await screen.findByRole('button', { name: 'Press PageDown on myagent' }))
+    expect(screen.queryByRole('button', { name: 'Press PageDown on myagent' })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Press Esc on myagent' }))
 
     await vi.waitFor(() => {
-      expect(api.sendKeysHerdrAgent).toHaveBeenCalledWith('w1:p1', ['PageDown'])
+      expect(api.sendKeysHerdrAgent).toHaveBeenCalledWith('w1:p1', ['esc'])
     })
     fireEvent.click(await screen.findByRole('button', { name: '/new' }))
 
@@ -174,6 +175,11 @@ describe('HerdrPage agent commands', () => {
     fireEvent.click(await screen.findByRole('button', { name: '/status' }))
     await vi.waitFor(() => {
       expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/status')
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Commitして' }))
+    await vi.waitFor(() => {
+      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', 'Commitして')
     })
   })
 

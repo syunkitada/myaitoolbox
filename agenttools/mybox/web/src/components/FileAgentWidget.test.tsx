@@ -135,6 +135,11 @@ describe('FileAgentWidget commands', () => {
     await waitFor(() => {
       expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '次は何をするとよいですか？')
     })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Commitして' }))
+    await waitFor(() => {
+      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', 'Commitして')
+    })
   })
 
   it('renders the command buttons for a running agent', async () => {
@@ -142,19 +147,20 @@ describe('FileAgentWidget commands', () => {
       <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
     )
     expect(screen.queryByRole('button', { name: '/init' })).not.toBeInTheDocument()
-    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '/status', '進めて', '次は何をするとよいですか？']) {
+    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '/status', '進めて', '次は何をするとよいですか？', 'Commitして']) {
       expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()
     }
   })
 
-  it('sends PageDown to the running agent when its button is pressed', async () => {
+  it('sends Escape to the running agent when its button is pressed', async () => {
     render(
       <FileAgentWidget path="_tasks/20260919_foo/task.md" overview={runningOverview} onRefresh={() => undefined} />,
     )
 
-    fireEvent.click(await screen.findByTitle('Press PageDown'))
+    expect(screen.queryByTitle('Press PageDown')).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByTitle('Press Esc'))
     await waitFor(() => {
-      expect(api.sendKeysHerdrAgent).toHaveBeenCalledWith('w1:p1', ['PageDown'])
+      expect(api.sendKeysHerdrAgent).toHaveBeenCalledWith('w1:p1', ['esc'])
     })
   })
 

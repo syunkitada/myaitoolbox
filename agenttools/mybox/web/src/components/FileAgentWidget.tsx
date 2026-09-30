@@ -26,7 +26,6 @@ const FILE_AGENT_KEYS: { label: string; key: string }[] = [
   { label: 'Tab', key: 'tab' },
   { label: '↑', key: 'up' },
   { label: '↓', key: 'down' },
-  { label: 'PageDown', key: 'PageDown' },
   { label: 'Esc', key: 'esc' },
   { label: 'Ctrl+C', key: 'C-c' },
 ]
