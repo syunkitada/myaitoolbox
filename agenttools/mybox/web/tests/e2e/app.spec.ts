@@ -34,6 +34,19 @@ async function acceptAppDialog(
   await dialog.getByTestId('app-dialog-ok').click()
 }
 
+async function openHerdrWorkspaces(page: import('@playwright/test').Page) {
+  const toggle = page.getByTestId('herdr-workspaces-toggle')
+  await expect(toggle).toBeVisible()
+  await toggle.click()
+}
+
+async function removeProjectGitRepo(page: import('@playwright/test').Page) {
+  const projectsRes = await page.request.get('/api/projects')
+  const projects = (await projectsRes.json()) as Array<{ name: string; path: string }>
+  const project = projects.find((item) => item.name === 'proj')
+  if (project) fs.rmSync(path.join(project.path, '.git'), { recursive: true, force: true })
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/projects/proj/dashboard')
 })
@@ -317,6 +330,8 @@ test('dashboard resizes and remembers the details width', async ({ page }) => {
   const pane = page.locator('.outline-pane')
   const handle = page.getByRole('separator', { name: 'Resize details' })
   await expect(handle).toHaveAttribute('aria-valuenow', '384')
+  await expect(pane).toHaveAttribute('data-outline-open', 'true')
+  await expect(pane).toBeVisible()
 
   const initialWidth = (await pane.boundingBox())!.width
   const handleBox = (await handle.boundingBox())!
@@ -404,7 +419,7 @@ test('the tab bar hide button hides the terminal panel', async ({ page }) => {
   await expect(panel).toBeHidden()
 })
 
-test('the tab bar maximize button makes the terminal fill the screen', async ({ page }) => {
+test('the tab bar maximize button fills the main content area', async ({ page }) => {
   await page.getByRole('button', { name: 'Open terminal' }).click()
   const panel = page.locator('.terminal-panel')
   await expect(panel).toBeVisible()
@@ -416,9 +431,11 @@ test('the tab bar maximize button makes the terminal fill the screen', async ({ 
   const maximized = await panel.boundingBox()
   expect(maximized).not.toBeNull()
   const vw = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
-  expect(maximized!.x).toBeLessThanOrEqual(2)
+  const sidebar = await page.locator('[data-slot="sidebar-container"]').boundingBox()
+  expect(sidebar).not.toBeNull()
+  expect(maximized!.x).toBeGreaterThanOrEqual(sidebar!.width - 2)
   expect(maximized!.y).toBeLessThanOrEqual(2)
-  expect(maximized!.width).toBeGreaterThanOrEqual(vw.w - 4)
+  expect(maximized!.x + maximized!.width).toBeGreaterThanOrEqual(vw.w - 2)
   expect(maximized!.height).toBeGreaterThanOrEqual(vw.h - 4)
 
   await page.getByRole('button', { name: 'Restore terminal' }).click()
@@ -429,6 +446,8 @@ test('the tab bar maximize button makes the terminal fill the screen', async ({ 
 })
 
 test('dragging the resize handle grows the internal terminal', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 })
+  await page.reload()
   await page.getByRole('button', { name: 'Open terminal' }).click()
   const panel = page.locator('.terminal-panel')
   await expect(panel).toBeVisible()
@@ -606,7 +625,7 @@ test('dashboard renames a file via Move', async ({ page }) => {
   await page.getByRole('button', { name: 'File actions' }).click()
   await page.getByRole('menuitem', { name: 'Move' }).click({ force: true })
   await acceptAppDialog(page, 'knowledge/tasks2.md')
-  await expect(page.getByText('knowledge/tasks2.md', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'knowledge/tasks2.md', exact: true })).toBeVisible()
   await expect(explorer).toContainText('tasks2.md')
 })
 
@@ -743,6 +762,7 @@ test('favicon mirrors the aggregated agent status and updates dynamically', asyn
 test('herdr tab shows Herdr workspaces and operates agents', async ({ page }) => {
   await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
   await expect(page.getByRole('heading', { name: 'Herdr', level: 1 })).toBeVisible()
+  await openHerdrWorkspaces(page)
   await expect(page.getByTestId('herdr-workspace-w7')).toContainText('proj')
   await expect(page.getByTestId('herdr-workspace-w7')).toContainText('working')
 
@@ -764,6 +784,7 @@ test('herdr tab shows Herdr workspaces and operates agents', async ({ page }) =>
 
 test('herdr tab and pane operations work end to end', async ({ page }) => {
   await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
+  await openHerdrWorkspaces(page)
   const ws = page.getByTestId('herdr-workspace-w7')
   await expect(ws).toBeVisible()
   await expect(page.getByTestId('herdr-tab-w7:t1')).toBeVisible()
@@ -800,6 +821,7 @@ test('herdr tab and pane operations work end to end', async ({ page }) => {
   await page.getByTestId('herdr-pane-header-w7:p2').click()
   await expect(p2).toHaveAttribute('data-focused', 'true')
   await page.reload()
+  await openHerdrWorkspaces(page)
   await expect(page.getByTestId('herdr-tab-w7:t2')).toHaveAttribute('data-active', 'true')
   await expect(page.getByTestId('herdr-pane-w7:p2')).toHaveAttribute('data-focused', 'true')
 
@@ -856,6 +878,7 @@ test('herdr tab and pane operations work end to end', async ({ page }) => {
 
 test('dragging a split divider resizes the neighboring panes', async ({ page }) => {
   await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
+  await openHerdrWorkspaces(page)
   const ws = page.getByTestId('herdr-workspace-w7')
   await expect(ws).toBeVisible()
 
@@ -893,6 +916,7 @@ test('dragging a split divider resizes the neighboring panes', async ({ page }) 
 
   // the resize was committed to herdr: a reload keeps the wider split
   await page.reload()
+  await openHerdrWorkspaces(page)
   await expect(layout).toBeVisible()
   const paneAfter = layout.locator('[data-testid^="herdr-pane-"]').first()
   await expect(paneAfter).toBeVisible()
@@ -972,10 +996,12 @@ test('clicking a sidebar agent linked to a task opens its file in the Files tab'
     /\/projects\/proj\/dashboard\/files\/_tasks\/e2e-status-change-target\/task\.md$/,
   )
   await expect(page.getByRole('heading', { name: 'Drag me to done' })).toBeVisible()
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
 })
 
 test('herdr offers a new tab when no tabs or panes exist at all', async ({ page }) => {
   await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
+  await openHerdrWorkspaces(page)
 
   // close every visible tab; the last tab of a workspace also removes the
   // workspace. (Herdr workspaces of other projects are not shown on this page and
@@ -1157,6 +1183,12 @@ test.describe('mobile viewport', () => {
 })
 
 test.describe('git tab', () => {
+  test.beforeEach(async ({ page }) => {
+    // Git tests share the server's project fixture. Start each case without
+    // repository state so their setup does not depend on execution order.
+    await removeProjectGitRepo(page)
+  })
+
   test('resizes and remembers the git explorer width', async ({ page }) => {
     await page.evaluate(() => localStorage.removeItem('mybox_git_explorer_width'))
     await page.goto('/projects/proj/git')
