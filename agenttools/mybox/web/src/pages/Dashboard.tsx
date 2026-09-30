@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { LAST_SELECTED_FILE_KEY, encodePath, projectUrl, getProject, rememberedFilesUrl } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
 import { api, HerdrOverview, Task, TaskTrigger } from '../api/client'
@@ -27,7 +27,11 @@ export function Dashboard({
   onWebuiFocusChange,
 }: DashboardProps) {
   const params = useParams()
-  const selected = (params['*'] ?? '').trim()
+  const { pathname } = useLocation()
+  // The app is mounted below a top-level `*` route. On the dashboard index
+  // route React Router therefore exposes the whole URL as that splat, even
+  // though no file is selected. Only the nested files route owns the splat.
+  const selected = pathname.includes('/dashboard/files/') ? (params['*'] ?? '').trim() : ''
   const navigate = useNavigate()
   const [taskDialog, setTaskDialog] = useState(false)
   const [revealPath, setRevealPath] = useState<string | undefined>()

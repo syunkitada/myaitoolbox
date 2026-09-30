@@ -123,7 +123,7 @@ func (r *FileRepository) Tree(ctx context.Context, showHidden bool) ([]domain.Fi
 			kind = domain.FileKindDir
 		}
 		status := ""
-		if kind == domain.FileKindFile && d.Name() == "task.md" {
+		if kind == domain.FileKindFile && isMarkdownPath(d.Name()) {
 			status = markdownStatus(path)
 		}
 		entries = append(entries, domain.FileEntry{
@@ -318,7 +318,7 @@ func (r *FileRepository) Children(ctx context.Context, parent string, showHidden
 		}
 		status := ""
 		switch {
-		case kind == domain.FileKindFile && d.Name() == "task.md" && d.Type()&os.ModeSymlink == 0:
+		case kind == domain.FileKindFile && isMarkdownPath(d.Name()) && d.Type()&os.ModeSymlink == 0:
 			status = markdownStatus(filepath.Join(dir, d.Name()))
 		case kind == domain.FileKindDir && parent == "_tasks":
 			taskPath := filepath.Join(dir, d.Name(), "task.md")

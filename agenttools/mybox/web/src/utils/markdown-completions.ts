@@ -20,8 +20,9 @@ export function provideMarkdownLinkCompletions(model: monaco.editor.ITextModel, 
   const range = new monaco.Range(position.lineNumber, startCol, position.lineNumber, position.column)
   return {
     suggestions: suggestions.map(
-      (s): monaco.languages.CompletionItem => ({
+      (s, index): monaco.languages.CompletionItem => ({
         label: s.label,
+        preselect: index === 0,
         kind:
           s.kind === 'dir'
             ? monaco.languages.CompletionItemKind.Folder

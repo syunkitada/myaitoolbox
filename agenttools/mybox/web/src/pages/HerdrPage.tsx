@@ -462,6 +462,7 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, 
   const loadOutput = useCallback(async (reportError = true) => {
     // Skip if a reload is already in flight (e.g. the 1s focus poller).
     if (loadingRef.current) return
+    if (typeof api.readHerdrPane !== 'function') return
     loadingRef.current = true
     try {
       const res = await api.readHerdrPane(pane.pane_id)

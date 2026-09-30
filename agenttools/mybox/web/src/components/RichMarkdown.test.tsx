@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { RichMarkdown, extractOutline } from './RichMarkdown'
+
+const { embedMock } = vi.hoisted(() => ({ embedMock: vi.fn() }))
+vi.mock('vega-embed', () => ({ default: embedMock }))
 
 function renderMd(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>)
@@ -24,6 +27,10 @@ function CopyableMarkdown({ text }: { text: string }) {
 }
 
 describe('RichMarkdown', () => {
+  beforeEach(() => {
+    embedMock.mockReset()
+  })
+
   it('assigns slug ids to headings matching extractOutline', () => {
     const text = '# Hello World\n\n## Overview\n\n## See Alpha\n'
     renderMd(<RichMarkdown text={text} />)
@@ -244,6 +251,38 @@ describe('RichMarkdown', () => {
         value: originalClipboard,
       })
     }
+  })
+
+  it('renders Vega-Lite fences and resolves relative data files', async () => {
+    const finalize = vi.fn()
+    embedMock.mockImplementation(async (host: HTMLElement) => {
+      host.innerHTML = '<svg data-testid="vega-chart" />'
+      return { view: { finalize } }
+    })
+    const text = [
+      '```vega-lite',
+      '{',
+      '  "data": { "url": "data/seattle-weather.csv" },',
+      '  "mark": "bar",',
+      '  "encoding": { "x": { "field": "date", "type": "temporal" } }',
+      '}',
+      '```',
+    ].join('\n')
+    const { container } = renderMd(
+      <RichMarkdown
+        text={text}
+        relativeTo="notes/weather.md"
+        dataUrl={(resolved) => `/api/files/raw?path=${encodeURIComponent(resolved)}`}
+      />,
+    )
+
+    await waitFor(() => expect(container.querySelector('[data-testid="vega-chart"]')).toBeInTheDocument())
+    expect(embedMock).toHaveBeenCalledTimes(1)
+    const spec = embedMock.mock.calls[0][1] as {
+      data: { url: string; format: { type: string } }
+    }
+    expect(spec.data.url).toBe('/api/files/raw?path=notes%2Fdata%2Fseattle-weather.csv')
+    expect(spec.data.format).toEqual({ type: 'csv' })
   })
 
   it('previews and copies markdown as text from the single copy button', async () => {

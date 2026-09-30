@@ -217,6 +217,22 @@ body,
     @apply my-0 pr-24;
   }
 
+  .markdown-body .vega-lite {
+    @apply max-w-full overflow-x-auto rounded-md border border-border bg-card p-3;
+  }
+
+  .markdown-body .vega-lite-error {
+    @apply rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive;
+  }
+
+  .markdown-body .vega-lite-error p {
+    @apply my-0;
+  }
+
+  .markdown-body .vega-lite-error pre {
+    @apply mb-0 mt-2 bg-transparent p-0 text-xs;
+  }
+
   .markdown-code-copy {
     @apply absolute top-2 right-2 z-10 cursor-pointer rounded border border-border bg-card/90 px-2 py-1 text-xs leading-5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-accent hover:text-accent-foreground;
   }

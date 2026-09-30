@@ -361,7 +361,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
                 >
                   <Bot />
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                    <span className="truncate text-[13px] font-medium">{dir}: {a.name || a.title}</span>
+                    <span className="truncate text-[13px] font-medium">{dir}: {a.title || a.name}</span>
                     <span
                       className={`ml-auto inline-block size-2 shrink-0 rounded-full ${statusDotClass(a.status)} ${a.status === 'working' ? 'animate-pulse' : ''}`}
                       role="img"

@@ -133,6 +133,14 @@ describe('suggestLinkTargets', () => {
     expect(labels).toContain('todo.md')
   })
 
+  it('preserves the directory when completing a nested path', () => {
+    const nested = [item('knowledge/index.md'), item('knowledge/docs/guide.md')]
+    const results = suggestLinkTargets('knowledge/index.md', nested, './docs/gu')
+    expect(results).toHaveLength(1)
+    expect(results[0]?.label).toBe('guide.md')
+    expect(results[0]?.insertText).toBe('./docs/guide.md')
+  })
+
   it('restricts nested browsing by dir prefix', () => {
     const results = suggestLinkTargets(undefined, items, './notes/sub/')
     const labels = results.map((r) => r.label)

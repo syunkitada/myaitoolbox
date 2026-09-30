@@ -30,7 +30,7 @@ func TestFileRepositoryTreeStatus(t *testing.T) {
 		byPath[e.Path] = e
 	}
 
-	assert.Equal(t, "", byPath["README.md"].Status)
+	assert.Equal(t, "doing", byPath["README.md"].Status)
 	assert.Equal(t, "doing", byPath["docs/task.md"].Status)
 	assert.Equal(t, "", byPath["notes.txt"].Status)
 	assert.Equal(t, "", byPath["docs"].Status)

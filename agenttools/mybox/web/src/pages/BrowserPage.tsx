@@ -263,6 +263,16 @@ function toEntries(list: FileEntry[]): BrowserEntry[] {
   }))
 }
 
+function groupEntriesByDirectory(list: FileEntry[]): Record<string, BrowserEntry[]> {
+  const grouped: Record<string, BrowserEntry[]> = {}
+  for (const entry of toEntries(list)) {
+    const slash = entry.path.lastIndexOf('/')
+    const parent = slash < 0 ? '' : entry.path.slice(0, slash)
+    ;(grouped[parent] ??= []).push(entry)
+  }
+  return grouped
+}
+
 function applyDirStatus(nodes: TreeNode[]) {
   for (const node of nodes) {
     if (node.kind !== 'dir') continue
@@ -1823,7 +1833,7 @@ function Pane({
 
   const rename = async () => {
     const label = isDir ? 'folder' : 'file'
-    const newPath = await prompt(`Rename ${label} — enter a path relative to the project root.`, path)
+    const newPath = await prompt(`Move ${label} — enter a path relative to the project root.`, path)
     if (!newPath || !newPath.trim() || newPath.trim() === path) return
     void api
       .moveFile(path, newPath.trim())
@@ -2115,8 +2125,8 @@ function Pane({
               <Button
                 variant="ghost"
                 size="sm"
-                aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
-                title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                aria-label={isFav ? '★ Favorite' : '☆ Favorite'}
+                title={isFav ? '★ Favorite' : '☆ Favorite'}
                 className={isFav ? 'text-primary' : ''}
                 onClick={() => fav(!isFav)}
               >
@@ -2241,7 +2251,7 @@ function Pane({
                       <div className="my-1 h-px bg-border" />
                       <button role="menuitem" className="file-action-item" onClick={() => runAction(rename)}>
                         <Text className="size-3.5" />
-                        Rename
+                        Move
                       </button>
                       <button
                         role="menuitem"
@@ -2461,6 +2471,7 @@ function Pane({
                       relativeTo={viewRelativeTo}
                       linkUrl={filesUrl}
                       imageUrl={rawFileUrl}
+                      dataUrl={rawFileUrl}
                       preserveExtension
                       onTaskToggle={!isDir || Boolean(readmePath) ? toggleTask : undefined}
                       copyDialogOpen={copyDialogOpen}
@@ -2590,6 +2601,7 @@ export function BrowserPage({
   const loadingDirsRef = useRef(new Set<string>())
   const autoLoadSeq = useRef(0)
   const gitStatusLoaded = useRef(false)
+  const completionTreeLoaded = useRef(false)
 
   const entries = useMemo(() => Object.values(childrenByDir).flat(), [childrenByDir])
 
@@ -2630,6 +2642,32 @@ export function BrowserPage({
     setOpenGitDir(null)
     setGitDiffOpen(false)
   }, [selected])
+
+  // The explorer loads directories lazily, but Markdown link completion needs
+  // to see targets below a directory before the user expands it. Fetch the
+  // recursive file tree once after a Markdown file is opened and keep it in
+  // the same directory buckets used by the explorer.
+  useEffect(() => {
+    if (!selected || !/\.(md|markdown)$/i.test(selected) || completionTreeLoaded.current) return
+    completionTreeLoaded.current = true
+    let cancelled = false
+    void api
+      .listFiles({ showHidden })
+      .then((list) => {
+        if (cancelled) return
+        const grouped = groupEntriesByDirectory(list)
+        for (const parent of Object.keys(grouped)) {
+          loadedDirsRef.current.add(parent)
+        }
+        setChildrenByDir((prev) => ({ ...prev, ...grouped }))
+      })
+      .catch(() => {
+        completionTreeLoaded.current = false
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selected, showHidden])
 
   const handleSelect = useCallback(
     (p: string) => {
@@ -2696,9 +2734,27 @@ export function BrowserPage({
   const load = useCallback(() => {
     loadedDirsRef.current.clear()
     loadingDirsRef.current.clear()
+    setLoaded(false)
     setChildrenByDir({})
+    if (selected && /\.(md|markdown)$/i.test(selected)) {
+      void api
+        .listFiles({ showHidden })
+        .then((list) => {
+          const grouped = groupEntriesByDirectory(list)
+          for (const parent of Object.keys(grouped)) loadedDirsRef.current.add(parent)
+          completionTreeLoaded.current = true
+          setChildrenByDir(grouped)
+          setLoaded(true)
+        })
+        .catch((e) => {
+          completionTreeLoaded.current = false
+          setError(e instanceof Error ? e.message : String(e))
+          setLoaded(true)
+        })
+      return
+    }
     void loadDir('').then(() => setLoaded(true))
-  }, [loadDir])
+  }, [loadDir, selected, showHidden])
 
   const refreshGitStatus = useCallback(() => {
     void api
@@ -2980,7 +3036,7 @@ export function BrowserPage({
             className={cn('knowledge-files min-h-0 min-w-0 flex-1', gitDiffOpen ? 'overflow-hidden' : 'overflow-y-auto')}
             onClick={handleAnchorClick}
           >
-            {selected ? (
+            {selected && loaded ? (
                 <Pane
                   path={selected}
                   entry={selectedEntry}
@@ -3004,6 +3060,10 @@ export function BrowserPage({
                   onOpenGit={setOpenGitDir}
                   searchHit={searchHit}
                 />
+              ) : selected ? (
+                <div className="knowledge-empty flex items-center justify-center p-12 text-center text-muted-foreground">
+                  Loading files…
+                </div>
               ) : (
                 <Card className="knowledge-empty items-center justify-center gap-2 p-12 text-center">
                   <h2 className="text-xl font-bold">{title}</h2>

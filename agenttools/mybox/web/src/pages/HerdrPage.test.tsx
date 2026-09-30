@@ -110,6 +110,25 @@ describe('HerdrPage agent commands', () => {
     vi.useRealTimers()
   })
 
+  it('keeps the workspace tabs and panes panel collapsed by default', () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={overview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId={null}
+            onWebuiFocusChange={() => undefined}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTestId('herdr-workspaces-toggle')).toHaveAttribute('data-state', 'closed')
+  })
+
   it('sends /new from the expanded agent panel and omits /init', async () => {
     const onWebuiFocusChange = vi.fn()
     render(

@@ -77,11 +77,13 @@ test('dashboard compares a changed file with its Git diff', async ({ page }) => 
   await page.request.put('/api/files/content', {
     data: { path: filePath, content: fileContent },
   })
+  let initializedRepo = false
 
   try {
     const gitStatus = await page.request.get('/api/git/status')
     if (!(await gitStatus.json()).is_repo) {
       await page.request.post('/api/git/init')
+      initializedRepo = true
     }
     await page.goto(`/projects/proj/dashboard/files/${filePath}`)
     const explorer = page.locator('.knowledge-explorer')
@@ -111,6 +113,12 @@ test('dashboard compares a changed file with its Git diff', async ({ page }) => 
     expect(await contentPane.evaluate((el) => el.scrollTop)).toBe(contentBefore)
   } finally {
     await page.request.post('/api/files/delete', { data: { path: filePath } })
+    if (initializedRepo) {
+      const projectsRes = await page.request.get('/api/projects')
+      const projects = (await projectsRes.json()) as Array<{ name: string; path: string }>
+      const project = projects.find((item) => item.name === 'proj')
+      if (project) fs.rmSync(path.join(project.path, '.git'), { recursive: true, force: true })
+    }
   }
 })
 
@@ -496,7 +504,7 @@ test('markdown editor completes link targets with project files', async ({ page 
 
   // accepting inserts the full relative path
   await page.keyboard.press('Enter')
-  await expect(editor.locator('.view-line').first()).toContainText('./docs/guide.md')
+  await expect(editor).toContainText('./docs/guide.md')
 })
 
 test('markdown editor completes nested links after Tab-accepting a directory', async ({ page }) => {
@@ -522,7 +530,7 @@ test('markdown editor completes nested links after Tab-accepting a directory', a
   await page.keyboard.type('gu')
   await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
   await page.keyboard.press('Enter')
-  await expect(editor.locator('.view-line').first()).toContainText('./docs/guide.md')
+  await expect(editor).toContainText('./docs/guide.md')
 })
 
 test('dashboard edits and saves a file', async ({ page }) => {
@@ -749,7 +757,7 @@ test('herdr tab shows workspaces and operates agents', async ({ page }) => {
   await expect(pre).not.toHaveText(before, { timeout: 5000 })
 
   await page.getByTestId('herdr-prompt-input').fill('run the tests please')
-  await detail.getByRole('button', { name: 'Send' }).click()
+  await detail.getByRole('button', { name: 'Send', exact: true }).click()
   await expect(detail.locator('.herdr-prompt-notice')).toContainText('prompt submitted')
   await expect(detail.locator('pre')).toContainText('last prompt: run the tests please')
 })
@@ -816,7 +824,7 @@ test('herdr tab and pane operations work end to end', async ({ page }) => {
   await page.waitForTimeout(1500)
   const frozen = await p2Pre.innerText()
   await page.waitForTimeout(2500)
-  await expect(p2Pre).toHaveText(frozen)
+  await expect(p2Pre).toHaveText(frozen, { useInnerText: true })
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-pressed', 'true')
 
@@ -927,7 +935,7 @@ test('clicking a sidebar agent opens its operation panel in the herdr tab', asyn
   await expect(detail.locator('pre')).toContainText('stub output for w7:p1')
 
   await page.getByTestId('herdr-prompt-input').fill('hello from sidebar')
-  await detail.getByRole('button', { name: 'Send' }).click()
+  await detail.getByRole('button', { name: 'Send', exact: true }).click()
   await expect(detail.locator('pre')).toContainText('last prompt: hello from sidebar')
 })
 

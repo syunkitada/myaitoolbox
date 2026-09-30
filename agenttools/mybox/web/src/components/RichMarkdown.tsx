@@ -9,6 +9,7 @@ import { formatMarkdownForCopy, parseMarkdownTaskItem, resolveMarkdownLink, type
 import { filesUrl, getBasePath } from '../utils/routes'
 import { copyToClipboard } from '../utils/clipboard'
 import { Mermaid } from './Mermaid'
+import { VegaLite } from './VegaLite'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 
 const md: MarkdownIt = new MarkdownIt({
@@ -239,6 +240,7 @@ export interface RichMarkdownProps {
   relativeTo?: string
   linkUrl?: (resolved: string) => string
   imageUrl?: (resolved: string) => string
+  dataUrl?: (resolved: string) => string
   preserveExtension?: boolean
   onTaskToggle?: (line: number, checked: boolean) => boolean | Promise<boolean>
   copyDialogOpen?: boolean
@@ -249,7 +251,7 @@ export interface RichMarkdownProps {
 }
 
 interface Segment {
-  kind: 'md' | 'mermaid'
+  kind: 'md' | 'mermaid' | 'vega-lite'
   content: string
   lineOffset: number
   sourceLineOffset: number
@@ -257,7 +259,7 @@ interface Segment {
 
 function splitSegments(text: string, sourceLineOffset = 0): Segment[] {
   const segments: Segment[] = []
-  const pattern = /^```\s*mermaid\s*\n([\s\S]*?)^```\s*$/gm
+  const pattern = /^```\s*(mermaid|vega-lite)\s*\r?\n([\s\S]*?)^```\s*$/gm
   let last = 0
   for (const m of text.matchAll(pattern)) {
     if (m.index! > last) {
@@ -269,8 +271,8 @@ function splitSegments(text: string, sourceLineOffset = 0): Segment[] {
       })
     }
     segments.push({
-      kind: 'mermaid',
-      content: m[1].trim(),
+      kind: m[1] as 'mermaid' | 'vega-lite',
+      content: m[2].trim(),
       lineOffset: text.slice(0, m.index!).split(/\r?\n/).length - 1,
       sourceLineOffset: sourceLineOffset + text.slice(0, m.index!).split(/\r?\n/).length - 1,
     })
@@ -390,6 +392,7 @@ export function RichMarkdown({
   linkUrl,
   imageUrl,
   preserveExtension,
+  dataUrl,
   onTaskToggle,
   copyDialogOpen = false,
   onCopyDialogClose,
@@ -511,6 +514,9 @@ export function RichMarkdown({
         {segments.map((seg, i) => {
           if (seg.kind === 'mermaid') {
             return <Mermaid key={i} code={seg.content} />
+          }
+          if (seg.kind === 'vega-lite') {
+            return <VegaLite key={i} code={seg.content} relativeTo={relativeTo} dataUrl={dataUrl} />
           }
           const html = markDeadAnchors(
             DOMPurify.sanitize(

@@ -1,6 +1,6 @@
 # `web/`
 
-React + TypeScript + Viteで構成したWeb UIです。開発サーバー、Vitest、Playwrightをここから実行し、`npm run build` の成果物を `internal/webui/dist/` へコピーしてGoバイナリに同梱します。
+React + TypeScript + Viteで構成したWeb UIです。開発サーバー、Vitest、Playwrightをここから実行し、`npm run build` の成果物を `internal/webui/dist/` へコピーしてGoバイナリに同梱します。MarkdownプレビューではMermaidとVega-Liteのコードフェンスを描画できます。
 
 ## 使い方
 
@@ -13,6 +13,23 @@ npm run build     # 本番ビルド
 ```
 
 ルートからは `make web-dev`、`make web-build`、`make e2e` を利用できます。
+
+## MarkdownプレビューのVega-Lite
+
+Markdown本文の `vega-lite` コードフェンスにJSON仕様を書くと、Filesタブのプレビューでグラフを描画します。`data.url` の相対パスはMarkdownファイルを基準に解決され、プロジェクト内のCSV / TSV / JSONファイルを読み込めます。
+
+````markdown
+```vega-lite
+{
+  "data": { "url": "data/seattle-weather.csv" },
+  "mark": "bar",
+  "encoding": {
+    "x": { "timeUnit": "month", "field": "date", "type": "ordinal" },
+    "y": { "aggregate": "mean", "field": "precipitation" }
+  }
+}
+```
+````
 
 ## Index
 
