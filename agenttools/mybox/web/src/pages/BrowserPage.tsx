@@ -94,6 +94,12 @@ function taskIDFromPath(path: string): string | null {
   return parts[1]
 }
 
+function pathAfterMove(path: string, oldPath: string, newPath: string): string {
+  if (path === oldPath) return newPath
+  if (path.startsWith(`${oldPath}/`)) return `${newPath}${path.slice(oldPath.length)}`
+  return path
+}
+
 const TASK_STATUS_OPTIONS: TaskStatus[] = ['todo', 'doing', 'blocked', 'review', 'done']
 
 export interface BrowserEntry {
@@ -366,7 +372,7 @@ interface ExplorerProps {
   recentFiles: string[]
   gitStatus?: Record<string, string>
   onClose?: () => void
-  onMoveFile?: (filePath: string, dirPath: string) => void
+  onMoveFile?: (filePath: string, dirPath: string) => void | Promise<void>
   onChanged?: (revealPath?: string) => void | Promise<void>
   onError?: (message: string) => void
   showHidden?: boolean
@@ -375,6 +381,8 @@ interface ExplorerProps {
   onOpenReference?: (path: string) => void
   onLoadDir?: (dir: string, force?: boolean) => void | Promise<void>
   onClearSubtree?: (path: string) => void | Promise<void>
+  onBeforePathMove?: (oldPath: string, newPath: string) => Promise<boolean>
+  onPathMoved?: (oldPath: string, newPath: string) => void
   onSearchHit?: (hit: FileSearchHit) => void
 }
 
@@ -415,7 +423,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-export function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onSearchHit }: ExplorerProps) {
+export function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onBeforePathMove, onPathMoved, onSearchHit }: ExplorerProps) {
   const { prompt, confirm, alert, showProgress, hideProgress } = useDialogs()
   const [q, setQ] = useState('')
   const [searchMode, setSearchMode] = useState<'name' | 'text'>('name')
@@ -622,16 +630,19 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
       oldPath,
     )
     if (!newPath || !newPath.trim() || newPath.trim() === oldPath) return
+    const targetPath = newPath.trim()
+    if (onBeforePathMove && !(await onBeforePathMove(oldPath, targetPath))) return
     setCtxMenu(null)
     void api
-      .moveFile(oldPath, newPath.trim())
+      .moveFile(oldPath, targetPath)
       .then(async () => {
         await onChanged?.()
-        if (oldPath !== newPath.trim()) await onClearSubtree?.(oldPath)
+        if (oldPath !== targetPath) await onClearSubtree?.(oldPath)
         const oldDir = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : ''
-        const newDir = newPath.trim().includes('/') ? newPath.trim().slice(0, newPath.trim().lastIndexOf('/')) : ''
+        const newDir = targetPath.includes('/') ? targetPath.slice(0, targetPath.lastIndexOf('/')) : ''
         for (const dir of new Set([oldDir, newDir])) if (dir) await onLoadDir?.(dir, true)
-        onSelect(newPath.trim())
+        onPathMoved?.(oldPath, targetPath)
+        onSelect(targetPath)
       })
       .catch(runError)
   }
@@ -1503,6 +1514,7 @@ interface PaneProps {
   onGitStatusChange: () => void
   onOpen: (path: string) => void
   onDeleted: (path: string) => void
+  onBeforeMove?: () => Promise<boolean>
   onMoved?: (oldPath: string, newPath: string) => boolean | void
   explorerOpen: boolean
   onToggleExplorer: () => void
@@ -1533,6 +1545,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   onGitStatusChange,
   onOpen,
   onDeleted,
+  onBeforeMove,
   onMoved,
   explorerOpen,
   onToggleExplorer,
@@ -1870,6 +1883,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     const newPath = await prompt(`Move ${label} — enter a path relative to the project root.`, path)
     if (!newPath || !newPath.trim() || newPath.trim() === path) return
     const targetPath = newPath.trim()
+    if (onBeforeMove && !(await onBeforeMove())) return
     void api
       .moveFile(path, targetPath)
       .then(() => {
@@ -2905,6 +2919,26 @@ export function BrowserPage({
     [onSelect, selected],
   )
 
+  const handleBeforeExplorerMove = useCallback(
+    (oldPath: string, newPath: string) => {
+      if (!referencePath || pathAfterMove(referencePath, oldPath, newPath) === referencePath) return Promise.resolve(true)
+      return confirmPaneLeave(referencePaneRef, referenceDirty, referencePath)
+    },
+    [confirmPaneLeave, referenceDirty, referencePath],
+  )
+
+  const handleExplorerMoved = useCallback(
+    (oldPath: string, newPath: string) => {
+      if (!referencePath) return
+      const nextPath = pathAfterMove(referencePath, oldPath, newPath)
+      if (nextPath === referencePath) return
+      setReferencePath(nextPath)
+      setReferenceGitDiffOpen(false)
+      setReferenceDirty(false)
+    },
+    [referencePath],
+  )
+
   const swapPanes = useCallback(async () => {
     if (!referencePath || !selected || referencePath === selected) return
     if (!(await confirmPaneLeave(mainPaneRef, mainDirty, selected))) return
@@ -3221,10 +3255,14 @@ export function BrowserPage({
     [selected, visibleRecents, onSelect, refreshMeta],
   )
 
-  const handleMoveFile = (filePath: string, dirPath: string) => {
+  const handleMoveFile = async (filePath: string, dirPath: string) => {
     const name = filePath.split('/').pop() ?? filePath
     const newPath = dirPath ? `${dirPath}/${name}` : name
     if (newPath === filePath) return
+    const nextReferencePath = referencePath ? pathAfterMove(referencePath, filePath, newPath) : null
+    if (referencePath && nextReferencePath !== referencePath) {
+      if (!(await confirmPaneLeave(referencePaneRef, referenceDirty, referencePath))) return
+    }
     setMoveError(null)
     void api
       .moveFile(filePath, newPath)
@@ -3234,8 +3272,8 @@ export function BrowserPage({
         if (dirPath) loadDir(dirPath, true)
         const srcDir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : ''
         if (srcDir && srcDir !== dirPath) loadDir(srcDir, true)
-        if (referencePath === filePath) {
-          setReferencePath(newPath)
+        if (referencePath && nextReferencePath && nextReferencePath !== referencePath) {
+          setReferencePath(nextReferencePath)
           setReferenceGitDiffOpen(false)
           setReferenceDirty(false)
         }
@@ -3263,6 +3301,7 @@ export function BrowserPage({
       onGitStatusChange={refreshGitStatus}
       onOpen={slot === 'main' ? handleSelect : (nextPath) => void changeReference(nextPath)}
       onDeleted={slot === 'main' ? () => onBack() : handleReferenceDeleted}
+      onBeforeMove={slot === 'reference' ? () => confirmPaneLeave(referencePaneRef, referenceDirty, path) : undefined}
       onMoved={slot === 'reference' ? handleReferenceMoved : undefined}
       explorerOpen={explorerOpen}
       onToggleExplorer={() => setExplorerOpen((o) => !o)}
@@ -3343,6 +3382,8 @@ export function BrowserPage({
                     onOpenReference={openReference}
                     onLoadDir={loadDir}
                     onClearSubtree={clearSubtree}
+                    onBeforePathMove={handleBeforeExplorerMove}
+                    onPathMoved={handleExplorerMoved}
                     onSearchHit={handleSearchHit}
                   />
                 </div>
@@ -3391,6 +3432,8 @@ export function BrowserPage({
                     onOpenReference={openReference}
                     onLoadDir={loadDir}
                     onClearSubtree={clearSubtree}
+                    onBeforePathMove={handleBeforeExplorerMove}
+                    onPathMoved={handleExplorerMoved}
                     onSearchHit={handleSearchHit}
                   />
               </SheetContent>
