@@ -2011,8 +2011,8 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   )
 
   useEffect(() => {
-    onDirtyChange?.(hasUnsavedChanges)
-  }, [hasUnsavedChanges, onDirtyChange])
+    onDirtyChange?.(editing && hasUnsavedChanges)
+  }, [editing, hasUnsavedChanges, onDirtyChange])
 
   useEffect(() => {
     if (!(editing && hasUnsavedChanges)) return

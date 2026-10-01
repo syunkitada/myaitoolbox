@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api, GitDetail } from '../api/client'
@@ -433,6 +433,57 @@ describe('Explorer reference actions', () => {
       expect(screen.getByText(`「${referencePath}」には保存されていない変更があります。どうしますか？`)).toBeInTheDocument()
     })
     expect(screen.queryByText('Other page')).not.toBeInTheDocument()
+  })
+
+  it('does not block route navigation for an unedited frontmatter file', async () => {
+    const mainPath = 'main.md'
+    vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path: mainPath, name: mainPath, kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({
+      path: mainPath,
+      content: '---\ntitle: Demo\ntags: [one, two]\n---\n\n# Main document',
+    })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/projects/proj/dashboard/files/*',
+          element: (
+            <BrowserPage
+              title="Files"
+              selected={mainPath}
+              onSelect={vi.fn()}
+              onBack={vi.fn()}
+              favorites={[]}
+              recentFiles={[]}
+              refreshMeta={vi.fn().mockResolvedValue(undefined)}
+            />
+          ),
+        },
+        { path: '/other', element: <div>Other page</div> },
+      ],
+      { initialEntries: [`/projects/proj/dashboard/files/${mainPath}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    expect((await screen.findAllByText('Main document')).length).toBeGreaterThan(0)
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await act(async () => {
+      void router.navigate('/other')
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await waitFor(() => expect(screen.getByText('Other page')).toBeInTheDocument())
+    expect(screen.queryByText(`「${mainPath}」には保存されていない変更があります。どうしますか？`)).not.toBeInTheDocument()
   })
 })
 
