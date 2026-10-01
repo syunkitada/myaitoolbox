@@ -101,6 +101,18 @@ test('dashboard opens a file in the reference pane from the explorer context men
   await expect(page.getByTestId('reference-file-viewer-pane')).toContainText('README.md')
 })
 
+test('dashboard keeps the reference pane when the main file becomes the same file', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  const reference = treeButton(explorer, 'tasks.md')
+  await reference.click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Open in reference pane' }).click()
+
+  await reference.click()
+  await expect(page.getByTestId('main-file-viewer-pane')).toContainText('Task tracking lives here.')
+  await expect(page.getByTestId('reference-file-viewer-pane')).toContainText('Task tracking lives here.')
+  await expect(page.getByRole('button', { name: 'Close reference pane' })).toBeVisible()
+})
+
 test('dashboard compares a changed file with its Git diff', async ({ page }) => {
   const filePath = 'git-diff-viewer-test.txt'
   const fileContent = Array.from({ length: 300 }, (_, index) => `current file line ${index + 1}`).join('\n') + '\n'

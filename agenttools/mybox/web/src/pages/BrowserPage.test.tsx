@@ -423,6 +423,208 @@ describe('Explorer reference actions', () => {
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(referencePath))
   })
 
+  it('keeps the reference pane when changing the main file', async () => {
+    const mainPath = 'main.md'
+    const referencePath = 'reference.md'
+    const otherPath = 'other.md'
+    vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path: mainPath, name: mainPath, kind: 'file' },
+      { path: referencePath, name: referencePath, kind: 'file' },
+      { path: otherPath, name: otherPath, kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockImplementation(async (path) => ({
+      path,
+      content: `# ${path.replace('.md', '')} document`,
+    }))
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    function SelectionHarness() {
+      const [selected, setSelected] = useState(mainPath)
+      return (
+        <BrowserPage
+          title="Files"
+          selected={selected}
+          onSelect={setSelected}
+          onBack={vi.fn()}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+        />
+      )
+    }
+
+    const router = createMemoryRouter(
+      [{ path: '*', element: <SelectionHarness /> }],
+      { initialEntries: [`/projects/proj/dashboard/files/${mainPath}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    expect((await screen.findAllByText('main document')).length).toBeGreaterThan(0)
+    fireEvent.contextMenu(screen.getByText(referencePath).closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+    expect((await screen.findAllByText('reference document')).length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: otherPath }))
+    await waitFor(() => expect(screen.getByTestId('main-file-viewer-pane')).toHaveTextContent('other document'))
+    expect(screen.getByTestId('reference-file-viewer-pane')).toHaveTextContent('reference document')
+    expect(screen.getByRole('button', { name: 'Close reference pane' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: referencePath }))
+    await waitFor(() => expect(screen.getByTestId('main-file-viewer-pane')).toHaveTextContent('reference document'))
+    expect(screen.getByTestId('reference-file-viewer-pane')).toHaveTextContent('reference document')
+    expect(screen.getByRole('button', { name: 'Close reference pane' })).toBeInTheDocument()
+  })
+
+  it('allows the current main file to open in the reference pane', async () => {
+    const mainPath = 'main.md'
+    vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path: mainPath, name: mainPath, kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path: mainPath, content: '# Main document' })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    const router = createMemoryRouter(
+      [{ path: '*', element: (
+        <BrowserPage
+          title="Files"
+          selected={mainPath}
+          onSelect={vi.fn()}
+          onBack={vi.fn()}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+        />
+      ) }],
+      { initialEntries: [`/projects/proj/dashboard/files/${mainPath}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    expect((await screen.findAllByText('Main document')).length).toBeGreaterThan(0)
+    fireEvent.contextMenu(screen.getByRole('button', { name: mainPath }).closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+
+    await waitFor(() => expect(screen.getByTestId('reference-file-viewer-pane')).toBeInTheDocument())
+    expect(screen.getAllByText('Main document').length).toBeGreaterThan(1)
+    expect(screen.getByRole('button', { name: 'Close reference pane' })).toBeInTheDocument()
+  })
+
+  it('clears the main file when the same file is deleted from the reference pane', async () => {
+    const path = 'main.md'
+    const deleteFile = vi.spyOn(api, 'deleteFile').mockResolvedValue(undefined)
+    vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path, name: path, kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path, content: '# Main document' })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    function SelectionHarness() {
+      const [selected, setSelected] = useState(path)
+      return (
+        <BrowserPage
+          title="Files"
+          selected={selected}
+          onSelect={setSelected}
+          onBack={() => setSelected('')}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+        />
+      )
+    }
+
+    const router = createMemoryRouter(
+      [{ path: '*', element: <SelectionHarness /> }],
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    expect((await screen.findAllByText('Main document')).length).toBeGreaterThan(0)
+    fireEvent.contextMenu(screen.getByRole('button', { name: path }).closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+    const referencePane = await screen.findByTestId('reference-file-viewer-pane')
+
+    fireEvent.click(within(referencePane).getByRole('button', { name: 'File actions' }))
+    fireEvent.click(within(referencePane).getByRole('menuitem', { name: 'Delete' }))
+    fireEvent.click(await screen.findByTestId('app-dialog-ok'))
+
+    await waitFor(() => expect(deleteFile).toHaveBeenCalledWith(path))
+    await waitFor(() => expect(screen.queryByTestId('main-file-viewer-pane')).not.toBeInTheDocument())
+    expect(screen.queryByTestId('reference-file-viewer-pane')).not.toBeInTheDocument()
+  })
+
+  it('keeps the main and reference paths synchronized when the same file is moved from the reference pane', async () => {
+    const path = 'main.md'
+    const movedPath = 'renamed.md'
+    let currentPath = path
+    const moveFile = vi.spyOn(api, 'moveFile').mockImplementation(async (_oldPath, newPath) => {
+      currentPath = newPath
+    })
+    vi.spyOn(api, 'listFiles').mockImplementation(async () => [
+      { path: currentPath, name: currentPath, kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockImplementation(async (filePath) => ({
+      path: filePath,
+      content: `# ${filePath}`,
+    }))
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    function SelectionHarness() {
+      const [selected, setSelected] = useState(path)
+      return (
+        <BrowserPage
+          title="Files"
+          selected={selected}
+          onSelect={setSelected}
+          onBack={() => setSelected('')}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+        />
+      )
+    }
+
+    const router = createMemoryRouter(
+      [{ path: '*', element: <SelectionHarness /> }],
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    expect((await screen.findAllByText(path)).length).toBeGreaterThan(0)
+    fireEvent.contextMenu(screen.getByRole('button', { name: path }).closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+    const referencePane = await screen.findByTestId('reference-file-viewer-pane')
+
+    fireEvent.click(within(referencePane).getByRole('button', { name: 'File actions' }))
+    fireEvent.click(within(referencePane).getByRole('menuitem', { name: 'Move' }))
+    const input = await screen.findByTestId('app-dialog-input')
+    fireEvent.change(input, { target: { value: movedPath } })
+    fireEvent.click(screen.getByTestId('app-dialog-ok'))
+
+    await waitFor(() => expect(moveFile).toHaveBeenCalledWith(path, movedPath))
+    await waitFor(() => expect(within(screen.getByTestId('main-file-viewer-pane')).getByTitle(movedPath)).toBeInTheDocument())
+    expect(within(screen.getByTestId('reference-file-viewer-pane')).getByTitle(movedPath)).toBeInTheDocument()
+  })
+
   it('blocks route navigation when the reference pane has unsaved changes', async () => {
     const mainPath = 'main.md'
     const referencePath = 'reference.md'

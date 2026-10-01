@@ -1502,7 +1502,8 @@ interface PaneProps {
   onChanged: () => void
   onGitStatusChange: () => void
   onOpen: (path: string) => void
-  onDeleted: () => void
+  onDeleted: (path: string) => void
+  onMoved?: (oldPath: string, newPath: string) => boolean | void
   explorerOpen: boolean
   onToggleExplorer: () => void
   onRefresh: () => void
@@ -1532,6 +1533,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   onGitStatusChange,
   onOpen,
   onDeleted,
+  onMoved,
   explorerOpen,
   onToggleExplorer,
   onRefresh,
@@ -1753,7 +1755,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       .then(() => {
         onChanged()
         onGitStatusChange()
-        onDeleted()
+        onDeleted(path)
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }
@@ -1867,12 +1869,14 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     const label = isDir ? 'folder' : 'file'
     const newPath = await prompt(`Move ${label} — enter a path relative to the project root.`, path)
     if (!newPath || !newPath.trim() || newPath.trim() === path) return
+    const targetPath = newPath.trim()
     void api
-      .moveFile(path, newPath.trim())
+      .moveFile(path, targetPath)
       .then(() => {
         onChanged()
         onGitStatusChange()
-        onOpen(newPath.trim())
+        const handled = onMoved?.(path, targetPath)
+        if (handled !== true) onOpen(targetPath)
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }
@@ -2844,26 +2848,15 @@ export function BrowserPage({
   const handleSelect = useCallback(
     (p: string, nextSearchHit: FileSearchHit | null = null) => {
       setSearchHit(nextSearchHit)
-      if (p === referencePath && p !== selected) {
-        void confirmPaneLeave(referencePaneRef, referenceDirty, referencePath).then((ok) => {
-          if (!ok) return
-          setReferencePath(null)
-          setReferenceDirty(false)
-          onSelect(p)
-          if (isMobile) setExplorerOpen(false)
-        })
-        return
-      }
       onSelect(p)
       if (isMobile) setExplorerOpen(false)
     },
-    [confirmPaneLeave, isMobile, onSelect, referenceDirty, referencePath, selected],
+    [isMobile, onSelect],
   )
 
   const changeReference = useCallback(
     async (nextPath: string | null) => {
       if (nextPath === referencePath) return true
-      if (nextPath && nextPath === selected) return false
       if (referencePath && !(await confirmPaneLeave(referencePaneRef, referenceDirty, referencePath))) return false
       setReferencePath(nextPath)
       setReferenceGitDiffOpen(false)
@@ -2872,7 +2865,7 @@ export function BrowserPage({
       else setMobileViewer('main')
       return true
     },
-    [confirmPaneLeave, referenceDirty, referencePath, selected],
+    [confirmPaneLeave, referenceDirty, referencePath],
   )
 
   const openReference = useCallback(
@@ -2890,8 +2883,30 @@ export function BrowserPage({
     void changeReference(null)
   }, [changeReference])
 
+  const handleReferenceDeleted = useCallback(
+    (deletedPath: string) => {
+      if (deletedPath === selected) {
+        onBack()
+      } else {
+        closeReference()
+      }
+    },
+    [closeReference, onBack, selected],
+  )
+
+  const handleReferenceMoved = useCallback(
+    (oldPath: string, newPath: string) => {
+      setReferencePath(newPath)
+      setReferenceGitDiffOpen(false)
+      setReferenceDirty(false)
+      if (oldPath === selected) onSelect(newPath)
+      return true
+    },
+    [onSelect, selected],
+  )
+
   const swapPanes = useCallback(async () => {
-    if (!referencePath || !selected) return
+    if (!referencePath || !selected || referencePath === selected) return
     if (!(await confirmPaneLeave(mainPaneRef, mainDirty, selected))) return
     if (!(await confirmPaneLeave(referencePaneRef, referenceDirty, referencePath))) return
     const nextMain = referencePath
@@ -2910,12 +2925,13 @@ export function BrowserPage({
       setReferencePath(pendingReference)
       return
     }
-    if (!selected || referencePath === selected) {
-      if (referencePath === selected) {
+    if (!selected) {
+      pendingSwapReferenceRef.current = null
+      if (referencePath) {
         setReferencePath(null)
         setReferenceDirty(false)
       }
-      if (!selected) setMobileViewer('main')
+      setMobileViewer('main')
     }
   }, [referencePath, selected])
 
@@ -3218,6 +3234,11 @@ export function BrowserPage({
         if (dirPath) loadDir(dirPath, true)
         const srcDir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : ''
         if (srcDir && srcDir !== dirPath) loadDir(srcDir, true)
+        if (referencePath === filePath) {
+          setReferencePath(newPath)
+          setReferenceGitDiffOpen(false)
+          setReferenceDirty(false)
+        }
         onSelect(newPath)
       })
       .catch((e) => setMoveError(e instanceof Error ? e.message : String(e)))
@@ -3241,7 +3262,8 @@ export function BrowserPage({
       onChanged={handleChanged}
       onGitStatusChange={refreshGitStatus}
       onOpen={slot === 'main' ? handleSelect : (nextPath) => void changeReference(nextPath)}
-      onDeleted={slot === 'main' ? onBack : closeReference}
+      onDeleted={slot === 'main' ? () => onBack() : handleReferenceDeleted}
+      onMoved={slot === 'reference' ? handleReferenceMoved : undefined}
       explorerOpen={explorerOpen}
       onToggleExplorer={() => setExplorerOpen((o) => !o)}
       onRefresh={handleRefresh}
