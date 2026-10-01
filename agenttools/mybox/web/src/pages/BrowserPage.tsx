@@ -2754,6 +2754,7 @@ export function BrowserPage({
   const mainPaneRef = useRef<PaneHandle>(null)
   const referencePaneRef = useRef<PaneHandle>(null)
   const pendingSwapReferenceRef = useRef<string | null>(null)
+  const selectedRef = useRef(selected)
   const [searchHit, setSearchHit] = useState<FileSearchHit | null>(null)
   const autoDefaulted = useRef(false)
   const loadedDirsRef = useRef(new Set<string>())
@@ -2813,6 +2814,10 @@ export function BrowserPage({
   useEffect(() => {
     window.localStorage.setItem(SHOW_HIDDEN_STORAGE_KEY, showHidden ? '1' : '0')
   }, [showHidden])
+
+  useEffect(() => {
+    selectedRef.current = selected
+  }, [selected])
 
   useEffect(() => {
     setOpenGitDir(null)
@@ -2999,7 +3004,7 @@ export function BrowserPage({
     loadingDirsRef.current.clear()
     setLoaded(false)
     setChildrenByDir({})
-    if (selected && /\.(md|markdown)$/i.test(selected)) {
+    if (selectedRef.current && /\.(md|markdown)$/i.test(selectedRef.current)) {
       void loadFullTree()
         .then((grouped) => {
           for (const parent of Object.keys(grouped)) loadedDirsRef.current.add(parent)
@@ -3013,7 +3018,7 @@ export function BrowserPage({
       return
     }
     void loadDir('').then(() => setLoaded(true))
-  }, [loadDir, loadFullTree, selected])
+  }, [loadDir, loadFullTree])
 
   const refreshGitStatus = useCallback(() => {
     void api
@@ -3068,6 +3073,27 @@ export function BrowserPage({
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!selected || !/\.(md|markdown)$/i.test(selected)) return
+    if (fullTreeCacheRef.current?.showHidden === showHidden) return
+    void loadFullTree()
+      .then((grouped) => {
+        if (fullTreeCacheRef.current?.showHidden !== showHidden) return
+        for (const parent of Object.keys(grouped)) loadedDirsRef.current.add(parent)
+        setChildrenByDir((prev) => {
+          let changed = false
+          for (const [dir, children] of Object.entries(grouped)) {
+            if (prev[dir] !== children) {
+              changed = true
+              break
+            }
+          }
+          return changed ? { ...prev, ...grouped } : prev
+        })
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }, [loadFullTree, selected, showHidden])
 
   useEffect(() => {
     if (!revealPath) return

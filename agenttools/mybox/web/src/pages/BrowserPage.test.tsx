@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api, GitDetail } from '../api/client'
@@ -239,6 +240,49 @@ describe('BrowserPage file reveal', () => {
     expect(list).toHaveBeenCalledWith({ path: '_task_triggers', showHidden: true })
     expect(list).toHaveBeenCalledWith({ path: '_task_triggers/daily-report', showHidden: true })
     expect(onRevealPathHandled).toHaveBeenCalledWith(path)
+  })
+
+  it('keeps the explorer loaded when opening another file', async () => {
+    const list = vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path: 'one.txt', name: 'one.txt', kind: 'file' },
+      { path: 'two.txt', name: 'two.txt', kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockImplementation(async (path) => ({ path, content: path }))
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    function SelectionHarness() {
+      const [selected, setSelected] = useState('one.txt')
+      return (
+        <BrowserPage
+          title="Files"
+          selected={selected}
+          onSelect={setSelected}
+          onBack={vi.fn()}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+        />
+      )
+    }
+
+    const router = createMemoryRouter(
+      [{ path: '*', element: <SelectionHarness /> }],
+      { initialEntries: ['/projects/proj/dashboard/files/one.txt'] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    await waitFor(() => expect(list).toHaveBeenCalledWith({ path: '', showHidden: true }))
+    expect((await screen.findAllByText('one.txt')).length).toBeGreaterThan(0)
+    const initialRootLoads = list.mock.calls.filter(([options]) => options?.path === '').length
+
+    fireEvent.click(screen.getByRole('button', { name: 'two.txt' }))
+    await waitFor(() => expect(screen.getAllByText('two.txt').length).toBeGreaterThan(0))
+    expect(list.mock.calls.filter(([options]) => options?.path === '')).toHaveLength(initialRootLoads)
   })
 
   it('shares the recursive Markdown tree load between the page and its editor', async () => {
