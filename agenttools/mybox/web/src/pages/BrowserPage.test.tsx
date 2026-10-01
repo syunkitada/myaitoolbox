@@ -1,11 +1,19 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api, GitDetail } from '../api/client'
 import { DialogsProvider } from '../components/AppDialogs'
 import { BrowserEntry, BrowserPage, Explorer, GitDiffPanel, gitFilesForPath } from './BrowserPage'
 
-vi.mock('../components/MonacoEditor', () => ({ default: () => null }))
+vi.mock('../components/MonacoEditor', () => ({
+  default: (props: { value?: string; onChange?: (value: string) => void; ariaLabel?: string }) => (
+    <textarea
+      aria-label={props.ariaLabel}
+      value={props.value ?? ''}
+      onChange={(event) => props.onChange?.(event.target.value)}
+    />
+  ),
+}))
 vi.mock('../hooks/use-mobile', () => ({ useIsMobile: () => false }))
 
 describe('Explorer file upload', () => {
@@ -99,7 +107,7 @@ describe('Explorer file upload', () => {
     render(
       <DialogsProvider>
         <Explorer
-          entries={[{ kind: 'file', name: 'guide.md', path: 'docs/guide.md', markdown: true }]}
+          entries={[{ kind: 'file', name: 'guide.md', path: 'guide.md', markdown: true }]}
           selected=""
           onSelect={onSelect}
           onSearchHit={onSearchHit}
@@ -288,6 +296,143 @@ describe('Explorer Git status', () => {
     )
 
     expect(screen.getByRole('img', { name: 'git: modified' })).toBeInTheDocument()
+  })
+})
+
+describe('Explorer reference actions', () => {
+  it('opens a file in the reference pane from the context menu', () => {
+    const onOpenReference = vi.fn()
+    render(
+      <DialogsProvider>
+        <Explorer
+          entries={[{ kind: 'file', name: 'guide.md', path: 'guide.md', markdown: true }]}
+          selected=""
+          onSelect={vi.fn()}
+          onOpenReference={onOpenReference}
+          title="Files"
+          favorites={[]}
+          recentFiles={[]}
+        />
+      </DialogsProvider>,
+    )
+
+    fireEvent.contextMenu(screen.getByText('guide.md').closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+
+    expect(onOpenReference).toHaveBeenCalledWith('guide.md')
+  })
+
+  it('keeps the main file open while showing a reference file', async () => {
+    const mainPath = 'main.md'
+    const referencePath = 'reference.md'
+    const onSelect = vi.fn()
+    window.localStorage.removeItem('mybox_files_reference_width')
+    vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path: mainPath, name: mainPath, kind: 'file' },
+      { path: referencePath, name: referencePath, kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockImplementation(async (path) => ({
+      path,
+      content: path === mainPath ? '# Main document' : '# Reference document',
+    }))
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    const router = createMemoryRouter(
+      [{ path: '*', element: (
+        <BrowserPage
+          title="Files"
+          selected={mainPath}
+          onSelect={onSelect}
+          onBack={vi.fn()}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+        />
+      ) }],
+      { initialEntries: [`/projects/proj/dashboard/files/${mainPath}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    expect((await screen.findAllByText('Main document')).length).toBeGreaterThan(0)
+    fireEvent.contextMenu(screen.getByText(referencePath).closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+
+    expect((await screen.findAllByText('Reference document')).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Close reference pane' })).toBeInTheDocument()
+    expect(screen.getAllByText('Main document').length).toBeGreaterThan(0)
+    expect(screen.getByTestId('main-file-viewer-pane')).toHaveClass('relative')
+    expect(screen.getByTestId('reference-file-viewer-pane')).toHaveClass('relative')
+
+    const resizeHandle = screen.getByTestId('reference-resize-handle')
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '420')
+    fireEvent.keyDown(resizeHandle, { key: 'ArrowLeft' })
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '430')
+    fireEvent.keyDown(resizeHandle, { key: 'ArrowRight' })
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '420')
+
+    fireEvent.click(within(screen.getByTestId('main-file-viewer-pane')).getByRole('button', { name: 'Swap main and reference panes' }))
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith(referencePath))
+  })
+
+  it('blocks route navigation when the reference pane has unsaved changes', async () => {
+    const mainPath = 'main.md'
+    const referencePath = 'reference.md'
+    vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path: mainPath, name: mainPath, kind: 'file' },
+      { path: referencePath, name: referencePath, kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockImplementation(async (path) => ({
+      path,
+      content: path === mainPath ? '# Main document' : '# Reference document',
+    }))
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/projects/proj/dashboard/files/*',
+          element: (
+            <BrowserPage
+              title="Files"
+              selected={mainPath}
+              onSelect={vi.fn()}
+              onBack={vi.fn()}
+              favorites={[]}
+              recentFiles={[]}
+              refreshMeta={vi.fn().mockResolvedValue(undefined)}
+            />
+          ),
+        },
+        { path: '/other', element: <div>Other page</div> },
+      ],
+      { initialEntries: [`/projects/proj/dashboard/files/${mainPath}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    expect((await screen.findAllByText('Main document')).length).toBeGreaterThan(0)
+    fireEvent.contextMenu(screen.getByText(referencePath).closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+    expect((await screen.findAllByText('Reference document')).length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1])
+    const editors = screen.getAllByRole('textbox', { name: 'File editor' })
+    fireEvent.change(editors[0], { target: { value: '# Changed reference' } })
+
+    void router.navigate('/other')
+    await waitFor(() => {
+      expect(screen.getByText(`「${referencePath}」には保存されていない変更があります。どうしますか？`)).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Other page')).not.toBeInTheDocument()
   })
 })
 

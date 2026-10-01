@@ -83,6 +83,24 @@ test('dashboard opens a markdown file from the explorer', async ({ page }) => {
   ).toHaveClass(/active/)
 })
 
+test('dashboard opens a file in the reference pane from the explorer context menu', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  const reference = treeButton(explorer, 'tasks.md')
+  await reference.click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Open in reference pane' }).click()
+
+  await expect(page.getByTestId('reference-file-viewer-pane')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Close reference pane' })).toBeVisible()
+  await expect(page.locator('.file-viewer-split')).toBeVisible()
+
+  const mainPane = page.getByTestId('main-file-viewer-pane')
+  await mainPane.getByRole('button', { name: 'Toggle details' }).dispatchEvent('click')
+  await mainPane.getByRole('button', { name: 'Swap main and reference panes' }).click()
+  await expect.poll(() => page.url()).toContain('/files/tasks.md')
+  await expect(page.getByTestId('main-file-viewer-pane')).toContainText('tasks.md')
+  await expect(page.getByTestId('reference-file-viewer-pane')).toContainText('README.md')
+})
+
 test('dashboard compares a changed file with its Git diff', async ({ page }) => {
   const filePath = 'git-diff-viewer-test.txt'
   const fileContent = Array.from({ length: 300 }, (_, index) => `current file line ${index + 1}`).join('\n') + '\n'

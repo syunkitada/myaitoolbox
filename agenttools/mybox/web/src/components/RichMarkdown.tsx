@@ -248,6 +248,7 @@ export interface RichMarkdownProps {
   focusLine?: number
   searchQuery?: string
   sourceLineOffset?: number
+  onOpenFile?: (path: string) => void
 }
 
 interface Segment {
@@ -399,6 +400,7 @@ export function RichMarkdown({
   focusLine,
   searchQuery,
   sourceLineOffset = 0,
+  onOpenFile,
 }: RichMarkdownProps) {
   const segments = useMemo(() => splitSegments(text, sourceLineOffset), [sourceLineOffset, text])
   const navigate = useNavigate()
@@ -484,7 +486,8 @@ export function RichMarkdown({
         if (!raw) return
         let id: string
         try { id = decodeURIComponent(raw) } catch { id = raw }
-        const target = document.getElementById(id)
+        const viewer = e.currentTarget.closest<HTMLElement>('.markdown-viewer') ?? e.currentTarget
+        const target = Array.from(viewer.querySelectorAll<HTMLElement>('[id]')).find((element) => element.id === id)
         if (!target) return
         e.preventDefault()
         target.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -503,9 +506,27 @@ export function RichMarkdown({
       if (!pathname.startsWith('/projects/')) return
 
       e.preventDefault()
+      const fileMarker = '/dashboard/files/'
+      const fileMarkerIndex = pathname.indexOf(fileMarker)
+      if (onOpenFile && fileMarkerIndex >= 0) {
+        const encodedPath = pathname.slice(fileMarkerIndex + fileMarker.length)
+        try {
+          const resolved = encodedPath
+            .split('/')
+            .filter(Boolean)
+            .map((segment) => decodeURIComponent(segment))
+            .join('/')
+          if (resolved) {
+            onOpenFile(resolved)
+            return
+          }
+        } catch {
+          // Fall through to the normal router navigation for malformed URLs.
+        }
+      }
       navigate(pathname + url.search + url.hash)
     },
-    [handleTaskToggle, navigate],
+    [handleTaskToggle, navigate, onOpenFile],
   )
 
   return (

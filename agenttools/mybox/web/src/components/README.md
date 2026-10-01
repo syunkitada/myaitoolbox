@@ -21,7 +21,7 @@
 | [`Mermaid.tsx`](./Mermaid.tsx) | Mermaidダイアグラム描画。 |
 | [`MonacoEditor.tsx`](./MonacoEditor.tsx) | Monacoベースのファイルエディタ。 |
 | [`NewTaskDialog.tsx`](./NewTaskDialog.tsx) / [`NewTaskDialog.test.tsx`](./NewTaskDialog.test.tsx) | agent kindのデフォルトをcodexとし、YAMLヘッダーを除いたテンプレート本文を初期表示・編集できる、通常タスクとcron・file_created・manual task_triggerの作成ダイアログおよびテスト。 |
-| [`RichMarkdown.tsx`](./RichMarkdown.tsx) / [`RichMarkdown.test.tsx`](./RichMarkdown.test.tsx) | ファイルリンク・アウトライン・コードブロック・操作可能なタスクリスト・Mermaid・Vega-Liteを表示し、モーダル内でText/Jira形式を切り替えられるMarkdownビューアとテスト。 |
+| [`RichMarkdown.tsx`](./RichMarkdown.tsx) / [`RichMarkdown.test.tsx`](./RichMarkdown.test.tsx) | ファイルリンク・アウトライン・コードブロック・操作可能なタスクリスト・Mermaid・Vega-Liteを表示し、表示中のファイルペインに応じて内部リンクを開き、モーダル内でText/Jira形式を切り替えられるMarkdownビューアとテスト。 |
 | [`SearchBar.tsx`](./SearchBar.tsx) / [`SearchBar.test.tsx`](./SearchBar.test.tsx) | ファイル検索入力とテスト。 |
 | [`Sidebar.tsx`](./Sidebar.tsx) | ワークスペース全体のサイドバー。 |
 | [`SyntaxHighlighter.tsx`](./SyntaxHighlighter.tsx) / [`SyntaxHighlighter.test.tsx`](./SyntaxHighlighter.test.tsx) | Prismベースのコード表示。agent出力では相対ファイルパスをFiles画面へリンクできる。 |

@@ -66,7 +66,7 @@ export default function App() {
       if (!current) return current
       return {
         ...current,
-        recent_files: [path, ...current.recent_files.filter((item) => item !== path)].slice(0, 50),
+        recent_files: [path, ...(current.recent_files ?? []).filter((item) => item !== path)].slice(0, 50),
       }
     })
   }, [])

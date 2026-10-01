@@ -69,6 +69,22 @@ describe('RichMarkdown', () => {
     )
   })
 
+  it('delegates internal file links to the active viewer pane', () => {
+    const onOpenFile = vi.fn()
+    const { container } = renderMd(
+      <RichMarkdown
+        text="see [guide](./guide.md)"
+        relativeTo="docs/readme.md"
+        linkUrl={(resolved) => `/projects/proj/dashboard/files/${resolved}`}
+        onOpenFile={onOpenFile}
+      />,
+    )
+
+    fireEvent.click(container.querySelector('a')!)
+
+    expect(onOpenFile).toHaveBeenCalledWith('docs/guide')
+  })
+
   it('keeps the .md extension on file links in files mode', () => {
     const { container } = renderMd(
       <RichMarkdown

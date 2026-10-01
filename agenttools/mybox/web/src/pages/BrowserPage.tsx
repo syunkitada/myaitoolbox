@@ -1,4 +1,4 @@
-import { ReactNode, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ReactNode, MouseEvent as ReactMouseEvent, RefObject, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useBlocker } from 'react-router-dom'
 import { FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
@@ -15,7 +15,7 @@ import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { Badge } from '../components/ui/badge'
-import { Archive, ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
+import { Archive, ArrowLeftRight, ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -45,12 +45,12 @@ const OUTLINE_STORAGE_KEY = 'outline_open'
 const EXPLORER_STORAGE_KEY = 'explorer_open'
 const EXPLORER_WIDTH_STORAGE_KEY = 'mybox_files_explorer_width'
 const DETAILS_WIDTH_STORAGE_KEY = 'mybox_files_details_width'
+const REFERENCE_WIDTH_STORAGE_KEY = 'mybox_files_reference_width'
 const SHOW_HIDDEN_STORAGE_KEY = 'files_show_hidden'
 const DEFAULT_EXPLORER_WIDTH = 280
 const DEFAULT_DETAILS_WIDTH = 384
 
-function computeViewStartLine(viewText: string): number {
-  const scroller = document.querySelector<HTMLElement>('.knowledge-files')
+function computeViewStartLine(scroller: HTMLElement | null, viewText: string): number {
   const totalLines = viewText.split('\n').length
   if (!scroller || scroller.scrollHeight <= scroller.clientHeight || totalLines <= 1) return 1
   const maxScroll = scroller.scrollHeight - scroller.clientHeight
@@ -66,7 +66,7 @@ function handleAnchorClick(e: ReactMouseEvent<HTMLDivElement>) {
   if (!raw) return
   let id: string
   try { id = decodeURIComponent(raw) } catch { id = raw }
-  const target = document.getElementById(id)
+  const target = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[id]')).find((element) => element.id === id)
   if (!target) return
   e.preventDefault()
   target.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -372,6 +372,7 @@ interface ExplorerProps {
   showHidden?: boolean
   onToggleHidden?: () => void
   onOpenGit?: (path: string) => void
+  onOpenReference?: (path: string) => void
   onLoadDir?: (dir: string, force?: boolean) => void | Promise<void>
   onClearSubtree?: (path: string) => void | Promise<void>
   onSearchHit?: (hit: FileSearchHit) => void
@@ -414,7 +415,7 @@ function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSe
   )
 }
 
-export function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onLoadDir, onClearSubtree, onSearchHit }: ExplorerProps) {
+export function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onSearchHit }: ExplorerProps) {
   const { prompt, confirm, alert, showProgress, hideProgress } = useDialogs()
   const [q, setQ] = useState('')
   const [searchMode, setSearchMode] = useState<'name' | 'text'>('name')
@@ -581,6 +582,13 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
     if (!ctxMenu) return
     onOpenGit?.(ctxMenu.path)
     setCtxMenu(null)
+  }
+
+  const openReference = () => {
+    if (!ctxMenu) return
+    const path = ctxMenu.path
+    setCtxMenu(null)
+    onOpenReference?.(path)
   }
 
   const copyPath = () => {
@@ -1237,6 +1245,12 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
               <div className="my-1 h-px bg-border" />
             </>
           )}
+          {onOpenReference && (
+            <button role="menuitem" className="file-action-item" onClick={openReference}>
+              <PanelRightOpen className="size-3.5" />
+              Open in reference pane
+            </button>
+          )}
           <button role="menuitem" className="file-action-item" onClick={duplicateEntry}>
             <Copy className="size-3.5" />
             Duplicate
@@ -1472,6 +1486,12 @@ function ExecuteResultModal({
   )
 }
 
+export interface PaneHandle {
+  hasUnsavedChanges: () => boolean
+  save: () => Promise<boolean>
+  discardChanges: () => void
+}
+
 interface PaneProps {
   path: string
   entry?: BrowserEntry
@@ -1495,9 +1515,13 @@ interface PaneProps {
   onWebuiFocusChange?: (paneId: string | null) => void
   onOpenGit?: (path: string) => void
   searchHit?: FileSearchHit | null
+  scrollRef?: RefObject<HTMLDivElement | null>
+  paneLabel?: 'Main' | 'Reference'
+  onDirtyChange?: (dirty: boolean) => void
+  showExplorerToggle?: boolean
 }
 
-function Pane({
+const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   path,
   entry,
   list,
@@ -1520,8 +1544,12 @@ function Pane({
   onWebuiFocusChange,
   onOpenGit,
   searchHit,
-}: PaneProps) {
-  const { prompt, confirm, confirm3 } = useDialogs()
+  scrollRef,
+  paneLabel = 'Main',
+  onDirtyChange,
+  showExplorerToggle = true,
+}, ref) {
+  const { prompt, confirm } = useDialogs()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
   const [draftFm, setDraftFm] = useState<Record<string, unknown>>({})
@@ -1561,8 +1589,9 @@ function Pane({
   }
   const [activeHeading, setActiveHeading] = useState<string | null>(null)
   const isMobile = useIsMobile()
+  const outlineStorageKey = paneLabel === 'Reference' ? `${OUTLINE_STORAGE_KEY}_reference` : OUTLINE_STORAGE_KEY
   const [outlineOpen, setOutlineOpen] = useState<boolean>(() => {
-    const saved = window.localStorage.getItem(OUTLINE_STORAGE_KEY)
+    const saved = window.localStorage.getItem(outlineStorageKey)
     if (saved !== null) return saved === '1'
     return window.innerWidth >= 768
   })
@@ -1578,8 +1607,8 @@ function Pane({
   })
 
   useEffect(() => {
-    window.localStorage.setItem(OUTLINE_STORAGE_KEY, outlineOpen ? '1' : '0')
-  }, [outlineOpen])
+    window.localStorage.setItem(outlineStorageKey, outlineOpen ? '1' : '0')
+  }, [outlineOpen, outlineStorageKey])
 
   const byPath = useMemo(() => {
     const m = new Map<string, string>()
@@ -1936,6 +1965,17 @@ function Pane({
     return persist(raw)
   }
 
+  const discardChanges = () => {
+    setDraft(content)
+    const split = splitFrontmatter(content)
+    setDraftBody(split.body)
+    setDraftFm(parseFrontmatter(split.frontmatter).data)
+    setEditing(false)
+    setShowDiff(false)
+    setShowGitDiff(false)
+    setGitDiffFiles([])
+  }
+
   const viewText = useForm ? fmSplit.body : content
   const taskProgress = isTaskFile ? extractMarkdownTaskProgress(viewText) : null
   const viewSourceLineOffset = useForm
@@ -1960,27 +2000,19 @@ function Pane({
   const diffOriginalBody = fmSplit.body
   const hasUnsavedChanges = diffOriginal !== diffModified
 
-  // Block navigation when leaving with unsaved edits and ask how to proceed.
-  const blocker = useBlocker(editing && hasUnsavedChanges)
+  useImperativeHandle(
+    ref,
+    () => ({
+      hasUnsavedChanges: () => hasUnsavedChanges,
+      save,
+      discardChanges,
+    }),
+    [hasUnsavedChanges, save],
+  )
 
   useEffect(() => {
-    if (blocker.state !== 'blocked') return
-    void confirm3(
-      `「${path}」には保存されていない変更があります。どうしますか？`,
-      { primary: '保存して移動', secondary: '変更を破棄', cancel: 'キャンセル' },
-    ).then((choice) => {
-      if (choice === 'primary') {
-        void save().then((ok) => {
-          if (ok) blocker.proceed()
-        })
-      } else if (choice === 'secondary') {
-        blocker.proceed()
-      } else {
-        blocker.reset()
-      }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocker.state])
+    onDirtyChange?.(hasUnsavedChanges)
+  }, [hasUnsavedChanges, onDirtyChange])
 
   useEffect(() => {
     if (!(editing && hasUnsavedChanges)) return
@@ -1993,8 +2025,8 @@ function Pane({
   }, [editing, hasUnsavedChanges])
 
   const startEdit = () => {
-    editStartLine.current = computeViewStartLine(viewText)
-    const scroller = document.querySelector<HTMLElement>('.knowledge-files')
+    const scroller = scrollRef?.current ?? null
+    editStartLine.current = computeViewStartLine(scroller, viewText)
     viewScroll.current = scroller
       ? { path, top: scroller.scrollTop, maxTop: Math.max(0, scroller.scrollHeight - scroller.clientHeight) }
       : null
@@ -2010,26 +2042,28 @@ function Pane({
     if (!snap || snap.path !== path) return
     // Wait until the view has been re-rendered and laid out before restoring.
     requestAnimationFrame(() => {
-      const scroller = document.querySelector<HTMLElement>('.knowledge-files')
+    const scroller = scrollRef?.current ?? null
       if (!scroller) return
       const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
       scroller.scrollTop = snap.maxTop > 0 && maxTop > 0 ? (snap.top / snap.maxTop) * maxTop : snap.top
     })
-  }, [editing, path])
+  }, [editing, path, scrollRef])
 
   const outlineItems = useMemo(() => extractOutline(viewText), [viewText])
 
   useEffect(() => {
-    const els = outlineItems
-      .map((h) => document.getElementById(h.id))
-      .filter((el): el is HTMLElement => el !== null)
-    if (els.length === 0) {
+    const container = scrollRef?.current
+    const els = container
+      ? outlineItems.map((h) => Array.from(container.querySelectorAll<HTMLElement>('[id]')).find((element) => element.id === h.id) ?? null)
+      : []
+    const validEls = els.filter((el): el is HTMLElement => el !== null)
+    if (validEls.length === 0) {
       setActiveHeading(null)
       return
     }
     const update = () => {
       let current: string | null = null
-      for (const el of els) {
+      for (const el of validEls) {
         if (el.getBoundingClientRect().top <= 150) current = el.id
       }
       setActiveHeading(current)
@@ -2041,7 +2075,7 @@ function Pane({
       document.removeEventListener('scroll', update, true)
       window.removeEventListener('resize', update)
     }
-  }, [outlineItems])
+  }, [outlineItems, scrollRef])
 
   const sectionTitle = 'mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase'
 
@@ -2071,7 +2105,10 @@ function Pane({
               )}
               onClick={(e) => {
                 e.preventDefault()
-                document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' })
+                const target = scrollRef?.current
+                  ? Array.from(scrollRef.current.querySelectorAll<HTMLElement>('[id]')).find((element) => element.id === h.id)
+                  : null
+                target?.scrollIntoView({ behavior: 'smooth' })
               }}
             >
               {h.text}
@@ -2115,15 +2152,20 @@ function Pane({
         <div className={cn('knowledge-main min-w-0 flex-1 md:transition-[margin]', (editing || showGitDiff) && 'flex min-h-0 flex-col')}>
           <div className="page-header note-toolbar sticky top-0 z-20 mb-3 flex shrink-0 items-center justify-between gap-3 border-b bg-card/95 py-2 backdrop-blur">
             <div className="actions flex flex-wrap gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label="Toggle file explorer"
-                title={explorerOpen ? 'Hide file explorer' : 'Show file explorer'}
-                onClick={onToggleExplorer}
-              >
-                {explorerOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
-              </Button>
+              <span className="self-center px-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                {paneLabel}
+              </span>
+              {showExplorerToggle && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Toggle file explorer"
+                  title={explorerOpen ? 'Hide file explorer' : 'Show file explorer'}
+                  onClick={onToggleExplorer}
+                >
+                  {explorerOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -2299,14 +2341,7 @@ function Pane({
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        setDraft(content)
-                        const split = splitFrontmatter(content)
-                        setDraftBody(split.body)
-                        setDraftFm(parseFrontmatter(split.frontmatter).data)
-                        setEditing(false)
-                        setShowDiff(false)
-                        setShowGitDiff(false)
-                        setGitDiffFiles([])
+                        discardChanges()
                       }}
                     >
                       Cancel
@@ -2490,6 +2525,7 @@ function Pane({
                       focusLine={activeSearchHit?.line}
                       searchQuery={activeSearchHit?.query}
                       sourceLineOffset={viewSourceLineOffset}
+                      onOpenFile={onOpen}
                     />
                   ) : isImage ? (
                     <div className="file-image flex justify-center py-3">
@@ -2579,6 +2615,106 @@ function Pane({
       )}
     </div>
   )
+})
+
+function ViewerPaneHeader({
+  label,
+  path,
+  onClose,
+  onSwap,
+}: {
+  label: 'Main' | 'Reference'
+  path: string
+  onClose?: () => void
+  onSwap?: () => void
+}) {
+  const name = path.split('/').pop() ?? path
+  return (
+    <div className="flex min-h-10 shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2">
+      <span className="shrink-0 text-xs font-semibold tracking-wider text-muted-foreground uppercase">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-sm" title={path}>{name}</span>
+      {onSwap && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Swap main and reference panes"
+          title="Swap main and reference panes"
+          onClick={onSwap}
+        >
+          <ArrowLeftRight className="size-4" />
+        </Button>
+      )}
+      {onClose && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Close reference pane"
+          title="Close reference pane"
+          onClick={onClose}
+        >
+          <X className="size-4" />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function UnsavedRouteGuard({
+  mainDirty,
+  mainPath,
+  mainPaneRef,
+  referenceDirty,
+  referencePath,
+  referencePaneRef,
+}: {
+  mainDirty: boolean
+  mainPath: string
+  mainPaneRef: RefObject<PaneHandle>
+  referenceDirty: boolean
+  referencePath: string | null
+  referencePaneRef: RefObject<PaneHandle>
+}) {
+  const { confirm3 } = useDialogs()
+  const blocker = useBlocker(mainDirty || referenceDirty)
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return
+    let active = true
+
+    const confirmLeave = async (paneRef: RefObject<PaneHandle>, dirty: boolean, path: string) => {
+      if (!dirty) return true
+      const choice = await confirm3(
+        `「${path}」には保存されていない変更があります。どうしますか？`,
+        { primary: '保存して移動', secondary: '変更を破棄', cancel: 'キャンセル' },
+      )
+      if (choice === 'primary') return paneRef.current?.save() ?? true
+      if (choice === 'secondary') {
+        paneRef.current?.discardChanges()
+        return true
+      }
+      return false
+    }
+
+    void (async () => {
+      if (!(await confirmLeave(mainPaneRef, mainDirty, mainPath))) {
+        if (active) blocker.reset()
+        return
+      }
+      if (referencePath && !(await confirmLeave(referencePaneRef, referenceDirty, referencePath))) {
+        if (active) blocker.reset()
+        return
+      }
+      if (active) blocker.proceed()
+    })()
+
+    return () => {
+      active = false
+    }
+    // The blocker state intentionally starts one confirmation flow per blocked navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocker.state])
+
+  return null
 }
 
 export function BrowserPage({
@@ -2599,6 +2735,7 @@ export function BrowserPage({
   revealPath,
   onRevealPathHandled,
 }: BrowserPageProps) {
+  const { confirm3 } = useDialogs()
   const [childrenByDir, setChildrenByDir] = useState<Record<string, BrowserEntry[]>>({})
   const [gitStatus, setGitStatus] = useState<Record<string, string>>({})
   const [loaded, setLoaded] = useState(false)
@@ -2607,6 +2744,16 @@ export function BrowserPage({
   const [refreshKey, setRefreshKey] = useState(0)
   const [openGitDir, setOpenGitDir] = useState<string | null>(null)
   const [gitDiffOpen, setGitDiffOpen] = useState(false)
+  const [referenceGitDiffOpen, setReferenceGitDiffOpen] = useState(false)
+  const [referencePath, setReferencePath] = useState<string | null>(null)
+  const [mobileViewer, setMobileViewer] = useState<'main' | 'reference'>('main')
+  const [mainDirty, setMainDirty] = useState(false)
+  const [referenceDirty, setReferenceDirty] = useState(false)
+  const mainScrollRef = useRef<HTMLDivElement>(null)
+  const referenceScrollRef = useRef<HTMLDivElement>(null)
+  const mainPaneRef = useRef<PaneHandle>(null)
+  const referencePaneRef = useRef<PaneHandle>(null)
+  const pendingSwapReferenceRef = useRef<string | null>(null)
   const [searchHit, setSearchHit] = useState<FileSearchHit | null>(null)
   const autoDefaulted = useRef(false)
   const loadedDirsRef = useRef(new Set<string>())
@@ -2618,6 +2765,19 @@ export function BrowserPage({
     showHidden: boolean
     promise: Promise<Record<string, BrowserEntry[]>>
   } | null>(null)
+
+  const {
+    width: referenceWidth,
+    resizing: referenceResizing,
+    handlePointerDown: handleReferenceResizeStart,
+    handleKeyDown: handleReferenceResizeKeyDown,
+  } = useResizableWidth({
+    storageKey: REFERENCE_WIDTH_STORAGE_KEY,
+    defaultWidth: 420,
+    minWidth: 280,
+    maxWidth: 720,
+    handleSide: 'left',
+  })
 
   const entries = useMemo(() => Object.values(childrenByDir).flat(), [childrenByDir])
 
@@ -2659,22 +2819,106 @@ export function BrowserPage({
     setGitDiffOpen(false)
   }, [selected])
 
+  const confirmPaneLeave = useCallback(
+    async (paneRef: RefObject<PaneHandle>, dirty: boolean, path: string) => {
+      if (!dirty) return true
+      const choice = await confirm3(
+        `「${path}」には保存されていない変更があります。どうしますか？`,
+        { primary: '保存して移動', secondary: '変更を破棄', cancel: 'キャンセル' },
+      )
+      if (choice === 'primary') return paneRef.current?.save() ?? true
+      if (choice === 'secondary') {
+        paneRef.current?.discardChanges()
+        return true
+      }
+      return false
+    },
+    [confirm3],
+  )
+
   const handleSelect = useCallback(
-    (p: string) => {
-      setSearchHit(null)
+    (p: string, nextSearchHit: FileSearchHit | null = null) => {
+      setSearchHit(nextSearchHit)
+      if (p === referencePath && p !== selected) {
+        void confirmPaneLeave(referencePaneRef, referenceDirty, referencePath).then((ok) => {
+          if (!ok) return
+          setReferencePath(null)
+          setReferenceDirty(false)
+          onSelect(p)
+          if (isMobile) setExplorerOpen(false)
+        })
+        return
+      }
       onSelect(p)
       if (isMobile) setExplorerOpen(false)
     },
-    [isMobile, onSelect],
+    [confirmPaneLeave, isMobile, onSelect, referenceDirty, referencePath, selected],
   )
+
+  const changeReference = useCallback(
+    async (nextPath: string | null) => {
+      if (nextPath === referencePath) return true
+      if (nextPath && nextPath === selected) return false
+      if (referencePath && !(await confirmPaneLeave(referencePaneRef, referenceDirty, referencePath))) return false
+      setReferencePath(nextPath)
+      setReferenceGitDiffOpen(false)
+      setReferenceDirty(false)
+      if (nextPath) setMobileViewer('reference')
+      else setMobileViewer('main')
+      return true
+    },
+    [confirmPaneLeave, referenceDirty, referencePath, selected],
+  )
+
+  const openReference = useCallback(
+    (path: string) => {
+      if (!selected) {
+        handleSelect(path)
+        return
+      }
+      void changeReference(path)
+    },
+    [changeReference, handleSelect, selected],
+  )
+
+  const closeReference = useCallback(() => {
+    void changeReference(null)
+  }, [changeReference])
+
+  const swapPanes = useCallback(async () => {
+    if (!referencePath || !selected) return
+    if (!(await confirmPaneLeave(mainPaneRef, mainDirty, selected))) return
+    if (!(await confirmPaneLeave(referencePaneRef, referenceDirty, referencePath))) return
+    const nextMain = referencePath
+    const nextReference = selected
+    pendingSwapReferenceRef.current = nextReference
+    setMainDirty(false)
+    setReferenceDirty(false)
+    setReferenceGitDiffOpen(false)
+    onSelect(nextMain)
+  }, [confirmPaneLeave, mainDirty, onSelect, referenceDirty, referencePath, selected])
+
+  useEffect(() => {
+    const pendingReference = pendingSwapReferenceRef.current
+    if (pendingReference && selected && referencePath === selected) {
+      pendingSwapReferenceRef.current = null
+      setReferencePath(pendingReference)
+      return
+    }
+    if (!selected || referencePath === selected) {
+      if (referencePath === selected) {
+        setReferencePath(null)
+        setReferenceDirty(false)
+      }
+      if (!selected) setMobileViewer('main')
+    }
+  }, [referencePath, selected])
 
   const handleSearchHit = useCallback(
     (hit: FileSearchHit) => {
-      setSearchHit(hit)
-      onSelect(hit.path)
-      if (isMobile) setExplorerOpen(false)
+      handleSelect(hit.path, hit)
     },
-    [isMobile, onSelect],
+    [handleSelect],
   )
 
   const loadDir = useCallback(
@@ -2861,6 +3105,24 @@ export function BrowserPage({
   }, [selected, loadDir, entries])
 
   useEffect(() => {
+    if (!referencePath) return
+    const parts = referencePath.split('/').filter(Boolean)
+    const targets: string[] = []
+    let prefix = ''
+    for (let i = 0; i < parts.length - 1; i++) {
+      prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+      targets.push(prefix)
+    }
+    const seq = ++autoLoadSeq.current
+    ;(async () => {
+      for (const target of targets) {
+        if (autoLoadSeq.current !== seq) return
+        if (!loadedDirsRef.current.has(target)) await loadDir(target)
+      }
+    })()
+  }, [referencePath, loadDir])
+
+  useEffect(() => {
     if (gitStatusLoaded.current) return
     gitStatusLoaded.current = true
     void api
@@ -2880,6 +3142,7 @@ export function BrowserPage({
   }, [loaded, selected, entries, defaultSelect, onSelect])
 
   const selectedEntry = entries.find((e) => e.path === selected)
+  const referenceEntry = referencePath ? entries.find((e) => e.path === referencePath) : undefined
 
   const knownPaths = useMemo(() => {
     const set = new Set<string>()
@@ -2934,8 +3197,56 @@ export function BrowserPage({
       .catch((e) => setMoveError(e instanceof Error ? e.message : String(e)))
   }
 
+  const renderPane = (
+    slot: 'main' | 'reference',
+    path: string,
+    entry: BrowserEntry | undefined,
+    scrollRef: RefObject<HTMLDivElement | null>,
+    paneRef: RefObject<PaneHandle>,
+  ) => (
+    <Pane
+      ref={paneRef}
+      path={path}
+      entry={entry}
+      list={entries}
+      favorites={favorites}
+      refreshMeta={refreshMeta}
+      onRecentChanged={onRecentChanged}
+      onChanged={handleChanged}
+      onGitStatusChange={refreshGitStatus}
+      onOpen={slot === 'main' ? handleSelect : (nextPath) => void changeReference(nextPath)}
+      onDeleted={slot === 'main' ? onBack : closeReference}
+      explorerOpen={explorerOpen}
+      onToggleExplorer={() => setExplorerOpen((o) => !o)}
+      onRefresh={handleRefresh}
+      refreshKey={refreshKey}
+      gitStatus={gitStatus[path]}
+      onGitDiffOpenChange={slot === 'main' ? setGitDiffOpen : setReferenceGitDiffOpen}
+      herdrOverview={slot === 'main' ? herdrOverview : undefined}
+      refreshHerdr={slot === 'main' ? refreshHerdr : undefined}
+      webuiFocusedPaneId={webuiFocusedPaneId}
+      onWebuiFocusChange={onWebuiFocusChange}
+      onOpenGit={setOpenGitDir}
+      searchHit={slot === 'main' ? searchHit : null}
+      scrollRef={scrollRef}
+      paneLabel={slot === 'main' ? 'Main' : 'Reference'}
+      onDirtyChange={slot === 'main' ? setMainDirty : setReferenceDirty}
+      showExplorerToggle={slot === 'main'}
+    />
+  )
+
   return (
     <div className="page relative h-full min-h-0">
+      {selected && (mainDirty || referenceDirty) && (
+        <UnsavedRouteGuard
+          mainDirty={mainDirty}
+          mainPath={selected}
+          mainPaneRef={mainPaneRef}
+          referenceDirty={referenceDirty}
+          referencePath={referencePath}
+          referencePaneRef={referencePaneRef}
+        />
+      )}
       {error && (
         <div className="error-banner my-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
           {error}
@@ -2981,6 +3292,7 @@ export function BrowserPage({
                     showHidden={showHidden}
                     onToggleHidden={() => setShowHidden((s) => !s)}
                     onOpenGit={setOpenGitDir}
+                    onOpenReference={openReference}
                     onLoadDir={loadDir}
                     onClearSubtree={clearSubtree}
                     onSearchHit={handleSearchHit}
@@ -3028,6 +3340,7 @@ export function BrowserPage({
                     showHidden={showHidden}
                     onToggleHidden={() => setShowHidden((s) => !s)}
                     onOpenGit={setOpenGitDir}
+                    onOpenReference={openReference}
                     onLoadDir={loadDir}
                     onClearSubtree={clearSubtree}
                     onSearchHit={handleSearchHit}
@@ -3047,64 +3360,144 @@ export function BrowserPage({
               onSelect={handleSelect}
               onClose={handleCloseRecent}
             />
-          <div
-            data-testid="git-files-scroll-container"
-            data-git-diff-open={gitDiffOpen ? 'true' : 'false'}
-            className={cn('knowledge-files min-h-0 min-w-0 flex-1', gitDiffOpen ? 'overflow-hidden' : 'overflow-y-auto')}
-            onClick={handleAnchorClick}
-          >
-            {selected && loaded ? (
-                <Pane
-                  path={selected}
-                  entry={selectedEntry}
-                  list={entries}
-                  favorites={favorites}
-                  refreshMeta={refreshMeta}
-                  onRecentChanged={onRecentChanged}
-                  onChanged={handleChanged}
-                  onGitStatusChange={refreshGitStatus}
-                  onOpen={onSelect}
-                  onDeleted={onBack}
-                  explorerOpen={explorerOpen}
-                  onToggleExplorer={() => setExplorerOpen((o) => !o)}
-                  onRefresh={handleRefresh}
-                  refreshKey={refreshKey}
-                  gitStatus={gitStatus[selected]}
-                  onGitDiffOpenChange={setGitDiffOpen}
-                  herdrOverview={herdrOverview}
-                  refreshHerdr={refreshHerdr}
-                  webuiFocusedPaneId={webuiFocusedPaneId}
-                  onWebuiFocusChange={onWebuiFocusChange}
-                  onOpenGit={setOpenGitDir}
-                  searchHit={searchHit}
-                />
-              ) : selected ? (
-                <div className="knowledge-empty flex items-center justify-center p-12 text-center text-muted-foreground">
-                  Loading files…
-                </div>
-              ) : (
-                <Card className="knowledge-empty items-center justify-center gap-2 p-12 text-center">
-                  <h2 className="text-xl font-bold">{title}</h2>
-                  <p className="text-muted-foreground">
-                    Select a file from the explorer to view it here.
-                  </p>
-                  {loaded && entries.length === 0 && (
-                    <p className="text-muted-foreground">
-                      No files yet.
-                    </p>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="cursor-pointer"
-                    onClick={() => setExplorerOpen(true)}
+            {referencePath && (
+              <div className="flex shrink-0 items-center gap-1 border-b border-border py-1 md:hidden" role="tablist" aria-label="File viewer pane">
+                <Button
+                  variant={mobileViewer === 'main' ? 'secondary' : 'ghost'}
+                  size="xs"
+                  role="tab"
+                  aria-selected={mobileViewer === 'main'}
+                  onClick={() => setMobileViewer('main')}
+                >
+                  Main
+                </Button>
+                <Button
+                  variant={mobileViewer === 'reference' ? 'secondary' : 'ghost'}
+                  size="xs"
+                  role="tab"
+                  aria-selected={mobileViewer === 'reference'}
+                  onClick={() => setMobileViewer('reference')}
+                >
+                  Reference
+                </Button>
+              </div>
+            )}
+            {referencePath && !isMobile ? (
+              <div className="file-viewer-split flex min-h-0 min-w-0 flex-1">
+                <div data-testid="main-file-viewer-pane" className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+                  {selected && <ViewerPaneHeader label="Main" path={selected} onSwap={() => void swapPanes()} />}
+                  <div
+                    data-testid="git-files-scroll-container"
+                    data-git-diff-open={gitDiffOpen ? 'true' : 'false'}
+                    className={cn('knowledge-files min-h-0 min-w-0 flex-1', gitDiffOpen ? 'overflow-hidden' : 'overflow-y-auto')}
+                    onClick={handleAnchorClick}
                   >
-                    <PanelLeftOpen />
-                    Open file explorer
-                  </Button>
-                </Card>
-              )}
-            </div>
+                    {selected && loaded ? renderPane('main', selected, selectedEntry, mainScrollRef, mainPaneRef) : (
+                      <div className="knowledge-empty flex items-center justify-center p-12 text-center text-muted-foreground">
+                        Loading files…
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div
+                  data-testid="reference-resize-handle"
+                  role="separator"
+                  aria-label="Resize reference pane"
+                  aria-orientation="vertical"
+                  aria-valuemin={280}
+                  aria-valuemax={720}
+                  aria-valuenow={referenceWidth}
+                  tabIndex={0}
+                  className={cn(
+                    'z-10 w-2 shrink-0 cursor-col-resize touch-none rounded-sm outline-none hover:bg-primary/20 focus-visible:bg-primary/30',
+                    referenceResizing && 'bg-primary/30',
+                  )}
+                  onPointerDown={handleReferenceResizeStart}
+                  onKeyDown={handleReferenceResizeKeyDown}
+                />
+                <div data-testid="reference-file-viewer-pane" className="relative flex min-h-0 min-w-0 shrink-0 flex-col border-l border-border" style={{ width: referenceWidth }}>
+                  <ViewerPaneHeader label="Reference" path={referencePath} onClose={closeReference} onSwap={() => void swapPanes()} />
+                  <div
+                    data-git-diff-open={referenceGitDiffOpen ? 'true' : 'false'}
+                    className={cn('knowledge-files min-h-0 min-w-0 flex-1', referenceGitDiffOpen ? 'overflow-hidden' : 'overflow-y-auto')}
+                    onClick={handleAnchorClick}
+                  >
+                    {loaded ? renderPane('reference', referencePath, referenceEntry, referenceScrollRef, referencePaneRef) : (
+                      <div className="knowledge-empty flex items-center justify-center p-12 text-center text-muted-foreground">
+                        Loading files…
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : referencePath && isMobile ? (
+              <>
+                <div
+                  aria-hidden={mobileViewer !== 'main'}
+                  className={cn('min-h-0 min-w-0 flex-1', mobileViewer !== 'main' && 'hidden')}
+                >
+                  <div
+                    data-testid="git-files-scroll-container"
+                    data-git-diff-open={gitDiffOpen ? 'true' : 'false'}
+                    className={cn('knowledge-files h-full min-h-0 min-w-0', gitDiffOpen ? 'overflow-hidden' : 'overflow-y-auto')}
+                    onClick={handleAnchorClick}
+                  >
+                    {selected && loaded ? renderPane('main', selected, selectedEntry, mainScrollRef, mainPaneRef) : null}
+                  </div>
+                </div>
+                <div
+                  aria-hidden={mobileViewer !== 'reference'}
+                  className={cn('min-h-0 min-w-0 flex-1', mobileViewer !== 'reference' && 'hidden')}
+                >
+                  <div className="flex h-full min-h-0 flex-col">
+                    <ViewerPaneHeader label="Reference" path={referencePath} onClose={closeReference} />
+                    <div
+                      data-git-diff-open={referenceGitDiffOpen ? 'true' : 'false'}
+                      className={cn('knowledge-files min-h-0 min-w-0 flex-1', referenceGitDiffOpen ? 'overflow-hidden' : 'overflow-y-auto')}
+                      onClick={handleAnchorClick}
+                    >
+                      {loaded ? renderPane('reference', referencePath, referenceEntry, referenceScrollRef, referencePaneRef) : null}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div
+                data-testid="git-files-scroll-container"
+                data-git-diff-open={gitDiffOpen ? 'true' : 'false'}
+                className={cn('knowledge-files min-h-0 min-w-0 flex-1', gitDiffOpen ? 'overflow-hidden' : 'overflow-y-auto')}
+                onClick={handleAnchorClick}
+              >
+                {selected && loaded ? (
+                  renderPane('main', selected, selectedEntry, mainScrollRef, mainPaneRef)
+                ) : selected ? (
+                  <div className="knowledge-empty flex items-center justify-center p-12 text-center text-muted-foreground">
+                    Loading files…
+                  </div>
+                ) : (
+                  <Card className="knowledge-empty items-center justify-center gap-2 p-12 text-center">
+                    <h2 className="text-xl font-bold">{title}</h2>
+                    <p className="text-muted-foreground">
+                      Select a file from the explorer to view it here.
+                    </p>
+                    {loaded && entries.length === 0 && (
+                      <p className="text-muted-foreground">
+                        No files yet.
+                      </p>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="cursor-pointer"
+                      onClick={() => setExplorerOpen(true)}
+                    >
+                      <PanelLeftOpen />
+                      Open file explorer
+                    </Button>
+                  </Card>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
