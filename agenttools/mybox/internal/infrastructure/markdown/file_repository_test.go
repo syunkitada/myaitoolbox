@@ -40,8 +40,9 @@ func TestFileRepositorySearch(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, ".hidden"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("Deploy deployment\nNo match\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("Deploy deployment\nNo match\ndeployment\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "README"), []byte("Deployment notes\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "literal.txt"), []byte("value [deploy]\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".hidden", "secret.md"), []byte("deployment\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "data.log"), []byte("deployment\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "image.png"), []byte("deployment\x00\n"), 0o644))
@@ -49,14 +50,20 @@ func TestFileRepositorySearch(t *testing.T) {
 	repo := NewFileRepository(root)
 	results, err := repo.Search(context.Background(), "DEPLOY", false)
 	require.NoError(t, err)
-	require.Len(t, results, 2)
+	require.Len(t, results, 3)
 	assert.Equal(t, "README", results[0].Path)
 	assert.Equal(t, 1, results[0].Line)
 	assert.Equal(t, "Deployment notes", results[0].Snippet)
 	assert.Equal(t, 1, results[0].MatchCount)
 	assert.Equal(t, "docs/guide.md", results[1].Path)
 	assert.Equal(t, 1, results[1].Line)
-	assert.Equal(t, 2, results[1].MatchCount)
+	assert.Equal(t, 3, results[1].MatchCount)
+	assert.Equal(t, "literal.txt", results[2].Path)
+
+	results, err = repo.Search(context.Background(), "[deploy]", false)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "literal.txt", results[0].Path)
 
 	results, err = repo.Search(context.Background(), "deployment", true)
 	require.NoError(t, err)
@@ -86,6 +93,16 @@ func TestFileRepositorySearchLimitedRetainsTotal(t *testing.T) {
 	assert.Len(t, results, 2)
 	assert.Equal(t, 3, total)
 	assert.Equal(t, "a.md", results[0].Path)
+}
+
+func TestFileRepositorySearchRequiresRipgrep(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes.md"), []byte("deployment\n"), 0o644))
+	t.Setenv("PATH", t.TempDir())
+
+	_, err := NewFileRepository(root).Search(context.Background(), "deployment", true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rg")
 }
 
 func TestFileRepositoryReadLimits(t *testing.T) {

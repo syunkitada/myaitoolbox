@@ -46,7 +46,7 @@ CLI と Web UI の両方から操作でき、タスクは Markdown ファイル�
 
 ## インストール
 
-**前提:** Go 1.25+、Node.js（Web UI のビルドに必要）
+**前提:** Go 1.25+、Node.js（Web UI のビルドに必要）、ripgrep（`rg`、Files本文検索に必要）
 
 ```bash
 git clone https://github.com/syunkitada/myaitoolbox

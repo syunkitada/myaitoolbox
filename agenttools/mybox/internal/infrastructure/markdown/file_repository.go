@@ -3,6 +3,8 @@ package markdown
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -165,103 +167,195 @@ func (r *FileRepository) search(ctx context.Context, query string, showHidden bo
 	if strings.TrimSpace(query) == "" {
 		return nil, 0, fmt.Errorf("%w: search query must not be empty", domain.ErrInvalidArgument)
 	}
-	lowerQuery := strings.ToLower(query)
-	results := make([]domain.FileSearchResult, 0)
 	if _, err := os.Stat(r.root); err != nil {
 		if os.IsNotExist(err) {
-			return results, 0, nil
+			return []domain.FileSearchResult{}, 0, nil
 		}
 		return nil, 0, err
 	}
-	total := 0
 
-	err := filepath.WalkDir(r.root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if path == r.root {
-			return nil
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		if !showHidden && strings.HasPrefix(d.Name(), ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() || !isSearchableTextPath(d.Name()) {
-			return nil
-		}
-		info, infoErr := d.Info()
-		if infoErr != nil {
-			return infoErr
-		}
-		if info.Size() > maxSearchFileBytes {
-			return nil
-		}
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
-			return nil
-		}
-
-		lines := strings.Split(string(data), "\n")
-		for lineIndex, line := range lines {
-			lowerLine := strings.ToLower(line)
-			matchCount := strings.Count(lowerLine, lowerQuery)
-			if matchCount == 0 {
-				continue
-			}
-			rel, relErr := filepath.Rel(r.root, path)
-			if relErr != nil {
-				return relErr
-			}
-			total++
-			if limit <= 0 || len(results) < limit {
-				results = append(results, domain.FileSearchResult{
-					Path:       filepath.ToSlash(rel),
-					Line:       lineIndex + 1,
-					Snippet:    searchSnippet(line, lowerQuery),
-					MatchCount: countMatches(lines, lowerQuery),
-				})
-			}
-			break
-		}
-		return nil
-	})
+	rgPath, err := exec.LookPath("rg")
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("file search requires rg on PATH: %w", err)
+	}
+
+	args := []string{
+		"--json",
+		"--fixed-strings",
+		"--ignore-case",
+		"--glob-case-insensitive",
+		"--no-ignore",
+		fmt.Sprintf("--max-filesize=%d", maxSearchFileBytes),
+	}
+	if showHidden {
+		args = append(args, "--hidden")
+	}
+	for _, pattern := range searchableTextGlobs() {
+		args = append(args, "--glob", pattern)
+	}
+	args = append(args, "--", query, ".")
+
+	cmd := exec.CommandContext(ctx, rgPath, args...)
+	cmd.Dir = r.root
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, 0, fmt.Errorf("prepare rg search: %w", err)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return nil, 0, fmt.Errorf("start rg search: %w", err)
+	}
+
+	results, total, parseErr := parseRGSearchOutput(stdout, query, limit)
+	if parseErr != nil {
+		_ = cmd.Process.Kill()
+	}
+	waitErr := cmd.Wait()
+	if ctx.Err() != nil {
+		return nil, 0, ctx.Err()
+	}
+	if parseErr != nil {
+		return nil, 0, fmt.Errorf("parse rg search output: %w", parseErr)
+	}
+	if waitErr != nil {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) && exitErr.ExitCode() == 1 {
+			return results, total, nil
+		}
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = waitErr.Error()
+		}
+		return nil, 0, fmt.Errorf("rg search failed: %s", message)
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].Path < results[j].Path })
 	return results, total, nil
 }
 
-func isSearchableTextPath(name string) bool {
-	lower := strings.ToLower(name)
-	if _, ok := searchableTextNames[lower]; ok {
-		return true
-	}
-	dot := strings.LastIndexByte(lower, '.')
-	if dot < 0 {
-		return false
-	}
-	_, ok := searchableTextExtensions[lower[dot:]]
-	return ok
+type rgJSONEvent struct {
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
 }
 
-func countMatches(lines []string, lowerQuery string) int {
-	count := 0
-	for _, line := range lines {
-		count += strings.Count(strings.ToLower(line), lowerQuery)
+type rgJSONPath struct {
+	Text  string `json:"text"`
+	Bytes string `json:"bytes"`
+}
+
+type rgJSONLines struct {
+	Text  string `json:"text"`
+	Bytes string `json:"bytes"`
+}
+
+type rgJSONSubmatch struct {
+	Start int `json:"start"`
+	End   int `json:"end"`
+}
+
+type rgJSONMatch struct {
+	Path       rgJSONPath       `json:"path"`
+	Lines      rgJSONLines      `json:"lines"`
+	LineNumber int              `json:"line_number"`
+	Submatches []rgJSONSubmatch `json:"submatches"`
+}
+
+func parseRGSearchOutput(reader io.Reader, query string, limit int) ([]domain.FileSearchResult, int, error) {
+	lowerQuery := strings.ToLower(query)
+	results := make([]domain.FileSearchResult, 0)
+	resultIndexes := make(map[string]int)
+	seenPaths := make(map[string]struct{})
+	decoder := json.NewDecoder(reader)
+	total := 0
+
+	for {
+		var event rgJSONEvent
+		if err := decoder.Decode(&event); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, 0, err
+		}
+		if event.Type != "match" {
+			continue
+		}
+
+		var match rgJSONMatch
+		if err := json.Unmarshal(event.Data, &match); err != nil {
+			return nil, 0, err
+		}
+		path, err := decodeRGText(match.Path.Text, match.Path.Bytes)
+		if err != nil {
+			return nil, 0, fmt.Errorf("decode matched path: %w", err)
+		}
+		path = filepath.ToSlash(strings.TrimPrefix(path, "./"))
+		if path == "" {
+			return nil, 0, errors.New("rg returned an empty matched path")
+		}
+
+		line := match.Lines.Text
+		if line == "" && match.Lines.Bytes != "" {
+			// The repository has historically skipped non-UTF-8 text and binary
+			// files, so do the same for JSON output that contains encoded bytes.
+			continue
+		}
+		if _, ok := seenPaths[path]; !ok {
+			seenPaths[path] = struct{}{}
+			total++
+			result := domain.FileSearchResult{
+				Path:       path,
+				Line:       match.LineNumber,
+				Snippet:    searchSnippet(line, lowerQuery),
+				MatchCount: len(match.Submatches),
+			}
+			if limit <= 0 || len(results) < limit {
+				resultIndexes[path] = len(results)
+				results = append(results, result)
+			} else {
+				maxIndex := 0
+				for index := 1; index < len(results); index++ {
+					if results[maxIndex].Path < results[index].Path {
+						maxIndex = index
+					}
+				}
+				if path < results[maxIndex].Path {
+					delete(resultIndexes, results[maxIndex].Path)
+					resultIndexes[path] = maxIndex
+					results[maxIndex] = result
+				}
+			}
+			continue
+		}
+
+		if index, ok := resultIndexes[path]; ok {
+			results[index].MatchCount += len(match.Submatches)
+		}
 	}
-	return count
+
+	return results, total, nil
+}
+
+func decodeRGText(text, encoded string) (string, error) {
+	if encoded == "" {
+		return text, nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", err
+	}
+	return string(decoded), nil
+}
+
+func searchableTextGlobs() []string {
+	patterns := make([]string, 0, len(searchableTextExtensions)+len(searchableTextNames))
+	for extension := range searchableTextExtensions {
+		patterns = append(patterns, "*"+extension)
+	}
+	for name := range searchableTextNames {
+		patterns = append(patterns, name)
+	}
+	sort.Strings(patterns)
+	return patterns
 }
 
 func searchSnippet(line, lowerQuery string) string {
