@@ -1317,6 +1317,27 @@ test.describe('git tab', () => {
 test.describe('git tab on a mobile viewport', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 
+  test('opens the branch menu within the mobile explorer viewport', async ({ page }) => {
+    await page.goto('/projects/proj/git')
+    const noRepo = page.getByRole('heading', { name: 'No git repository' })
+    try {
+      await noRepo.waitFor({ state: 'visible', timeout: 2000 })
+      await page.getByRole('button', { name: 'Initialize repository' }).click()
+      await expect(page.getByRole('heading', { name: 'Git', level: 1 })).toBeVisible()
+    } catch {
+      // The repository already exists from another Git test.
+    }
+
+    await page.getByRole('button', { name: 'Toggle file explorer' }).click()
+    const branchSwitcher = page.getByTestId('git-explorer-branch-switcher')
+    await expect(branchSwitcher).toBeVisible()
+    await branchSwitcher.click()
+
+    const menu = page.getByRole('menu')
+    await expect(menu).toBeVisible()
+    await expect.poll(async () => (await menu.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(0)
+  })
+
   test('working tree opens as a slide-over and stays reachable after selecting a file', async ({ page }) => {
     await page.request.post('/api/files', { data: { path: 'tmp-untracked.md' } })
     try {

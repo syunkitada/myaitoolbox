@@ -23,7 +23,6 @@ import { GitBranch as GitBranchInfo, GitDetail, GitFile, GitLogEntry, GitResult,
 import { Button } from '../components/ui/button'
 import { Textarea } from '../components/ui/textarea'
 import { Card, CardContent } from '../components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../components/ui/dropdown-menu'
 import { Sheet, SheetContent } from '../components/ui/sheet'
 import { DiffView } from '../components/DiffView'
 import { CommitDiffView } from '../components/CommitDiffView'
@@ -380,6 +379,12 @@ function SimpleTreeList({
   selectedCommitHash,
   onSelectCommit,
   onLoadMore,
+  branches,
+  branchesLoading,
+  currentBranch,
+  onCheckout,
+  onNewBranch,
+  busy,
 }: {
   detail: GitDetail
   hasChanges: boolean
@@ -398,6 +403,12 @@ function SimpleTreeList({
   selectedCommitHash: string | null
   onSelectCommit: (e: GitLogEntry) => void
   onLoadMore: () => void
+  branches: GitBranchInfo[]
+  branchesLoading: boolean
+  currentBranch: string
+  onCheckout: (branch: string) => void
+  onNewBranch: () => void
+  busy: boolean
 }) {
   return (
     <div className="knowledge-explorer flex h-full min-h-0 w-full flex-col overflow-y-auto bg-card p-2.5">
@@ -417,7 +428,14 @@ function SimpleTreeList({
           <GitBranch className="size-4" />
           Git
         </h1>
-        <span className="rounded-md border px-2 py-0.5 font-mono text-xs">{detail.branch || 'HEAD'}</span>
+        <BranchSwitcher
+          branches={branches}
+          loading={branchesLoading}
+          currentBranch={currentBranch}
+          onCheckout={onCheckout}
+          onNewBranch={onNewBranch}
+          disabled={busy || editorDirty}
+        />
         {scope && (
           <span className="truncate rounded-md border px-2 py-0.5 font-mono text-xs text-muted-foreground" title={scope}>
             {scope}
@@ -513,48 +531,176 @@ function BranchSwitcher({
   currentBranch,
   onCheckout,
   onNewBranch,
+  disabled,
 }: {
   branches: GitBranchInfo[]
   loading: boolean
   currentBranch: string
   onCheckout: (branch: string) => void
   onNewBranch: () => void
+  disabled: boolean
 }) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const focusOnOpenRef = useRef<'first' | 'last' | null>(null)
+
+  const menuItems = () =>
+    Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])
+  const focusTrigger = () => {
+    menuRef.current
+      ?.querySelector<HTMLButtonElement>('[data-testid="git-explorer-branch-switcher"]')
+      ?.focus()
+  }
+  const focusMenuItem = (position: 'first' | 'last') => {
+    const items = menuItems()
+    if (items.length === 0) return
+    items[position === 'first' ? 0 : items.length - 1]?.focus()
+  }
+
+  useEffect(() => {
+    if (!open) return
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setOpen(false)
+        focusTrigger()
+      }
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointerDown)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open || !focusOnOpenRef.current) return
+    const position = focusOnOpenRef.current
+    focusOnOpenRef.current = null
+    focusMenuItem(position)
+  }, [open])
+
+  const selectBranch = (branch: GitBranchInfo) => {
+    setOpen(false)
+    focusTrigger()
+    if (!branch.current) onCheckout(branch.name)
+  }
+
+  const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      if (open) {
+        setOpen(false)
+      } else {
+        focusOnOpenRef.current = 'first'
+        setOpen(true)
+      }
+      return
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const position = event.key === 'ArrowDown' ? 'first' : 'last'
+    if (open) {
+      focusMenuItem(position)
+    } else {
+      focusOnOpenRef.current = position
+      setOpen(true)
+    }
+  }
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setOpen(false)
+      focusTrigger()
+      return
+    }
+
+    const items = menuItems()
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
+    if (items.length === 0 || currentIndex < 0) return
+
+    let nextIndex: number | null = null
+    if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % items.length
+    if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + items.length) % items.length
+    if (event.key === 'Home') nextIndex = 0
+    if (event.key === 'End') nextIndex = items.length - 1
+    if (nextIndex === null) return
+
+    event.preventDefault()
+    items[nextIndex]?.focus()
+  }
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" data-testid="git-branch-switcher">
-          <GitBranch className="size-3.5" />
-          <span className="max-w-[120px] truncate font-mono text-xs">{currentBranch || 'HEAD'}</span>
-          <ChevronDown className="size-3" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-[300px] w-56">
-        <DropdownMenuLabel>Branches</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {branches.map((b) => (
-          <DropdownMenuItem
-            key={b.name}
-            onSelect={() => { if (!b.current) onCheckout(b.name) }}
-            className={cn('gap-1', b.current && 'font-semibold')}
-            data-testid={b.current ? 'git-branch-current' : undefined}
+    <div ref={menuRef} className="relative">
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={handleTriggerKeyDown}
+        data-testid="git-explorer-branch-switcher"
+      >
+        <GitBranch className="size-3.5" />
+        <span className="max-w-[120px] truncate font-mono text-xs">{currentBranch || 'HEAD'}</span>
+        <ChevronDown className="size-3" />
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          aria-label="Branches"
+          onKeyDown={handleMenuKeyDown}
+          className="absolute top-full left-0 z-50 mt-1 max-h-[300px] w-56 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+        >
+          <div className="px-2 py-1.5 text-sm font-medium">Branches</div>
+          <div className="-mx-1 my-1 h-px bg-border" role="separator" />
+          {branches.map((b) => (
+            <button
+              key={b.name}
+              type="button"
+              role="menuitem"
+              onClick={() => selectBranch(b)}
+              className={cn(
+                'relative flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground',
+                b.current && 'font-semibold',
+              )}
+              data-testid={b.current ? 'git-branch-current' : undefined}
+            >
+              {b.current && <Check className="size-3.5 shrink-0 text-green-600" />}
+              <span className="truncate">{b.name}</span>
+            </button>
+          ))}
+          {branches.length === 0 && (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+              {loading ? 'Loading…' : 'No branches found.'}
+            </p>
+          )}
+          <div className="-mx-1 my-1 h-px bg-border" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              focusTrigger()
+              onNewBranch()
+            }}
+            className="relative flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+            data-testid="git-new-branch"
           >
-            {b.current && <Check className="size-3.5 shrink-0 text-green-600" />}
-            <span className="truncate">{b.name}</span>
-          </DropdownMenuItem>
-        ))}
-        {branches.length === 0 && (
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">
-            {loading ? 'Loading…' : 'No branches found.'}
-          </p>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onNewBranch} data-testid="git-new-branch">
-          <SquarePlus className="size-3.5" />
-          New branch…
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <SquarePlus className="size-3.5" />
+            New branch…
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1063,6 +1209,12 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
       onUnstageAll={handleUnstageAll}
       editorDirty={editorDirty}
       scope={scope}
+      branches={branches}
+      branchesLoading={branchesLoading}
+      currentBranch={currentBranch}
+      onCheckout={handleCheckout}
+      onNewBranch={handleNewBranch}
+      busy={busy}
       mode={mode}
       onModeChange={handleModeChange}
       logEntries={logEntries}
@@ -1196,13 +1348,6 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
                       <ArrowUpFromLine />
                       <span className="hidden sm:inline">Push</span>
                     </Button>
-                    <BranchSwitcher
-                      branches={branches}
-                      loading={branchesLoading}
-                      currentBranch={currentBranch}
-                      onCheckout={handleCheckout}
-                      onNewBranch={handleNewBranch}
-                    />
                     <span
                       className="min-w-0 truncate font-mono text-sm"
                       data-testid="git-selected-file"

@@ -1,5 +1,6 @@
 import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
 import { api, type GitDetail } from '../api/client'
 import { DialogsProvider } from '../components/AppDialogs'
 import { GitWorkspace } from './GitPage'
@@ -46,5 +47,60 @@ describe('GitWorkspace commit message', () => {
     expect(event.defaultPrevented).toBe(true)
     await waitFor(() => expect(gitCommit).toHaveBeenCalledWith(undefined, 'Commit from shortcut', false))
     await waitFor(() => expect(message).toHaveValue(''))
+  })
+})
+
+describe('GitWorkspace branch switching', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('switches branches from the explorer branch selector', async () => {
+    const featureDetail: GitDetail = { ...detail, branch: 'feature' }
+    vi.spyOn(api, 'getGitStatus')
+      .mockResolvedValueOnce(detail)
+      .mockResolvedValue(featureDetail)
+    vi.spyOn(api, 'getGitBranches')
+      .mockResolvedValueOnce({
+        branches: [
+          { name: 'main', current: true },
+          { name: 'feature', current: false },
+        ],
+      })
+      .mockResolvedValue({
+        branches: [
+          { name: 'main', current: false },
+          { name: 'feature', current: true },
+        ],
+      })
+    const gitCheckout = vi.spyOn(api, 'gitCheckout').mockResolvedValue({ ok: true, output: '' })
+    const refreshMeta = vi.fn().mockResolvedValue(undefined)
+
+    render(
+      <DialogsProvider>
+        <GitWorkspace refreshMeta={refreshMeta} />
+      </DialogsProvider>,
+    )
+
+    const user = userEvent.setup()
+    const branchSwitcher = await screen.findByTestId('git-explorer-branch-switcher')
+    expect(branchSwitcher).toHaveTextContent('main')
+
+    await user.click(branchSwitcher)
+    expect(screen.getByTestId('git-new-branch')).toBeInTheDocument()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByTestId('git-branch-current')).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: 'feature' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(branchSwitcher).toHaveFocus()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    await user.click(branchSwitcher)
+    await user.click(await screen.findByRole('menuitem', { name: 'feature' }))
+
+    expect(branchSwitcher).toHaveFocus()
+    await waitFor(() => expect(gitCheckout).toHaveBeenCalledWith(undefined, 'feature'))
+    await waitFor(() => expect(branchSwitcher).toHaveTextContent('feature'))
   })
 })
