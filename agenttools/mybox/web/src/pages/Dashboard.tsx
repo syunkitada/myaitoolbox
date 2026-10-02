@@ -66,14 +66,15 @@ export function Dashboard({
     setTaskDialog(true)
   }
 
-  const handleNewFile = async (dir: string) => {
-    const prefix = dir ? `${dir}/` : ''
-    const name = await prompt('New file path', prefix)
+  const handleNewEntry = async (kind: 'file' | 'folder') => {
+    const name = await prompt(kind === 'file' ? 'New file path' : 'New folder path')
     if (!name || !name.trim()) return
     const path = name.trim()
-    void api
-      .createFile(path)
-      .then(() => navigate(projectUrl(`/dashboard/files/${encodePath(path)}`)))
+    const create = kind === 'file' ? api.createFile(path) : api.createDir(path)
+    void create
+      .then(() => {
+        setRevealPath(path)
+      })
       .catch((e) => void alert(e instanceof Error ? e.message : String(e)))
   }
 
@@ -92,7 +93,8 @@ export function Dashboard({
     () =>
       subscribeNavActions((action) => {
         if (action === 'new-task') handleNewTask()
-        else if (action === 'new-file') handleNewFile('')
+        else if (action === 'new-file') void handleNewEntry('file')
+        else if (action === 'new-folder') void handleNewEntry('folder')
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],

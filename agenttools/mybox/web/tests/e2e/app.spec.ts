@@ -408,6 +408,26 @@ test('nav bar file actions open a terminal', async ({ page }) => {
   await expect(page.locator('.terminal-panel')).toBeVisible()
 })
 
+test('New file menu creates files and folders from the Files tab', async ({ page }) => {
+  const explorer = page.locator('.knowledge-explorer')
+  const newFileButton = page.getByRole('button', { name: 'New file', exact: true })
+
+  await newFileButton.click()
+  await expect(page.getByRole('menuitem', { name: 'New file', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'New folder', exact: true })).toBeVisible()
+
+  await page.getByRole('menuitem', { name: 'New folder', exact: true }).click()
+  await acceptAppDialog(page, 'created-from-new-folder-menu')
+  await expect(page).toHaveURL(/\/projects\/proj\/dashboard\/files\/created-from-new-folder-menu$/)
+  await expect(explorer).toContainText('created-from-new-folder-menu')
+
+  await newFileButton.click()
+  await page.getByRole('menuitem', { name: 'New file', exact: true }).click()
+  await acceptAppDialog(page, 'created-from-new-file-menu.txt')
+  await expect(page).toHaveURL(/\/projects\/proj\/dashboard\/files\/created-from-new-file-menu\.txt$/)
+  await expect(explorer).toContainText('created-from-new-file-menu.txt')
+})
+
 test('terminal paste modal starts larger and supports horizontal resizing', async ({ page }) => {
   await page.getByRole('button', { name: 'Open terminal' }).click()
   await page.getByRole('button', { name: 'Paste' }).click()

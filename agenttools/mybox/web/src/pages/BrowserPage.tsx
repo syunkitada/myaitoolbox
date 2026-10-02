@@ -7,7 +7,13 @@ import { FileTabs } from '../components/FileTabs'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { TaskProgress } from '../components/TaskProgress'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
-import { Button } from '../components/ui/button'
+import { Button, buttonVariants } from '../components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu'
 import { Card, CardContent } from '../components/ui/card'
 import { Separator } from '../components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../components/ui/collapsible'
@@ -15,7 +21,7 @@ import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { Badge } from '../components/ui/badge'
-import { Archive, ArrowLeftRight, ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
+import { Archive, ArrowLeftRight, ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, FolderPlus, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -1037,16 +1043,26 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
         )}
         <h1 className="text-lg font-bold">{title}</h1>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="cursor-pointer"
-            onClick={() => dispatchNavAction('new-file')}
-            aria-label="New file"
-            title="New file"
-          >
-            <FilePlus />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'cursor-pointer')}
+              aria-label="New file"
+              title="New file or folder"
+            >
+              <FilePlus />
+              <ChevronDown className="size-3" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => dispatchNavAction('new-file')}>
+                <FilePlus />
+                New file
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => dispatchNavAction('new-folder')}>
+                <FolderPlus />
+                New folder
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant="ghost"
             size="sm"
