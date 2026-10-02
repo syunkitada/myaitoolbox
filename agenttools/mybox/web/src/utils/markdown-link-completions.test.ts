@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { dirname, relativePath, suggestLinkTargets, type LinkPathItem } from './markdown-link-completions'
+import { completionDirectory, dirname, relativePath, suggestLinkTargets, type LinkPathItem } from './markdown-link-completions'
 
 describe('dirname', () => {
   it('returns empty for root paths', () => {
@@ -29,6 +29,22 @@ describe('relativePath', () => {
 
   it('computes a relative path going deeper', () => {
     expect(relativePath('a', 'a/b/c.md')).toBe('b/c.md')
+  })
+})
+
+describe('completionDirectory', () => {
+  it('loads the directory named by the typed path', () => {
+    expect(completionDirectory('notes/readme.md', './docs/gu')).toBe('notes/docs')
+    expect(completionDirectory('notes/readme.md', '../docs/')).toBe('docs')
+  })
+
+  it('uses the current file directory for a file-name prefix', () => {
+    expect(completionDirectory('notes/readme.md', '')).toBe('notes')
+    expect(completionDirectory('notes/readme.md', 'guide')).toBe('notes')
+  })
+
+  it('resolves from the project root when there is no current file', () => {
+    expect(completionDirectory(undefined, './docs/')).toBe('docs')
   })
 })
 

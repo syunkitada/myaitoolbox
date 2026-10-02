@@ -4,7 +4,7 @@ import { Activity, Bot, Box, Boxes, Cpu, GitBranch, HardDrive, MemoryStick, Squa
 import { api, Meta, Stats } from '../api/client'
 import { clearProject, dirName, encodePath, projectUrlFor, setProject } from '../utils/routes'
 import type { HerdrAgent, HerdrOverview, ProjectGitStatus } from '../api/client'
-import { filePathForAgent } from '../utils/herdr-file-agent'
+import { hasTaskFile, taskDirectoryForFilePath, taskFilePathForAgent } from '../utils/herdr-file-agent'
 import { statusDotClass } from './herdr-status'
 import {
   Sidebar,
@@ -182,6 +182,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
   const { setOpenMobile, state } = useSidebar()
   const collapsed = state === 'collapsed'
   const sidebarStats = useSidebarStats()
+  const agentNavigationRequestRef = useRef(0)
 
   const handleNav = () => {
     setOpenMobile(false)
@@ -201,11 +202,12 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
   }
 
   // openAgent opens the agent's linked task file in the Files tab when the
-	// agent belongs to a task directory (_tasks/<dir>/...); otherwise it opens
+  // agent belongs to a task directory (_tasks/<dir>/...); otherwise it opens
   // the Herdr tab of the agent's own workspace project (when it maps to a
   // known project) or falls back to the current/default project, with the
   // agent's operation panel pre-opened.
   const openAgent = async (agent: HerdrAgent, fallbackProject?: string) => {
+    const requestId = ++agentNavigationRequestRef.current
     const agentProject =
       workspaceProject(agent.workspace_id) ||
       (fallbackProject && meta?.projects?.includes(fallbackProject) ? fallbackProject : null) ||
@@ -215,23 +217,30 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
       ''
     if (!agentProject) return
     handleNav()
-    // File agents carry a custom name derived from their task directory; only
-    // those can be linked back to a file. Generic agents skip the file lookup.
+    // File-agent tabs retain the original task directory label. Resolve the
+    // candidate from the already-loaded herdr overview, then verify only its
+    // task directory before navigating.
     if (agent.custom_name) {
-      try {
-        const entries = await api.listFiles({ project: agentProject })
-        const filePath = filePathForAgent(
-          entries.filter((e) => e.kind === 'file'),
-          agent.name,
-        )
-        if (filePath) {
-          navigate(projectUrlFor(agentProject, `/dashboard/files/${encodePath(filePath)}`))
-          return
+      const filePath = taskFilePathForAgent(agent, herdr?.panes ?? [], herdr?.tabs ?? [])
+      if (filePath) {
+        try {
+          const entries = await api.listFiles({
+            path: taskDirectoryForFilePath(filePath),
+            showHidden: true,
+            project: agentProject,
+          })
+          if (requestId !== agentNavigationRequestRef.current) return
+          if (hasTaskFile(entries, filePath)) {
+            navigate(projectUrlFor(agentProject, `/dashboard/files/${encodePath(filePath)}`))
+            return
+          }
+        } catch {
+          if (requestId !== agentNavigationRequestRef.current) return
+          // Fall back to the Herdr tab when the linked task file is unavailable.
         }
-      } catch {
-        // Listing files failed: fall back to the Herdr tab below.
       }
     }
+    if (requestId !== agentNavigationRequestRef.current) return
     navigate(`${projectUrlFor(agentProject, '/herdr')}?agent=${encodeURIComponent(agent.pane_id)}`)
   }
 

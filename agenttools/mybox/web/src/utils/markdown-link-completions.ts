@@ -16,6 +16,28 @@ export function dirname(p: string): string {
   return i < 0 ? '' : p.slice(0, i)
 }
 
+function normalizeDirectory(baseDir: string, dirPart: string): string {
+  const parts = [...baseDir.split('/').filter(Boolean), ...dirPart.split('/').filter(Boolean)]
+  const normalized: string[] = []
+  for (const part of parts) {
+    if (part === '.') continue
+    if (part === '..') {
+      normalized.pop()
+    } else {
+      normalized.push(part)
+    }
+  }
+  return normalized.join('/')
+}
+
+/** Returns the only directory whose direct children are needed for a typed link. */
+export function completionDirectory(filePath: string | undefined, typed: string): string {
+  const clean = typed.trim().replace(/^\.\//, '')
+  const slash = clean.lastIndexOf('/')
+  const dirPart = slash < 0 ? '' : clean.slice(0, slash)
+  return normalizeDirectory(filePath ? dirname(filePath) : '', dirPart)
+}
+
 export function relativePath(fromDir: string, to: string): string {
   if (!fromDir) return to
   const from = fromDir.split('/').filter(Boolean)

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
-import { api } from '../api/client'
+import type * as monaco from 'monaco-editor'
 import { computeLineDiff } from '../utils/line-diff'
-import { setMarkdownLinkCompletions } from '../utils/markdown-completions'
+import {
+  setMarkdownLinkCompletions,
+  type MarkdownLinkCompletionLoader,
+} from '../utils/markdown-completions'
 
 interface MonacoEditorProps {
   value: string
@@ -15,6 +18,7 @@ interface MonacoEditorProps {
   initialLine?: number
   original?: string
   completions?: Array<{ path: string; kind: 'file' | 'dir' }>
+  loadCompletionDir?: MarkdownLinkCompletionLoader
 }
 
 const EXT_LANGUAGE: Record<string, string> = {
@@ -112,10 +116,12 @@ function MonacoEditorInner({
   initialLine,
   original,
   completions,
+  loadCompletionDir,
 }: MonacoEditorProps) {
   const dark = useIsDark()
   const theme = dark ? 'vs-dark' : 'light'
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null)
+  const completionReleaseRef = useRef<(() => void) | null>(null)
   const pathRef = useRef(path)
   pathRef.current = path
   const decorationIds = useRef<string[]>([])
@@ -178,8 +184,22 @@ function MonacoEditorInner({
     decorationIds.current = model.deltaDecorations(decorationIds.current, decorations as never[])
   }
 
+  const registerMarkdownCompletions = (
+    model: monaco.editor.ITextModel,
+    filePath: string | undefined,
+    items: MonacoEditorProps['completions'],
+    loader: MarkdownLinkCompletionLoader | undefined,
+  ) => {
+    completionReleaseRef.current?.()
+    completionReleaseRef.current = setMarkdownLinkCompletions(model, filePath, items, loader)
+  }
+
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
+    const model = editor.getModel()
+    if (resolvedLanguage === 'markdown' && model) {
+      registerMarkdownCompletions(model, pathRef.current, completions, loadCompletionDir)
+    }
     const onNativeKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Enter' || resolvedLanguage !== 'markdown') return
       const position = editor.getPosition()
@@ -245,6 +265,8 @@ function MonacoEditorInner({
     editor.onDidDispose(() => {
       window.removeEventListener('keydown', onNativeKeyDown, true)
       onMonacoKeyDown.dispose()
+      completionReleaseRef.current?.()
+      completionReleaseRef.current = null
     })
     if (monaco) {
       try {
@@ -274,30 +296,14 @@ function MonacoEditorInner({
   }, [])
 
   useEffect(() => {
-    if (resolvedLanguage === 'markdown') {
-      setMarkdownLinkCompletions(path, completions)
-    }
-  }, [path, completions, resolvedLanguage])
-
-  // BrowserPage supplies the already-loaded tree. Keep a fallback for other
-  // editor callers, while avoiding a second recursive scan in the browser.
-  useEffect(() => {
-    if (resolvedLanguage !== 'markdown' || !path || completions !== undefined) return
-    let cancelled = false
-    void api
-      .listFiles({ showHidden: true })
-      .then((entries) => {
-        if (cancelled) return
-        setMarkdownLinkCompletions(
-          path,
-          entries.map(({ path: entryPath, kind }) => ({ path: entryPath, kind })),
-        )
-      })
-      .catch(() => undefined)
+    const model = editorRef.current?.getModel()
+    if (resolvedLanguage !== 'markdown' || !model) return
+    registerMarkdownCompletions(model, path, completions, loadCompletionDir)
     return () => {
-      cancelled = true
+      completionReleaseRef.current?.()
+      completionReleaseRef.current = null
     }
-  }, [completions, path, resolvedLanguage])
+  }, [completions, loadCompletionDir, path, resolvedLanguage])
 
   return (
     <div className={className}>

@@ -68,3 +68,128 @@ export function filePathForAgent(
   }
   return best
 }
+
+/**
+ * Resolves the canonical task file from the tab label used by a file agent.
+ * File-agent tabs retain the original task directory name, while the agent
+ * name is the slug derived from that directory. This avoids scanning files to
+ * reverse the slug.
+ */
+export function taskFilePathForAgent(
+  agent: Readonly<{ name: string; pane_id: string }>,
+  panes: ReadonlyArray<Readonly<{ pane_id: string; tab_id: string }>>,
+  tabs: ReadonlyArray<Readonly<{ tab_id: string; label: string }>>,
+): string | null {
+  const pane = panes.find((candidate) => candidate.pane_id === agent.pane_id)
+  if (!pane) return null
+  const tab = tabs.find((candidate) => candidate.tab_id === pane.tab_id)
+  const label = tab?.label?.trim()
+  if (!label) return null
+  const path = `_tasks/${label}/task.md`
+  return taskAgentName(path) === agent.name ? path : null
+}
+
+export function taskDirectoryForFilePath(filePath: string): string {
+  const slash = filePath.lastIndexOf('/')
+  return slash < 0 ? '' : filePath.slice(0, slash)
+}
+
+export function hasTaskFile(
+  entries: ReadonlyArray<Readonly<{ path: string; kind: 'file' | 'dir' }>>,
+  filePath: string,
+): boolean {
+  return entries.some((entry) => entry.path === filePath && entry.kind === 'file')
+}
+
+export interface LinkedTaskAgent {
+  agent: Readonly<{ name: string; pane_id: string; custom_name?: string | null }>
+  pane: Readonly<{ pane_id: string; tab_id: string }>
+  tab: Readonly<{ tab_id: string; label: string }>
+  taskDirectory: string
+  taskFile: string
+}
+
+/** Returns the project-relative task directory for a valid file-agent label. */
+export function taskDirectoryPathForLabel(label: string): string | null {
+  const trimmed = label.trim()
+  if (!trimmed) return null
+  const taskFile = `_tasks/${trimmed}/task.md`
+  return taskDirFromPath(taskFile) === trimmed ? `_tasks/${trimmed}` : null
+}
+
+export function linkedTaskAgentForTab(
+  tabId: string,
+  agents: ReadonlyArray<Readonly<{ name: string; pane_id: string; custom_name?: string | null }>>,
+  panes: ReadonlyArray<Readonly<{ pane_id: string; tab_id: string }>>,
+  tabs: ReadonlyArray<Readonly<{ tab_id: string; label: string }>>,
+): LinkedTaskAgent | null {
+  const tab = tabs.find((candidate) => candidate.tab_id === tabId)
+  const tabPanes = panes.filter((candidate) => candidate.tab_id === tabId)
+  if (!tab) return null
+  for (const pane of tabPanes) {
+    const agent = agents.find((candidate) => candidate.pane_id === pane.pane_id && candidate.custom_name)
+    if (!agent) continue
+    const taskFile = taskFilePathForAgent(agent, panes, tabs)
+    if (!taskFile) continue
+    return {
+      agent,
+      pane,
+      tab,
+      taskDirectory: taskFile.slice(0, -'/task.md'.length),
+      taskFile,
+    }
+  }
+  return null
+}
+
+export function linkedTaskAgentForPath(
+  path: string,
+  agents: ReadonlyArray<Readonly<{ name: string; pane_id: string; custom_name?: string | null }>>,
+  panes: ReadonlyArray<Readonly<{ pane_id: string; tab_id: string }>>,
+  tabs: ReadonlyArray<Readonly<{ tab_id: string; label: string }>>,
+): LinkedTaskAgent | null {
+  for (const agent of agents) {
+    const link = agent.custom_name ? linkedTaskAgentForTabForPane(agent, panes, tabs) : null
+    if (link && (path === link.taskDirectory || path.startsWith(`${link.taskDirectory}/`))) return link
+  }
+  return null
+}
+
+export interface LinkedTaskRename {
+  oldTaskDirectory: string
+  newTaskDirectory: string
+  oldAgentName: string
+  newAgentName: string
+  label: string
+}
+
+export function linkedTaskRenameForLabel(link: LinkedTaskAgent, label: string): LinkedTaskRename | null {
+  const newTaskDirectory = taskDirectoryPathForLabel(label)
+  if (!newTaskDirectory) return null
+  const normalizedLabel = newTaskDirectory.slice('_tasks/'.length)
+  const newAgentName = taskAgentName(`${newTaskDirectory}/task.md`)
+  if (!newAgentName) return null
+  return {
+    oldTaskDirectory: link.taskDirectory,
+    newTaskDirectory,
+    oldAgentName: link.agent.name,
+    newAgentName,
+    label: normalizedLabel,
+  }
+}
+
+export function linkedTaskRenameForPathMove(link: LinkedTaskAgent, newPath: string): LinkedTaskRename | null {
+  const dir = taskDirFromPath(newPath)
+  if (!dir) return null
+  return linkedTaskRenameForLabel(link, dir)
+}
+
+function linkedTaskAgentForTabForPane(
+  agent: Readonly<{ name: string; pane_id: string; custom_name?: string | null }>,
+  panes: ReadonlyArray<Readonly<{ pane_id: string; tab_id: string }>>,
+  tabs: ReadonlyArray<Readonly<{ tab_id: string; label: string }>>,
+): LinkedTaskAgent | null {
+  const pane = panes.find((candidate) => candidate.pane_id === agent.pane_id)
+  if (!pane) return null
+  return linkedTaskAgentForTab(pane.tab_id, [agent], panes, tabs)
+}

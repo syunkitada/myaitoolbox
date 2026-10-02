@@ -13,7 +13,7 @@
 | [`herdr-layout.ts`](./herdr-layout.ts) / [`herdr-layout.test.ts`](./herdr-layout.test.ts) | Herdrペイン分割・リサイズレイアウトとテスト。 |
 | [`herdr-status.ts`](./herdr-status.ts) / [`herdr-status.test.ts`](./herdr-status.test.ts) | mybox未確認のHerdr完了状態を保持する状態遷移とテスト。 |
 | [`line-diff.ts`](./line-diff.ts) / [`line-diff.test.ts`](./line-diff.test.ts) | Monacoの行差分計算。大規模入力では計算量を制限する。 |
-| [`markdown-completions.ts`](./markdown-completions.ts) | Markdown入力の補完候補。 |
+| [`markdown-completions.ts`](./markdown-completions.ts) / [`markdown-completions.test.ts`](./markdown-completions.test.ts) | Markdown入力の遅延補完候補とモデル単位の状態管理・テスト。 |
 | [`markdown-link-completions.ts`](./markdown-link-completions.ts) / [`markdown-link-completions.test.ts`](./markdown-link-completions.test.ts) | 相対Markdownリンク補完とテスト。 |
 | [`markdown.ts`](./markdown.ts) / [`markdown.test.ts`](./markdown.test.ts) | Markdown変換・リンク処理・Jira wiki markupへのコピー変換とテスト。 |
 | [`prism-langs.ts`](./prism-langs.ts) | Prism対応言語の登録。 |

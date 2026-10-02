@@ -12,6 +12,9 @@ vi.mock('../api/client', () => ({
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
     sendKeysHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     listFiles: vi.fn().mockResolvedValue([]),
+    moveFile: vi.fn().mockResolvedValue(undefined),
+    renameHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
+    renameHerdrTab: vi.fn().mockResolvedValue({ ok: true }),
     promptHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     listHerdrScheduledPrompts: vi.fn().mockResolvedValue([]),
     createHerdrScheduledPrompt: vi.fn().mockImplementation((target: string, text: string, scheduled_at: string) =>
@@ -45,6 +48,12 @@ const overview = {
   ],
   tabs: [{ tab_id: 'w1:t1', workspace_id: 'w1', label: '1', number: 1, agent_status: 'idle' }],
   panes: [{ pane_id: 'w1:p1', tab_id: 'w1:t1', workspace_id: 'w1', cwd: '/proj', agent_status: 'idle' }],
+}
+
+const linkedOverview = {
+  ...overview,
+  agents: [{ ...overview.agents[0], name: 'f20260919_foo', custom_name: 'f20260919_foo' }],
+  tabs: [{ ...overview.tabs[0], label: '20260919_foo' }],
 }
 
 class TestResizeObserver {
@@ -128,6 +137,89 @@ describe('HerdrPage agent commands', () => {
     )
 
     expect(screen.getByTestId('herdr-workspaces-toggle')).toHaveAttribute('data-state', 'closed')
+  })
+
+  it('renames a linked task directory, agent, and tab together', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={linkedOverview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId={null}
+            onWebuiFocusChange={() => undefined}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('herdr-workspaces-toggle'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename tab w1:t1' }))
+    const input = await screen.findByTestId('app-dialog-input')
+    fireEvent.change(input, { target: { value: '20260920_bar' } })
+    fireEvent.click(screen.getByTestId('app-dialog-ok'))
+
+    await waitFor(() => {
+      expect(api.moveFile).toHaveBeenCalledWith('_tasks/20260919_foo', '_tasks/20260920_bar')
+      expect(api.renameHerdrAgent).toHaveBeenCalledWith('w1:p1', 'f20260920_bar')
+      expect(api.renameHerdrTab).toHaveBeenCalledWith('w1:t1', '20260920_bar')
+    })
+  })
+
+  it('does not open a missing linked task file', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={linkedOverview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId={null}
+            onWebuiFocusChange={() => undefined}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('agent-file-w1:p1'))
+
+    await waitFor(() => expect(api.listFiles).toHaveBeenCalledWith({
+      path: '_tasks/20260919_foo',
+      showHidden: true,
+      project: 'demo',
+    }))
+    expect(screen.getByText('Linked task file not found: _tasks/20260919_foo/task.md')).toBeInTheDocument()
+  })
+
+  it('does not merge a linked task into an existing task directory', async () => {
+    vi.mocked(api.listFiles).mockResolvedValueOnce([
+      { path: '_tasks/20260920_bar', name: '20260920_bar', kind: 'dir' },
+    ])
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={linkedOverview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            webuiFocusedPaneId={null}
+            onWebuiFocusChange={() => undefined}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('herdr-workspaces-toggle'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename tab w1:t1' }))
+    fireEvent.change(await screen.findByTestId('app-dialog-input'), { target: { value: '20260920_bar' } })
+    fireEvent.click(screen.getByTestId('app-dialog-ok'))
+
+    await waitFor(() => expect(screen.getByText('The task directory already exists: _tasks/20260920_bar')).toBeInTheDocument())
+    expect(api.moveFile).not.toHaveBeenCalled()
   })
 
   it('sends /new from the expanded agent panel and omits /init', async () => {

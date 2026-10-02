@@ -285,11 +285,13 @@ describe('BrowserPage file reveal', () => {
     expect(list.mock.calls.filter(([options]) => options?.path === '')).toHaveLength(initialRootLoads)
   })
 
-  it('shares the recursive Markdown tree load between the page and its editor', async () => {
+  it('loads only the root and selected file ancestors for Markdown files', async () => {
     const path = 'notes/readme.md'
-    const list = vi.spyOn(api, 'listFiles').mockResolvedValue([
-      { path, name: 'readme.md', kind: 'file' },
-    ])
+    const list = vi.spyOn(api, 'listFiles').mockImplementation(async (options) => {
+      if (options?.path === '') return [{ path: 'notes', name: 'notes', kind: 'dir' }]
+      if (options?.path === 'notes') return [{ path, name: 'readme.md', kind: 'file' }]
+      return []
+    })
     vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
     vi.spyOn(api, 'getFileContent').mockResolvedValue({ path, content: '# Notes' })
     vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
@@ -317,9 +319,9 @@ describe('BrowserPage file reveal', () => {
       </DialogsProvider>,
     )
 
-    await waitFor(() => expect(list).toHaveBeenCalledWith({ showHidden: true }))
-    const recursiveLoads = list.mock.calls.filter(([options]) => !options?.path)
-    expect(recursiveLoads).toHaveLength(1)
+    await waitFor(() => expect(list).toHaveBeenCalledWith({ path: '', showHidden: true }))
+    await waitFor(() => expect(list).toHaveBeenCalledWith({ path: 'notes', showHidden: true }))
+    expect(list.mock.calls.some(([options]) => options?.path === undefined)).toBe(false)
   })
 })
 
@@ -737,6 +739,86 @@ describe('Explorer reference actions', () => {
     await waitFor(() => expect(moveFile).toHaveBeenCalledWith(path, renamedPath))
     await waitFor(() => expect(within(screen.getByTestId('main-file-viewer-pane')).getByTitle(renamedPath)).toBeInTheDocument())
     expect(within(screen.getByTestId('reference-file-viewer-pane')).getByTitle(renamedPath)).toBeInTheDocument()
+  })
+
+  it('restores the selected and explorer paths when linked agent synchronization fails', async () => {
+    const oldPath = '_tasks/old'
+    const newPath = '_tasks/new'
+    const selectedPath = `${oldPath}/task.md`
+    let currentTaskDirectory = oldPath
+    const moveFile = vi.spyOn(api, 'moveFile').mockImplementation(async (source, target) => {
+      if (source === oldPath && target === newPath) currentTaskDirectory = newPath
+      if (source === newPath && target === oldPath) currentTaskDirectory = oldPath
+    })
+    vi.spyOn(api, 'listFiles').mockImplementation(async (options) => {
+      if (options?.path === '') return [{ path: '_tasks', name: '_tasks', kind: 'dir' }]
+      if (options?.path === '_tasks') {
+        return [{ path: currentTaskDirectory, name: currentTaskDirectory.split('/').pop()!, kind: 'dir' }]
+      }
+      if (options?.path === currentTaskDirectory) {
+        const filePath = `${currentTaskDirectory}/task.md`
+        return [{ path: filePath, name: 'task.md', kind: 'file' }]
+      }
+      return []
+    })
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path: selectedPath, content: '# Old task' })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    vi.spyOn(api, 'renameHerdrAgent').mockRejectedValue(new Error('agent rename failed'))
+    vi.spyOn(api, 'renameHerdrTab').mockResolvedValue({ ok: true })
+    const onSelect = vi.fn()
+    const overview = {
+      available: true,
+      workspaces: [{ workspace_id: 'w1', label: 'demo', number: 1, agent_status: 'working', tab_count: 1, pane_count: 1 }],
+      agents: [{ name: 'old', custom_name: 'old', workspace_id: 'w1', pane_id: 'w1:p1', status: 'working' }],
+      tabs: [{ tab_id: 'w1:t1', workspace_id: 'w1', label: 'old', number: 1, agent_status: 'working' }],
+      panes: [{ pane_id: 'w1:p1', tab_id: 'w1:t1', workspace_id: 'w1', cwd: '/proj', agent_status: 'working' }],
+    }
+
+    const router = createMemoryRouter(
+      [{
+        path: '*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected={selectedPath}
+            onSelect={onSelect}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+            herdrOverview={overview}
+            refreshHerdr={vi.fn()}
+          />
+        ),
+      }],
+      { initialEntries: [`/projects/demo/dashboard/files/${selectedPath}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    const taskFile = await screen.findByRole('button', { name: 'task.md' })
+    fireEvent.contextMenu(taskFile.closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+    const referencePane = await screen.findByTestId('reference-file-viewer-pane')
+    await waitFor(() => expect(within(referencePane).getByTitle(selectedPath)).toBeInTheDocument())
+
+    const oldDirectory = await screen.findByRole('button', { name: 'old' })
+    fireEvent.contextMenu(oldDirectory.closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.change(await screen.findByTestId('app-dialog-input'), { target: { value: newPath } })
+    fireEvent.click(screen.getByTestId('app-dialog-ok'))
+
+    await waitFor(() => expect(moveFile).toHaveBeenCalledWith(oldPath, newPath))
+    await waitFor(() => expect(moveFile).toHaveBeenCalledWith(newPath, oldPath))
+    expect(onSelect).not.toHaveBeenCalledWith(newPath)
+    await waitFor(() => expect(screen.getAllByText('old').length).toBeGreaterThan(0))
+    expect(screen.queryByText('new')).not.toBeInTheDocument()
+    expect(within(referencePane).getByTitle(selectedPath)).toBeInTheDocument()
+    expect(within(referencePane).queryByTitle(`${newPath}/task.md`)).not.toBeInTheDocument()
   })
 
   it('blocks route navigation when the reference pane has unsaved changes', async () => {

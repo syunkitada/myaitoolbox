@@ -16,7 +16,13 @@ import {
   HERDR_AGENT_PROMPT_HEIGHT_STORAGE_KEY,
   useResizableHeight,
 } from '../hooks/use-resizable-height'
-import { filePathForAgent } from '../utils/herdr-file-agent'
+import {
+  hasTaskFile,
+  linkedTaskAgentForTab,
+  linkedTaskRenameForLabel,
+  taskDirectoryForFilePath,
+  type LinkedTaskAgent,
+} from '../utils/herdr-file-agent'
 import { AGENT_COMMANDS } from '../utils/herdr-agent-commands'
 import {
   formatDateTimeLocal,
@@ -735,10 +741,11 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, 
   )
 }
 
-function TabRow({ tab, panes, active, onSelect, onChanged, onError }: {
+function TabRow({ tab, panes, active, linkedTask, onSelect, onChanged, onError }: {
   tab: HerdrTab
   panes: HerdrPane[]
   active: boolean
+  linkedTask?: LinkedTaskAgent
   onSelect: () => void
   onChanged: OnChanged
   onError: OnError
@@ -749,8 +756,55 @@ function TabRow({ tab, panes, active, onSelect, onChanged, onError }: {
     e.stopPropagation()
     const label = await prompt(`Rename tab "${tab.label}"`, tab.label)
     if (label === null) return
-    if (!label.trim()) return
-    void runOp(() => api.renameHerdrTab(tab.tab_id, label.trim()), onError, onChanged)
+    const nextLabel = label.trim()
+    if (!nextLabel) return
+    if (!linkedTask) {
+      void runOp(() => api.renameHerdrTab(tab.tab_id, nextLabel), onError, onChanged)
+      return
+    }
+    const renamePlan = linkedTaskRenameForLabel(linkedTask, nextLabel)
+    if (!renamePlan) {
+      onError('File-agent tabs must use a valid _tasks directory name (letters, digits, _, ., :, -).')
+      return
+    }
+    void runOp(async () => {
+      let directoryMoved = false
+      let agentRenamed = false
+      try {
+        if (renamePlan.oldTaskDirectory !== renamePlan.newTaskDirectory) {
+          const taskDirs = await api.listFiles({ path: '_tasks', showHidden: true })
+          if (taskDirs.some((entry) => entry.path === renamePlan.newTaskDirectory)) {
+            throw new Error(`The task directory already exists: ${renamePlan.newTaskDirectory}`)
+          }
+          await api.moveFile(renamePlan.oldTaskDirectory, renamePlan.newTaskDirectory)
+          directoryMoved = true
+        }
+        if (renamePlan.oldAgentName !== renamePlan.newAgentName) {
+          await api.renameHerdrAgent(linkedTask.agent.pane_id, renamePlan.newAgentName)
+          agentRenamed = true
+        }
+        await api.renameHerdrTab(tab.tab_id, renamePlan.label)
+      } catch (error) {
+        const rollbackErrors: string[] = []
+        if (agentRenamed) {
+          try {
+            await api.renameHerdrAgent(linkedTask.agent.pane_id, renamePlan.oldAgentName)
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError))
+          }
+        }
+        if (directoryMoved) {
+          try {
+            await api.moveFile(renamePlan.newTaskDirectory, renamePlan.oldTaskDirectory)
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError))
+          }
+        }
+        const message = error instanceof Error ? error.message : String(error)
+        if (rollbackErrors.length > 0) throw new Error(`${message}; rollback failed: ${rollbackErrors.join('; ')}`)
+        throw error
+      }
+    }, onError, onChanged)
   }
 
   const closeTab = async (e: React.MouseEvent) => {
@@ -827,6 +881,7 @@ interface WorkspaceSectionProps {
   onSelectTab: (tabId: string) => void
   onSelectPane: (paneId: string) => void
   autoReload: boolean
+  linkedTasks: ReadonlyMap<string, LinkedTaskAgent>
   onChanged: OnChanged
   onError: OnError
 }
@@ -842,6 +897,7 @@ function WorkspaceSection({
   onSelectTab,
   onSelectPane,
   autoReload,
+  linkedTasks,
   onChanged,
   onError,
 }: WorkspaceSectionProps) {
@@ -988,6 +1044,7 @@ function WorkspaceSection({
                 tab={t}
                 panes={panes.filter((p) => p.tab_id === t.tab_id)}
                 active={t.tab_id === activeTab?.tab_id}
+                linkedTask={linkedTasks.get(t.tab_id)}
                 onSelect={() => onSelectTab(t.tab_id)}
                 onChanged={onChanged}
                 onError={onError}
@@ -1187,34 +1244,22 @@ export function HerdrPage({
     await refreshLayouts()
   }, [refresh, refreshLayouts])
 
-  // Load the project's files once so each agent can be linked back to the
-  // task directory it was started for (reverse of taskAgentName).
-  const [files, setFiles] = useState<Array<{ path: string }> | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    api
-      .listFiles()
-      .then((entries) => {
-        if (!cancelled) setFiles(entries.filter((e) => e.kind === 'file'))
-      })
-      .catch(() => {
-        if (!cancelled) setFiles([])
-      })
-    return () => {
-      cancelled = true
+  const linkedTasks = useMemo(() => {
+    const map = new Map<string, LinkedTaskAgent>()
+    for (const tab of tabs) {
+      const found = linkedTaskAgentForTab(tab.tab_id, agents, panes, tabs)
+      if (found) map.set(tab.tab_id, found)
     }
-  }, [])
+    return map
+  }, [agents, panes, tabs])
 
   const agentFilePath = useMemo(() => {
     const map = new Map<string, string>()
-    if (files) {
-      for (const a of agents) {
-        const found = filePathForAgent(files, a.name)
-        if (found) map.set(a.pane_id, found)
-      }
+    for (const link of linkedTasks.values()) {
+      map.set(link.agent.pane_id, link.taskFile)
     }
     return map
-  }, [files, agents])
+  }, [linkedTasks])
 
   // Map each agent's pane to its terminal column width so terminal output can
   // wrap at the same columns as the real herdr pane.
@@ -1234,6 +1279,26 @@ export function HerdrPage({
     setOpError(message)
     setTimeout(() => setOpError((cur) => (cur === message ? null : cur)), 6000)
   }, [])
+
+  const openLinkedTaskFile = useCallback(
+    async (filePath: string) => {
+      try {
+        const entries = await api.listFiles({
+          path: taskDirectoryForFilePath(filePath),
+          showHidden: true,
+          project,
+        })
+        if (!hasTaskFile(entries, filePath)) {
+          onError(`Linked task file not found: ${filePath}`)
+          return
+        }
+        navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))
+      } catch (error) {
+        onError(error instanceof Error ? error.message : String(error))
+      }
+    },
+    [navigate, onError, project],
+  )
 
   // With no matching workspace the server bootstraps this project's first
   // workspace, whose root tab becomes the requested new tab.
@@ -1255,6 +1320,14 @@ export function HerdrPage({
     )
     if (nextName === null) return
     const trimmed = nextName.trim()
+    const linkedTask = [...linkedTasks.values()].find((link) => link.agent.pane_id === agent.pane_id)
+    if (linkedTask) {
+      const expectedName = linkedTaskRenameForLabel(linkedTask, linkedTask.tab.label)?.newAgentName
+      if (!expectedName || trimmed !== expectedName) {
+        onError('File-agent names follow their linked Herdr tab. Rename the tab to move the task directory.')
+        return
+      }
+    }
     void runOp(
       () => api.renameHerdrAgent(agent.pane_id, trimmed || undefined, !trimmed),
       onError,
@@ -1382,6 +1455,7 @@ export function HerdrPage({
                         onSelectTab={selectTab}
                         onSelectPane={selectPane}
                         autoReload={autoReload}
+                        linkedTasks={linkedTasks}
                         onChanged={refreshAll}
                         onError={onError}
                       />
@@ -1461,7 +1535,7 @@ export function HerdrPage({
                             className="h-6 shrink-0 cursor-pointer px-1.5 text-[11px]"
                             onClick={(e) => {
                               e.stopPropagation()
-                              navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))
+                              void openLinkedTaskFile(filePath)
                             }}
                             title={`Open ${filePath} in Files`}
                             aria-label={`Open ${dirName(filePath)} in Files`}

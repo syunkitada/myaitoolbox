@@ -26,6 +26,8 @@ import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { MAX_RESIZABLE_WIDTH, MIN_RESIZABLE_WIDTH, useResizableWidth } from '@/hooks/use-resizable-width'
+import { linkedTaskAgentForPath, linkedTaskRenameForPathMove } from '../utils/herdr-file-agent'
+import type { LinkPathItem } from '../utils/markdown-link-completions'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useDialogs } from '../components/AppDialogs'
 import { useEscapeKey } from '../hooks/use-escape-key'
@@ -55,6 +57,12 @@ const REFERENCE_WIDTH_STORAGE_KEY = 'mybox_files_reference_width'
 const SHOW_HIDDEN_STORAGE_KEY = 'files_show_hidden'
 const DEFAULT_EXPLORER_WIDTH = 280
 const DEFAULT_DETAILS_WIDTH = 384
+const LINKED_TASK_MOVE_ERROR = 'A file-agent task directory must remain under _tasks with a valid directory name.'
+
+interface LinkedMoveResult {
+  success: boolean
+  rolledBack: boolean
+}
 
 function computeViewStartLine(scroller: HTMLElement | null, viewText: string): number {
   const totalLines = viewText.split('\n').length
@@ -276,16 +284,6 @@ function toEntries(list: FileEntry[]): BrowserEntry[] {
   }))
 }
 
-function groupEntriesByDirectory(list: FileEntry[]): Record<string, BrowserEntry[]> {
-  const grouped: Record<string, BrowserEntry[]> = {}
-  for (const entry of toEntries(list)) {
-    const slash = entry.path.lastIndexOf('/')
-    const parent = slash < 0 ? '' : entry.path.slice(0, slash)
-    ;(grouped[parent] ??= []).push(entry)
-  }
-  return grouped
-}
-
 function applyDirStatus(nodes: TreeNode[]) {
   for (const node of nodes) {
     if (node.kind !== 'dir') continue
@@ -388,7 +386,7 @@ interface ExplorerProps {
   onLoadDir?: (dir: string, force?: boolean) => void | Promise<void>
   onClearSubtree?: (path: string) => void | Promise<void>
   onBeforePathMove?: (oldPath: string, newPath: string) => Promise<boolean>
-  onPathMoved?: (oldPath: string, newPath: string) => void
+  onPathMoved?: (oldPath: string, newPath: string) => boolean | Promise<boolean> | void
   onSearchHit?: (hit: FileSearchHit) => void
 }
 
@@ -647,8 +645,8 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
         const oldDir = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : ''
         const newDir = targetPath.includes('/') ? targetPath.slice(0, targetPath.lastIndexOf('/')) : ''
         for (const dir of new Set([oldDir, newDir])) if (dir) await onLoadDir?.(dir, true)
-        onPathMoved?.(oldPath, targetPath)
-        onSelect(targetPath)
+        const handled = await onPathMoved?.(oldPath, targetPath)
+        if (handled !== false) onSelect(targetPath)
       })
       .catch(runError)
   }
@@ -1523,6 +1521,7 @@ interface PaneProps {
   path: string
   entry?: BrowserEntry
   list: BrowserEntry[]
+  loadCompletionDir: (dir: string) => Promise<LinkPathItem[]>
   favorites: string[]
   refreshMeta: () => Promise<void>
   onRecentChanged?: (path: string) => void
@@ -1530,8 +1529,8 @@ interface PaneProps {
   onGitStatusChange: () => void
   onOpen: (path: string) => void
   onDeleted: (path: string) => void
-  onBeforeMove?: () => Promise<boolean>
-  onMoved?: (oldPath: string, newPath: string) => boolean | void
+  onBeforeMove?: (oldPath: string, newPath: string) => Promise<boolean>
+  onMoved?: (oldPath: string, newPath: string) => boolean | Promise<boolean> | void
   explorerOpen: boolean
   onToggleExplorer: () => void
   onRefresh: () => void
@@ -1554,6 +1553,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   path,
   entry,
   list,
+  loadCompletionDir,
   favorites,
   refreshMeta,
   onRecentChanged,
@@ -1768,7 +1768,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     if (!newPath || !newPath.trim() || newPath.trim() === path) return
     void api
       .copyFile(path, newPath.trim())
-      .then(() => {
+      .then(async () => {
         onChanged()
         onGitStatusChange()
         onOpen(newPath.trim())
@@ -1899,13 +1899,13 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     const newPath = await prompt(`Move ${label} — enter a path relative to the project root.`, path)
     if (!newPath || !newPath.trim() || newPath.trim() === path) return
     const targetPath = newPath.trim()
-    if (onBeforeMove && !(await onBeforeMove())) return
+    if (onBeforeMove && !(await onBeforeMove(path, targetPath))) return
     void api
       .moveFile(path, targetPath)
-      .then(() => {
+      .then(async () => {
         onChanged()
         onGitStatusChange()
-        const handled = onMoved?.(path, targetPath)
+        const handled = await onMoved?.(path, targetPath)
         if (handled !== true) onOpen(targetPath)
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -2463,6 +2463,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                         original={diffOriginalBody}
                         initialLine={editStartLine.current ?? undefined}
                         completions={list}
+                        loadCompletionDir={loadCompletionDir}
                       />
                     ) : (
                       <MonacoEditor
@@ -2475,6 +2476,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                         height="100%"
                         initialLine={editStartLine.current ?? undefined}
                         completions={list}
+                        loadCompletionDir={loadCompletionDir}
                       />
                     )}
                   </CardContent>
@@ -2492,6 +2494,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                       original={diffOriginal}
                       initialLine={editStartLine.current ?? undefined}
                       completions={list}
+                      loadCompletionDir={loadCompletionDir}
                     />
                   ) : (
                     <MonacoEditor
@@ -2503,6 +2506,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                       height="100%"
                       initialLine={editStartLine.current ?? undefined}
                       completions={list}
+                      loadCompletionDir={loadCompletionDir}
                     />
                   )}
                 </CardContent>
@@ -2788,17 +2792,15 @@ export function BrowserPage({
   const mainPaneRef = useRef<PaneHandle>(null)
   const referencePaneRef = useRef<PaneHandle>(null)
   const pendingSwapReferenceRef = useRef<string | null>(null)
-  const selectedRef = useRef(selected)
   const [searchHit, setSearchHit] = useState<FileSearchHit | null>(null)
   const autoDefaulted = useRef(false)
   const loadedDirsRef = useRef(new Set<string>())
   const loadingDirsRef = useRef(new Set<string>())
   const autoLoadSeq = useRef(0)
   const gitStatusLoaded = useRef(false)
-  const fullTreeCacheRef = useRef<{ showHidden: boolean; grouped: Record<string, BrowserEntry[]> } | null>(null)
-  const fullTreeRequestRef = useRef<{
-    showHidden: boolean
-    promise: Promise<Record<string, BrowserEntry[]>>
+  const completionDirCacheRef = useRef<{
+    version: string
+    entries: Map<string, Promise<LinkPathItem[]>>
   } | null>(null)
 
   const {
@@ -2840,6 +2842,25 @@ export function BrowserPage({
     return saved === null ? true : saved === '1'
   })
 
+  const loadCompletionDir = useCallback(
+    (dir: string) => {
+      const version = `${showHidden ? 'hidden' : 'visible'}:${refreshKey}`
+      let cache = completionDirCacheRef.current
+      if (!cache || cache.version !== version) {
+        cache = { version, entries: new Map() }
+        completionDirCacheRef.current = cache
+      }
+      const cached = cache.entries.get(dir)
+      if (cached) return cached
+      const request = api
+        .listFiles({ path: dir, showHidden })
+        .then((list) => list.map(({ path, kind }) => ({ path, kind })))
+      cache.entries.set(dir, request)
+      return request
+    },
+    [refreshKey, showHidden],
+  )
+
   useEffect(() => {
     if (!isMobile) window.localStorage.setItem(EXPLORER_STORAGE_KEY, explorerOpen ? '1' : '0')
   }, [explorerOpen, isMobile])
@@ -2848,10 +2869,6 @@ export function BrowserPage({
   useEffect(() => {
     window.localStorage.setItem(SHOW_HIDDEN_STORAGE_KEY, showHidden ? '1' : '0')
   }, [showHidden])
-
-  useEffect(() => {
-    selectedRef.current = selected
-  }, [selected])
 
   useEffect(() => {
     setOpenGitDir(null)
@@ -2924,37 +2941,6 @@ export function BrowserPage({
     [closeReference, onBack, selected],
   )
 
-  const handleReferenceMoved = useCallback(
-    (oldPath: string, newPath: string) => {
-      setReferencePath(newPath)
-      setReferenceGitDiffOpen(false)
-      setReferenceDirty(false)
-      if (oldPath === selected) onSelect(newPath)
-      return true
-    },
-    [onSelect, selected],
-  )
-
-  const handleBeforeExplorerMove = useCallback(
-    (oldPath: string, newPath: string) => {
-      if (!referencePath || pathAfterMove(referencePath, oldPath, newPath) === referencePath) return Promise.resolve(true)
-      return confirmPaneLeave(referencePaneRef, referenceDirty, referencePath)
-    },
-    [confirmPaneLeave, referenceDirty, referencePath],
-  )
-
-  const handleExplorerMoved = useCallback(
-    (oldPath: string, newPath: string) => {
-      if (!referencePath) return
-      const nextPath = pathAfterMove(referencePath, oldPath, newPath)
-      if (nextPath === referencePath) return
-      setReferencePath(nextPath)
-      setReferenceGitDiffOpen(false)
-      setReferenceDirty(false)
-    },
-    [referencePath],
-  )
-
   const swapPanes = useCallback(async () => {
     if (!referencePath || !selected || referencePath === selected) return
     if (!(await confirmPaneLeave(mainPaneRef, mainDirty, selected))) return
@@ -3018,35 +3004,6 @@ export function BrowserPage({
     [showHidden],
   )
 
-  const loadFullTree = useCallback(() => {
-    // Markdown link completion needs recursive entries; share both the cache
-    // and any in-flight request with the page/editor instead of scanning twice.
-    const cached = fullTreeCacheRef.current
-    if (cached?.showHidden === showHidden) return Promise.resolve(cached.grouped)
-
-    const pending = fullTreeRequestRef.current
-    if (pending?.showHidden === showHidden) return pending.promise
-
-    const promise = api
-      .listFiles({ showHidden })
-      .then((list) => {
-        const grouped = groupEntriesByDirectory(list)
-        fullTreeCacheRef.current = { showHidden, grouped }
-        return grouped
-      })
-    const request = { showHidden, promise }
-    fullTreeRequestRef.current = request
-    void promise.then(
-      () => {
-        if (fullTreeRequestRef.current === request) fullTreeRequestRef.current = null
-      },
-      () => {
-        if (fullTreeRequestRef.current === request) fullTreeRequestRef.current = null
-      },
-    )
-    return promise
-  }, [showHidden])
-
   const clearSubtree = useCallback(
     (path: string) => {
       loadedDirsRef.current.delete(path)
@@ -3070,21 +3027,8 @@ export function BrowserPage({
     loadingDirsRef.current.clear()
     setLoaded(false)
     setChildrenByDir({})
-    if (selectedRef.current && /\.(md|markdown)$/i.test(selectedRef.current)) {
-      void loadFullTree()
-        .then((grouped) => {
-          for (const parent of Object.keys(grouped)) loadedDirsRef.current.add(parent)
-          setChildrenByDir(grouped)
-          setLoaded(true)
-        })
-        .catch((e) => {
-          setError(e instanceof Error ? e.message : String(e))
-          setLoaded(true)
-        })
-      return
-    }
     void loadDir('').then(() => setLoaded(true))
-  }, [loadDir, loadFullTree])
+  }, [loadDir])
 
   const refreshGitStatus = useCallback(() => {
     void api
@@ -3094,7 +3038,7 @@ export function BrowserPage({
   }, [])
 
   const handleChanged = useCallback((pathToReveal?: string) => {
-    fullTreeCacheRef.current = null
+    setRefreshKey((key) => key + 1)
     const directories = new Set<string>([''])
     if (selected) {
       const dir = selected.includes('/') ? selected.slice(0, selected.lastIndexOf('/')) : ''
@@ -3110,6 +3054,160 @@ export function BrowserPage({
     }
     return Promise.all([...directories].map((dir) => loadDir(dir, true))).then(() => undefined)
   }, [loadDir, selected])
+
+  const linkedTaskMoveForPath = useCallback(
+    (oldPath: string, newPath: string) => {
+      const link = herdrOverview
+        ? linkedTaskAgentForPath(oldPath, herdrOverview.agents, herdrOverview.panes, herdrOverview.tabs)
+        : null
+      if (!link || oldPath !== link.taskDirectory) return undefined
+      const plan = linkedTaskRenameForPathMove(link, newPath)
+      return { link, plan: plan && plan.newTaskDirectory === newPath ? plan : null }
+    },
+    [herdrOverview],
+  )
+
+  const syncLinkedPathMove = useCallback(
+    async (oldPath: string, newPath: string): Promise<LinkedMoveResult> => {
+      const move = linkedTaskMoveForPath(oldPath, newPath)
+      if (!move) return { success: true, rolledBack: false }
+      const { link, plan: renamePlan } = move
+      if (!renamePlan || renamePlan.oldTaskDirectory === renamePlan.newTaskDirectory) {
+        return { success: false, rolledBack: false }
+      }
+
+      let agentRenamed = false
+      try {
+        if (renamePlan.oldAgentName !== renamePlan.newAgentName) {
+          await api.renameHerdrAgent(link.agent.pane_id, renamePlan.newAgentName)
+          agentRenamed = true
+        }
+        await api.renameHerdrTab(link.tab.tab_id, renamePlan.label)
+        refreshHerdr?.()
+        return { success: true, rolledBack: false }
+      } catch (e) {
+        const rollbackErrors: string[] = []
+        if (agentRenamed) {
+          try {
+            await api.renameHerdrAgent(link.agent.pane_id, renamePlan.oldAgentName)
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError))
+          }
+        }
+        try {
+          await api.moveFile(renamePlan.newTaskDirectory, renamePlan.oldTaskDirectory)
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError))
+        }
+        const message = e instanceof Error ? e.message : String(e)
+        setError(rollbackErrors.length > 0 ? `${message}; rollback failed: ${rollbackErrors.join('; ')}` : message)
+        refreshHerdr?.()
+        return { success: false, rolledBack: rollbackErrors.length === 0 }
+      }
+    },
+    [linkedTaskMoveForPath, refreshHerdr],
+  )
+
+  const restoreMovedExplorer = useCallback(
+    async (oldPath: string, newPath: string) => {
+      clearSubtree(oldPath)
+      clearSubtree(newPath)
+      await Promise.all([handleChanged(oldPath), loadDir(oldPath, true)])
+    },
+    [clearSubtree, handleChanged, loadDir],
+  )
+
+  const handleReferenceMoved = useCallback(
+    async (oldPath: string, newPath: string) => {
+      const result = await syncLinkedPathMove(oldPath, newPath)
+      const path = result.success || !result.rolledBack ? newPath : oldPath
+      if (!result.success && result.rolledBack) await restoreMovedExplorer(oldPath, newPath)
+      setReferencePath(path)
+      setReferenceGitDiffOpen(false)
+      setReferenceDirty(false)
+      if (oldPath === selected) onSelect(path)
+      return true
+    },
+    [onSelect, restoreMovedExplorer, selected, syncLinkedPathMove],
+  )
+
+  const validateLinkedPathMove = useCallback(
+    async (oldPath: string, newPath: string) => {
+      const move = linkedTaskMoveForPath(oldPath, newPath)
+      if (!move) return true
+      if (move.plan === null) {
+        setError(LINKED_TASK_MOVE_ERROR)
+        return false
+      }
+      try {
+        const entries = await api.listFiles({ path: '_tasks', showHidden: true })
+        if (entries.some((entry) => entry.path === move.plan?.newTaskDirectory)) {
+          setError(`The task directory already exists: ${move.plan.newTaskDirectory}`)
+          return false
+        }
+        return true
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+        return false
+      }
+    },
+    [linkedTaskMoveForPath],
+  )
+
+  const handleBeforeExplorerMove = useCallback(
+    (oldPath: string, newPath: string) => {
+      return validateLinkedPathMove(oldPath, newPath).then((valid) => {
+        if (!valid) return false
+        if (!referencePath || pathAfterMove(referencePath, oldPath, newPath) === referencePath) return true
+        return confirmPaneLeave(referencePaneRef, referenceDirty, referencePath)
+      })
+    },
+    [confirmPaneLeave, referenceDirty, referencePath, validateLinkedPathMove],
+  )
+
+  const handleBeforeMainPaneMove = useCallback(
+    (oldPath: string, newPath: string) => validateLinkedPathMove(oldPath, newPath),
+    [validateLinkedPathMove],
+  )
+
+  const handleBeforeReferencePaneMove = useCallback(
+    (oldPath: string, newPath: string) => {
+      return validateLinkedPathMove(oldPath, newPath).then((valid) => {
+        if (!valid) return false
+        return confirmPaneLeave(referencePaneRef, referenceDirty, referencePath ?? oldPath)
+      })
+    },
+    [confirmPaneLeave, referenceDirty, referencePath, validateLinkedPathMove],
+  )
+
+  const handleExplorerMoved = useCallback(
+    async (oldPath: string, newPath: string) => {
+      const result = await syncLinkedPathMove(oldPath, newPath)
+      if (!result.success) {
+        if (result.rolledBack) await restoreMovedExplorer(oldPath, newPath)
+        return false
+      }
+      if (!referencePath) return true
+      const nextPath = pathAfterMove(referencePath, oldPath, newPath)
+      if (nextPath === referencePath) return true
+      setReferencePath(nextPath)
+      setReferenceGitDiffOpen(false)
+      setReferenceDirty(false)
+      return true
+    },
+    [referencePath, restoreMovedExplorer, syncLinkedPathMove],
+  )
+
+  const handleMainPaneMoved = useCallback(
+    async (oldPath: string, newPath: string) => {
+      const result = await syncLinkedPathMove(oldPath, newPath)
+      const path = result.success || !result.rolledBack ? newPath : oldPath
+      if (!result.success && result.rolledBack) await restoreMovedExplorer(oldPath, newPath)
+      onSelect(path)
+      return true
+    },
+    [onSelect, restoreMovedExplorer, syncLinkedPathMove],
+  )
 
   const revealFile = useCallback(
     async (path: string) => {
@@ -3128,7 +3226,6 @@ export function BrowserPage({
   )
 
   const handleRefresh = useCallback(() => {
-    fullTreeCacheRef.current = null
     const dirs = [...loadedDirsRef.current]
     loadingDirsRef.current.clear()
     for (const d of dirs) void loadDir(d, true)
@@ -3139,27 +3236,6 @@ export function BrowserPage({
   useEffect(() => {
     load()
   }, [load])
-
-  useEffect(() => {
-    if (!selected || !/\.(md|markdown)$/i.test(selected)) return
-    if (fullTreeCacheRef.current?.showHidden === showHidden) return
-    void loadFullTree()
-      .then((grouped) => {
-        if (fullTreeCacheRef.current?.showHidden !== showHidden) return
-        for (const parent of Object.keys(grouped)) loadedDirsRef.current.add(parent)
-        setChildrenByDir((prev) => {
-          let changed = false
-          for (const [dir, children] of Object.entries(grouped)) {
-            if (prev[dir] !== children) {
-              changed = true
-              break
-            }
-          }
-          return changed ? { ...prev, ...grouped } : prev
-        })
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }, [loadFullTree, selected, showHidden])
 
   useEffect(() => {
     if (!revealPath) return
@@ -3275,6 +3351,9 @@ export function BrowserPage({
     const name = filePath.split('/').pop() ?? filePath
     const newPath = dirPath ? `${dirPath}/${name}` : name
     if (newPath === filePath) return
+    if (!(await validateLinkedPathMove(filePath, newPath))) {
+      return
+    }
     const nextReferencePath = referencePath ? pathAfterMove(referencePath, filePath, newPath) : null
     if (referencePath && nextReferencePath !== referencePath) {
       if (!(await confirmPaneLeave(referencePaneRef, referenceDirty, referencePath))) return
@@ -3282,7 +3361,18 @@ export function BrowserPage({
     setMoveError(null)
     void api
       .moveFile(filePath, newPath)
-      .then(() => {
+      .then(async () => {
+        const result = await syncLinkedPathMove(filePath, newPath)
+        if (!result.success && result.rolledBack) {
+          await restoreMovedExplorer(filePath, newPath)
+          if (referencePath && nextReferencePath && nextReferencePath !== referencePath) {
+            setReferencePath(referencePath)
+            setReferenceGitDiffOpen(false)
+            setReferenceDirty(false)
+          }
+          onSelect(filePath)
+          return
+        }
         clearSubtree(filePath)
         loadDir('', true)
         if (dirPath) loadDir(dirPath, true)
@@ -3310,6 +3400,7 @@ export function BrowserPage({
       path={path}
       entry={entry}
       list={entries}
+      loadCompletionDir={loadCompletionDir}
       favorites={favorites}
       refreshMeta={refreshMeta}
       onRecentChanged={onRecentChanged}
@@ -3317,8 +3408,8 @@ export function BrowserPage({
       onGitStatusChange={refreshGitStatus}
       onOpen={slot === 'main' ? handleSelect : (nextPath) => void changeReference(nextPath)}
       onDeleted={slot === 'main' ? () => onBack() : handleReferenceDeleted}
-      onBeforeMove={slot === 'reference' ? () => confirmPaneLeave(referencePaneRef, referenceDirty, path) : undefined}
-      onMoved={slot === 'reference' ? handleReferenceMoved : undefined}
+      onBeforeMove={slot === 'reference' ? handleBeforeReferencePaneMove : handleBeforeMainPaneMove}
+      onMoved={slot === 'reference' ? handleReferenceMoved : handleMainPaneMoved}
       explorerOpen={explorerOpen}
       onToggleExplorer={() => setExplorerOpen((o) => !o)}
       onRefresh={handleRefresh}

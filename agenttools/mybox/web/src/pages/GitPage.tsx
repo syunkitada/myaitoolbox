@@ -31,6 +31,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { MAX_RESIZABLE_WIDTH, MIN_RESIZABLE_WIDTH, useResizableWidth } from '@/hooks/use-resizable-width'
 import { useDialogs } from '../components/AppDialogs'
 import { cn } from '@/lib/utils'
+import type { LinkPathItem } from '../utils/markdown-link-completions'
 
 const EXPLORER_STORAGE_KEY = 'git_explorer_open'
 const EXPLORER_WIDTH_STORAGE_KEY = 'mybox_git_explorer_width'
@@ -785,6 +786,13 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
   const [editorError, setEditorError] = useState<string | null>(null)
   const editorRequestId = useRef(0)
   const editorDirty = editorContent !== editorOriginal
+  const loadCompletionDir = useCallback(
+    (dir: string): Promise<LinkPathItem[]> =>
+      api.listFiles({ path: dir, showHidden: true }).then((entries) =>
+        entries.map(({ path, kind }) => ({ path, kind })),
+      ),
+    [],
+  )
 
   const resetEditor = useCallback(() => {
     editorRequestId.current += 1
@@ -1562,6 +1570,7 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
                                     ariaLabel="Git file editor"
                                     height="100%"
                                     original={editorOriginal}
+                                    loadCompletionDir={loadCompletionDir}
                                   />
                                 </div>
                               </section>
