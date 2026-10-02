@@ -481,6 +481,27 @@ func TestGitBranchesAndCheckout(t *testing.T) {
 	}
 	assert.Equal(t, "master", currentName)
 
+	// Deleting a non-current branch succeeds and removes it from the listing.
+	rec = do(t, s, http.MethodPost, "/api/git/delete-branch", map[string]any{"branch": "feat"}, "X-Project", "test")
+	assert.Equal(t, http.StatusOK, rec.Code)
+	res = decode[apiGitResult](t, rec)
+	assert.True(t, res.Ok)
+
+	rec = do(t, s, http.MethodGet, "/api/git/branches", nil, "X-Project", "test")
+	assert.Equal(t, http.StatusOK, rec.Code)
+	branches = decode[apiGitBranchesResult](t, rec)
+	names = []string{}
+	for _, b := range branches.Branches {
+		names = append(names, b.Name)
+	}
+	assert.NotContains(t, names, "feat")
+
+	// Deleting the current branch is rejected by git and leaves it intact.
+	rec = do(t, s, http.MethodPost, "/api/git/delete-branch", map[string]any{"branch": "master"}, "X-Project", "test")
+	assert.Equal(t, http.StatusOK, rec.Code)
+	res = decode[apiGitResult](t, rec)
+	assert.False(t, res.Ok)
+
 	// Checkout a nonexistent branch reports failure (not create).
 	rec = do(t, s, http.MethodPost, "/api/git/checkout", map[string]any{"branch": "nonexistent"}, "X-Project", "test")
 	assert.Equal(t, http.StatusOK, rec.Code)

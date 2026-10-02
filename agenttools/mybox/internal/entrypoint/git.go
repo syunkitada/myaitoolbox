@@ -79,6 +79,7 @@ func (s *Server) registerGitRoutes(e *echo.Echo, basePath string) {
 	wrap(http.MethodGet, "/api/git/diff", s.GetGitCommitDiff)
 	wrap(http.MethodGet, "/api/git/branches", s.GetGitBranches)
 	wrap(http.MethodPost, "/api/git/checkout", s.PostGitCheckout)
+	wrap(http.MethodPost, "/api/git/delete-branch", s.PostGitDeleteBranch)
 	wrap(http.MethodPost, "/api/git/commit", s.PostGitCommit)
 	wrap(http.MethodPost, "/api/git/fetch", s.PostGitFetch)
 	wrap(http.MethodPost, "/api/git/pull", s.PostGitPull)
@@ -628,6 +629,45 @@ func (s *Server) PostGitCheckout(w http.ResponseWriter, r *http.Request) {
 		args = []string{"checkout", req.Branch}
 	}
 	out, err := runGit(dir, args...)
+	if err != nil {
+		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
+		return
+	}
+	writeGitResult(w, http.StatusOK, gitResult{Ok: true, Output: out})
+}
+
+type gitDeleteBranchRequest struct {
+	Branch string `json:"branch"`
+}
+
+func (s *Server) PostGitDeleteBranch(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	var req gitDeleteBranchRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if err := validateBranchName(req.Branch); err != nil {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: err})
+		return
+	}
+
+	gitOpsMu.Lock()
+	defer gitOpsMu.Unlock()
+	current, _ := runGit(dir, "symbolic-ref", "--short", "-q", "HEAD")
+	if strings.TrimSpace(current) == req.Branch {
+		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: "cannot delete the current branch"})
+		return
+	}
+	out, err := runGit(dir, "branch", "-d", "--", req.Branch)
 	if err != nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
 		return

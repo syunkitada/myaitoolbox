@@ -384,6 +384,7 @@ function SimpleTreeList({
   currentBranch,
   onCheckout,
   onNewBranch,
+  onDeleteBranch,
   busy,
 }: {
   detail: GitDetail
@@ -408,6 +409,7 @@ function SimpleTreeList({
   currentBranch: string
   onCheckout: (branch: string) => void
   onNewBranch: () => void
+  onDeleteBranch: (branch: string) => void
   busy: boolean
 }) {
   return (
@@ -434,6 +436,7 @@ function SimpleTreeList({
           currentBranch={currentBranch}
           onCheckout={onCheckout}
           onNewBranch={onNewBranch}
+          onDeleteBranch={onDeleteBranch}
           disabled={busy || editorDirty}
         />
         {scope && (
@@ -531,6 +534,7 @@ function BranchSwitcher({
   currentBranch,
   onCheckout,
   onNewBranch,
+  onDeleteBranch,
   disabled,
 }: {
   branches: GitBranchInfo[]
@@ -538,6 +542,7 @@ function BranchSwitcher({
   currentBranch: string
   onCheckout: (branch: string) => void
   onNewBranch: () => void
+  onDeleteBranch: (branch: string) => void
   disabled: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -590,6 +595,12 @@ function BranchSwitcher({
     setOpen(false)
     focusTrigger()
     if (!branch.current) onCheckout(branch.name)
+  }
+
+  const deleteBranch = (branch: GitBranchInfo) => {
+    setOpen(false)
+    focusTrigger()
+    onDeleteBranch(branch.name)
   }
 
   const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -663,20 +674,40 @@ function BranchSwitcher({
           <div className="px-2 py-1.5 text-sm font-medium">Branches</div>
           <div className="-mx-1 my-1 h-px bg-border" role="separator" />
           {branches.map((b) => (
-            <button
-              key={b.name}
-              type="button"
-              role="menuitem"
-              onClick={() => selectBranch(b)}
-              className={cn(
-                'relative flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground',
-                b.current && 'font-semibold',
+            <div key={b.name} className="flex items-center gap-1">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => selectBranch(b)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Delete' && !b.current) {
+                    event.preventDefault()
+                    deleteBranch(b)
+                  }
+                }}
+                className={cn(
+                  'relative flex min-w-0 flex-1 cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground',
+                  b.current && 'font-semibold',
+                )}
+                data-testid={b.current ? 'git-branch-current' : undefined}
+              >
+                {b.current && <Check className="size-3.5 shrink-0 text-green-600" />}
+                <span className="truncate">{b.name}</span>
+              </button>
+              {!b.current && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  aria-label={`Delete branch ${b.name}`}
+                  title={`Delete branch ${b.name}`}
+                  onClick={() => deleteBranch(b)}
+                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive focus:outline-none"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
               )}
-              data-testid={b.current ? 'git-branch-current' : undefined}
-            >
-              {b.current && <Check className="size-3.5 shrink-0 text-green-600" />}
-              <span className="truncate">{b.name}</span>
-            </button>
+            </div>
           ))}
           {branches.length === 0 && (
             <p className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -1196,6 +1227,15 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
     )
   }
 
+  const handleDeleteBranch = async (branch: string) => {
+    if (editorDirty || detail?.branch === branch) return
+    if (!(await confirm(`Delete branch "${branch}"?`))) return
+    void run(
+      () => doGitResult(() => api.gitDeleteBranch(scope, branch)),
+      () => refreshBranches(),
+    )
+  }
+
   const currentBranch = detail.branch || 'HEAD'
 
   const workingTree = (
@@ -1214,6 +1254,7 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
       currentBranch={currentBranch}
       onCheckout={handleCheckout}
       onNewBranch={handleNewBranch}
+      onDeleteBranch={handleDeleteBranch}
       busy={busy}
       mode={mode}
       onModeChange={handleModeChange}

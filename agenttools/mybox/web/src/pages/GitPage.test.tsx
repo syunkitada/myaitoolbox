@@ -104,3 +104,37 @@ describe('GitWorkspace branch switching', () => {
     await waitFor(() => expect(branchSwitcher).toHaveTextContent('feature'))
   })
 })
+
+describe('GitWorkspace branch deletion', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('confirms and deletes a non-current branch', async () => {
+    vi.spyOn(api, 'getGitStatus').mockResolvedValue(detail)
+    vi.spyOn(api, 'getGitBranches').mockResolvedValue({
+      branches: [
+        { name: 'main', current: true },
+        { name: 'feature', current: false },
+      ],
+    })
+    const gitDeleteBranch = vi.spyOn(api, 'gitDeleteBranch').mockResolvedValue({ ok: true, output: '' })
+    const refreshMeta = vi.fn().mockResolvedValue(undefined)
+
+    render(
+      <DialogsProvider>
+        <GitWorkspace refreshMeta={refreshMeta} />
+      </DialogsProvider>,
+    )
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByTestId('git-explorer-branch-switcher'))
+    expect(screen.queryByRole('menuitem', { name: 'Delete branch main' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: 'Delete branch feature' }))
+
+    expect(screen.getByTestId('app-dialog')).toHaveTextContent('Delete branch "feature"?')
+    await user.click(screen.getByTestId('app-dialog-ok'))
+
+    await waitFor(() => expect(gitDeleteBranch).toHaveBeenCalledWith(undefined, 'feature'))
+  })
+})

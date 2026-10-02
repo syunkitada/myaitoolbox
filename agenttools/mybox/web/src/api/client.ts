@@ -667,6 +667,8 @@ export const api = {
       create: create ?? false,
       start_point: startPoint || undefined,
     }),
+  gitDeleteBranch: (scope: string | undefined, branch: string) =>
+    request<GitResult>('POST', '/api/git/delete-branch' + qs({ path: scope }), { branch }),
   gitInit: (scope?: string) =>
     request<GitResult>('POST', '/api/git/init' + qs({ path: scope })),
   gitCommit: (scope: string | undefined, message: string, stagedOnly?: boolean, amend?: boolean) =>
