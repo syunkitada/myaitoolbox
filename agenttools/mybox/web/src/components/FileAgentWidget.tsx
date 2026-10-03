@@ -42,6 +42,7 @@ export interface FileAgentWidgetProps {
   onRefresh: () => void
   webuiFocusedPaneId?: string | null
   onWebuiFocusChange?: (paneId: string | null) => void
+  onFilePathClick?: (path: string) => void
 }
 
 export function FileAgentWidget({
@@ -50,6 +51,7 @@ export function FileAgentWidget({
   onRefresh,
   webuiFocusedPaneId,
   onWebuiFocusChange,
+  onFilePathClick,
 }: FileAgentWidgetProps) {
   const dir = taskDirFromPath(path)
   const name = taskAgentName(path)
@@ -433,7 +435,12 @@ export function FileAgentWidget({
             className="mx-1.5 min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-1.5 text-[11px]"
             style={{ height: outputSize.height }}
           >
-            <SyntaxHighlighter text={output ?? 'loading…'} cols={cols} linkFilePaths />
+            <SyntaxHighlighter
+              text={output ?? 'loading…'}
+              cols={cols}
+              linkFilePaths
+              onFilePathClick={onFilePathClick}
+            />
           </div>
           <div className="flex flex-wrap items-center gap-1 px-1.5 pt-1.5">
             {FILE_AGENT_KEYS.map((k) => (

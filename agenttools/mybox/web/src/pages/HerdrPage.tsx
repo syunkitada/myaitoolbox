@@ -80,6 +80,7 @@ interface AgentDetailProps {
   agent: HerdrAgent
   autoReload: boolean
   onRename?: () => void
+  onFilePathClick?: (path: string) => void
   // Terminal column width of the agent's pane, used to render the output at
   // the same wrap columns as the real herdr pane.
   cols?: number
@@ -96,7 +97,7 @@ const AGENT_QUICK_KEYS: { label: string; key: string }[] = [
   { label: '↓', key: 'Down' },
 ]
 
-function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
+function AgentDetail({ agent, autoReload, onRename, onFilePathClick, cols }: AgentDetailProps) {
   const [output, setOutput] = useState<string | null>(null)
   const [outputError, setOutputError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -296,7 +297,12 @@ function AgentDetail({ agent, autoReload, onRename, cols }: AgentDetailProps) {
         className="min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-2 text-xs"
         style={{ height: outputSize.height }}
       >
-        <SyntaxHighlighter text={output ?? 'loading...'} cols={cols} linkFilePaths />
+        <SyntaxHighlighter
+          text={output ?? 'loading...'}
+          cols={cols}
+          linkFilePaths
+          onFilePathClick={onFilePathClick}
+        />
       </div>
       <div
         className="herdr-agent-keys mt-2 flex flex-wrap items-center gap-1"
@@ -429,6 +435,7 @@ interface PaneRowProps {
   autoReload: boolean
   onChanged: OnChanged
   onError: OnError
+  onFilePathClick?: (path: string) => void
   // fit renders the row to fill an absolutely-positioned layout box (the
   // terminal output stretches instead of capping at max-h-64).
   fit: boolean
@@ -437,7 +444,7 @@ interface PaneRowProps {
   cols?: number
 }
 
-function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, cols }: PaneRowProps) {
+function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFilePathClick, fit, cols }: PaneRowProps) {
   const isMobile = useIsMobile()
   const { prompt, confirm } = useDialogs()
   const [open, setOpen] = useState(true)
@@ -655,7 +662,12 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, fit, 
               fit ? 'min-h-0 flex-1' : 'max-h-64',
             )}
           >
-            <SyntaxHighlighter text={output ?? 'loading terminal output...'} cols={cols} linkFilePaths />
+            <SyntaxHighlighter
+              text={output ?? 'loading terminal output...'}
+              cols={cols}
+              linkFilePaths
+              onFilePathClick={onFilePathClick}
+            />
           </div>
         </div>
       ) : (
@@ -884,6 +896,7 @@ interface WorkspaceSectionProps {
   linkedTasks: ReadonlyMap<string, LinkedTaskAgent>
   onChanged: OnChanged
   onError: OnError
+  onFilePathClick?: (path: string) => void
 }
 
 function WorkspaceSection({
@@ -900,6 +913,7 @@ function WorkspaceSection({
   linkedTasks,
   onChanged,
   onError,
+  onFilePathClick,
 }: WorkspaceSectionProps) {
   const isMobile = useIsMobile()
   const { prompt } = useDialogs()
@@ -1090,6 +1104,7 @@ function WorkspaceSection({
                         cols={paneCols.get(p.pane_id)}
                         onChanged={onChanged}
                         onError={onError}
+                        onFilePathClick={onFilePathClick}
                       />
                     </div>
                   )
@@ -1147,6 +1162,7 @@ function WorkspaceSection({
                     cols={paneCols.get(p.pane_id)}
                     onChanged={onChanged}
                     onError={onError}
+                    onFilePathClick={onFilePathClick}
                   />
                 ))}
               </div>
@@ -1275,6 +1291,13 @@ export function HerdrPage({
 
   const navigate = useNavigate()
 
+  const openFile = useCallback(
+    (filePath: string) => {
+      navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))
+    },
+    [navigate],
+  )
+
   const onError = useCallback((message: string) => {
     setOpError(message)
     setTimeout(() => setOpError((cur) => (cur === message ? null : cur)), 6000)
@@ -1292,12 +1315,12 @@ export function HerdrPage({
           onError(`Linked task file not found: ${filePath}`)
           return
         }
-        navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))
+        openFile(filePath)
       } catch (error) {
         onError(error instanceof Error ? error.message : String(error))
       }
     },
-    [navigate, onError, project],
+    [onError, openFile, project],
   )
 
   // With no matching workspace the server bootstraps this project's first
@@ -1458,6 +1481,7 @@ export function HerdrPage({
                         linkedTasks={linkedTasks}
                         onChanged={refreshAll}
                         onError={onError}
+                        onFilePathClick={openFile}
                       />
                     ))}
                 </div>
@@ -1563,6 +1587,7 @@ export function HerdrPage({
                         agent={a}
                         autoReload={autoReload}
                         onRename={() => renameAgent(a)}
+                        onFilePathClick={openFile}
                         cols={agentCols.get(a.pane_id)}
                       />
                     )}

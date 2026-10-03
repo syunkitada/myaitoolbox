@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { fireEvent, render } from '@testing-library/react'
 import { SyntaxHighlighter } from './SyntaxHighlighter'
 
 describe('SyntaxHighlighter', () => {
@@ -40,6 +40,24 @@ describe('SyntaxHighlighter', () => {
       '/projects/demo/dashboard/files/data/portfolio/benefits-and-dividends.md',
     )
 
+    window.history.replaceState({}, '', '/')
+  })
+
+  it('delegates file links without following the browser href', () => {
+    window.history.pushState({}, '', '/projects/demo/herdr')
+    const onFilePathClick = vi.fn()
+    const { container } = render(
+      <SyntaxHighlighter
+        text="See data/portfolio/benefits-and-dividends.md for details."
+        linkFilePaths
+        onFilePathClick={onFilePathClick}
+      />,
+    )
+
+    fireEvent.click(container.querySelector('a.syntax-file-link')!)
+
+    expect(onFilePathClick).toHaveBeenCalledWith('data/portfolio/benefits-and-dividends.md')
+    expect(window.location.pathname).toBe('/projects/demo/herdr')
     window.history.replaceState({}, '', '/')
   })
 

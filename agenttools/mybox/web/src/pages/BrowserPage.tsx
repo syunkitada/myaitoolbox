@@ -2180,6 +2180,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
           onRefresh={refreshHerdr ?? (() => undefined)}
           webuiFocusedPaneId={webuiFocusedPaneId}
           onWebuiFocusChange={onWebuiFocusChange}
+          onFilePathClick={onOpen}
         />
       )}
       <div className={cn('knowledge-body flex gap-4 max-md:flex-col', (editing || showGitDiff) && 'min-h-0 flex-1')}>

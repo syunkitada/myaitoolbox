@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef } from 'react'
 import { Prism, hasGrammar } from '../utils/prism-langs'
 import { filesUrl, getProject } from '../utils/routes'
 
@@ -24,7 +24,7 @@ function linkifyFilePaths(html: string): string {
   if (!getProject()) return html
   return html.replace(FILE_PATH_RE, (path) => {
     const href = escapeHtml(filesUrl(path))
-    return `<a href="${href}" class="syntax-link syntax-file-link">${path}</a>`
+    return `<a href="${href}" data-file-path="${escapeHtml(path)}" class="syntax-link syntax-file-link">${path}</a>`
   })
 }
 
@@ -53,6 +53,7 @@ export interface SyntaxHighlighterProps {
   linkFilePaths?: boolean
   focusLine?: number
   searchQuery?: string
+  onFilePathClick?: (path: string) => void
 }
 
 export function SyntaxHighlighter({
@@ -63,11 +64,22 @@ export function SyntaxHighlighter({
   linkFilePaths = false,
   focusLine,
   searchQuery,
+  onFilePathClick,
 }: SyntaxHighlighterProps) {
   const lines = useMemo(() => text.split(/\r?\n/), [text])
   const lineRef = useRef<HTMLPreElement | null>(null)
   const fixedWidth =
     cols != null && cols > 0 ? { width: `${cols}ch`, minWidth: `${cols}ch` } : undefined
+
+  const handleClick = (e: ReactMouseEvent<HTMLPreElement>) => {
+    if (!onFilePathClick || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>('a.syntax-file-link[data-file-path]')
+    if (!anchor || !e.currentTarget.contains(anchor)) return
+    const path = anchor.dataset.filePath
+    if (!path) return
+    e.preventDefault()
+    onFilePathClick(path)
+  }
 
   useEffect(() => {
     if (!focusLine || focusLine < 1) return
@@ -78,6 +90,7 @@ export function SyntaxHighlighter({
   return (
     <pre
       ref={lineRef}
+      onClick={handleClick}
       className={`overflow-x-auto font-mono text-[13px] leading-6 whitespace-pre-wrap break-words ${className ?? ''}`}
       style={fixedWidth}
     >
