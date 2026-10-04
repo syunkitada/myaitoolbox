@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import App from './App'
 import { api } from './api/client'
@@ -65,24 +65,7 @@ vi.mock('./hooks/use-herdr', () => ({
 }))
 
 vi.mock('./pages/Dashboard', () => ({
-  Dashboard: ({ onWebuiFocusChange }: { onWebuiFocusChange: (paneId: string | null) => void }) => {
-    const [focused, setFocused] = useState<string | null>(null)
-    useEffect(() => () => onWebuiFocusChange(null), [onWebuiFocusChange])
-    return (
-      <>
-        <button
-          data-testid="dashboard-focus"
-          onClick={() => {
-            setFocused('w1:p1')
-            onWebuiFocusChange('w1:p1')
-          }}
-        >
-          {focused ?? 'none'}
-        </button>
-        <button data-testid="dashboard-blur" onClick={() => onWebuiFocusChange(null)}>blur</button>
-      </>
-    )
-  },
+  Dashboard: () => null,
 }))
 vi.mock('./pages/GitPage', () => ({ GitPage: () => null }))
 vi.mock('./pages/HerdrPage', () => ({
@@ -147,36 +130,14 @@ describe('App project status refresh', () => {
     expect(screen.getByTestId('app-sidebar-git-status')).toHaveTextContent('dirty')
   })
 
-  it('clears embedded WebUI focus when leaving the current page', () => {
+  it('uses the selected agent sidebar pane as the mybox focus', () => {
     render(
       <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
         <App />
       </MemoryRouter>,
     )
-
-    fireEvent.click(screen.getByTestId('dashboard-focus'))
-    expect(screen.getByTestId('dashboard-focus')).toHaveTextContent('w1:p1')
-    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('w1:p1')
-
-    fireEvent.click(screen.getByRole('link', { name: 'Herdr' }))
-    expect(screen.getByTestId('herdr-page')).toBeInTheDocument()
-    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('none')
-  })
-
-  it('keeps sidebar focus separate from embedded file focus', () => {
-    render(
-      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
-        <App />
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(screen.getByTestId('dashboard-focus'))
-    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('w1:p1')
 
     fireEvent.click(screen.getByTestId('agent-sidebar-focus'))
-    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('w1:p2')
-
-    fireEvent.click(screen.getByTestId('dashboard-blur'))
     expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('w1:p2')
 
     fireEvent.click(screen.getByTestId('agent-sidebar-blur'))

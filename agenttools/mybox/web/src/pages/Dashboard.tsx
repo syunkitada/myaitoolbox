@@ -15,7 +15,6 @@ interface DashboardProps {
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
   agentSidebarOpen?: boolean
-  onWebuiFocusChange?: (paneId: string | null) => void
 }
 
 export function Dashboard({
@@ -26,7 +25,6 @@ export function Dashboard({
   herdrOverview,
   refreshHerdr,
   agentSidebarOpen,
-  onWebuiFocusChange,
 }: DashboardProps) {
   const params = useParams()
   const { pathname } = useLocation()
@@ -116,7 +114,6 @@ export function Dashboard({
         herdrOverview={herdrOverview}
         refreshHerdr={refreshHerdr}
         agentSidebarOpen={agentSidebarOpen}
-        onWebuiFocusChange={onWebuiFocusChange}
         defaultSelect={(entries) =>
           entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
         }

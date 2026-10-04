@@ -1170,6 +1170,41 @@ describe('task progress in file viewer', () => {
     expect(screen.getByTestId('task-progress')).toBeInTheDocument()
   })
 
+  it('does not render an embedded task agent panel', async () => {
+    const path = '_tasks/20260927_demo/task.md'
+    vi.spyOn(api, 'listFiles').mockResolvedValue([{ path, name: 'task.md', kind: 'file' }])
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path, content: '# Task' })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+
+    const router = createMemoryRouter(
+      [{
+        path: '*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected={path}
+            onSelect={vi.fn()}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+          />
+        ),
+      }],
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
+    )
+
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    await screen.findByRole('heading', { name: 'Files' })
+    expect(document.querySelector('.file-agent-widget')).not.toBeInTheDocument()
+  })
+
   it('does not show task progress for other Markdown files', async () => {
     const path = 'docs/guide.md'
     vi.spyOn(api, 'listFiles').mockResolvedValue([{ path, name: 'guide.md', kind: 'file' }])

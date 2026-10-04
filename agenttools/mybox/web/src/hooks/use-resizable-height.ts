@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 export const MIN_RESIZABLE_HEIGHT = 40
 export const HERDR_AGENT_OUTPUT_HEIGHT_STORAGE_KEY = 'mybox:herdr-agent-output-height'
-export const HERDR_AGENT_PROMPT_HEIGHT_STORAGE_KEY = 'mybox:herdr-agent-prompt-height'
 export const AGENT_SIDEBAR_PROMPT_HEIGHT_STORAGE_KEY = 'mybox:agent-sidebar-prompt-height'
 
 interface UseResizableHeightOptions {

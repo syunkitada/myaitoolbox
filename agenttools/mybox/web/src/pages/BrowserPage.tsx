@@ -2,7 +2,6 @@ import { ReactNode, MouseEvent as ReactMouseEvent, RefObject, forwardRef, useCal
 import { useBlocker } from 'react-router-dom'
 import { FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
-import { FileAgentWidget } from '../components/FileAgentWidget'
 import { FileTabs } from '../components/FileTabs'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { TaskProgress } from '../components/TaskProgress'
@@ -145,7 +144,6 @@ interface BrowserPageProps {
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
   agentSidebarOpen?: boolean
-  onWebuiFocusChange?: (paneId: string | null) => void
   revealPath?: string
   onRevealPathHandled?: (path: string) => void
 }
@@ -1537,10 +1535,7 @@ interface PaneProps {
   refreshKey: number
   gitStatus?: string
   onGitDiffOpenChange?: (open: boolean) => void
-  herdrOverview?: HerdrOverview | null
-  refreshHerdr?: () => void
   agentSidebarOpen?: boolean
-  onWebuiFocusChange?: (paneId: string | null) => void
   onOpenGit?: (path: string) => void
   searchHit?: FileSearchHit | null
   scrollRef?: RefObject<HTMLDivElement | null>
@@ -1569,10 +1564,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   refreshKey,
   gitStatus,
   onGitDiffOpenChange,
-  herdrOverview,
-  refreshHerdr,
   agentSidebarOpen,
-  onWebuiFocusChange,
   onOpenGit,
   searchHit,
   scrollRef,
@@ -2187,15 +2179,6 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       className={cn('min-w-0 w-full md:transition-[padding-right] md:duration-200 md:ease-linear', (editing || showGitDiff) && 'flex h-full flex-col')}
       style={{ paddingRight: outlineOpen && !isMobile ? outlineWidth : undefined }}
     >
-      {herdrOverview !== undefined && (
-        <FileAgentWidget
-          path={path}
-          overview={herdrOverview}
-          onRefresh={refreshHerdr ?? (() => undefined)}
-          onWebuiFocusChange={onWebuiFocusChange}
-          onFilePathClick={onOpen}
-        />
-      )}
       <div className={cn('knowledge-body flex gap-4 max-md:flex-col', (editing || showGitDiff) && 'min-h-0 flex-1')}>
         <div className={cn('knowledge-main min-w-0 flex-1 md:transition-[margin]', (editing || showGitDiff) && 'flex min-h-0 flex-col')}>
           <div className="page-header note-toolbar sticky top-0 z-20 mb-3 flex shrink-0 items-center justify-between gap-3 border-b bg-card/95 py-2 backdrop-blur">
@@ -2783,7 +2766,6 @@ export function BrowserPage({
   herdrOverview,
   refreshHerdr,
   agentSidebarOpen,
-  onWebuiFocusChange,
   revealPath,
   onRevealPathHandled,
 }: BrowserPageProps) {
@@ -3430,10 +3412,7 @@ export function BrowserPage({
       refreshKey={refreshKey}
       gitStatus={gitStatus[path]}
       onGitDiffOpenChange={slot === 'main' ? setGitDiffOpen : setReferenceGitDiffOpen}
-      herdrOverview={slot === 'main' ? herdrOverview : undefined}
-      refreshHerdr={slot === 'main' ? refreshHerdr : undefined}
       agentSidebarOpen={agentSidebarOpen}
-      onWebuiFocusChange={onWebuiFocusChange}
       onOpenGit={setOpenGitDir}
       searchHit={slot === 'main' ? searchHit : null}
       scrollRef={scrollRef}

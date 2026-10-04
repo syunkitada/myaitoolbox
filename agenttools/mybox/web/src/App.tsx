@@ -54,7 +54,6 @@ export default function App() {
   const project = getProject()
   const isMobile = useIsMobile()
   const [agentSidebarFocusedPaneId, setAgentSidebarFocusedPaneId] = useState<string | null>(null)
-  const [embeddedWebuiFocusedPaneId, setEmbeddedWebuiFocusedPaneId] = useState<string | null>(null)
   const [agentSidebarWidth, setAgentSidebarWidth] = useState(() => readResizableWidth({
     storageKey: AGENT_SIDEBAR_WIDTH_STORAGE_KEY,
     defaultWidth: DEFAULT_AGENT_SIDEBAR_WIDTH,
@@ -62,19 +61,13 @@ export default function App() {
     maxWidth: AGENT_SIDEBAR_MAX_WIDTH,
   }))
   const agentSidebar = useAgentSidebarState(project, isMobile)
-  const myboxFocusedPaneId = agentSidebar.open && agentSidebarFocusedPaneId
-    ? agentSidebarFocusedPaneId
-    : embeddedWebuiFocusedPaneId
+  const myboxFocusedPaneId = agentSidebar.open ? agentSidebarFocusedPaneId : null
   const herdr = useHerdrOverview(5000, myboxFocusedPaneId)
   const agentStatus = summarizeAgentStatuses(projectAgentsFor(herdr.overview, project))
   useAgentFavicon(herdr.overview)
 
   const handleAgentSidebarFocusChange = useCallback((paneId: string | null) => {
     setAgentSidebarFocusedPaneId(paneId)
-  }, [])
-
-  const handleEmbeddedFocusChange = useCallback((paneId: string | null) => {
-    setEmbeddedWebuiFocusedPaneId(paneId)
   }, [])
 
   const refreshGitStatus = useCallback(async () => {
@@ -130,7 +123,6 @@ export default function App() {
   // project, but neither focus source leaks into another project.
   useLayoutEffect(() => {
     setAgentSidebarFocusedPaneId(null)
-    setEmbeddedWebuiFocusedPaneId(null)
   }, [project])
 
   // Show <projectIndex>:<tabIndex> as the title; 0 outside a project
@@ -270,7 +262,6 @@ export default function App() {
                         herdrOverview={herdr.overview}
                         refreshHerdr={herdr.refresh}
                         agentSidebarOpen={agentSidebar.open}
-                        onWebuiFocusChange={handleEmbeddedFocusChange}
                       />
                     }
                   />
@@ -286,7 +277,6 @@ export default function App() {
                         herdrOverview={herdr.overview}
                         refreshHerdr={herdr.refresh}
                         agentSidebarOpen={agentSidebar.open}
-                        onWebuiFocusChange={handleEmbeddedFocusChange}
                       />
                     }
                   />
