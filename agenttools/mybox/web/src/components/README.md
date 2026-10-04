@@ -10,10 +10,11 @@
 | [`Explorer/README.md`](./Explorer/README.md) | ファイルツリー表示。 |
 | [`GraphView/README.md`](./GraphView/README.md) | ファイルリンクグラフのSigma表示。 |
 | [`AppDialogs.tsx`](./AppDialogs.tsx) | アプリ全体で使うダイアログ群。 |
+| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通のAgent右サイドバー。Herdr Agentの一覧・出力・操作・予約送信を提供し、モバイルではSheetとして表示する。 |
 | [`CommitDiffView.tsx`](./CommitDiffView.tsx) / [`CommitDiffView.test.tsx`](./CommitDiffView.test.tsx) | コミット差分表示とそのテスト。 |
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
 | [`DiffView.tsx`](./DiffView.tsx) / [`DiffView.test.tsx`](./DiffView.test.tsx) | unified diff表示とそのテスト。 |
-| [`FileAgentWidget.tsx`](./FileAgentWidget.tsx) / [`FileAgentWidget.test.tsx`](./FileAgentWidget.test.tsx) | ファイルからHerdrエージェントを起動し、Herdrの生ステータスと独立したWeb UI focusを表示する部品。通常送信に加えてサーバー永続化された日時指定送信（予約一覧・キャンセル）、出力・プロンプト欄の縦サイズ保存を提供し、Stop時のペイン削除と空タブ削除、およびテストを含む。 |
+| [`FileAgentWidget.tsx`](./FileAgentWidget.tsx) / [`FileAgentWidget.test.tsx`](./FileAgentWidget.test.tsx) | ファイルからHerdrエージェントを起動し、Herdrの生ステータスとWeb UI focusを連携する部品。通常送信に加えてサーバー永続化された日時指定送信（予約一覧・キャンセル）、出力・プロンプト欄の縦サイズ保存を提供し、Stop時のペイン削除と空タブ削除、およびテストを含む。 |
 | [`FileTabs.tsx`](./FileTabs.tsx) / [`FileTabs.test.tsx`](./FileTabs.test.tsx) | 開いているファイルのタブとテスト。 |
 | [`FrontmatterForm.tsx`](./FrontmatterForm.tsx) | タスクフロントマターの編集フォーム。 |
 | [`GitViewer.tsx`](./GitViewer.tsx) | Git状態・差分画面を埋め込むビュー。 |
@@ -23,7 +24,7 @@
 | [`NewTaskDialog.tsx`](./NewTaskDialog.tsx) / [`NewTaskDialog.test.tsx`](./NewTaskDialog.test.tsx) | agent kindのデフォルトをcodexとし、YAMLヘッダーを除いたテンプレート本文を初期表示・編集できる、通常タスクとcron・file_created・manual task_triggerの作成ダイアログおよびテスト。 |
 | [`RichMarkdown.tsx`](./RichMarkdown.tsx) / [`RichMarkdown.test.tsx`](./RichMarkdown.test.tsx) | ファイルリンク・アウトライン・コードブロック・操作可能なタスクリスト・Mermaid・Vega-Liteを表示し、表示中のファイルペインに応じて内部リンクを開き、モーダル内でText/Jira形式を切り替えられるMarkdownビューアとテスト。 |
 | [`SearchBar.tsx`](./SearchBar.tsx) / [`SearchBar.test.tsx`](./SearchBar.test.tsx) | ファイル検索入力とテスト。 |
-| [`Sidebar.tsx`](./Sidebar.tsx) / [`Sidebar.test.tsx`](./Sidebar.test.tsx) | ワークスペース全体のサイドバーとAgent遷移テスト。 |
+| [`Sidebar.tsx`](./Sidebar.tsx) / [`Sidebar.test.tsx`](./Sidebar.test.tsx) | ワークスペース全体のサイドバー、Agent遷移、Mybox/Herdrフォーカスの折りたたみデバッグ表示。 |
 | [`SyntaxHighlighter.tsx`](./SyntaxHighlighter.tsx) / [`SyntaxHighlighter.test.tsx`](./SyntaxHighlighter.test.tsx) | Prismベースのコード表示。agent出力では相対ファイルパスをFiles画面へリンクできる。 |
 | [`TaskProgress.tsx`](./TaskProgress.tsx) / [`TaskProgress.test.tsx`](./TaskProgress.test.tsx) | Markdownタスクリストの進捗表示とテスト。 |
 | [`VegaLite.tsx`](./VegaLite.tsx) | Vega-Lite仕様の解析、相対データURL解決、グラフ描画。 |
@@ -31,3 +32,4 @@
 | [`TerminalTabs.tsx`](./TerminalTabs.tsx) | ターミナルセッションのタブ操作。 |
 | [`badges.tsx`](./badges.tsx) | ステータス、優先度、タグなどのバッジ。 |
 | [`herdr-status.tsx`](./herdr-status.tsx) | Herdrエージェント状態の表示部品。 |
+| [`HerdrAgentDetail.tsx`](./HerdrAgentDetail.tsx) | Agentの端末出力（自動補正／Herdr準拠の表示切り替え）、キー送信、クイックコマンド、prompt送信、予約送信を表示する共通部品。モバイルのprompt入力は内容に応じて自動拡張し、Enter以外のキーとコマンドは一覧パレットに集約する。 |

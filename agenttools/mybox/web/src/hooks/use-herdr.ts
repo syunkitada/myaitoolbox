@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, HerdrOverview } from '../api/client'
 import {
-  createHerdrStatusMemory,
+  acknowledgeHerdrStatusMemory,
   displayedHerdrAgentStatus,
+  loadHerdrStatusMemory,
+  persistHerdrStatusMemory,
   updateHerdrStatusMemory,
 } from '../utils/herdr-status'
 
@@ -15,7 +17,7 @@ export interface HerdrState {
 export function useHerdrOverview(intervalMs = 5000, myboxFocusedPaneId: string | null = null) {
   const [state, setState] = useState<HerdrState>({ overview: null, error: null, loading: true })
   const seq = useRef(0)
-  const statusMemory = useRef(createHerdrStatusMemory())
+  const statusMemory = useRef(loadHerdrStatusMemory())
   const focusedPaneIdRef = useRef(myboxFocusedPaneId)
   focusedPaneIdRef.current = myboxFocusedPaneId
 
@@ -25,7 +27,15 @@ export function useHerdrOverview(intervalMs = 5000, myboxFocusedPaneId: string |
       const overview = await api.getHerdrOverview()
       // Drop stale responses that resolve after a newer refresh was started.
       if (mySeq !== seq.current) return
-      updateHerdrStatusMemory(statusMemory.current, overview.agents, focusedPaneIdRef.current)
+      if (overview.available) {
+        updateHerdrStatusMemory(statusMemory.current, overview.agents)
+        acknowledgeHerdrStatusMemory(
+          statusMemory.current,
+          overview.agents,
+          focusedPaneIdRef.current,
+        )
+        persistHerdrStatusMemory(statusMemory.current)
+      }
       setState({ overview, error: null, loading: false })
     } catch (e) {
       if (mySeq !== seq.current) return
@@ -53,10 +63,10 @@ export function useHerdrOverview(intervalMs = 5000, myboxFocusedPaneId: string |
   }, [refresh, intervalMs])
 
   useEffect(() => {
-    if (state.overview) {
-      updateHerdrStatusMemory(statusMemory.current, state.overview.agents, myboxFocusedPaneId)
-    }
-  }, [state.overview, myboxFocusedPaneId])
+    if (!state.overview?.available) return
+    acknowledgeHerdrStatusMemory(statusMemory.current, state.overview.agents, myboxFocusedPaneId)
+    persistHerdrStatusMemory(statusMemory.current)
+  }, [myboxFocusedPaneId, state.overview])
 
   const overview = useMemo(() => {
     if (!state.overview) return null
@@ -96,7 +106,7 @@ export function useHerdrOverview(intervalMs = 5000, myboxFocusedPaneId: string |
           pane.agent_status === 'idle' && donePaneIds.has(pane.pane_id) ? 'done' : pane.agent_status,
       })),
     }
-  }, [state.overview, myboxFocusedPaneId])
+  }, [myboxFocusedPaneId, state.overview])
 
   return { ...state, overview, refresh }
 }

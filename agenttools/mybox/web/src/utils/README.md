@@ -11,7 +11,9 @@
 | [`herdr-agent-commands.ts`](./herdr-agent-commands.ts) | Herdrエージェント向けコマンド生成。 |
 | [`herdr-file-agent.ts`](./herdr-file-agent.ts) / [`herdr-file-agent.test.ts`](./herdr-file-agent.test.ts) | ファイルからエージェントを起動する引数・表示名処理とテスト。 |
 | [`herdr-layout.ts`](./herdr-layout.ts) / [`herdr-layout.test.ts`](./herdr-layout.test.ts) | Herdrペイン分割・リサイズレイアウトとテスト。 |
-| [`herdr-status.ts`](./herdr-status.ts) / [`herdr-status.test.ts`](./herdr-status.test.ts) | mybox未確認のHerdr完了状態を保持する状態遷移とテスト。 |
+| [`herdr-status.ts`](./herdr-status.ts) / [`herdr-status.test.ts`](./herdr-status.test.ts) | Herdrで確認したworking状態と、mybox未確認の完了状態をlocalStorageへ保持する状態遷移とテスト。 |
+| [`agent-output-display.ts`](./agent-output-display.ts) / [`agent-output-display.test.ts`](./agent-output-display.test.ts) | Agent出力の表示モード判定と自動補正（改行・空行・行末空白の正規化）。 |
+| [`agent-sidebar-status.ts`](./agent-sidebar-status.ts) / [`agent-sidebar-status.test.ts`](./agent-sidebar-status.test.ts) | プロジェクト別Agentの抽出と、ヘッダー表示用ステータスの集約。 |
 | [`line-diff.ts`](./line-diff.ts) / [`line-diff.test.ts`](./line-diff.test.ts) | Monacoの行差分計算。大規模入力では計算量を制限する。 |
 | [`markdown-completions.ts`](./markdown-completions.ts) / [`markdown-completions.test.ts`](./markdown-completions.test.ts) | Markdown入力の遅延補完候補とモデル単位の状態管理・テスト。 |
 | [`markdown-link-completions.ts`](./markdown-link-completions.ts) / [`markdown-link-completions.test.ts`](./markdown-link-completions.test.ts) | 相対Markdownリンク補完とテスト。 |

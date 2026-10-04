@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Activity, Bot, Box, Boxes, Cpu, GitBranch, HardDrive, MemoryStick, SquareKanban } from 'lucide-react'
+import { Activity, Bot, Box, Boxes, ChevronDown, Cpu, GitBranch, HardDrive, MemoryStick, SquareKanban } from 'lucide-react'
 import { api, Meta, Stats } from '../api/client'
 import { clearProject, dirName, encodePath, projectUrlFor, setProject } from '../utils/routes'
 import type { HerdrAgent, HerdrOverview, ProjectGitStatus } from '../api/client'
@@ -17,12 +17,16 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
+import { projectAgentsFor } from '../utils/agent-sidebar-status'
 
 interface SidebarProps {
   meta: Meta | null
   project: string
   herdr: HerdrOverview | null
   gitStatus: Record<string, ProjectGitStatus>
+  myboxFocusedPaneId?: string | null
+  agentSidebarOpen?: boolean
 }
 
 const STATS_REFRESH_INTERVAL_MS = 5000
@@ -176,7 +180,83 @@ function SidebarStatsSummary({ stats, loading, error }: ReturnType<typeof useSid
   )
 }
 
-export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
+function focusAgentLabel(agent: HerdrAgent | undefined, fallback: string | null): string {
+  if (agent) return `${agent.name} (${agent.pane_id})`
+  return fallback ?? 'None'
+}
+
+function SidebarFocusDebug({
+  project,
+  herdr,
+  myboxFocusedPaneId,
+  agentSidebarOpen,
+}: {
+  project: string
+  herdr: HerdrOverview | null
+  myboxFocusedPaneId: string | null
+  agentSidebarOpen: boolean
+}) {
+  const available = herdr?.available === true
+  const agents = available ? projectAgentsFor(herdr, project) : []
+  const myboxAgent = agents.find((agent) => agent.pane_id === myboxFocusedPaneId)
+  const herdrFocusedAgents = agents.filter((agent) => agent.focused)
+  const syncState = !available
+    ? 'Unavailable'
+    : !myboxFocusedPaneId
+      ? herdrFocusedAgents.length > 0 ? 'Herdr focus only' : 'No focus'
+      : myboxAgent?.focused
+        ? 'Synchronized'
+        : myboxAgent
+          ? 'Mismatch'
+          : 'Selected agent unavailable'
+
+  return (
+    <li className="px-1" data-testid="sidebar-focus-debug">
+      <Collapsible defaultOpen={false} className="w-full">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="group flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[11px] text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            data-testid="sidebar-focus-debug-toggle"
+          >
+            <ChevronDown className="size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+            <span className="truncate font-medium">Focus debug</span>
+            <span className="ml-auto truncate text-[10px] opacity-70">{syncState}</span>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div
+            className="mt-1 grid gap-1 rounded-md border border-sidebar-border/60 bg-sidebar-accent/30 px-2 py-1.5 text-[10px]"
+            data-testid="sidebar-focus-debug-content"
+          >
+            <div className="flex min-w-0 justify-between gap-2">
+              <span className="text-sidebar-foreground/60">Mybox selected</span>
+              <span className="truncate font-mono text-right">{focusAgentLabel(myboxAgent, myboxFocusedPaneId)}</span>
+            </div>
+            <div className="flex min-w-0 justify-between gap-2">
+              <span className="text-sidebar-foreground/60">Herdr focused</span>
+              <span className="truncate font-mono text-right">
+                {herdrFocusedAgents.length > 0
+                  ? herdrFocusedAgents.map((agent) => focusAgentLabel(agent, null)).join(', ')
+                  : 'None'}
+              </span>
+            </div>
+            <div className="flex min-w-0 justify-between gap-2">
+              <span className="text-sidebar-foreground/60">Focus sync</span>
+              <span>{syncState}</span>
+            </div>
+            <div className="flex min-w-0 justify-between gap-2">
+              <span className="text-sidebar-foreground/60">Agent sidebar</span>
+              <span>{agentSidebarOpen ? 'Open' : 'Closed'}</span>
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  )
+}
+
+export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId = null, agentSidebarOpen = false }: SidebarProps) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { setOpenMobile, state } = useSidebar()
@@ -384,6 +464,14 @@ export function AppSidebar({ meta, project, herdr, gitStatus }: SidebarProps) {
           {herdr && herdr.available && herdr.agents.length === 0 && !collapsed ? (
             <p className="px-2 text-xs text-sidebar-foreground/60">No agents running.</p>
           ) : null}
+          {!collapsed && (
+            <SidebarFocusDebug
+              project={project}
+              herdr={herdr}
+              myboxFocusedPaneId={myboxFocusedPaneId}
+              agentSidebarOpen={agentSidebarOpen}
+            />
+          )}
         </SidebarMenu>
       </SidebarContent>
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { HerdrPage } from './HerdrPage'
 import { api } from '../api/client'
@@ -76,13 +76,6 @@ class TestResizeObserver {
 
 const resizeObservers: TestResizeObserver[] = []
 
-function notifyResize(target: Element, height: number) {
-  const entry = { target, contentRect: { height } } as ResizeObserverEntry
-  for (const observer of resizeObservers) {
-    if (observer.target === target) observer.callback([entry], {} as ResizeObserver)
-  }
-}
-
 function mockMatchMedia() {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -97,11 +90,6 @@ function mockMatchMedia() {
       dispatchEvent: vi.fn(),
     })),
   })
-}
-
-function localDateTimeValue(date: Date): string {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 16)
 }
 
 describe('HerdrPage agent commands', () => {
@@ -129,8 +117,6 @@ describe('HerdrPage agent commands', () => {
             error={null}
             loading={false}
             refresh={() => Promise.resolve()}
-            webuiFocusedPaneId={null}
-            onWebuiFocusChange={() => undefined}
           />
         </DialogsProvider>
       </MemoryRouter>,
@@ -148,8 +134,6 @@ describe('HerdrPage agent commands', () => {
             error={null}
             loading={false}
             refresh={() => Promise.resolve()}
-            webuiFocusedPaneId={null}
-            onWebuiFocusChange={() => undefined}
           />
         </DialogsProvider>
       </MemoryRouter>,
@@ -168,300 +152,4 @@ describe('HerdrPage agent commands', () => {
     })
   })
 
-  it('does not open a missing linked task file', async () => {
-    render(
-      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
-        <DialogsProvider>
-          <HerdrPage
-            overview={linkedOverview}
-            error={null}
-            loading={false}
-            refresh={() => Promise.resolve()}
-            webuiFocusedPaneId={null}
-            onWebuiFocusChange={() => undefined}
-          />
-        </DialogsProvider>
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(screen.getByTestId('agent-file-w1:p1'))
-
-    await waitFor(() => expect(api.listFiles).toHaveBeenCalledWith({
-      path: '_tasks/20260919_foo',
-      showHidden: true,
-      project: 'demo',
-    }))
-    expect(screen.getByText('Linked task file not found: _tasks/20260919_foo/task.md')).toBeInTheDocument()
-  })
-
-  it('does not merge a linked task into an existing task directory', async () => {
-    vi.mocked(api.listFiles).mockResolvedValueOnce([
-      { path: '_tasks/20260920_bar', name: '20260920_bar', kind: 'dir' },
-    ])
-    render(
-      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
-        <DialogsProvider>
-          <HerdrPage
-            overview={linkedOverview}
-            error={null}
-            loading={false}
-            refresh={() => Promise.resolve()}
-            webuiFocusedPaneId={null}
-            onWebuiFocusChange={() => undefined}
-          />
-        </DialogsProvider>
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(screen.getByTestId('herdr-workspaces-toggle'))
-    fireEvent.click(await screen.findByRole('button', { name: 'Rename tab w1:t1' }))
-    fireEvent.change(await screen.findByTestId('app-dialog-input'), { target: { value: '20260920_bar' } })
-    fireEvent.click(screen.getByTestId('app-dialog-ok'))
-
-    await waitFor(() => expect(screen.getByText('The task directory already exists: _tasks/20260920_bar')).toBeInTheDocument())
-    expect(api.moveFile).not.toHaveBeenCalled()
-  })
-
-  it('sends /new from the expanded agent panel and omits /init', async () => {
-    const onWebuiFocusChange = vi.fn()
-    render(
-      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
-        <DialogsProvider>
-          <HerdrPage
-            overview={overview}
-            error={null}
-            loading={false}
-            refresh={() => Promise.resolve()}
-            webuiFocusedPaneId="w1:p1"
-            onWebuiFocusChange={onWebuiFocusChange}
-          />
-        </DialogsProvider>
-      </MemoryRouter>,
-    )
-
-    expect(screen.getByTestId('webui-focus-w1:p1')).toHaveTextContent('mybox focused')
-    fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
-    expect(onWebuiFocusChange).toHaveBeenCalledWith(null)
-    await vi.waitFor(() => {
-      expect(api.focusHerdrAgent).toHaveBeenCalledWith('w1:p1')
-    })
-    expect(screen.queryByRole('button', { name: '/init' })).not.toBeInTheDocument()
-    for (const cmd of ['/new', '/compact', '/help', '/resume', '/plan', '/status', '進めて', '次は何をするとよいですか？', 'セルフレビューして', 'Commitして']) {
-      expect(await screen.findByRole('button', { name: cmd })).toBeInTheDocument()
-    }
-    expect(screen.getByTestId('herdr-agent-output-w1:p1')).toHaveClass('resize-y')
-    expect(screen.getByTestId('herdr-prompt-input')).toHaveClass('resize-y', 'w-full', 'sm:flex-1')
-    expect(screen.getByTestId('herdr-prompt-actions')).toHaveClass('w-full', 'sm:w-auto')
-    expect(screen.queryByRole('button', { name: 'Press PageDown on myagent' })).not.toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: 'Press Esc on myagent' }))
-
-    await vi.waitFor(() => {
-      expect(api.sendKeysHerdrAgent).toHaveBeenCalledWith('w1:p1', ['esc'])
-    })
-    fireEvent.click(await screen.findByRole('button', { name: '/new' }))
-
-    await vi.waitFor(() => {
-      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/new')
-    })
-
-    fireEvent.click(await screen.findByRole('button', { name: '/status' }))
-    await vi.waitFor(() => {
-      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/status')
-    })
-
-    fireEvent.click(await screen.findByRole('button', { name: 'セルフレビューして' }))
-    await vi.waitFor(() => {
-      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', 'セルフレビューして')
-    })
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Commitして' }))
-    await vi.waitFor(() => {
-      expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', 'Commitして')
-    })
-  })
-
-  it('keeps the prompt input full width on narrow screens', async () => {
-    render(
-      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
-        <DialogsProvider>
-          <HerdrPage
-            overview={overview}
-            error={null}
-            loading={false}
-            refresh={() => Promise.resolve()}
-            webuiFocusedPaneId={null}
-            onWebuiFocusChange={() => undefined}
-          />
-        </DialogsProvider>
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
-
-    expect(screen.getByTestId('herdr-prompt-input')).toHaveClass('w-full', 'sm:flex-1')
-    expect(screen.getByTestId('herdr-prompt-actions')).toHaveClass('w-full', 'sm:w-auto')
-  })
-
-  it('restores and persists the vertical sizes of the agent panel controls', async () => {
-    localStorage.setItem('mybox:herdr-agent-output-height', '420')
-    localStorage.setItem('mybox:herdr-agent-prompt-height', '96')
-
-    render(
-      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
-        <DialogsProvider>
-          <HerdrPage
-            overview={overview}
-            error={null}
-            loading={false}
-            refresh={() => Promise.resolve()}
-            webuiFocusedPaneId={null}
-            onWebuiFocusChange={() => undefined}
-          />
-        </DialogsProvider>
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
-    const output = await screen.findByTestId('herdr-agent-output-w1:p1')
-    const prompt = screen.getByTestId('herdr-prompt-input')
-    expect(output).toHaveStyle({ height: '420px' })
-    expect(prompt).toHaveStyle({ height: '96px' })
-
-    await act(async () => {
-      notifyResize(output, 444)
-      notifyResize(prompt, 88)
-    })
-
-    await waitFor(() => {
-      expect(localStorage.getItem('mybox:herdr-agent-output-height')).toBe('444')
-      expect(localStorage.getItem('mybox:herdr-agent-prompt-height')).toBe('88')
-    })
-  })
-
-  it('persists a prompt schedule on the server', async () => {
-    render(
-      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
-        <DialogsProvider>
-          <HerdrPage
-            overview={overview}
-            error={null}
-            loading={false}
-            refresh={() => Promise.resolve()}
-            webuiFocusedPaneId={null}
-            onWebuiFocusChange={() => undefined}
-          />
-        </DialogsProvider>
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(screen.getByTestId('agent-row-w1:p1'))
-    fireEvent.change(screen.getByTestId('herdr-prompt-input'), { target: { value: 'send later' } })
-    fireEvent.change(screen.getByLabelText('Schedule send time'), {
-      target: { value: localDateTimeValue(new Date(Date.now() + 120_000)) },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule send' }))
-
-    await waitFor(() => expect(screen.getByTestId('scheduled-prompt')).toHaveTextContent('send later'))
-    expect(api.createHerdrScheduledPrompt).toHaveBeenCalledWith(
-      'w1:p1',
-      'send later',
-      expect.any(String),
-    )
-    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
-
-    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
-  })
-
-  it('cancels a scheduled prompt from the expanded agent panel', async () => {
-    render(
-      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
-        <DialogsProvider>
-          <HerdrPage
-            overview={overview}
-            error={null}
-            loading={false}
-            refresh={() => Promise.resolve()}
-            webuiFocusedPaneId={null}
-            onWebuiFocusChange={() => undefined}
-          />
-        </DialogsProvider>
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(screen.getByTestId('agent-row-w1:p1'))
-    fireEvent.change(screen.getByTestId('herdr-prompt-input'), { target: { value: 'cancel me' } })
-    fireEvent.change(screen.getByLabelText('Schedule send time'), {
-      target: { value: localDateTimeValue(new Date(Date.now() + 60 * 60_000)) },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Schedule send' }))
-    const row = await screen.findByTestId('scheduled-prompt')
-    fireEvent.click(within(row).getByRole('button', { name: 'Cancel scheduled prompt cancel me' }))
-
-    await waitFor(() => expect(screen.queryByText(/cancel me/)).not.toBeInTheDocument())
-    expect(api.deleteHerdrScheduledPrompt).toHaveBeenCalledWith('scheduled-1')
-    expect(api.promptHerdrAgent).not.toHaveBeenCalled()
-  })
-
-  it('reports WebUI focus when the agent detail panel opens', async () => {
-    const onWebuiFocusChange = vi.fn()
-    render(
-      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
-        <DialogsProvider>
-          <HerdrPage
-            overview={overview}
-            error={null}
-            loading={false}
-            refresh={() => Promise.resolve()}
-            webuiFocusedPaneId={null}
-            onWebuiFocusChange={onWebuiFocusChange}
-          />
-        </DialogsProvider>
-      </MemoryRouter>,
-    )
-
-    fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
-    await vi.waitFor(() => {
-      expect(onWebuiFocusChange).toHaveBeenCalledWith('w1:p1')
-    })
-  })
-
-  it('restores the last open agent panel separately for each project', async () => {
-    localStorage.clear()
-    const otherOverview = {
-      ...overview,
-      workspaces: [{ ...overview.workspaces[0], workspace_id: 'w2', label: 'other' }],
-      agents: [{ ...overview.agents[0], workspace_id: 'w2', pane_id: 'w2:p1' }],
-      tabs: [{ ...overview.tabs[0], workspace_id: 'w2', tab_id: 'w2:t1' }],
-      panes: [{ ...overview.panes[0], workspace_id: 'w2', tab_id: 'w2:t1', pane_id: 'w2:p1' }],
-    }
-    const renderHerdr = (project: string, pageOverview: typeof overview) => {
-      window.history.pushState({}, '', `/projects/${project}/herdr`)
-      return render(
-        <MemoryRouter initialEntries={[`/projects/${project}/herdr`]}>
-          <DialogsProvider>
-            <HerdrPage
-              overview={pageOverview}
-              error={null}
-              loading={false}
-              refresh={() => Promise.resolve()}
-              webuiFocusedPaneId={null}
-              onWebuiFocusChange={() => undefined}
-            />
-          </DialogsProvider>
-        </MemoryRouter>,
-      )
-    }
-
-    const demoPage = renderHerdr('demo', overview)
-    fireEvent.click(await screen.findByTestId('agent-row-w1:p1'))
-    expect(await screen.findByTestId('agent-detail-w1:p1')).toBeInTheDocument()
-    demoPage.unmount()
-
-    const otherPage = renderHerdr('other', otherOverview)
-    expect(screen.queryByTestId('agent-detail-w2:p1')).not.toBeInTheDocument()
-    otherPage.unmount()
-
-    renderHerdr('demo', overview)
-    expect(await screen.findByTestId('agent-detail-w1:p1')).toBeInTheDocument()
-  })
 })

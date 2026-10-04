@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import App from './App'
 import { api } from './api/client'
@@ -14,16 +14,41 @@ vi.mock('./api/client', () => ({
 
 vi.mock('./components/AppDialogs', () => ({
   DialogsProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useDialogs: () => ({ prompt: vi.fn() }),
 }))
 
 vi.mock('./components/Sidebar', () => ({
-  AppSidebar: ({ gitStatus }: { gitStatus: Record<string, { dirty: boolean }> }) => (
-    <div data-testid="app-sidebar-git-status">{gitStatus.demo?.dirty ? 'dirty' : 'clean'}</div>
+  AppSidebar: ({
+    gitStatus,
+    myboxFocusedPaneId,
+  }: {
+    gitStatus: Record<string, { dirty: boolean }>
+    myboxFocusedPaneId?: string | null
+  }) => (
+    <>
+      <div data-testid="app-sidebar-git-status">{gitStatus.demo?.dirty ? 'dirty' : 'clean'}</div>
+      <div data-testid="app-sidebar-focus">{myboxFocusedPaneId ?? 'none'}</div>
+    </>
   ),
 }))
 
 vi.mock('./components/TerminalPanel', () => ({
   TerminalPanel: () => null,
+}))
+
+vi.mock('./components/AgentSidebar', () => ({
+  AGENT_SIDEBAR_COLLAPSED_WIDTH: 56,
+  AGENT_SIDEBAR_MAX_WIDTH: 960,
+  agentSidebarWidthStyle: (width: number) => `min(${width}px, calc(100vw - 48px))`,
+  AGENT_SIDEBAR_MIN_WIDTH: 280,
+  AGENT_SIDEBAR_WIDTH_STORAGE_KEY: 'mybox_agent_sidebar_width',
+  DEFAULT_AGENT_SIDEBAR_WIDTH: 400,
+  AgentSidebar: ({ onFocusChange }: { onFocusChange?: (paneId: string | null) => void }) => (
+    <>
+      <button data-testid="agent-sidebar-focus" onClick={() => onFocusChange?.('w1:p2')}>sidebar focus</button>
+      <button data-testid="agent-sidebar-blur" onClick={() => onFocusChange?.(null)}>sidebar blur</button>
+    </>
+  ),
 }))
 
 vi.mock('./hooks/use-agent-favicon', () => ({
@@ -40,23 +65,28 @@ vi.mock('./hooks/use-herdr', () => ({
 }))
 
 vi.mock('./pages/Dashboard', () => ({
-  Dashboard: ({
-    webuiFocusedPaneId,
-    onWebuiFocusChange,
-  }: {
-    webuiFocusedPaneId: string | null
-    onWebuiFocusChange: (paneId: string | null) => void
-  }) => (
-    <button data-testid="dashboard-focus" onClick={() => onWebuiFocusChange('w1:p1')}>
-      {webuiFocusedPaneId ?? 'none'}
-    </button>
-  ),
+  Dashboard: ({ onWebuiFocusChange }: { onWebuiFocusChange: (paneId: string | null) => void }) => {
+    const [focused, setFocused] = useState<string | null>(null)
+    useEffect(() => () => onWebuiFocusChange(null), [onWebuiFocusChange])
+    return (
+      <>
+        <button
+          data-testid="dashboard-focus"
+          onClick={() => {
+            setFocused('w1:p1')
+            onWebuiFocusChange('w1:p1')
+          }}
+        >
+          {focused ?? 'none'}
+        </button>
+        <button data-testid="dashboard-blur" onClick={() => onWebuiFocusChange(null)}>blur</button>
+      </>
+    )
+  },
 }))
 vi.mock('./pages/GitPage', () => ({ GitPage: () => null }))
 vi.mock('./pages/HerdrPage', () => ({
-  HerdrPage: ({ webuiFocusedPaneId }: { webuiFocusedPaneId: string | null }) => (
-    <div data-testid="herdr-focus">{webuiFocusedPaneId ?? 'none'}</div>
-  ),
+  HerdrPage: () => <div data-testid="herdr-page" />,
 }))
 vi.mock('./pages/KanbanBoard', () => ({ KanbanBoard: () => null }))
 vi.mock('./pages/KnowledgeGraphPage', () => ({ KnowledgeGraphPage: () => null }))
@@ -117,7 +147,7 @@ describe('App project status refresh', () => {
     expect(screen.getByTestId('app-sidebar-git-status')).toHaveTextContent('dirty')
   })
 
-  it('clears WebUI focus when leaving the current page', async () => {
+  it('clears embedded WebUI focus when leaving the current page', () => {
     render(
       <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
         <App />
@@ -126,8 +156,95 @@ describe('App project status refresh', () => {
 
     fireEvent.click(screen.getByTestId('dashboard-focus'))
     expect(screen.getByTestId('dashboard-focus')).toHaveTextContent('w1:p1')
+    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('w1:p1')
 
     fireEvent.click(screen.getByRole('link', { name: 'Herdr' }))
-    expect(screen.getByTestId('herdr-focus')).toHaveTextContent('none')
+    expect(screen.getByTestId('herdr-page')).toBeInTheDocument()
+    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('none')
+  })
+
+  it('keeps sidebar focus separate from embedded file focus', () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('dashboard-focus'))
+    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('w1:p1')
+
+    fireEvent.click(screen.getByTestId('agent-sidebar-focus'))
+    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('w1:p2')
+
+    fireEvent.click(screen.getByTestId('dashboard-blur'))
+    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('w1:p2')
+
+    fireEvent.click(screen.getByTestId('agent-sidebar-blur'))
+    expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('none')
+  })
+
+  it('uses the saved agent sidebar width before the first layout render', () => {
+    localStorage.removeItem('mybox_sidebar_width')
+    localStorage.setItem('mybox_agent_sidebar_width', '560')
+
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    const wrapper = document.querySelector('[data-slot="sidebar-wrapper"]')
+    expect(wrapper).not.toBeNull()
+    expect((wrapper as HTMLElement).style.getPropertyValue('--sidebar-right-width')).toBe(
+      'min(560px, calc(100vw - 48px))',
+    )
+    expect((wrapper as HTMLElement).style.getPropertyValue('--sidebar-width')).toBe(
+      'min(320px, calc(100% - var(--sidebar-right-width, 0px)))',
+    )
+  })
+
+  it('does not reserve sidebar width when a closed agent sidebar uses the mobile layout', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    })
+    localStorage.setItem('mybox:agent-sidebar-state', JSON.stringify({ demo: { open: false } }))
+
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    const wrapper = document.querySelector('[data-slot="sidebar-wrapper"]') as HTMLElement
+    await act(async () => undefined)
+    expect(wrapper.style.getPropertyValue('--sidebar-right-width')).toBe('0px')
+  })
+
+  it('does not reserve sidebar width while the mobile agent sheet is open', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    const wrapper = document.querySelector('[data-slot="sidebar-wrapper"]') as HTMLElement
+    await act(async () => undefined)
+    expect(wrapper.style.getPropertyValue('--sidebar-right-width')).toBe('0px')
   })
 })

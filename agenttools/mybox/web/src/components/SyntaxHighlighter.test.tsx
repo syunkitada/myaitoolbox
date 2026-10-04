@@ -9,6 +9,25 @@ describe('SyntaxHighlighter', () => {
     expect(container.querySelector('code')).not.toBeNull()
   })
 
+  it('auto-corrects repeated blank lines for agent output', () => {
+    const { container } = render(
+      <SyntaxHighlighter text={'first\n\n\nsecond'} displayMode="auto" />,
+    )
+
+    expect(container.querySelectorAll('span[data-search-line]')).toHaveLength(3)
+    expect(container.querySelector('pre')).toHaveClass('whitespace-pre-wrap', 'break-words')
+  })
+
+  it('preserves Herdr line breaks without automatic wrapping', () => {
+    const { container } = render(
+      <SyntaxHighlighter text={'first\n\n\nsecond'} displayMode="herdr" />,
+    )
+
+    expect(container.querySelectorAll('span[data-search-line]')).toHaveLength(4)
+    expect(container.querySelector('pre')).toHaveClass('whitespace-pre', 'w-full', 'min-w-0', 'max-w-full', 'overflow-x-auto')
+    expect(container.querySelector('pre')).not.toHaveClass('whitespace-pre-wrap', 'break-words')
+  })
+
   it('linkifies http and https urls', () => {
     const { container } = render(
       <SyntaxHighlighter text="see https://example.com/a and http://sub.example.org/x" />,

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { CalendarClock, ChevronDown, FileText, RefreshCw, Send, X } from 'lucide-react'
+import { ChevronDown, RefreshCw, Send } from 'lucide-react'
 import { dirName, encodePath, getProject, projectUrl } from '../utils/routes'
-import type { HerdrAgent, HerdrLayout, HerdrOverview, HerdrPane, HerdrTab, HerdrWorkspace } from '../api/client'
+import type { HerdrLayout, HerdrOverview, HerdrPane, HerdrTab, HerdrWorkspace } from '../api/client'
 import { api } from '../api/client'
 import { StatusBadge, StatusDot } from '../components/herdr-status'
 import { Button } from '../components/ui/button'
@@ -12,25 +12,10 @@ import { cn } from '@/lib/utils'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { useIsMobile } from '../hooks/use-mobile'
 import {
-  HERDR_AGENT_OUTPUT_HEIGHT_STORAGE_KEY,
-  HERDR_AGENT_PROMPT_HEIGHT_STORAGE_KEY,
-  useResizableHeight,
-} from '../hooks/use-resizable-height'
-import {
-  hasTaskFile,
   linkedTaskAgentForTab,
   linkedTaskRenameForLabel,
-  taskDirectoryForFilePath,
   type LinkedTaskAgent,
 } from '../utils/herdr-file-agent'
-import { AGENT_COMMANDS } from '../utils/herdr-agent-commands'
-import {
-  formatDateTimeLocal,
-  formatScheduledAt,
-  fromScheduledPromptResponse,
-  migrateLegacyScheduledPrompts,
-  type ScheduledPrompt,
-} from '../utils/scheduled-prompts'
 import {
   edgeNeighborsForSplit,
   layoutBoxForTab,
@@ -44,50 +29,8 @@ interface HerdrPageProps {
   error: string | null
   loading: boolean
   refresh: () => Promise<void>
-  webuiFocusedPaneId?: string | null
-  onWebuiFocusChange?: (paneId: string | null) => void
 }
 
-const OPEN_AGENT_STORAGE_KEY = 'mybox:herdr-open-agent'
-
-function rememberedOpenAgent(project: string): string | null {
-  if (!project) return null
-  try {
-    const raw = localStorage.getItem(OPEN_AGENT_STORAGE_KEY)
-    if (!raw) return null
-    const stored = JSON.parse(raw) as Record<string, unknown>
-    const paneId = stored[project]
-    return typeof paneId === 'string' ? paneId : null
-  } catch {
-    return null
-  }
-}
-
-function rememberOpenAgent(project: string, paneId: string | null) {
-  if (!project) return
-  try {
-    const raw = localStorage.getItem(OPEN_AGENT_STORAGE_KEY)
-    const stored = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
-    if (paneId) stored[project] = paneId
-    else delete stored[project]
-    localStorage.setItem(OPEN_AGENT_STORAGE_KEY, JSON.stringify(stored))
-  } catch {
-    // ignore malformed or unavailable local storage
-  }
-}
-
-interface AgentDetailProps {
-  agent: HerdrAgent
-  autoReload: boolean
-  onRename?: () => void
-  onFilePathClick?: (path: string) => void
-  // Terminal column width of the agent's pane, used to render the output at
-  // the same wrap columns as the real herdr pane.
-  cols?: number
-}
-
-// Quick keys sent to the agent terminal via `herdr agent send-keys`.
-// Key names must be accepted by the herdr CLI (e.g. Enter, esc, C-c).
 const AGENT_QUICK_KEYS: { label: string; key: string }[] = [
   { label: 'Enter', key: 'enter' },
   { label: 'Esc', key: 'esc' },
@@ -96,325 +39,6 @@ const AGENT_QUICK_KEYS: { label: string; key: string }[] = [
   { label: '↑', key: 'Up' },
   { label: '↓', key: 'Down' },
 ]
-
-function AgentDetail({ agent, autoReload, onRename, onFilePathClick, cols }: AgentDetailProps) {
-  const [output, setOutput] = useState<string | null>(null)
-  const [outputError, setOutputError] = useState<string | null>(null)
-  const [draft, setDraft] = useState('')
-  const [scheduleAt, setScheduleAt] = useState('')
-  const [scheduledPrompts, setScheduledPrompts] = useState<ScheduledPrompt[]>([])
-  const [sending, setSending] = useState(false)
-  const [scheduling, setScheduling] = useState(false)
-  const [keySending, setKeySending] = useState<string | null>(null)
-  const [commandSending, setCommandSending] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const loadingRef = useRef(false)
-  const scheduledRevisionRef = useRef(0)
-  const preRef = useRef<HTMLDivElement | null>(null)
-  const outputSize = useResizableHeight<HTMLDivElement>({
-    storageKey: HERDR_AGENT_OUTPUT_HEIGHT_STORAGE_KEY,
-    defaultHeight: 256,
-    minHeight: 128,
-  })
-  const promptSize = useResizableHeight<HTMLTextAreaElement>({
-    storageKey: HERDR_AGENT_PROMPT_HEIGHT_STORAGE_KEY,
-    defaultHeight: 48,
-    minHeight: 40,
-  })
-  // While true the viewport follows new output; scrolling up pauses the follow.
-  const pinnedRef = useRef(true)
-  const visibleScheduledPrompts = scheduledPrompts.filter(
-    (scheduled) => scheduled.target === agent.name || scheduled.target === agent.pane_id,
-  )
-
-  const handlePreScroll = useCallback(() => {
-    const el = preRef.current
-    if (!el) return
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32
-  }, [])
-
-  // Keep the terminal pinned to its latest output while auto reloading.
-  useEffect(() => {
-    const el = preRef.current
-    if (!el || !pinnedRef.current) return
-    el.scrollTop = el.scrollHeight
-  }, [output])
-
-  const loadOutput = useCallback(async (reportError = true) => {
-    // Skip if a reload is already in flight (e.g. the 1s focus poller).
-    if (loadingRef.current) return
-    loadingRef.current = true
-    try {
-      const res = await api.readHerdrAgent(agent.pane_id)
-      setOutput(res.output)
-      setOutputError(null)
-    } catch (e) {
-      // Background polling stays silent; only manual reloads surface errors.
-      if (reportError) setOutputError(e instanceof Error ? e.message : String(e))
-    } finally {
-      loadingRef.current = false
-    }
-  }, [agent.pane_id])
-
-  useEffect(() => {
-    void loadOutput()
-    // The focused agent keeps its terminal output fresh by polling every second.
-    if (!autoReload) return
-    const id = setInterval(() => {
-      if (!document.hidden) void loadOutput(false)
-    }, 1000)
-    return () => clearInterval(id)
-  }, [autoReload, loadOutput])
-
-  const sendPrompt = useCallback(async () => {
-    const text = draft.trim()
-    if (!text || sending) return
-    setSending(true)
-    setNotice(null)
-    try {
-      await api.promptHerdrAgent(agent.pane_id, text)
-      setDraft('')
-      setNotice('prompt submitted')
-      setTimeout(() => setNotice(null), 3000)
-      void loadOutput()
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSending(false)
-    }
-  }, [draft, sending, agent.pane_id, loadOutput])
-
-  const loadScheduledPrompts = useCallback(async () => {
-    const revision = scheduledRevisionRef.current
-    try {
-      const prompts = await api.listHerdrScheduledPrompts()
-      const current = prompts.map(fromScheduledPromptResponse).filter((prompt): prompt is ScheduledPrompt => prompt !== null)
-      const migrated = await migrateLegacyScheduledPrompts((target, text, scheduledAt) =>
-        api.createHerdrScheduledPrompt(target, text, scheduledAt),
-      )
-      if (revision === scheduledRevisionRef.current) setScheduledPrompts([...current, ...migrated])
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e))
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadScheduledPrompts()
-    const id = setInterval(() => void loadScheduledPrompts(), 5000)
-    return () => clearInterval(id)
-  }, [loadScheduledPrompts])
-
-  const schedulePrompt = useCallback(async () => {
-    const text = draft.trim()
-    const timestamp = Date.parse(scheduleAt)
-    if (!text) return
-    if (!Number.isFinite(timestamp) || timestamp <= Date.now()) {
-      setNotice('Schedule time must be in the future')
-      return
-    }
-    scheduledRevisionRef.current += 1
-    setScheduling(true)
-    setNotice(null)
-    try {
-      const created = await api.createHerdrScheduledPrompt(agent.pane_id, text, new Date(timestamp).toISOString())
-      const scheduled = fromScheduledPromptResponse(created)
-      if (scheduled) setScheduledPrompts((current) => [...current, scheduled])
-      setDraft('')
-      setScheduleAt('')
-      setNotice('prompt scheduled')
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e))
-    } finally {
-      setScheduling(false)
-    }
-  }, [agent.pane_id, draft, scheduleAt])
-
-  const cancelScheduledPrompt = useCallback(async (id: string) => {
-    scheduledRevisionRef.current += 1
-    try {
-      await api.deleteHerdrScheduledPrompt(id)
-      setScheduledPrompts((current) => current.filter((scheduled) => scheduled.id !== id))
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e))
-    }
-  }, [])
-
-  const sendKey = useCallback(async (label: string, key: string) => {
-    if (keySending) return
-    setKeySending(key)
-    setNotice(null)
-    try {
-      await api.sendKeysHerdrAgent(agent.pane_id, [key])
-      setNotice(`${label} sent`)
-      setTimeout(() => setNotice(null), 3000)
-      void loadOutput()
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e))
-    } finally {
-      setKeySending(null)
-    }
-  }, [keySending, agent.pane_id, loadOutput])
-
-  const sendCommand = useCallback(async (command: string) => {
-    if (commandSending) return
-    setCommandSending(command)
-    setNotice(null)
-    try {
-      await api.promptHerdrAgent(agent.pane_id, command)
-      setNotice(`${command} submitted`)
-      setTimeout(() => setNotice(null), 3000)
-      void loadOutput()
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e))
-    } finally {
-      setCommandSending(null)
-    }
-  }, [commandSending, agent.pane_id, loadOutput])
-
-  return (
-    <div className="herdr-agent-detail mt-2 rounded-md border bg-muted/40 p-3" data-testid={`agent-detail-${agent.pane_id}`}>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Terminal output</span>
-        <div className="flex items-center gap-1">
-          {onRename && (
-            <Button variant="ghost" size="xs" className="cursor-pointer" onClick={onRename}>
-              Rename agent
-            </Button>
-          )}
-          <Button variant="ghost" size="xs" className="cursor-pointer" onClick={() => void loadOutput()}>
-            Reload output
-          </Button>
-        </div>
-      </div>
-      {outputError && <p className="mb-2 text-xs text-red-600">{outputError}</p>}
-      <div
-        ref={(element) => {
-          preRef.current = element
-          outputSize.ref(element)
-        }}
-        onScroll={handlePreScroll}
-        data-testid={`herdr-agent-output-${agent.pane_id}`}
-        className="min-h-32 max-h-[70vh] resize-y overflow-auto rounded border bg-background p-2 text-xs"
-        style={{ height: outputSize.height }}
-      >
-        <SyntaxHighlighter
-          text={output ?? 'loading...'}
-          cols={cols}
-          linkFilePaths
-          onFilePathClick={onFilePathClick}
-        />
-      </div>
-      <div
-        className="herdr-agent-keys mt-2 flex flex-wrap items-center gap-1"
-        data-testid={`agent-keys-${agent.pane_id}`}
-      >
-        {AGENT_QUICK_KEYS.map((k) => (
-          <Button
-            key={k.key}
-            variant="outline"
-            size="xs"
-            className="cursor-pointer px-1.5 font-mono text-[11px]"
-            title={`Press ${k.label} key`}
-            aria-label={`Press ${k.label} on ${agent.name}`}
-            data-testid={`agent-key-${agent.pane_id}-${k.label}`}
-            disabled={keySending !== null}
-            onClick={() => void sendKey(k.label, k.key)}
-          >
-            [{keySending === k.key ? '…' : k.label}]
-          </Button>
-        ))}
-        <span aria-hidden="true" className="h-4 w-px bg-border" />
-        {AGENT_COMMANDS.map((c) => (
-          <Button
-            key={c.id}
-            variant="outline"
-            size="xs"
-            className="cursor-pointer px-1.5 font-mono text-[10px] text-muted-foreground"
-            title={`Run ${c.label}`}
-            data-testid={`agent-command-${agent.pane_id}-${c.id}`}
-            disabled={commandSending !== null}
-            onClick={() => void sendCommand(c.command)}
-          >
-            {commandSending === c.command ? '…' : c.label}
-          </Button>
-        ))}
-      </div>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
-        <textarea
-          ref={promptSize.ref}
-          aria-label={`Prompt ${agent.name}`}
-          data-testid="herdr-prompt-input"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void sendPrompt()
-          }}
-          placeholder="Send a prompt to this agent (Ctrl+Enter to submit)"
-          rows={2}
-          className="min-h-10 max-h-[40vh] w-full min-w-0 resize-y rounded-md border bg-background px-2 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:flex-1"
-          style={{ height: promptSize.height }}
-        />
-        <div data-testid="herdr-prompt-actions" className="flex w-full flex-wrap items-start gap-2 sm:w-auto sm:flex-nowrap">
-          <Button size="sm" className="cursor-pointer self-end" disabled={sending || !draft.trim()} onClick={() => void sendPrompt()}>
-            <Send />
-            Send
-          </Button>
-          <div className="flex min-w-0 flex-1 items-center gap-1 sm:min-w-40 sm:flex-col sm:items-stretch">
-            <input
-              type="datetime-local"
-              aria-label="Schedule send time"
-              value={scheduleAt}
-              min={formatDateTimeLocal(new Date())}
-              onChange={(e) => setScheduleAt(e.target.value)}
-              className="h-8 w-full min-w-0 rounded-md border bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 cursor-pointer"
-              onClick={schedulePrompt}
-              disabled={sending || scheduling || !draft.trim() || scheduleAt === ''}
-              aria-label="Schedule send"
-            >
-              <CalendarClock />
-              Schedule
-            </Button>
-          </div>
-        </div>
-      </div>
-      {visibleScheduledPrompts.length > 0 && (
-        <div className="mt-2 space-y-1">
-          <p className="text-[11px] tracking-wider text-muted-foreground uppercase">Scheduled sends</p>
-          {visibleScheduledPrompts.map((scheduled) => (
-            <div
-              key={scheduled.id}
-              data-testid="scheduled-prompt"
-              className="flex min-w-0 items-center gap-1 rounded border bg-background px-1.5 py-1 text-xs"
-            >
-              <span className="min-w-0 flex-1 truncate" title={scheduled.text}>
-                {scheduled.text}
-              </span>
-              <time className="shrink-0 text-muted-foreground" dateTime={new Date(scheduled.scheduledAt).toISOString()}>
-                {formatScheduledAt(scheduled.scheduledAt)}
-              </time>
-              <Button
-                variant="ghost"
-                size="xs"
-                className="size-5 shrink-0 cursor-pointer p-0"
-                onClick={() => cancelScheduledPrompt(scheduled.id)}
-                aria-label={`Cancel scheduled prompt ${scheduled.text}`}
-                title="Cancel scheduled prompt"
-              >
-                <X className="size-3" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-      {notice && <p className="herdr-prompt-notice mt-1 text-xs text-muted-foreground">{notice}</p>}
-    </div>
-  )
-}
 
 type OnChanged = () => Promise<void>
 type OnError = (message: string) => void
@@ -1179,25 +803,14 @@ export function HerdrPage({
   error,
   loading,
   refresh,
-  webuiFocusedPaneId,
-  onWebuiFocusChange,
 }: HerdrPageProps) {
   const project = getProject()
   const { prompt } = useDialogs()
   const [searchParams, setSearchParams] = useSearchParams()
-  const requestedAgent = searchParams.get('agent')
   // Focus state lives in the URL (?tab=<tab_id>&pane=<pane_id>) so that
   // reloading the browser restores exactly the same tab/pane focus.
   const urlTabId = searchParams.get('tab')
   const urlPaneId = searchParams.get('pane')
-  const [openPane, setOpenPane] = useState<string | null>(() => rememberedOpenAgent(project))
-  const updateOpenPane = useCallback(
-    (paneId: string | null) => {
-      setOpenPane(paneId)
-      rememberOpenAgent(project, paneId)
-    },
-    [project],
-  )
   // Auto reload refreshes the focused pane's terminal output every second.
   const [autoReload, setAutoReload] = useState(true)
 
@@ -1269,26 +882,6 @@ export function HerdrPage({
     return map
   }, [agents, panes, tabs])
 
-  const agentFilePath = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const link of linkedTasks.values()) {
-      map.set(link.agent.pane_id, link.taskFile)
-    }
-    return map
-  }, [linkedTasks])
-
-  // Map each agent's pane to its terminal column width so terminal output can
-  // wrap at the same columns as the real herdr pane.
-  const agentCols = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const l of layouts) {
-      for (const p of l.panes) {
-        if (p.rect.width > 0) map.set(p.pane_id, p.rect.width)
-      }
-    }
-    return map
-  }, [layouts])
-
   const navigate = useNavigate()
 
   const openFile = useCallback(
@@ -1303,26 +896,6 @@ export function HerdrPage({
     setTimeout(() => setOpError((cur) => (cur === message ? null : cur)), 6000)
   }, [])
 
-  const openLinkedTaskFile = useCallback(
-    async (filePath: string) => {
-      try {
-        const entries = await api.listFiles({
-          path: taskDirectoryForFilePath(filePath),
-          showHidden: true,
-          project,
-        })
-        if (!hasTaskFile(entries, filePath)) {
-          onError(`Linked task file not found: ${filePath}`)
-          return
-        }
-        openFile(filePath)
-      } catch (error) {
-        onError(error instanceof Error ? error.message : String(error))
-      }
-    },
-    [onError, openFile, project],
-  )
-
   // With no matching workspace the server bootstraps this project's first
   // workspace, whose root tab becomes the requested new tab.
   const createFirstTab = async () => {
@@ -1334,49 +907,6 @@ export function HerdrPage({
       refreshAll,
     )
   }
-
-  const renameAgent = async (agent: HerdrAgent, e?: React.MouseEvent) => {
-    e?.stopPropagation()
-    const nextName = await prompt(
-      `Rename agent "${agent.name}" (leave empty to reset to default)`,
-      agent.name,
-    )
-    if (nextName === null) return
-    const trimmed = nextName.trim()
-    const linkedTask = [...linkedTasks.values()].find((link) => link.agent.pane_id === agent.pane_id)
-    if (linkedTask) {
-      const expectedName = linkedTaskRenameForLabel(linkedTask, linkedTask.tab.label)?.newAgentName
-      if (!expectedName || trimmed !== expectedName) {
-        onError('File-agent names follow their linked Herdr tab. Rename the tab to move the task directory.')
-        return
-      }
-    }
-    void runOp(
-      () => api.renameHerdrAgent(agent.pane_id, trimmed || undefined, !trimmed),
-      onError,
-      refreshAll,
-    )
-  }
-
-  // Auto-open the agent requested via ?agent=<pane_id> (sidebar deep link).
-  useEffect(() => {
-    if (!requestedAgent) return
-    if (openPane !== requestedAgent && (overview?.agents ?? []).some((a) => a.pane_id === requestedAgent)) {
-      updateOpenPane(requestedAgent)
-    }
-  }, [requestedAgent, overview, openPane, updateOpenPane])
-
-  useEffect(() => {
-    if (!openPane) return
-    void api
-      .focusHerdrAgent(openPane)
-      .then(() => refresh())
-      .catch((e) => onError(e instanceof Error ? e.message : String(e)))
-  }, [openPane, onError, refresh])
-
-  useEffect(() => {
-    onWebuiFocusChange?.(openPane)
-  }, [openPane, onWebuiFocusChange])
 
   return (
     <div className="page p-4 md:p-6">
@@ -1491,113 +1021,6 @@ export function HerdrPage({
         </Collapsible>
       </section>
 
-      <section className="herdr-agents">
-        <h2 className="mb-2 text-sm font-semibold tracking-wider text-muted-foreground uppercase">Agents</h2>
-        {(() => {
-          const projectWorkspaceIds = new Set(
-            workspaces.filter((w) => w.label === project).map((w) => w.workspace_id),
-          )
-          const projectAgents = agents.filter((a) => projectWorkspaceIds.has(a.workspace_id))
-
-          if (projectAgents.length === 0) {
-            return (
-              <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-                No herdr agents running for project "{project}".
-              </p>
-            )
-          }
-
-          return (
-            <div className="flex flex-col gap-2">
-              {projectAgents.map((a) => {
-                const ws = workspaces.find((w) => w.workspace_id === a.workspace_id)
-                return (
-                  <div
-                    key={a.pane_id}
-                    className={cn(
-                      'rounded-lg border bg-card p-3',
-                      openPane === a.pane_id && 'border-primary ring-2 ring-primary/20',
-                    )}
-                    data-testid={`herdr-agent-${a.pane_id}`}
-                  >
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        className="herdr-agent-row flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2 text-left"
-                        onClick={() => updateOpenPane(openPane === a.pane_id ? null : a.pane_id)}
-                        aria-expanded={openPane === a.pane_id}
-                        data-testid={`agent-row-${a.pane_id}`}
-                      >
-                        <StatusDot status={a.status} />
-                        <span className="font-semibold">{a.name}</span>
-                        <StatusBadge status={a.status} />
-                        {ws && <span className="text-xs text-muted-foreground">in {ws.label}</span>}
-                        {a.focused && <span className="text-xs text-muted-foreground">· focused</span>}
-                        {webuiFocusedPaneId === a.pane_id && (
-                          <span
-                            data-testid={`webui-focus-${a.pane_id}`}
-                            className="text-xs font-medium text-sky-600 dark:text-sky-400"
-                          >
-                            · mybox focused
-                          </span>
-                        )}
-                        <span className="truncate font-mono text-xs text-muted-foreground">
-                          {a.pane_id}
-                        </span>
-                        {a.title && (
-                          <span className="herdr-agent-title w-full truncate text-xs text-muted-foreground">
-                            {a.title}
-                          </span>
-                        )}
-                      </button>
-                      {(() => {
-                        const filePath = agentFilePath.get(a.pane_id)
-                        return filePath ? (
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            className="h-6 shrink-0 cursor-pointer px-1.5 text-[11px]"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              void openLinkedTaskFile(filePath)
-                            }}
-                            title={`Open ${filePath} in Files`}
-                            aria-label={`Open ${dirName(filePath)} in Files`}
-                            data-testid={`agent-file-${a.pane_id}`}
-                          >
-                            <FileText className="mr-1 size-3" />
-                            {dirName(filePath)}
-                          </Button>
-                        ) : null
-                      })()}
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        className="h-6 shrink-0 cursor-pointer px-1.5 text-[11px]"
-                        onClick={(e) => renameAgent(a, e)}
-                        title="Rename agent"
-                        aria-label={`Rename agent ${a.name}`}
-                        data-testid={`agent-rename-${a.pane_id}`}
-                      >
-                        Rename
-                      </Button>
-                    </div>
-                    {openPane === a.pane_id && (
-                      <AgentDetail
-                        agent={a}
-                        autoReload={autoReload}
-                        onRename={() => renameAgent(a)}
-                        onFilePathClick={openFile}
-                        cols={agentCols.get(a.pane_id)}
-                      />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )
-        })()}
-      </section>
     </div>
   )
 }

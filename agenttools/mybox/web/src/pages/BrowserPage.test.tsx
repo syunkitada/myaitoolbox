@@ -325,6 +325,58 @@ describe('BrowserPage file reveal', () => {
   })
 })
 
+describe('BrowserPage agent sidebar layout', () => {
+  afterEach(() => {
+    localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('does not persist the temporary outline collapse while the agent sidebar is open', async () => {
+    const path = 'guide.md'
+    localStorage.setItem('outline_open', '1')
+    vi.spyOn(api, 'listFiles').mockResolvedValue([{ path, name: path, kind: 'file' }])
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path, content: '# Guide' })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+
+    function Harness() {
+      const [agentSidebarOpen, setAgentSidebarOpen] = useState(false)
+      return (
+        <>
+          <button type="button" onClick={() => setAgentSidebarOpen(true)}>Open agent sidebar</button>
+          <button type="button" onClick={() => setAgentSidebarOpen(false)}>Close agent sidebar</button>
+          <BrowserPage
+            title="Files"
+            selected={path}
+            onSelect={vi.fn()}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+            agentSidebarOpen={agentSidebarOpen}
+          />
+        </>
+      )
+    }
+
+    const router = createMemoryRouter(
+      [{ path: '*', element: <Harness /> }],
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    await waitFor(() => expect(api.getFileContent).toHaveBeenCalledWith(path))
+    fireEvent.click(screen.getByRole('button', { name: 'Open agent sidebar' }))
+    await waitFor(() => expect(localStorage.getItem('outline_open')).toBe('1'))
+    fireEvent.click(screen.getByRole('button', { name: 'Close agent sidebar' }))
+    await waitFor(() => expect(document.querySelector('.outline-pane')).toHaveAttribute('data-outline-open', 'true'))
+  })
+})
+
 describe('Explorer Git status', () => {
   it('shows a Git badge for a collapsed directory with changed descendants', () => {
     render(

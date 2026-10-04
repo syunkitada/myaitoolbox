@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Routes, Route, useLocation, Navigate, NavLink } from 'react-router-dom'
+import { Routes, Route, useLocation, useNavigate, Navigate, NavLink } from 'react-router-dom'
 import { api, Meta, ProjectGitStatus } from './api/client'
-import { getProject, projectUrl, rememberCurrentTab, rememberedFilesUrl } from './utils/routes'
+import { encodePath, getProject, projectUrl, rememberCurrentTab, rememberedFilesUrl } from './utils/routes'
 import { AppSidebar } from './components/Sidebar'
 import { useHerdrOverview } from './hooks/use-herdr'
 import { useAgentFavicon } from './hooks/use-agent-favicon'
@@ -10,12 +10,26 @@ import { Button } from './components/ui/button'
 import { Separator } from './components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
+import {
+  AgentSidebar,
+  AGENT_SIDEBAR_COLLAPSED_WIDTH,
+  AGENT_SIDEBAR_MAX_WIDTH,
+  AGENT_SIDEBAR_MIN_WIDTH,
+  AGENT_SIDEBAR_WIDTH_STORAGE_KEY,
+  DEFAULT_AGENT_SIDEBAR_WIDTH,
+  agentSidebarWidthStyle,
+} from './components/AgentSidebar'
+import { StatusDot } from './components/herdr-status'
 import { DialogsProvider } from './components/AppDialogs'
 import { HerdrPage } from './pages/HerdrPage'
-import { Bot, Folder, GitBranch, Network, SquareKanban, TerminalSquare } from 'lucide-react'
+import { Bot, Folder, GitBranch, Network, PanelRightClose, PanelRightOpen, SquareKanban, TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
+import { useAgentSidebarState } from './hooks/use-agent-sidebar'
+import { readResizableWidth } from './hooks/use-resizable-width'
+import { useIsMobile } from './hooks/use-mobile'
+import { projectAgentsFor, summarizeAgentStatuses } from './utils/agent-sidebar-status'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const KnowledgeGraphPage = lazy(() =>
@@ -36,13 +50,31 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const gitStatusRequestSeq = useRef(0)
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const project = getProject()
-  const [webuiFocusedPaneId, setWebuiFocusedPaneId] = useState<string | null>(null)
-  const herdr = useHerdrOverview(5000, webuiFocusedPaneId)
+  const isMobile = useIsMobile()
+  const [agentSidebarFocusedPaneId, setAgentSidebarFocusedPaneId] = useState<string | null>(null)
+  const [embeddedWebuiFocusedPaneId, setEmbeddedWebuiFocusedPaneId] = useState<string | null>(null)
+  const [agentSidebarWidth, setAgentSidebarWidth] = useState(() => readResizableWidth({
+    storageKey: AGENT_SIDEBAR_WIDTH_STORAGE_KEY,
+    defaultWidth: DEFAULT_AGENT_SIDEBAR_WIDTH,
+    minWidth: AGENT_SIDEBAR_MIN_WIDTH,
+    maxWidth: AGENT_SIDEBAR_MAX_WIDTH,
+  }))
+  const agentSidebar = useAgentSidebarState(project, isMobile)
+  const myboxFocusedPaneId = agentSidebar.open && agentSidebarFocusedPaneId
+    ? agentSidebarFocusedPaneId
+    : embeddedWebuiFocusedPaneId
+  const herdr = useHerdrOverview(5000, myboxFocusedPaneId)
+  const agentStatus = summarizeAgentStatuses(projectAgentsFor(herdr.overview, project))
   useAgentFavicon(herdr.overview)
 
-  const handleWebuiFocusChange = useCallback((paneId: string | null) => {
-    setWebuiFocusedPaneId(paneId)
+  const handleAgentSidebarFocusChange = useCallback((paneId: string | null) => {
+    setAgentSidebarFocusedPaneId(paneId)
+  }, [])
+
+  const handleEmbeddedFocusChange = useCallback((paneId: string | null) => {
+    setEmbeddedWebuiFocusedPaneId(paneId)
   }, [])
 
   const refreshGitStatus = useCallback(async () => {
@@ -94,11 +126,12 @@ export default function App() {
     if (project) rememberCurrentTab()
   }, [project, pathname])
 
-  // WebUI focus is local to the current page. Herdr's own focus remains
-  // untouched when the user navigates to another project or section.
+  // Agent sidebar focus remains active while navigating between sections of a
+  // project, but neither focus source leaks into another project.
   useLayoutEffect(() => {
-    setWebuiFocusedPaneId(null)
-  }, [project, pathname])
+    setAgentSidebarFocusedPaneId(null)
+    setEmbeddedWebuiFocusedPaneId(null)
+  }, [project])
 
   // Show <projectIndex>:<tabIndex> as the title; 0 outside a project
   useEffect(() => {
@@ -131,8 +164,22 @@ export default function App() {
 
   return (
     <DialogsProvider>
-      <SidebarProvider style={{ '--sidebar-width': '20rem' } as React.CSSProperties}>
-      <AppSidebar meta={meta} project={project} herdr={herdr.overview} gitStatus={gitStatus} />
+      <SidebarProvider
+        style={{
+          '--sidebar-width': '20rem',
+          '--sidebar-right-width': isMobile
+            ? '0px'
+            : agentSidebar.open ? agentSidebarWidthStyle(agentSidebarWidth) : `${AGENT_SIDEBAR_COLLAPSED_WIDTH}px`,
+        } as React.CSSProperties}
+      >
+      <AppSidebar
+        meta={meta}
+        project={project}
+        herdr={herdr.overview}
+        gitStatus={gitStatus}
+        myboxFocusedPaneId={myboxFocusedPaneId}
+        agentSidebarOpen={agentSidebar.open}
+      />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
           <div className="flex flex-1 items-center gap-2">
@@ -169,6 +216,25 @@ export default function App() {
                 <TerminalSquare />
               </Button>
             )}
+            {project && (
+              <Button
+                variant={agentSidebar.open ? 'secondary' : 'ghost'}
+                size="sm"
+                className="cursor-pointer"
+                onClick={() => agentSidebar.setOpen(!agentSidebar.open)}
+                aria-label={isMobile
+                  ? `${agentStatus.label}; ${agentSidebar.open ? 'Close' : 'Open'} agent sidebar`
+                  : agentSidebar.open ? 'Close agent sidebar' : 'Open agent sidebar'}
+                title={isMobile
+                  ? `${agentStatus.label}; ${agentSidebar.open ? 'Close' : 'Open'} agent sidebar`
+                  : agentSidebar.open ? 'Close agent sidebar' : 'Open agent sidebar'}
+                data-testid="agent-sidebar-toggle"
+              >
+                {isMobile
+                  ? <StatusDot status={agentStatus.status} className="size-3.5 ring-2 ring-background" />
+                  : agentSidebar.open ? <PanelRightClose /> : <PanelRightOpen />}
+              </Button>
+            )}
           </div>
         </header>
         <div className="flex min-h-0 flex-col" style={{ height: 'calc(100svh - 3.5rem)' }}>
@@ -203,8 +269,8 @@ export default function App() {
                         recentFiles={meta?.recent_files ?? []}
                         herdrOverview={herdr.overview}
                         refreshHerdr={herdr.refresh}
-                        webuiFocusedPaneId={webuiFocusedPaneId}
-                        onWebuiFocusChange={handleWebuiFocusChange}
+                        agentSidebarOpen={agentSidebar.open}
+                        onWebuiFocusChange={handleEmbeddedFocusChange}
                       />
                     }
                   />
@@ -219,8 +285,8 @@ export default function App() {
                         recentFiles={meta?.recent_files ?? []}
                         herdrOverview={herdr.overview}
                         refreshHerdr={herdr.refresh}
-                        webuiFocusedPaneId={webuiFocusedPaneId}
-                        onWebuiFocusChange={handleWebuiFocusChange}
+                        agentSidebarOpen={agentSidebar.open}
+                        onWebuiFocusChange={handleEmbeddedFocusChange}
                       />
                     }
                   />
@@ -242,8 +308,6 @@ export default function App() {
                         error={herdr.error}
                         loading={herdr.loading}
                         refresh={herdr.refresh}
-                        webuiFocusedPaneId={webuiFocusedPaneId}
-                        onWebuiFocusChange={handleWebuiFocusChange}
                       />
                     }
                   />
@@ -265,6 +329,24 @@ export default function App() {
           {project && <TerminalPanel />}
         </div>
       </SidebarInset>
+      {project && (
+        <AgentSidebar
+          project={project}
+          overview={herdr.overview}
+          error={herdr.error}
+          loading={herdr.loading}
+          open={agentSidebar.open}
+          onOpenChange={agentSidebar.setOpen}
+          displayMode={agentSidebar.displayMode}
+          onDisplayModeChange={agentSidebar.setDisplayMode}
+          onWidthChange={setAgentSidebarWidth}
+          openAgentPaneId={agentSidebar.paneId}
+          onOpenAgentChange={agentSidebar.setPaneId}
+          refresh={herdr.refresh}
+          onFocusChange={handleAgentSidebarFocusChange}
+          onFilePathClick={(filePath) => navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))}
+        />
+      )}
       </SidebarProvider>
     </DialogsProvider>
   )

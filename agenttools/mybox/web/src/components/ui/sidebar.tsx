@@ -164,7 +164,10 @@ function SidebarProvider({
             {
               "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
               ...style,
-              "--sidebar-width": `${sidebarWidth}px`,
+              // Keep the fixed application sidebar from consuming the space
+              // reserved for the project-level right sidebar on narrow
+              // desktop viewports.
+              "--sidebar-width": `min(${sidebarWidth}px, calc(100% - var(--sidebar-right-width, 0px)))`,
             } as React.CSSProperties
           }
           className={cn(
@@ -243,9 +246,12 @@ function Sidebar({
     )
   }
 
+  // Keep the flex item width in sync with its gap. This avoids a
+  // percentage-based sidebar width becoming circular through auto sizing.
   return (
     <div
       className="group peer hidden text-sidebar-foreground md:block"
+      style={state === "expanded" ? { width: "var(--sidebar-width)" } : undefined}
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-variant={variant}

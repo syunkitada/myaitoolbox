@@ -101,12 +101,11 @@ describe('FileAgentWidget commands', () => {
         path="_tasks/20260919_foo/task.md"
         overview={runningOverview}
         onRefresh={() => undefined}
-        webuiFocusedPaneId="w1:p1"
         onWebuiFocusChange={onWebuiFocusChange}
       />,
     )
 
-    expect(await screen.findByTestId('webui-focus-indicator')).toHaveTextContent('mybox focused')
+    expect(screen.queryByTestId('webui-focus-indicator')).not.toBeInTheDocument()
     await waitFor(() => {
       expect(onWebuiFocusChange).toHaveBeenCalledWith('w1:p1')
     })
@@ -115,6 +114,27 @@ describe('FileAgentWidget commands', () => {
     await waitFor(() => {
       expect(onWebuiFocusChange).toHaveBeenCalledWith(null)
     })
+  })
+
+  it('clears WebUI focus when the widget is unmounted', async () => {
+    const onWebuiFocusChange = vi.fn()
+    const view = render(
+      <FileAgentWidget
+        path="_tasks/20260919_foo/task.md"
+        overview={runningOverview}
+        onRefresh={() => undefined}
+        onWebuiFocusChange={onWebuiFocusChange}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(onWebuiFocusChange).toHaveBeenCalledWith('w1:p1')
+    })
+    onWebuiFocusChange.mockClear()
+
+    view.unmount()
+
+    expect(onWebuiFocusChange).toHaveBeenCalledWith(null)
   })
 
   it('focuses the herdr agent when its panel is open', async () => {

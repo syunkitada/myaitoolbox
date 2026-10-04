@@ -144,7 +144,7 @@ interface BrowserPageProps {
   onClose?: () => void
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
-  webuiFocusedPaneId?: string | null
+  agentSidebarOpen?: boolean
   onWebuiFocusChange?: (paneId: string | null) => void
   revealPath?: string
   onRevealPathHandled?: (path: string) => void
@@ -1525,7 +1525,7 @@ interface PaneProps {
   favorites: string[]
   refreshMeta: () => Promise<void>
   onRecentChanged?: (path: string) => void
-  onChanged: () => void
+  onChanged: (revealPath?: string) => void | Promise<void>
   onGitStatusChange: () => void
   onOpen: (path: string) => void
   onDeleted: (path: string) => void
@@ -1539,7 +1539,7 @@ interface PaneProps {
   onGitDiffOpenChange?: (open: boolean) => void
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
-  webuiFocusedPaneId?: string | null
+  agentSidebarOpen?: boolean
   onWebuiFocusChange?: (paneId: string | null) => void
   onOpenGit?: (path: string) => void
   searchHit?: FileSearchHit | null
@@ -1571,7 +1571,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   onGitDiffOpenChange,
   herdrOverview,
   refreshHerdr,
-  webuiFocusedPaneId,
+  agentSidebarOpen,
   onWebuiFocusChange,
   onOpenGit,
   searchHit,
@@ -1626,6 +1626,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     if (saved !== null) return saved === '1'
     return window.innerWidth >= 768
   })
+  const outlineBeforeAgentRef = useRef<boolean | null>(null)
   const {
     width: outlineWidth,
     resizing: outlineResizing,
@@ -1638,8 +1639,21 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   })
 
   useEffect(() => {
+    if (agentSidebarOpen) return
     window.localStorage.setItem(outlineStorageKey, outlineOpen ? '1' : '0')
-  }, [outlineOpen, outlineStorageKey])
+  }, [agentSidebarOpen, outlineOpen, outlineStorageKey])
+
+  useEffect(() => {
+    if (agentSidebarOpen) {
+      if (outlineBeforeAgentRef.current === null) outlineBeforeAgentRef.current = outlineOpen
+      setOutlineOpen(false)
+      return
+    }
+    if (outlineBeforeAgentRef.current !== null) {
+      setOutlineOpen(outlineBeforeAgentRef.current)
+      outlineBeforeAgentRef.current = null
+    }
+  }, [agentSidebarOpen, outlineOpen])
 
   const byPath = useMemo(() => {
     const m = new Map<string, string>()
@@ -1903,7 +1917,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     void api
       .moveFile(path, targetPath)
       .then(async () => {
-        onChanged()
+        onChanged(targetPath)
         onGitStatusChange()
         const handled = await onMoved?.(path, targetPath)
         if (handled !== true) onOpen(targetPath)
@@ -1983,9 +1997,9 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       setShowDiff(false)
       setShowGitDiff(false)
       setGitDiffFiles([])
-      setSaved(true)
-      onChanged()
+      await onChanged()
       onGitStatusChange()
+      setSaved(true)
       setTimeout(() => setSaved(false), 2000)
       return true
     } catch (e) {
@@ -2178,7 +2192,6 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
           path={path}
           overview={herdrOverview}
           onRefresh={refreshHerdr ?? (() => undefined)}
-          webuiFocusedPaneId={webuiFocusedPaneId}
           onWebuiFocusChange={onWebuiFocusChange}
           onFilePathClick={onOpen}
         />
@@ -2769,7 +2782,7 @@ export function BrowserPage({
   onClose,
   herdrOverview,
   refreshHerdr,
-  webuiFocusedPaneId,
+  agentSidebarOpen,
   onWebuiFocusChange,
   revealPath,
   onRevealPathHandled,
@@ -3419,7 +3432,7 @@ export function BrowserPage({
       onGitDiffOpenChange={slot === 'main' ? setGitDiffOpen : setReferenceGitDiffOpen}
       herdrOverview={slot === 'main' ? herdrOverview : undefined}
       refreshHerdr={slot === 'main' ? refreshHerdr : undefined}
-      webuiFocusedPaneId={webuiFocusedPaneId}
+      agentSidebarOpen={agentSidebarOpen}
       onWebuiFocusChange={onWebuiFocusChange}
       onOpenGit={setOpenGitDir}
       searchHit={slot === 'main' ? searchHit : null}

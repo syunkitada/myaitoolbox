@@ -40,7 +40,6 @@ export interface FileAgentWidgetProps {
   path: string
   overview: HerdrOverview | null
   onRefresh: () => void
-  webuiFocusedPaneId?: string | null
   onWebuiFocusChange?: (paneId: string | null) => void
   onFilePathClick?: (path: string) => void
 }
@@ -49,7 +48,6 @@ export function FileAgentWidget({
   path,
   overview,
   onRefresh,
-  webuiFocusedPaneId,
   onWebuiFocusChange,
   onFilePathClick,
 }: FileAgentWidgetProps) {
@@ -185,9 +183,21 @@ export function FileAgentWidget({
 
   useEffect(() => {
     const paneId = open && overview?.available ? agent?.pane_id ?? null : null
+    if (!paneId) {
+      if (reportedWebuiPaneIdRef.current !== null) {
+        reportedWebuiPaneIdRef.current = null
+        onWebuiFocusChange?.(null)
+      }
+      return
+    }
     if (reportedWebuiPaneIdRef.current === paneId) return
     reportedWebuiPaneIdRef.current = paneId
     onWebuiFocusChange?.(paneId)
+    return () => {
+      if (reportedWebuiPaneIdRef.current !== paneId) return
+      reportedWebuiPaneIdRef.current = null
+      onWebuiFocusChange?.(null)
+    }
   }, [agent?.pane_id, open, overview?.available, onWebuiFocusChange])
 
   useEffect(() => {
@@ -343,14 +353,6 @@ export function FileAgentWidget({
         !starting && (
           <span className="text-[10px] tracking-wider text-muted-foreground uppercase">off</span>
         )
-      )}
-      {agent?.pane_id === webuiFocusedPaneId && (
-        <span
-          data-testid="webui-focus-indicator"
-          className="rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300"
-        >
-          mybox focused
-        </span>
       )}
       {starting && <Loader2 className="size-3 shrink-0 animate-spin" />}
     </button>

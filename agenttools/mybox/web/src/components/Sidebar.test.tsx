@@ -101,4 +101,32 @@ describe('AppSidebar agent navigation', () => {
 
     expect(screen.getByTestId('location')).toHaveTextContent('/projects/demo/herdr?agent=w1%3Ap2')
   })
+
+  it('shows Mybox focus state in a collapsed debug section', () => {
+    const focusedHerdr = {
+      ...herdr,
+      agents: herdr.agents.map((agent) => agent.pane_id === 'w1:p1' ? { ...agent, focused: true } : agent),
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
+        <SidebarProvider>
+          <AppSidebar
+            meta={meta}
+            project="demo"
+            herdr={focusedHerdr}
+            gitStatus={{}}
+            myboxFocusedPaneId="w1:p1"
+            agentSidebarOpen
+          />
+        </SidebarProvider>
+      </MemoryRouter>,
+    )
+
+    expect(screen.queryByTestId('sidebar-focus-debug-content')).not.toBeInTheDocument()
+    act(() => fireEvent.click(screen.getByTestId('sidebar-focus-debug-toggle')))
+
+    expect(screen.getByTestId('sidebar-focus-debug-content')).toHaveTextContent('f20260919_foo')
+    expect(screen.getByTestId('sidebar-focus-debug-content')).toHaveTextContent('Synchronized')
+  })
 })

@@ -14,7 +14,7 @@ interface DashboardProps {
   recentFiles: string[]
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void
-  webuiFocusedPaneId?: string | null
+  agentSidebarOpen?: boolean
   onWebuiFocusChange?: (paneId: string | null) => void
 }
 
@@ -25,7 +25,7 @@ export function Dashboard({
   recentFiles,
   herdrOverview,
   refreshHerdr,
-  webuiFocusedPaneId,
+  agentSidebarOpen,
   onWebuiFocusChange,
 }: DashboardProps) {
   const params = useParams()
@@ -115,7 +115,7 @@ export function Dashboard({
         onRevealPathHandled={onRevealPathHandled}
         herdrOverview={herdrOverview}
         refreshHerdr={refreshHerdr}
-        webuiFocusedPaneId={webuiFocusedPaneId}
+        agentSidebarOpen={agentSidebarOpen}
         onWebuiFocusChange={onWebuiFocusChange}
         defaultSelect={(entries) =>
           entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined

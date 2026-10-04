@@ -3,12 +3,13 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKe
 export const MIN_RESIZABLE_WIDTH = 180
 export const MAX_RESIZABLE_WIDTH = 480
 
-interface UseResizableWidthOptions {
+export interface UseResizableWidthOptions {
   storageKey: string
   defaultWidth: number
   minWidth?: number
   maxWidth?: number
   handleSide?: 'left' | 'right'
+  displayWidth?: (width: number) => number
 }
 
 interface UseResizableWidthResult {
@@ -22,7 +23,7 @@ function clampWidth(width: number, minWidth: number, maxWidth: number): number {
   return Math.min(maxWidth, Math.max(minWidth, width))
 }
 
-function readWidth({ storageKey, defaultWidth, minWidth, maxWidth }: UseResizableWidthOptions): number {
+export function readResizableWidth({ storageKey, defaultWidth, minWidth, maxWidth }: UseResizableWidthOptions): number {
   if (typeof window === 'undefined') return clampWidth(defaultWidth, minWidth ?? MIN_RESIZABLE_WIDTH, maxWidth ?? MAX_RESIZABLE_WIDTH)
   const raw = window.localStorage.getItem(storageKey)
   if (raw === null) return clampWidth(defaultWidth, minWidth ?? MIN_RESIZABLE_WIDTH, maxWidth ?? MAX_RESIZABLE_WIDTH)
@@ -38,10 +39,12 @@ export function useResizableWidth({
   minWidth = MIN_RESIZABLE_WIDTH,
   maxWidth = MAX_RESIZABLE_WIDTH,
   handleSide = 'right',
+  displayWidth,
 }: UseResizableWidthOptions): UseResizableWidthResult {
-  const [width, setWidth] = useState(() => readWidth({ storageKey, defaultWidth, minWidth, maxWidth }))
+  const [width, setWidth] = useState(() => readResizableWidth({ storageKey, defaultWidth, minWidth, maxWidth }))
   const [resizing, setResizing] = useState(false)
   const resizeStart = useRef<{ clientX: number; width: number } | null>(null)
+  const visibleWidth = displayWidth ? displayWidth(width) : width
 
   useEffect(() => {
     window.localStorage.setItem(storageKey, String(width))
@@ -63,10 +66,10 @@ export function useResizableWidth({
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return
       event.preventDefault()
-      resizeStart.current = { clientX: event.clientX, width }
+      resizeStart.current = { clientX: event.clientX, width: visibleWidth }
       setResizing(true)
     },
-    [width],
+    [visibleWidth],
   )
 
   useEffect(() => {
@@ -96,15 +99,15 @@ export function useResizableWidth({
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       let nextWidth: number | null = null
-      if (event.key === 'ArrowLeft') nextWidth = width + (handleSide === 'left' ? 10 : -10)
-      if (event.key === 'ArrowRight') nextWidth = width + (handleSide === 'left' ? -10 : 10)
+      if (event.key === 'ArrowLeft') nextWidth = visibleWidth + (handleSide === 'left' ? 10 : -10)
+      if (event.key === 'ArrowRight') nextWidth = visibleWidth + (handleSide === 'left' ? -10 : 10)
       if (event.key === 'Home') nextWidth = minWidth
       if (event.key === 'End') nextWidth = maxWidth
       if (nextWidth === null) return
       event.preventDefault()
       setWidth(clampWidth(nextWidth, minWidth, maxWidth))
     },
-    [handleSide, maxWidth, minWidth, width],
+    [handleSide, maxWidth, minWidth, visibleWidth],
   )
 
   return { width, resizing, handlePointerDown, handleKeyDown }

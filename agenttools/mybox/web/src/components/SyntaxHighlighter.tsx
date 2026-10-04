@@ -1,6 +1,7 @@
 import { MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef } from 'react'
 import { Prism, hasGrammar } from '../utils/prism-langs'
 import { filesUrl, getProject } from '../utils/routes'
+import { normalizeAgentOutput, type AgentOutputDisplayMode } from '../utils/agent-output-display'
 
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/g
 const FILE_PATH_RE = /(?<![A-Za-z0-9_./-])((?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)(?![A-Za-z0-9_.-])/g
@@ -50,6 +51,8 @@ export interface SyntaxHighlighterProps {
   // Terminal column width the pre is forced to render at so long lines wrap at
   // (and only at) the same columns as the herdr pane they came from.
   cols?: number
+  // Agent sidebar display mode. Omitted callers retain the existing behavior.
+  displayMode?: AgentOutputDisplayMode
   linkFilePaths?: boolean
   focusLine?: number
   searchQuery?: string
@@ -61,13 +64,18 @@ export function SyntaxHighlighter({
   language,
   className,
   cols,
+  displayMode,
   linkFilePaths = false,
   focusLine,
   searchQuery,
   onFilePathClick,
 }: SyntaxHighlighterProps) {
-  const lines = useMemo(() => text.split(/\r?\n/), [text])
+  const displayText = displayMode === 'auto' ? normalizeAgentOutput(text) : text
+  const lines = useMemo(() => displayText.split(/\r?\n/), [displayText])
   const lineRef = useRef<HTMLPreElement | null>(null)
+  const layoutClass = displayMode === 'herdr'
+    ? 'w-full min-w-0 max-w-full overflow-x-auto'
+    : 'overflow-x-auto'
   const fixedWidth =
     cols != null && cols > 0 ? { width: `${cols}ch`, minWidth: `${cols}ch` } : undefined
 
@@ -91,7 +99,7 @@ export function SyntaxHighlighter({
     <pre
       ref={lineRef}
       onClick={handleClick}
-      className={`overflow-x-auto font-mono text-[13px] leading-6 whitespace-pre-wrap break-words ${className ?? ''}`}
+      className={`${layoutClass} font-mono text-[13px] leading-6 ${displayMode === 'herdr' ? 'whitespace-pre' : 'whitespace-pre-wrap break-words'} ${className ?? ''}`}
       style={fixedWidth}
     >
       <code>

@@ -40,6 +40,19 @@ async function openHerdrWorkspaces(page: import('@playwright/test').Page) {
   await toggle.click()
 }
 
+async function closeAgentSidebar(page: import('@playwright/test').Page) {
+  const sheet = page.getByTestId('agent-sidebar-sheet')
+  if (await sheet.count()) {
+    await page.keyboard.press('Escape')
+    await expect(sheet).toHaveCount(0)
+    return
+  }
+  const close = page.getByTestId('agent-sidebar-toggle')
+  if (await close.count() && (await close.getAttribute('aria-label')) === 'Close agent sidebar') {
+    await close.click()
+  }
+}
+
 async function removeProjectGitRepo(page: import('@playwright/test').Page) {
   const projectsRes = await page.request.get('/api/projects')
   const projects = (await projectsRes.json()) as Array<{ name: string; path: string }>
@@ -84,6 +97,7 @@ test('dashboard opens a markdown file from the explorer', async ({ page }) => {
 })
 
 test('dashboard opens a file in the reference pane from the explorer context menu', async ({ page }) => {
+  await closeAgentSidebar(page)
   const explorer = page.locator('.knowledge-explorer')
   const reference = treeButton(explorer, 'tasks.md')
   await reference.click({ button: 'right' })
@@ -166,6 +180,7 @@ test('dashboard compares a changed file with its Git diff', async ({ page }) => 
 })
 
 test('markdown copy button sits on the file name row and switches formats in its dialog', async ({ page }) => {
+  await closeAgentSidebar(page)
   const explorer = page.locator('.knowledge-explorer')
   await treeButton(explorer, 'tasks.md').click()
 
@@ -246,6 +261,7 @@ test('dashboard keeps the open file in the URL across a reload', async ({ page }
 })
 
 test('dashboard shows a content outline for markdown files', async ({ page }) => {
+  await closeAgentSidebar(page)
   const explorer = page.locator('.knowledge-explorer')
   await treeButton(explorer, 'tasks.md').click()
   await expect(page.getByText('Task tracking lives here.')).toBeVisible()
@@ -256,6 +272,7 @@ test('dashboard shows a content outline for markdown files', async ({ page }) =>
 })
 
 test('the details pane stays visible while the file content scrolls', async ({ page }) => {
+  await closeAgentSidebar(page)
   const explorer = page.locator('.knowledge-explorer')
   await treeButton(explorer, 'tasks.md').click()
   const outlineHeader = page.locator('.outline-header')
@@ -278,6 +295,7 @@ test('the details pane stays visible while the file content scrolls', async ({ p
 })
 
 test('dashboard toggles the details sidebar', async ({ page }) => {
+  await closeAgentSidebar(page)
   const explorer = page.locator('.knowledge-explorer')
   await treeButton(explorer, 'tasks.md').click()
   const pane = page.locator('.outline-pane')
@@ -353,6 +371,7 @@ test('dashboard resizes and remembers the file explorer width', async ({ page })
 })
 
 test('dashboard resizes and remembers the details width', async ({ page }) => {
+  await closeAgentSidebar(page)
   await page.evaluate(() => localStorage.removeItem('mybox_files_details_width'))
   await page.reload()
   await treeButton(page.locator('.knowledge-explorer'), 'tasks.md').click()
@@ -669,6 +688,7 @@ test('dashboard moves a file by dragging onto a directory', async ({ page }) => 
 })
 
 test('dashboard renames a file via Move', async ({ page }) => {
+  await closeAgentSidebar(page)
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks.md').click()
@@ -680,6 +700,7 @@ test('dashboard renames a file via Move', async ({ page }) => {
 })
 
 test('dashboard duplicates a file', async ({ page }) => {
+  await closeAgentSidebar(page)
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks2.md').click()
@@ -691,6 +712,7 @@ test('dashboard duplicates a file', async ({ page }) => {
 })
 
 test('dashboard deletes a file', async ({ page }) => {
+  await closeAgentSidebar(page)
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks2-copy.md').click()
@@ -755,6 +777,52 @@ test('project tabs switch between files, board and graph', async ({ page }) => {
   await expect(tabs.getByRole('link', { name: 'Files' })).toHaveClass(/bg-accent/)
 })
 
+test('agent sidebar stays available across project tabs and remembers its open state', async ({ page }) => {
+  const agentSidebar = page.getByTestId('agent-sidebar')
+  await expect(agentSidebar).toBeVisible()
+  await expect(agentSidebar).toContainText('proj')
+  await expect(agentSidebar.getByRole('button', { name: 'Close agent sidebar' })).toHaveCount(0)
+
+  await page.locator('.project-tabs').getByRole('link', { name: 'Board' }).click()
+  await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()
+  await expect(page.getByTestId('agent-sidebar')).toBeVisible()
+
+  await page.getByTestId('agent-sidebar-toggle').click()
+  await expect(page.getByTestId('agent-sidebar')).toHaveCount(0)
+  await expect(page.getByTestId('agent-sidebar-collapsed')).toBeVisible()
+  await expect(page.getByTestId('agent-sidebar-status-w7:p1')).toBeVisible()
+  await page.getByTestId('agent-sidebar-toggle').click()
+  await expect(page.getByTestId('agent-sidebar')).toBeVisible()
+})
+
+test.describe('narrow desktop project shell', () => {
+  test.use({ viewport: { width: 768, height: 844 } })
+
+  test('keeps the left sidebar inside the viewport when both sidebars are wide', async ({ page }) => {
+    await page.evaluate(() => {
+      localStorage.setItem('mybox_sidebar_width', '480')
+      localStorage.setItem('mybox_agent_sidebar_width', '960')
+    })
+    await page.reload()
+
+    await expect(page.getByTestId('agent-sidebar')).toBeVisible()
+    await expect(page.getByRole('separator', { name: 'Resize agent sidebar' })).toHaveAttribute('aria-valuenow', '720')
+    await expect.poll(async () => page.evaluate(() => ({
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+    }))).toEqual({ viewportWidth: 768, documentWidth: 768, bodyWidth: 768 })
+
+    const sidebar = page.locator('[data-slot="sidebar-container"]')
+    await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBeLessThanOrEqual(768)
+
+    const agentSidebar = await page.getByTestId('agent-sidebar').boundingBox()
+    const layoutWidth = await page.evaluate(() => document.documentElement.clientWidth)
+    expect(agentSidebar).not.toBeNull()
+    expect(agentSidebar!.x + agentSidebar!.width).toBeLessThanOrEqual(layoutWidth)
+  })
+})
+
 test('sidebar lists projects and switches between them', async ({ page }) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mybox-e2e-side-'))
   const res = await page.request.post('/api/projects', { data: { path: dir } })
@@ -816,17 +884,63 @@ test('herdr tab shows Herdr workspaces and operates agents', async ({ page }) =>
   await expect(page.getByTestId('herdr-workspace-w7')).toContainText('proj')
   await expect(page.getByTestId('herdr-workspace-w7')).toContainText('working')
 
-  await page.locator('.herdr-agent-row').first().click()
+  await page.route('**/api/herdr/agents/read', async (route) => {
+    const request = route.request().postDataJSON() as { target?: string }
+    if (request.target !== 'w7:p1') {
+      await route.continue()
+      return
+    }
+    const response = await route.fetch()
+    const body = (await response.json()) as { output: string }
+    await route.fulfill({
+      response,
+      json: { ...body, output: `${body.output}\n${'x'.repeat(2000)}` },
+    })
+  })
+
+  await page.getByTestId('agent-sidebar-row-w7:p1').click()
   const detail = page.locator('.herdr-agent-detail')
   await expect(detail).toBeVisible()
   await expect(detail.locator('pre')).toContainText('stub output for w7:p1')
+  const displayMode = detail.getByRole('combobox', { name: 'Agent output display mode' })
+  await expect(displayMode).toHaveValue('auto')
+  await displayMode.selectOption('herdr')
+  await expect(detail.locator('pre')).toHaveClass(/whitespace-pre/)
+  const outputPre = detail.locator('pre')
+  await expect.poll(async () => outputPre.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeGreaterThan(0)
+  const herdrScroll = await outputPre.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
+  expect(herdrScroll.scrollWidth).toBeGreaterThan(herdrScroll.clientWidth)
+  const herdrLayoutWidth = await page.evaluate(() => document.documentElement.clientWidth)
+  await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth)).toBe(herdrLayoutWidth)
+  await displayMode.selectOption('auto')
+  await expect(detail.locator('pre')).toHaveClass(/whitespace-pre-wrap/)
+  const layoutWidth = await page.evaluate(() => document.documentElement.clientWidth)
+  await expect.poll(async () => page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }))).toEqual({ clientWidth: layoutWidth, scrollWidth: layoutWidth })
+  const agentSidebar = await page.getByTestId('agent-sidebar').boundingBox()
+  const detailBox = await detail.boundingBox()
+  expect(agentSidebar).not.toBeNull()
+  expect(detailBox).not.toBeNull()
+  expect(detailBox!.x + detailBox!.width).toBeLessThanOrEqual(agentSidebar!.x + agentSidebar!.width)
 
   // the focused agent polls its terminal output every second
   const pre = detail.locator('pre')
   const before = await pre.innerText()
   await expect(pre).not.toHaveText(before, { timeout: 5000 })
 
-  await page.getByTestId('herdr-prompt-input').fill('run the tests please')
+  const promptInput = page.getByTestId('herdr-prompt-input')
+  await expect(promptInput).toHaveCSS('height', '24px')
+  await promptInput.fill('run the tests please')
+  const promptMetrics = await promptInput.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))
+  expect(promptMetrics.scrollHeight).toBeLessThanOrEqual(promptMetrics.clientHeight)
   await detail.getByRole('button', { name: 'Send', exact: true }).click()
   await expect(detail.locator('.herdr-prompt-notice')).toContainText('prompt submitted')
   await expect(detail.locator('pre')).toContainText('last prompt: run the tests please')
@@ -902,7 +1016,7 @@ test('herdr tab and pane operations work end to end', async ({ page }) => {
 
   // split an existing pane downward; the new pane appears under the same tab
   await p2.getByRole('button', { name: 'Split w7:p2 down' }).click()
-  const p4 = page.getByTestId('herdr-pane-w7:p4')
+  const p4 = page.locator('[data-testid^="herdr-pane-w7:p"]').filter({ hasText: 'stub-split-down' })
   await expect(p4).toBeVisible()
 
   // pane terminal output is loaded automatically while open
@@ -1037,6 +1151,9 @@ test('clicking a sidebar agent linked to a task opens its file in the Files tab'
       a.pane_id === 'w7:p1'
         ? { ...a, name: 'e2e-status-change-target', custom_name: 'e2e-status-change-target' }
         : a,
+    )
+    body.tabs = body.tabs.map((tab: { tab_id: string }) =>
+      tab.tab_id === 'w7:t1' ? { ...tab, label: 'e2e-status-change-target' } : tab,
     )
     await route.fulfill({ response: res, json: body })
   })
@@ -1203,6 +1320,7 @@ test.describe('mobile viewport', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/projects/proj/dashboard/files/tasks.md')
+    await closeAgentSidebar(page)
   })
 
   test('hides the details sidebar by default and opens it as a slide-over', async ({ page }) => {
@@ -1211,6 +1329,68 @@ test.describe('mobile viewport', () => {
     await expect(page.locator('.outline')).toContainText('Contents')
     await page.getByRole('button', { name: 'Close' }).click()
     await expect(page.locator('.outline')).toHaveCount(0)
+  })
+
+  test('keeps the closed agent sidebar out of the layout and shows its status in the header', async ({ page }) => {
+    await expect(page.getByTestId('agent-sidebar')).toHaveCount(0)
+    await expect(page.getByTestId('agent-sidebar-collapsed')).toHaveCount(0)
+
+    const agentToggle = page.getByTestId('agent-sidebar-toggle')
+    await expect(agentToggle).toHaveAttribute('aria-label', /^Agents:.*; Open agent sidebar$/)
+    await expect(agentToggle.locator('[role="img"]')).toBeVisible()
+    await expect.poll(async () => page.evaluate(() => ({
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+    }))).toEqual({ viewportWidth: 390, documentWidth: 390, bodyWidth: 390 })
+
+    await agentToggle.click()
+    await expect(page.getByTestId('agent-sidebar-sheet')).toBeVisible()
+    await expect.poll(async () => page.evaluate(() => ({
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+    }))).toEqual({ viewportWidth: 390, documentWidth: 390, bodyWidth: 390 })
+    await closeAgentSidebar(page)
+  })
+
+  test('grows the agent prompt input as text wraps on mobile', async ({ page }) => {
+    await page.getByTestId('agent-sidebar-toggle').click()
+    await expect(page.getByTestId('agent-sidebar-sheet')).toBeVisible()
+    await page.getByTestId('agent-sidebar-row-w7:p1').click()
+
+    const promptInput = page.getByTestId('herdr-prompt-input')
+    await expect(promptInput).toHaveCSS('height', '48px')
+    await promptInput.fill('This is a long prompt that should wrap across multiple lines on a narrow phone viewport. '.repeat(5))
+    await expect.poll(async () => promptInput.evaluate((element) => element.clientHeight)).toBeGreaterThan(48)
+
+    await promptInput.fill('short')
+    await expect(promptInput).toHaveCSS('height', '48px')
+    await closeAgentSidebar(page)
+  })
+
+  test('groups secondary agent controls in a mobile command palette', async ({ page }) => {
+    await page.getByTestId('agent-sidebar-toggle').click()
+    await expect(page.getByTestId('agent-sidebar-sheet')).toBeVisible()
+    await page.getByTestId('agent-sidebar-row-w7:p1').click()
+
+    await expect(page.getByTestId('agent-key-w7:p1-Enter')).toBeVisible()
+    await expect(page.getByTestId('agent-key-w7:p1-↑')).toBeVisible()
+    await expect(page.getByTestId('agent-key-w7:p1-↓')).toBeVisible()
+    await expect(page.getByTestId('agent-key-w7:p1-Esc')).toHaveCount(0)
+    await page.getByTestId('agent-command-palette-toggle').click()
+
+    const palette = page.getByTestId('agent-command-palette')
+    await expect(palette).toBeVisible()
+    await expect(page.getByTestId('agent-command-palette-commands')).toHaveClass(/grid-cols-2/)
+    await expect(page.getByTestId('agent-key-w7:p1-Esc')).toBeVisible()
+    await expect(palette.getByTestId('agent-key-w7:p1-↑')).toHaveCount(0)
+    await expect(palette.getByTestId('agent-key-w7:p1-↓')).toHaveCount(0)
+    await expect(page.getByTestId('agent-command-w7:p1-status')).toHaveAttribute('data-size', 'xs')
+    await expect(palette.getByRole('searchbox', { name: 'Filter keys and commands' })).toHaveCount(0)
+    await page.getByTestId('agent-command-w7:p1-status').click()
+    await expect(palette).toHaveCount(0)
+    await closeAgentSidebar(page)
   })
 
   test('file explorer opens as a slide-over', async ({ page }) => {
@@ -1339,6 +1519,7 @@ test.describe('git tab on a mobile viewport', () => {
 
   test('opens the branch menu within the mobile explorer viewport', async ({ page }) => {
     await page.goto('/projects/proj/git')
+    await closeAgentSidebar(page)
     const noRepo = page.getByRole('heading', { name: 'No git repository' })
     try {
       await noRepo.waitFor({ state: 'visible', timeout: 2000 })
@@ -1362,6 +1543,7 @@ test.describe('git tab on a mobile viewport', () => {
     await page.request.post('/api/files', { data: { path: 'tmp-untracked.md' } })
     try {
       await page.goto('/projects/proj/git')
+      await closeAgentSidebar(page)
       // Initialize if this tested in isolation; otherwise a repo already exists.
       const noRepo = page.getByRole('heading', { name: 'No git repository' })
       try {
