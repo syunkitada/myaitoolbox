@@ -294,7 +294,7 @@ export function AgentSidebar({
   if (!project) return null
 
   const content = (
-    <div className="flex h-full min-h-0 min-w-0 flex-col bg-card" data-testid="agent-sidebar-content">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-col bg-card" data-testid="agent-sidebar-content">
       <div className="shrink-0 border-b px-3 py-2">
         <div className="flex items-center gap-2">
           <Bot className="size-4 shrink-0" />

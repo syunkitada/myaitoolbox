@@ -106,6 +106,12 @@ describe('AgentSidebar', () => {
     expect(screen.queryByRole('button', { name: 'Close agent sidebar' })).not.toBeInTheDocument()
   })
 
+  it('fills the open sidebar when no agent pane is expanded', () => {
+    renderSidebar({ openAgentPaneId: null })
+
+    expect(screen.getByTestId('agent-sidebar-content')).toHaveClass('w-full')
+  })
+
   it('allows the sidebar to be resized up to 960 pixels', () => {
     localStorage.setItem('mybox_agent_sidebar_width', '960')
     renderSidebar()
