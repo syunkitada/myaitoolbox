@@ -35,6 +35,13 @@ func TestStatsAPI(t *testing.T) {
 	assert.NotNil(t, stats.FocusedProcesses)
 }
 
+func TestDfUsagePctUsesAvailableSpaceForDenominator(t *testing.T) {
+	// Bfree includes filesystem-reserved blocks, while Bavail is the space
+	// available to regular users and is what `df` uses for its percentage.
+	got := dfUsagePct(90, 5)
+	assert.Equal(t, 95.0, got)
+}
+
 func TestParseProcStat(t *testing.T) {
 	// comm carries spaces to exercise the closing-paren lookup.
 	line := "1234 (my proc) S 1 1234 1234 0 -1 4194304 100 0 0 0 10 20 0 0 20 0 3 0 5000 4096 256"

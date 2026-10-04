@@ -2,6 +2,7 @@ package entrypoint
 
 import (
 	"bufio"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -251,6 +252,13 @@ func pct(used, total uint64) float64 {
 	return 100 * float64(used) / float64(total)
 }
 
+// dfUsagePct matches df's filesystem usage percentage. The denominator
+// excludes blocks reserved by the filesystem from the available side of the
+// ratio, so it is used + Bavail rather than the raw filesystem total.
+func dfUsagePct(used, available uint64) float64 {
+	return math.Ceil(pct(used, used+available))
+}
+
 func osRelease() string {
 	if v := readProcLine("/proc/version"); v != "" {
 		return v
@@ -318,7 +326,7 @@ func diskStats() []statDisk {
 			Total:      total,
 			Used:       used,
 			Available:  available,
-			UsagePct:   pct(used, total),
+			UsagePct:   dfUsagePct(used, available),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].MountPoint < out[j].MountPoint })
