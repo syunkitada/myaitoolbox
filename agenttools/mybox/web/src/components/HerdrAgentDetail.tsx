@@ -298,7 +298,7 @@ export function HerdrAgentDetail({
   )
 
   return (
-    <div className="herdr-agent-detail mt-2 min-w-0 rounded-md border bg-muted/40 p-3" data-testid={`agent-detail-${agent.pane_id}`}>
+    <div className="herdr-agent-detail -mx-2 mt-2 min-w-0 rounded-md border bg-muted/40 px-1 py-2" data-testid={`agent-detail-${agent.pane_id}`}>
       <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
         <span className="min-w-0 flex-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Terminal output</span>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
@@ -324,7 +324,7 @@ export function HerdrAgentDetail({
         }}
         onScroll={handlePreScroll}
         data-testid={`herdr-agent-output-${agent.pane_id}`}
-        className="min-h-32 max-h-[70vh] min-w-0 max-w-full resize-y overflow-x-hidden overflow-y-auto rounded border bg-background p-2 text-xs"
+        className="min-h-32 max-h-[70vh] min-w-0 max-w-full resize-y overflow-x-hidden overflow-y-auto rounded border bg-background px-1 py-2 text-xs"
         style={{ height: outputSize.height }}
       >
         <SyntaxHighlighter

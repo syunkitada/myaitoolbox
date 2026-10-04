@@ -165,6 +165,8 @@ describe('AgentSidebar', () => {
     first.unmount()
     renderSidebar({ openAgentPaneId: 'w1:p1' })
     expect(await screen.findByTestId('herdr-agent-output-w1:p1')).toBeInTheDocument()
+    expect(screen.getByTestId('agent-detail-w1:p1')).toHaveClass('-mx-2', 'px-1')
+    expect(screen.getByTestId('herdr-agent-output-w1:p1')).toHaveClass('px-1')
     expect(screen.getByRole('combobox', { name: 'Agent output display mode' })).toHaveValue('auto')
     expect(screen.getByTestId('herdr-prompt-actions')).toHaveClass('w-full', 'flex-col')
     expect(screen.getByTestId('herdr-prompt-input')).toHaveClass('w-full', 'min-w-0', 'min-h-6', 'py-0', 'leading-5')
