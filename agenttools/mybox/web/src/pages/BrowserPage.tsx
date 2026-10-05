@@ -20,7 +20,7 @@ import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { Badge } from '../components/ui/badge'
-import { Archive, ArrowLeftRight, ChevronDown, Check, Clock, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, FolderPlus, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
+import { Archive, ArrowLeftRight, ChevronDown, Check, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, FolderPlus, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -370,8 +370,6 @@ interface ExplorerProps {
   selected: string
   onSelect: (path: string) => void
   title: string
-  favorites: string[]
-  recentFiles: string[]
   gitStatus?: Record<string, string>
   onClose?: () => void
   onMoveFile?: (filePath: string, dirPath: string) => void | Promise<void>
@@ -388,44 +386,7 @@ interface ExplorerProps {
   onSearchHit?: (hit: FileSearchHit) => void
 }
 
-interface ExplorerSectionProps {
-  label: string
-  icon: ReactNode
-  items: string[]
-  emptyText: string
-  onSelect: (path: string) => void
-}
-
-function ExplorerSection({ label, icon, items, emptyText, onSelect }: ExplorerSectionProps) {
-  return (
-    <div className="explorer-section mb-4 last:mb-0">
-      <h2 className="mb-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">{label}</h2>
-      {items.length === 0 ? (
-        <p className="px-1 text-xs text-muted-foreground">{emptyText}</p>
-      ) : (
-        <ul className="m-0 list-none p-0">
-          {items.map((p) => (
-            <li key={p} className="knowledge-tree-row flex min-h-[26px] items-center gap-1 rounded-md px-1 leading-[1.4] hover:bg-muted">
-              <button
-                className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 self-stretch bg-transparent p-0 text-left text-sm whitespace-nowrap text-foreground overflow-hidden text-ellipsis hover:text-primary"
-                title={p}
-                onClick={() => onSelect(p)}
-                onAuxClick={(e) => handleAuxClick(e, p)}
-              >
-                <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground [&_svg]:size-3.5">
-                  {icon}
-                </span>
-                <span className="truncate">{p}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
-export function Explorer({ entries, selected, onSelect, title, favorites, recentFiles, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onBeforePathMove, onPathMoved, onSearchHit }: ExplorerProps) {
+export function Explorer({ entries, selected, onSelect, title, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onBeforePathMove, onPathMoved, onSearchHit }: ExplorerProps) {
   const { prompt, confirm, alert, showProgress, hideProgress } = useDialogs()
   const [q, setQ] = useState('')
   const [searchMode, setSearchMode] = useState<'name' | 'text'>('name')
@@ -828,23 +789,6 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
 
   const tree = useMemo(() => buildTree(entries, gitStatus ?? {}), [entries, gitStatus])
 
-  const knownPaths = useMemo(() => {
-    const set = new Set<string>()
-    for (const e of entries) {
-      set.add(e.path)
-      const parts = e.path.split('/')
-      let prefix = ''
-      for (let i = 0; i < parts.length - 1; i++) {
-        prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
-        set.add(prefix)
-      }
-    }
-    return set
-  }, [entries])
-
-  const visibleFavorites = useMemo(() => favorites.filter((p) => knownPaths.has(p)), [favorites, knownPaths])
-  const visibleRecents = useMemo(() => recentFiles.filter((p) => knownPaths.has(p)), [recentFiles, knownPaths])
-
   const toggle = (dirPath: string) => {
     const open = expanded.has(dirPath)
     if (!open) onLoadDir?.(dirPath)
@@ -1174,22 +1118,6 @@ export function Explorer({ entries, selected, onSelect, title, favorites, recent
       ) : (
         <ul className="knowledge-tree m-0 mt-2 list-none p-0">{items}</ul>
       )}
-      <div className="explorer-meta mt-3 border-t border-border pt-3">
-        <ExplorerSection
-          label="Favorites"
-          icon={<FolderHeart />}
-          items={visibleFavorites}
-          emptyText="No favorites yet."
-          onSelect={onSelect}
-        />
-        <ExplorerSection
-          label="Recent"
-          icon={<Clock />}
-          items={visibleRecents}
-          emptyText="No recent files."
-          onSelect={onSelect}
-        />
-      </div>
       <input
         ref={uploadInputRef}
         type="file"
@@ -3469,8 +3397,6 @@ export function BrowserPage({
                     selected={selected}
                     onSelect={handleSelect}
                     title={title}
-                    favorites={favorites}
-                    recentFiles={recentFiles}
                     gitStatus={gitStatus}
                     onClose={onClose}
                     onMoveFile={handleMoveFile}
@@ -3519,8 +3445,6 @@ export function BrowserPage({
                     selected={selected}
                     onSelect={handleSelect}
                     title={title}
-                    favorites={favorites}
-                    recentFiles={recentFiles}
                     gitStatus={gitStatus}
                     onClose={onClose}
                     onMoveFile={handleMoveFile}
@@ -3548,6 +3472,7 @@ export function BrowserPage({
             <FileTabs
               tabs={visibleRecents}
               active={selected}
+              favorites={favorites}
               onSelect={handleSelect}
               onClose={handleCloseRecent}
             />

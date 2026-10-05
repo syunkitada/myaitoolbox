@@ -33,8 +33,6 @@ describe('Explorer file upload', () => {
           selected=""
           onSelect={vi.fn()}
           title="Files"
-          favorites={[]}
-          recentFiles={[]}
           onMoveFile={vi.fn()}
           onChanged={vi.fn().mockResolvedValue(undefined)}
           onLoadDir={vi.fn().mockResolvedValue(undefined)}
@@ -113,8 +111,6 @@ describe('Explorer file upload', () => {
           onSelect={onSelect}
           onSearchHit={onSearchHit}
           title="Files"
-          favorites={[]}
-          recentFiles={[]}
           onMoveFile={vi.fn()}
           showHidden={false}
           onToggleHidden={vi.fn()}
@@ -137,6 +133,24 @@ describe('Explorer file upload', () => {
     fireEvent.click(screen.getByRole('button', { name: /docs\/guide\.md/ }))
     expect(onSearchHit).toHaveBeenCalledWith({ path: 'docs/guide.md', line: 4, query: 'deploy' })
     expect(onSelect).not.toHaveBeenCalled()
+  })
+})
+
+describe('Explorer navigation sections', () => {
+  it('does not render permanent favorites or recent sections', () => {
+    render(
+      <DialogsProvider>
+        <Explorer
+          entries={[{ kind: 'file', name: 'guide.md', path: 'guide.md', markdown: true }]}
+          selected=""
+          onSelect={vi.fn()}
+          title="Files"
+        />
+      </DialogsProvider>,
+    )
+
+    expect(screen.queryByText('Favorites', { exact: true })).not.toBeInTheDocument()
+    expect(screen.queryByText('Recent', { exact: true })).not.toBeInTheDocument()
   })
 })
 
@@ -171,8 +185,6 @@ describe('Explorer task trigger actions', () => {
           selected=""
           onSelect={onSelect}
           title="Files"
-          favorites={[]}
-          recentFiles={[]}
           onChanged={onChanged}
           showHidden={true}
           onToggleHidden={vi.fn()}
@@ -386,8 +398,6 @@ describe('Explorer Git status', () => {
           selected=""
           onSelect={vi.fn()}
           title="Files"
-          favorites={[]}
-          recentFiles={[]}
           gitStatus={{ 'docs/reference/guide.md': 'modified' }}
         />
       </DialogsProvider>,
@@ -408,8 +418,6 @@ describe('Explorer reference actions', () => {
           onSelect={vi.fn()}
           onOpenReference={onOpenReference}
           title="Files"
-          favorites={[]}
-          recentFiles={[]}
         />
       </DialogsProvider>,
     )
