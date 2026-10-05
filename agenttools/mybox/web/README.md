@@ -48,9 +48,7 @@ Markdown本文の `vega-lite` コードフェンスにJSON仕様を書くと、F
 | [`package-lock.json`](./package-lock.json) | npm依存関係の固定解決結果。 |
 | [`playwright.config.ts`](./playwright.config.ts) | Playwrightの実行設定。 |
 | [`tsconfig.app.json`](./tsconfig.app.json) | アプリケーション用TypeScript設定。 |
-| [`tsconfig.app.tsbuildinfo`](./tsconfig.app.tsbuildinfo) | TypeScript増分ビルドの状態。 |
 | [`tsconfig.json`](./tsconfig.json) | TypeScriptプロジェクト設定。 |
 | [`tsconfig.node.json`](./tsconfig.node.json) | Vite設定などNode側のTypeScript設定。 |
-| [`tsconfig.node.tsbuildinfo`](./tsconfig.node.tsbuildinfo) | Node側TypeScript増分ビルドの状態。 |
 | [`vite.config.ts`](./vite.config.ts) | Viteのビルド・開発サーバー設定。 |
 | [`vitest.config.ts`](./vitest.config.ts) | Vitestのテスト設定。 |

@@ -3,6 +3,8 @@
 /web/node_modules
 /web/dist
 *.log
+# TypeScriptの増分ビルドキャッシュ
+*.tsbuildinfo
 
 # web-build で生成されるファイルは追跡しない（README.md と .gitkeep だけ例外）
 /internal/webui/dist/*
