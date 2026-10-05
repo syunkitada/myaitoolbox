@@ -20,6 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../componen
 import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
+import { StatusDot } from '../components/herdr-status'
 import { Badge } from '../components/ui/badge'
 import { Archive, ArrowLeftRight, Bot, ChevronDown, Check, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, FolderPlus, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
@@ -1471,6 +1472,7 @@ interface PaneProps {
   openAgentPaneId?: string | null
   taskAgentPaneId?: string
   taskAgentName?: string
+  taskAgentStatus?: string
   onOpenAgentPane?: (paneId: string) => void
   refreshHerdr?: () => void | Promise<void>
   onOpenGit?: (path: string) => void
@@ -1505,6 +1507,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   openAgentPaneId,
   taskAgentPaneId,
   taskAgentName: linkedAgentName,
+  taskAgentStatus: linkedAgentStatus,
   onOpenAgentPane,
   refreshHerdr,
   onOpenGit,
@@ -1606,6 +1609,13 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   const taskAgentPanelOpen = Boolean(
     taskAgentPaneId && agentSidebarOpen && openAgentPaneId === taskAgentPaneId,
   )
+  const taskAgentState = !taskAgentPaneId ? 'not-started' : taskAgentPanelOpen ? 'open' : 'available'
+  const taskAgentStatus = taskAgentPaneId ? linkedAgentStatus ?? 'unknown' : null
+  const taskAgentButtonLabel = !taskAgentPaneId
+    ? 'Start task agent'
+    : taskAgentPanelOpen
+      ? `Task agent panel open; status: ${taskAgentStatus}`
+      : `Open task agent panel; status: ${taskAgentStatus}`
 
   useEffect(() => {
     window.localStorage.setItem(TASK_AGENT_KIND_STORAGE_KEY, taskAgentKind)
@@ -2208,23 +2218,23 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
               </Button>
               {linkedAgentName && (
                 <Button
-                  variant={!taskAgentPaneId ? 'outline' : taskAgentPanelOpen ? 'secondary' : 'ghost'}
-                  size="sm"
-                  aria-label={!taskAgentPaneId
-                    ? 'Start task agent'
-                    : taskAgentPanelOpen
-                      ? 'Task agent panel is open'
-                      : 'Open task agent panel'}
-                  aria-pressed={taskAgentPanelOpen}
+                  variant={taskAgentState === 'not-started' ? 'outline' : taskAgentState === 'open' ? 'default' : 'ghost'}
+                  size="icon-sm"
+                  className={cn(
+                    'relative cursor-pointer',
+                    taskAgentState === 'not-started' && 'border-dashed text-muted-foreground',
+                    taskAgentState === 'available' && 'border border-border text-foreground',
+                    taskAgentState === 'open' && 'ring-2 ring-primary/30',
+                  )}
+                  aria-label={taskAgentButtonLabel}
+                  aria-pressed={taskAgentPaneId ? taskAgentPanelOpen : undefined}
                   title={!taskAgentPaneId
                     ? `Start task agent for _tasks/${taskDirFromPath(path) ?? linkedAgentName}`
                     : taskAgentPanelOpen
-                    ? linkedAgentName
-                      ? `Task agent ${linkedAgentName} is open`
-                      : 'Task agent panel is open'
-                    : linkedAgentName
-                      ? `Open task agent ${linkedAgentName}`
-                      : 'Open task agent panel'}
+                    ? `${linkedAgentName} — ${taskAgentStatus}; panel open`
+                    : `${linkedAgentName} — ${taskAgentStatus}; panel is not open`}
+                  data-agent-state={taskAgentState}
+                  data-agent-status={taskAgentStatus ?? 'not-started'}
                   onClick={() => {
                     if (taskAgentPaneId) {
                       onOpenAgentPane?.(taskAgentPaneId)
@@ -2234,10 +2244,13 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                   }}
                   data-testid="open-task-agent-panel"
                 >
-                  <Bot />
-                  <span className="hidden sm:inline">
-                    {!taskAgentPaneId ? 'Start Agent' : taskAgentPanelOpen ? 'Agent (Open)' : 'Agent'}
-                  </span>
+                  <Bot aria-hidden="true" />
+                  {taskAgentPaneId && (
+                    <StatusDot
+                      status={taskAgentStatus ?? 'unknown'}
+                      className="absolute -top-0.5 -right-0.5 size-2.5 ring-2 ring-background"
+                    />
+                  )}
                 </Button>
               )}
               {taskID && !editing && (
@@ -3460,6 +3473,7 @@ export function BrowserPage({
         openAgentPaneId={openAgentPaneId}
         taskAgentPaneId={taskAgent?.agent?.pane_id}
         taskAgentName={taskAgent?.name}
+        taskAgentStatus={taskAgent?.agent?.status}
         onOpenAgentPane={onOpenAgentPane}
         refreshHerdr={refreshHerdr}
         onOpenGit={setOpenGitDir}

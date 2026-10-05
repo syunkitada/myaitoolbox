@@ -1271,6 +1271,7 @@ describe('task agent controls in file viewer', () => {
     openAgentPaneId?: string | null
     selectedPath?: string
     withAgent?: boolean
+    agentStatus?: string
     refreshHerdr?: () => void | Promise<void>
   } = {}) {
     vi.spyOn(api, 'listFiles').mockImplementation(async ({ path } = {}) => {
@@ -1295,7 +1296,15 @@ describe('task agent controls in file viewer', () => {
             favorites={[]}
             recentFiles={[]}
             refreshMeta={vi.fn().mockResolvedValue(undefined)}
-            herdrOverview={options.withAgent === false ? { ...overview, agents: [] } : overview}
+            herdrOverview={options.withAgent === false
+              ? { ...overview, agents: [] }
+              : {
+                  ...overview,
+                  agents: overview.agents.map((agent) => ({
+                    ...agent,
+                    status: options.agentStatus ?? agent.status,
+                  })),
+                }}
             refreshHerdr={options.refreshHerdr}
             agentSidebarOpen={options.openAgentPaneId != null}
             openAgentPaneId={options.openAgentPaneId}
@@ -1317,7 +1326,7 @@ describe('task agent controls in file viewer', () => {
     const onOpenAgentPane = vi.fn()
     renderTaskFile({ onOpenAgentPane })
 
-    const button = await screen.findByRole('button', { name: 'Open task agent panel' })
+    const button = await screen.findByRole('button', { name: 'Open task agent panel; status: working' })
     fireEvent.click(button)
 
     expect(onOpenAgentPane).toHaveBeenCalledWith('w1:p1')
@@ -1331,7 +1340,7 @@ describe('task agent controls in file viewer', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
 
     const referencePane = await screen.findByTestId('reference-file-viewer-pane')
-    fireEvent.click(within(referencePane).getByRole('button', { name: 'Open task agent panel' }))
+    fireEvent.click(within(referencePane).getByRole('button', { name: 'Open task agent panel; status: working' }))
 
     expect(onOpenAgentPane).toHaveBeenCalledWith('w1:p1')
   })
@@ -1339,24 +1348,38 @@ describe('task agent controls in file viewer', () => {
   it('shows when the matching task agent is already open', async () => {
     renderTaskFile({ openAgentPaneId: 'w1:p1', onOpenAgentPane: vi.fn() })
 
-    const button = await screen.findByRole('button', { name: 'Task agent panel is open' })
+    const button = await screen.findByRole('button', { name: 'Task agent panel open; status: working' })
     expect(button).toHaveAttribute('aria-pressed', 'true')
-    expect(button).toHaveTextContent('Agent (Open)')
+    expect(button).toHaveAttribute('data-agent-state', 'open')
+    expect(button).toHaveAttribute('data-agent-status', 'working')
+    expect(within(button).getByRole('img', { name: 'agent status working' })).toBeInTheDocument()
+    expect(button).not.toHaveTextContent('Agent (Open)')
   })
 
   it('does not mark the task agent open when another pane is selected', async () => {
     renderTaskFile({ openAgentPaneId: 'w1:p2', onOpenAgentPane: vi.fn() })
 
-    const button = await screen.findByRole('button', { name: 'Open task agent panel' })
+    const button = await screen.findByRole('button', { name: 'Open task agent panel; status: working' })
     expect(button).toHaveAttribute('aria-pressed', 'false')
-    expect(button).toHaveTextContent('Agent')
+    expect(button).toHaveAttribute('data-agent-state', 'available')
+    expect(button).toHaveAttribute('data-agent-status', 'working')
+  })
+
+  it('shows the agent status with a colored indicator and no visible text label', async () => {
+    renderTaskFile({ agentStatus: 'blocked', onOpenAgentPane: vi.fn() })
+
+    const button = await screen.findByRole('button', { name: 'Open task agent panel; status: blocked' })
+    expect(button).toHaveAttribute('data-agent-state', 'available')
+    expect(button).toHaveAttribute('data-agent-status', 'blocked')
+    expect(within(button).getByRole('img', { name: 'agent status blocked' })).toBeInTheDocument()
+    expect(button).not.toHaveTextContent('Open task agent panel')
   })
 
   it('shows the agent button for the task directory itself', async () => {
     const onOpenAgentPane = vi.fn()
     renderTaskFile({ selectedPath: '_tasks/20260927_demo', onOpenAgentPane })
 
-    const button = await screen.findByRole('button', { name: 'Open task agent panel' })
+    const button = await screen.findByRole('button', { name: 'Open task agent panel; status: working' })
     fireEvent.click(button)
 
     expect(onOpenAgentPane).toHaveBeenCalledWith('w1:p1')
@@ -1371,7 +1394,13 @@ describe('task agent controls in file viewer', () => {
     const onOpenAgentPane = vi.fn()
     renderTaskFile({ onOpenAgentPane, refreshHerdr, withAgent: false })
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Start task agent' }))
+    const button = await screen.findByRole('button', { name: 'Start task agent' })
+    expect(button).toHaveAttribute('data-agent-state', 'not-started')
+    expect(button).toHaveAttribute('data-agent-status', 'not-started')
+    expect(button).toHaveAttribute('data-variant', 'outline')
+    expect(button).not.toHaveTextContent('Start Agent')
+
+    fireEvent.click(button)
     const dialog = await screen.findByRole('dialog', { name: 'Start task agent' })
     expect(within(dialog).getByRole('combobox', { name: 'Task agent kind' })).toHaveValue('codex')
 
