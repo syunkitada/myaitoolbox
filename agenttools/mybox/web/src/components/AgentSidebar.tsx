@@ -14,8 +14,6 @@ import {
   hasTaskFile,
   linkedTaskAgentForTab,
   linkedTaskRenameForLabel,
-  taskAgentName,
-  taskDirFromPath,
   taskDirectoryForFilePath,
   type LinkedTaskAgent,
 } from '../utils/herdr-file-agent'
@@ -29,8 +27,6 @@ export const AGENT_SIDEBAR_MIN_WIDTH = 280
 export const AGENT_SIDEBAR_MAX_WIDTH = 960
 export const AGENT_SIDEBAR_COLLAPSED_WIDTH = 56
 const AGENT_SIDEBAR_VIEWPORT_GUTTER = 48
-const TASK_AGENT_KIND_OPTIONS = ['codex', 'opencode'] as const
-const TASK_AGENT_KIND_STORAGE_KEY = 'mybox.herdr.file-agent-kind'
 
 export function agentSidebarWidthStyle(width: number): string {
   return `min(${width}px, calc(100vw - ${AGENT_SIDEBAR_VIEWPORT_GUTTER}px))`
@@ -51,6 +47,7 @@ interface AgentSidebarProps {
   onDisplayModeChange: (mode: AgentOutputDisplayMode) => void
   onWidthChange?: (width: number) => void
   openAgentPaneId: string | null
+  pendingOpenAgentPaneId?: string | null
   onOpenAgentChange: (paneId: string | null) => void
   refresh: () => Promise<void>
   onFocusChange?: (paneId: string | null) => void
@@ -59,19 +56,6 @@ interface AgentSidebarProps {
 
 function runError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function currentFilesPath(pathname: string): string | null {
-  const marker = '/dashboard/files/'
-  const markerIndex = pathname.indexOf(marker)
-  if (markerIndex < 0) return null
-  const encodedPath = pathname.slice(markerIndex + marker.length)
-  if (!encodedPath) return null
-  try {
-    return encodedPath.split('/').map((segment) => decodeURIComponent(segment)).join('/')
-  } catch {
-    return null
-  }
 }
 
 export function AgentSidebar({
@@ -85,6 +69,7 @@ export function AgentSidebar({
   onDisplayModeChange,
   onWidthChange,
   openAgentPaneId,
+  pendingOpenAgentPaneId,
   onOpenAgentChange,
   refresh,
   onFocusChange,
@@ -98,16 +83,10 @@ export function AgentSidebar({
   const [reloadToken, setReloadToken] = useState(0)
   const [operationError, setOperationError] = useState<string | null>(null)
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
-  const [startingTaskAgent, setStartingTaskAgent] = useState(false)
   const [stoppingPaneId, setStoppingPaneId] = useState<string | null>(null)
-  const [taskAgentKind, setTaskAgentKind] = useState<string>(() => {
-    const saved = window.localStorage.getItem(TASK_AGENT_KIND_STORAGE_KEY)
-    return saved && (TASK_AGENT_KIND_OPTIONS as readonly string[]).includes(saved) ? saved : 'codex'
-  })
   const requestedAgent = pathname.endsWith('/herdr') ? searchParams.get('agent') : null
   const handledRequestRef = useRef<string | null>(null)
   const focusedPaneRef = useRef<string | null>(null)
-  const pendingSelectedPaneRef = useRef<string | null>(null)
   const displayWidth = useCallback(
     (value: number) => agentSidebarDisplayedWidth(value, viewportWidth),
     [viewportWidth],
@@ -143,13 +122,6 @@ export function AgentSidebar({
   const panes = overview?.panes ?? []
   const projectAgents = useMemo(() => projectAgentsFor(overview, project), [overview, project])
   const selectedAgent = projectAgents.find((agent) => agent.pane_id === openAgentPaneId)
-  const currentTaskPath = useMemo(() => {
-    const path = currentFilesPath(pathname)
-    return path && taskDirFromPath(path) ? path : null
-  }, [pathname])
-  const currentTaskAgent = currentTaskPath
-    ? projectAgents.find((agent) => agent.name === taskAgentName(currentTaskPath))
-    : undefined
   const linkedTasks = useMemo(() => {
     const result = new Map<string, LinkedTaskAgent>()
     for (const tab of tabs) {
@@ -169,19 +141,11 @@ export function AgentSidebar({
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem(TASK_AGENT_KIND_STORAGE_KEY, taskAgentKind)
-  }, [taskAgentKind])
-
-  useEffect(() => {
     if (overview?.available && openAgentPaneId && !selectedAgent) {
-      if (pendingSelectedPaneRef.current === openAgentPaneId) return
+      if (pendingOpenAgentPaneId === openAgentPaneId) return
       onOpenAgentChange(null)
-      return
     }
-    if (selectedAgent && pendingSelectedPaneRef.current === selectedAgent.pane_id) {
-      pendingSelectedPaneRef.current = null
-    }
-  }, [onOpenAgentChange, openAgentPaneId, overview?.available, selectedAgent])
+  }, [onOpenAgentChange, openAgentPaneId, overview?.available, pendingOpenAgentPaneId, selectedAgent])
 
   useEffect(() => {
     if (!requestedAgent) {
@@ -248,24 +212,6 @@ export function AgentSidebar({
     }
   }, [onFilePathClick, project, reportError])
 
-  const startCurrentTaskAgent = useCallback(async () => {
-    if (!currentTaskPath || startingTaskAgent) return
-    setStartingTaskAgent(true)
-    setOperationError(null)
-    try {
-      const result = await api.startHerdrFileAgent(currentTaskPath, taskAgentKind)
-      await refresh()
-      if (result.agent?.pane_id) {
-        pendingSelectedPaneRef.current = result.agent.pane_id
-        onOpenAgentChange(result.agent.pane_id)
-      }
-    } catch (error) {
-      reportError(runError(error))
-    } finally {
-      setStartingTaskAgent(false)
-    }
-  }, [currentTaskPath, onOpenAgentChange, refresh, reportError, startingTaskAgent, taskAgentKind])
-
   const stopAgent = useCallback(async (agent: HerdrAgent) => {
     if (stoppingPaneId) return
     setStoppingPaneId(agent.pane_id)
@@ -280,7 +226,6 @@ export function AgentSidebar({
       await api.closeHerdrPane(agent.pane_id)
       if (isOnlyPaneInTab && tab) await api.closeHerdrTab(tab.tab_id)
       if (openAgentPaneId === agent.pane_id) {
-        pendingSelectedPaneRef.current = null
         onOpenAgentChange(null)
       }
       await refresh()
@@ -330,58 +275,6 @@ export function AgentSidebar({
         {overview && !overview.available && (
           <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
             herdr command is not available on this server.
-          </div>
-        )}
-        {overview?.available && currentTaskPath && !currentTaskAgent && (
-          <div className="mb-3 rounded-md border border-border bg-muted/40 p-3" data-testid="task-agent-launcher">
-            <div className="mb-2 flex items-center gap-2">
-              <Bot className="size-4 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs font-semibold">Current task agent</p>
-                <p className="truncate text-[11px] text-muted-foreground" title={currentTaskPath}>
-                  {taskDirFromPath(currentTaskPath)}
-                </p>
-              </div>
-            </div>
-            <div className="mb-2 flex items-center gap-2">
-              <label className="text-[10px] tracking-wider text-muted-foreground uppercase" htmlFor="task-agent-kind">
-                Agent kind
-              </label>
-              <select
-                id="task-agent-kind"
-                value={taskAgentKind}
-                onChange={(event) => setTaskAgentKind(event.target.value)}
-                aria-label="Task agent kind"
-                className="cursor-pointer rounded border bg-background px-1.5 py-0.5 text-xs outline-none"
-              >
-                {TASK_AGENT_KIND_OPTIONS.map((kind) => (
-                  <option key={kind} value={kind}>{kind}</option>
-                ))}
-              </select>
-            </div>
-            <Button
-              variant="outline"
-              size="xs"
-              className="w-full cursor-pointer"
-              onClick={() => void startCurrentTaskAgent()}
-              disabled={startingTaskAgent}
-              aria-label={`Start agent for ${taskDirFromPath(currentTaskPath)}`}
-            >
-              {startingTaskAgent ? (
-                <>
-                  <Loader2 className="size-3 animate-spin" />
-                  Starting…
-                </>
-              ) : (
-                <>
-                  <Bot className="size-3" />
-                  Start agent
-                </>
-              )}
-            </Button>
-            <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
-              The agent is shared by every file in this task directory.
-            </p>
           </div>
         )}
         {!overview && loading && <p className="py-4 text-center text-xs text-muted-foreground">Loading agents…</p>}

@@ -13,8 +13,10 @@ interface DashboardProps {
   favorites: string[]
   recentFiles: string[]
   herdrOverview?: HerdrOverview | null
-  refreshHerdr?: () => void
+  refreshHerdr?: () => void | Promise<void>
   agentSidebarOpen?: boolean
+  openAgentPaneId?: string | null
+  onOpenAgentPane?: (paneId: string) => void
 }
 
 export function Dashboard({
@@ -25,6 +27,8 @@ export function Dashboard({
   herdrOverview,
   refreshHerdr,
   agentSidebarOpen,
+  openAgentPaneId,
+  onOpenAgentPane,
 }: DashboardProps) {
   const params = useParams()
   const { pathname } = useLocation()
@@ -114,6 +118,8 @@ export function Dashboard({
         herdrOverview={herdrOverview}
         refreshHerdr={refreshHerdr}
         agentSidebarOpen={agentSidebarOpen}
+        openAgentPaneId={openAgentPaneId}
+        onOpenAgentPane={onOpenAgentPane}
         defaultSelect={(entries) =>
           entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
         }

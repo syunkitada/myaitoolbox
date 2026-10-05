@@ -43,10 +43,20 @@ vi.mock('./components/AgentSidebar', () => ({
   AGENT_SIDEBAR_MIN_WIDTH: 280,
   AGENT_SIDEBAR_WIDTH_STORAGE_KEY: 'mybox_agent_sidebar_width',
   DEFAULT_AGENT_SIDEBAR_WIDTH: 400,
-  AgentSidebar: ({ onFocusChange }: { onFocusChange?: (paneId: string | null) => void }) => (
+  AgentSidebar: ({
+    onFocusChange,
+    open,
+    openAgentPaneId,
+  }: {
+    onFocusChange?: (paneId: string | null) => void
+    open?: boolean
+    openAgentPaneId?: string | null
+  }) => (
     <>
       <button data-testid="agent-sidebar-focus" onClick={() => onFocusChange?.('w1:p2')}>sidebar focus</button>
       <button data-testid="agent-sidebar-blur" onClick={() => onFocusChange?.(null)}>sidebar blur</button>
+      <div data-testid="agent-sidebar-open-state">{open ? 'open' : 'closed'}</div>
+      <div data-testid="agent-sidebar-selected-pane">{openAgentPaneId ?? 'none'}</div>
     </>
   ),
 }))
@@ -65,7 +75,20 @@ vi.mock('./hooks/use-herdr', () => ({
 }))
 
 vi.mock('./pages/Dashboard', () => ({
-  Dashboard: () => null,
+  Dashboard: ({
+    onOpenAgentPane,
+    openAgentPaneId,
+  }: {
+    onOpenAgentPane?: (paneId: string) => void
+    openAgentPaneId?: string | null
+  }) => (
+    <>
+      <div data-testid="dashboard-open-agent-pane">{openAgentPaneId ?? 'none'}</div>
+      <button data-testid="open-agent-from-viewer" onClick={() => onOpenAgentPane?.('w1:p2')}>
+        open agent from viewer
+      </button>
+    </>
+  ),
 }))
 vi.mock('./pages/GitPage', () => ({ GitPage: () => null }))
 vi.mock('./pages/HerdrPage', () => ({
@@ -142,6 +165,20 @@ describe('App project status refresh', () => {
 
     fireEvent.click(screen.getByTestId('agent-sidebar-blur'))
     expect(screen.getByTestId('app-sidebar-focus')).toHaveTextContent('none')
+  })
+
+  it('opens and selects an agent when the Files viewer requests it', () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('open-agent-from-viewer'))
+
+    expect(screen.getByTestId('agent-sidebar-open-state')).toHaveTextContent('open')
+    expect(screen.getByTestId('agent-sidebar-selected-pane')).toHaveTextContent('w1:p2')
+    expect(screen.getByTestId('dashboard-open-agent-pane')).toHaveTextContent('w1:p2')
   })
 
   it('uses the saved agent sidebar width before the first layout render', () => {

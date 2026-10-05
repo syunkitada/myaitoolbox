@@ -1252,6 +1252,160 @@ describe('task progress in file viewer', () => {
   })
 })
 
+describe('task agent controls in file viewer', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const taskPath = '_tasks/20260927_demo/notes.md'
+  const overview = {
+    available: true,
+    workspaces: [{ workspace_id: 'w1', label: 'demo', agent_status: 'working' }],
+    agents: [{ name: 'f20260927_demo', workspace_id: 'w1', pane_id: 'w1:p1', status: 'working' }],
+    tabs: [],
+    panes: [],
+  }
+
+  function renderTaskFile(options: {
+    onOpenAgentPane?: (paneId: string) => void
+    openAgentPaneId?: string | null
+    selectedPath?: string
+    withAgent?: boolean
+    refreshHerdr?: () => void | Promise<void>
+  } = {}) {
+    vi.spyOn(api, 'listFiles').mockImplementation(async ({ path } = {}) => {
+      if (path === '') return [{ path: '_tasks', name: '_tasks', kind: 'dir' }]
+      if (path === '_tasks') return [{ path: '_tasks/20260927_demo', name: '20260927_demo', kind: 'dir' }]
+      if (path === '_tasks/20260927_demo') return [{ path: taskPath, name: 'notes.md', kind: 'file' }]
+      return []
+    })
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path: taskPath, content: '# Notes' })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+
+    const router = createMemoryRouter(
+      [{
+        path: '/projects/:project/dashboard/files/*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected={options.selectedPath ?? taskPath}
+            onSelect={vi.fn()}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+            herdrOverview={options.withAgent === false ? { ...overview, agents: [] } : overview}
+            refreshHerdr={options.refreshHerdr}
+            agentSidebarOpen={options.openAgentPaneId != null}
+            openAgentPaneId={options.openAgentPaneId}
+            onOpenAgentPane={options.onOpenAgentPane}
+          />
+        ),
+      }],
+      { initialEntries: [`/projects/demo/dashboard/files/${taskPath}`] },
+    )
+
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+  }
+
+  it('opens the matching task agent from the main viewer', async () => {
+    const onOpenAgentPane = vi.fn()
+    renderTaskFile({ onOpenAgentPane })
+
+    const button = await screen.findByRole('button', { name: 'Open task agent panel' })
+    fireEvent.click(button)
+
+    expect(onOpenAgentPane).toHaveBeenCalledWith('w1:p1')
+  })
+
+  it('opens the matching task agent from the reference viewer too', async () => {
+    const onOpenAgentPane = vi.fn()
+    renderTaskFile({ onOpenAgentPane })
+
+    fireEvent.contextMenu((await screen.findByRole('button', { name: 'notes.md' })).closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+
+    const referencePane = await screen.findByTestId('reference-file-viewer-pane')
+    fireEvent.click(within(referencePane).getByRole('button', { name: 'Open task agent panel' }))
+
+    expect(onOpenAgentPane).toHaveBeenCalledWith('w1:p1')
+  })
+
+  it('shows when the matching task agent is already open', async () => {
+    renderTaskFile({ openAgentPaneId: 'w1:p1', onOpenAgentPane: vi.fn() })
+
+    const button = await screen.findByRole('button', { name: 'Task agent panel is open' })
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    expect(button).toHaveTextContent('Agent (Open)')
+  })
+
+  it('does not mark the task agent open when another pane is selected', async () => {
+    renderTaskFile({ openAgentPaneId: 'w1:p2', onOpenAgentPane: vi.fn() })
+
+    const button = await screen.findByRole('button', { name: 'Open task agent panel' })
+    expect(button).toHaveAttribute('aria-pressed', 'false')
+    expect(button).toHaveTextContent('Agent')
+  })
+
+  it('shows the agent button for the task directory itself', async () => {
+    const onOpenAgentPane = vi.fn()
+    renderTaskFile({ selectedPath: '_tasks/20260927_demo', onOpenAgentPane })
+
+    const button = await screen.findByRole('button', { name: 'Open task agent panel' })
+    fireEvent.click(button)
+
+    expect(onOpenAgentPane).toHaveBeenCalledWith('w1:p1')
+  })
+
+  it('opens a modal and starts the task agent when no matching agent is running', async () => {
+    const startAgent = vi.spyOn(api, 'startHerdrFileAgent').mockResolvedValue({
+      ok: true,
+      agent: { name: 'f20260927_demo', status: 'working', workspace_id: 'w1', pane_id: 'w1:p2' },
+    })
+    const refreshHerdr = vi.fn().mockResolvedValue(undefined)
+    const onOpenAgentPane = vi.fn()
+    renderTaskFile({ onOpenAgentPane, refreshHerdr, withAgent: false })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start task agent' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Start task agent' })
+    expect(within(dialog).getByRole('combobox', { name: 'Task agent kind' })).toHaveValue('codex')
+
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Task agent kind' }), { target: { value: 'opencode' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Start agent' }))
+
+    await waitFor(() => {
+      expect(startAgent).toHaveBeenCalledWith(taskPath, 'opencode')
+      expect(refreshHerdr).toHaveBeenCalled()
+      expect(onOpenAgentPane).toHaveBeenCalledWith('w1:p2')
+    })
+    expect(screen.queryByRole('dialog', { name: 'Start task agent' })).not.toBeInTheDocument()
+  })
+
+  it('opens the returned agent pane even when the status refresh fails', async () => {
+    localStorage.removeItem('mybox.herdr.file-agent-kind')
+    const startAgent = vi.spyOn(api, 'startHerdrFileAgent').mockResolvedValue({
+      ok: true,
+      agent: { name: 'f20260927_demo', status: 'working', workspace_id: 'w1', pane_id: 'w1:p2' },
+    })
+    const refreshHerdr = vi.fn().mockRejectedValue(new Error('status refresh failed'))
+    const onOpenAgentPane = vi.fn()
+    renderTaskFile({ onOpenAgentPane, refreshHerdr, withAgent: false })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start task agent' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Start agent' }))
+
+    await waitFor(() => expect(startAgent).toHaveBeenCalledWith(taskPath, 'codex'))
+    expect(onOpenAgentPane).toHaveBeenCalledWith('w1:p2')
+    expect(screen.queryByRole('dialog', { name: 'Start task agent' })).not.toBeInTheDocument()
+    expect(screen.getByText(/status refresh failed/)).toBeInTheDocument()
+  })
+})
+
 describe('task actions in file viewer', () => {
   afterEach(() => {
     vi.restoreAllMocks()

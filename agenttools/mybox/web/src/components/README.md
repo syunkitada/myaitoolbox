@@ -10,7 +10,7 @@
 | [`Explorer/README.md`](./Explorer/README.md) | ファイルツリー表示。 |
 | [`GraphView/README.md`](./GraphView/README.md) | ファイルリンクグラフのSigma表示。 |
 | [`AppDialogs.tsx`](./AppDialogs.tsx) | アプリ全体で使うダイアログ群。 |
-| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通のAgent右サイドバー。Filesで選択中のタスクAgentの起動、Herdr Agentの一覧・出力・操作・停止・予約送信を提供し、モバイルではSheetとして表示する。 |
+| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通のAgent右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信を提供し、モバイルではSheetとして表示する。 |
 | [`CommitDiffView.tsx`](./CommitDiffView.tsx) / [`CommitDiffView.test.tsx`](./CommitDiffView.test.tsx) | コミット差分表示とそのテスト。 |
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
 | [`DiffView.tsx`](./DiffView.tsx) / [`DiffView.test.tsx`](./DiffView.test.tsx) | unified diff表示とそのテスト。 |
@@ -26,6 +26,7 @@
 | [`Sidebar.tsx`](./Sidebar.tsx) / [`Sidebar.test.tsx`](./Sidebar.test.tsx) | ワークスペース全体のサイドバー、Agent遷移、Mybox/Herdrフォーカスの折りたたみデバッグ表示。 |
 | [`SyntaxHighlighter.tsx`](./SyntaxHighlighter.tsx) / [`SyntaxHighlighter.test.tsx`](./SyntaxHighlighter.test.tsx) | Prismベースのコード表示。agent出力では相対ファイルパスをFiles画面へリンクできる。 |
 | [`TaskProgress.tsx`](./TaskProgress.tsx) / [`TaskProgress.test.tsx`](./TaskProgress.test.tsx) | Markdownタスクリストの進捗表示とテスト。 |
+| [`TaskAgentLaunchDialog.tsx`](./TaskAgentLaunchDialog.tsx) | FilesビューアからタスクAgentを起動する種類選択・エラー表示付きモーダル。 |
 | [`VegaLite.tsx`](./VegaLite.tsx) | Vega-Lite仕様の解析、相対データURL解決、グラフ描画。 |
 | [`TerminalPanel.tsx`](./TerminalPanel.tsx) | WebSocketターミナルの表示。 |
 | [`TerminalTabs.tsx`](./TerminalTabs.tsx) | ターミナルセッションのタブ操作。 |

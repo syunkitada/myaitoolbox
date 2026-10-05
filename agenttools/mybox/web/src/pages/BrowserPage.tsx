@@ -1,8 +1,9 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, RefObject, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import { useBlocker } from 'react-router-dom'
+import { useBlocker, useParams } from 'react-router-dom'
 import { FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileTabs } from '../components/FileTabs'
+import { TASK_AGENT_KIND_STORAGE_KEY, TaskAgentLaunchDialog } from '../components/TaskAgentLaunchDialog'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { TaskProgress } from '../components/TaskProgress'
 import { FrontmatterForm, FrontmatterSummary } from '../components/FrontmatterForm'
@@ -20,12 +21,13 @@ import MonacoEditor from '../components/MonacoEditor'
 import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { Badge } from '../components/ui/badge'
-import { Archive, ArrowLeftRight, ChevronDown, Check, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, FolderPlus, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
+import { Archive, ArrowLeftRight, Bot, ChevronDown, Check, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, FolderPlus, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { MAX_RESIZABLE_WIDTH, MIN_RESIZABLE_WIDTH, useResizableWidth } from '@/hooks/use-resizable-width'
-import { linkedTaskAgentForPath, linkedTaskRenameForPathMove } from '../utils/herdr-file-agent'
+import { linkedTaskAgentForPath, linkedTaskRenameForPathMove, taskAgentName, taskDirFromPath } from '../utils/herdr-file-agent'
+import { projectAgentsFor } from '../utils/agent-sidebar-status'
 import type { LinkPathItem } from '../utils/markdown-link-completions'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useDialogs } from '../components/AppDialogs'
@@ -142,8 +144,10 @@ interface BrowserPageProps {
   defaultSelect?: (entries: BrowserEntry[]) => string | undefined
   onClose?: () => void
   herdrOverview?: HerdrOverview | null
-  refreshHerdr?: () => void
+  refreshHerdr?: () => void | Promise<void>
   agentSidebarOpen?: boolean
+  openAgentPaneId?: string | null
+  onOpenAgentPane?: (paneId: string) => void
   revealPath?: string
   onRevealPathHandled?: (path: string) => void
 }
@@ -1464,6 +1468,11 @@ interface PaneProps {
   gitStatus?: string
   onGitDiffOpenChange?: (open: boolean) => void
   agentSidebarOpen?: boolean
+  openAgentPaneId?: string | null
+  taskAgentPaneId?: string
+  taskAgentName?: string
+  onOpenAgentPane?: (paneId: string) => void
+  refreshHerdr?: () => void | Promise<void>
   onOpenGit?: (path: string) => void
   searchHit?: FileSearchHit | null
   scrollRef?: RefObject<HTMLDivElement | null>
@@ -1493,6 +1502,11 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   gitStatus,
   onGitDiffOpenChange,
   agentSidebarOpen,
+  openAgentPaneId,
+  taskAgentPaneId,
+  taskAgentName: linkedAgentName,
+  onOpenAgentPane,
+  refreshHerdr,
   onOpenGit,
   searchHit,
   scrollRef,
@@ -1518,6 +1532,13 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   const [isFav, setIsFav] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [taskStatusUpdating, setTaskStatusUpdating] = useState(false)
+  const [taskAgentLaunchOpen, setTaskAgentLaunchOpen] = useState(false)
+  const [taskAgentKind, setTaskAgentKind] = useState(() => {
+    const saved = window.localStorage.getItem(TASK_AGENT_KIND_STORAGE_KEY)
+    return saved === 'opencode' || saved === 'codex' ? saved : 'codex'
+  })
+  const [startingTaskAgent, setStartingTaskAgent] = useState(false)
+  const [taskAgentLaunchError, setTaskAgentLaunchError] = useState<string | null>(null)
   const [copyDialogOpen, setCopyDialogOpen] = useState(false)
   const [fileCopied, setFileCopied] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -1582,6 +1603,38 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   }, [list])
 
   const isDir = entry?.kind === 'dir'
+  const taskAgentPanelOpen = Boolean(
+    taskAgentPaneId && agentSidebarOpen && openAgentPaneId === taskAgentPaneId,
+  )
+
+  useEffect(() => {
+    window.localStorage.setItem(TASK_AGENT_KIND_STORAGE_KEY, taskAgentKind)
+  }, [taskAgentKind])
+
+  useEffect(() => {
+    if (!taskAgentLaunchOpen) setTaskAgentLaunchError(null)
+  }, [taskAgentLaunchOpen])
+
+  const startTaskAgent = useCallback(async () => {
+    if (startingTaskAgent) return
+    setStartingTaskAgent(true)
+    setTaskAgentLaunchError(null)
+    try {
+      const result = await api.startHerdrFileAgent(path, taskAgentKind)
+      if (!result.agent?.pane_id) throw new Error('The task agent started without a pane.')
+      setTaskAgentLaunchOpen(false)
+      onOpenAgentPane?.(result.agent.pane_id)
+      try {
+        await refreshHerdr?.()
+      } catch (refreshError) {
+        setError(`Task agent started, but its status could not be refreshed: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`)
+      }
+    } catch (e) {
+      setTaskAgentLaunchError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setStartingTaskAgent(false)
+    }
+  }, [onOpenAgentPane, path, refreshHerdr, startingTaskAgent, taskAgentKind])
 
   const isImage =
     !isDir && /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(path)
@@ -2153,6 +2206,40 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
               >
                 <RefreshCw />
               </Button>
+              {linkedAgentName && (
+                <Button
+                  variant={!taskAgentPaneId ? 'outline' : taskAgentPanelOpen ? 'secondary' : 'ghost'}
+                  size="sm"
+                  aria-label={!taskAgentPaneId
+                    ? 'Start task agent'
+                    : taskAgentPanelOpen
+                      ? 'Task agent panel is open'
+                      : 'Open task agent panel'}
+                  aria-pressed={taskAgentPanelOpen}
+                  title={!taskAgentPaneId
+                    ? `Start task agent for _tasks/${taskDirFromPath(path) ?? linkedAgentName}`
+                    : taskAgentPanelOpen
+                    ? linkedAgentName
+                      ? `Task agent ${linkedAgentName} is open`
+                      : 'Task agent panel is open'
+                    : linkedAgentName
+                      ? `Open task agent ${linkedAgentName}`
+                      : 'Open task agent panel'}
+                  onClick={() => {
+                    if (taskAgentPaneId) {
+                      onOpenAgentPane?.(taskAgentPaneId)
+                    } else {
+                      setTaskAgentLaunchOpen(true)
+                    }
+                  }}
+                  data-testid="open-task-agent-panel"
+                >
+                  <Bot />
+                  <span className="hidden sm:inline">
+                    {!taskAgentPaneId ? 'Start Agent' : taskAgentPanelOpen ? 'Agent (Open)' : 'Agent'}
+                  </span>
+                </Button>
+              )}
               {taskID && !editing && (
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span>Status</span>
@@ -2576,6 +2663,17 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
           onClose={closeExecution}
         />
       )}
+      <TaskAgentLaunchDialog
+        open={taskAgentLaunchOpen}
+        taskPath={path}
+        taskDirectory={`_tasks/${taskDirFromPath(path) ?? linkedAgentName ?? ''}`}
+        agentKind={taskAgentKind}
+        starting={startingTaskAgent}
+        error={taskAgentLaunchError}
+        onAgentKindChange={setTaskAgentKind}
+        onOpenChange={setTaskAgentLaunchOpen}
+        onSubmit={() => void startTaskAgent()}
+      />
     </div>
   )
 })
@@ -2694,10 +2792,13 @@ export function BrowserPage({
   herdrOverview,
   refreshHerdr,
   agentSidebarOpen,
+  openAgentPaneId,
+  onOpenAgentPane,
   revealPath,
   onRevealPathHandled,
 }: BrowserPageProps) {
   const { confirm3 } = useDialogs()
+  const { project: routeProject } = useParams<{ project?: string }>()
   const [childrenByDir, setChildrenByDir] = useState<Record<string, BrowserEntry[]>>({})
   const [gitStatus, setGitStatus] = useState<Record<string, string>>({})
   const [loaded, setLoaded] = useState(false)
@@ -2741,6 +2842,19 @@ export function BrowserPage({
   })
 
   const entries = useMemo(() => Object.values(childrenByDir).flat(), [childrenByDir])
+  const project = routeProject ? decodeURIComponent(routeProject) : getProject()
+  const taskAgents = useMemo(
+    () => (herdrOverview && project ? projectAgentsFor(herdrOverview, project) : []),
+    [herdrOverview, project],
+  )
+  const taskAgentForPath = useCallback(
+    (path: string) => {
+      const name = taskAgentName(path)
+      if (!name) return undefined
+      return { name, agent: taskAgents.find((agent) => agent.name === name) }
+    },
+    [taskAgents],
+  )
 
   const isMobile = useIsMobile()
   const [explorerOpen, setExplorerOpen] = useState<boolean>(() => {
@@ -3318,37 +3432,45 @@ export function BrowserPage({
     entry: BrowserEntry | undefined,
     scrollRef: RefObject<HTMLDivElement | null>,
     paneRef: RefObject<PaneHandle>,
-  ) => (
-    <Pane
-      ref={paneRef}
-      path={path}
-      entry={entry}
-      list={entries}
-      loadCompletionDir={loadCompletionDir}
-      favorites={favorites}
-      refreshMeta={refreshMeta}
-      onRecentChanged={onRecentChanged}
-      onChanged={handleChanged}
-      onGitStatusChange={refreshGitStatus}
-      onOpen={slot === 'main' ? handleSelect : (nextPath) => void changeReference(nextPath)}
-      onDeleted={slot === 'main' ? () => onBack() : handleReferenceDeleted}
-      onBeforeMove={slot === 'reference' ? handleBeforeReferencePaneMove : handleBeforeMainPaneMove}
-      onMoved={slot === 'reference' ? handleReferenceMoved : handleMainPaneMoved}
-      explorerOpen={explorerOpen}
-      onToggleExplorer={() => setExplorerOpen((o) => !o)}
-      onRefresh={handleRefresh}
-      refreshKey={refreshKey}
-      gitStatus={gitStatus[path]}
-      onGitDiffOpenChange={slot === 'main' ? setGitDiffOpen : setReferenceGitDiffOpen}
-      agentSidebarOpen={agentSidebarOpen}
-      onOpenGit={setOpenGitDir}
-      searchHit={slot === 'main' ? searchHit : null}
-      scrollRef={scrollRef}
-      paneLabel={slot === 'main' ? 'Main' : 'Reference'}
-      onDirtyChange={slot === 'main' ? setMainDirty : setReferenceDirty}
-      showExplorerToggle={slot === 'main'}
-    />
-  )
+  ) => {
+    const taskAgent = taskAgentForPath(path)
+    return (
+      <Pane
+        ref={paneRef}
+        path={path}
+        entry={entry}
+        list={entries}
+        loadCompletionDir={loadCompletionDir}
+        favorites={favorites}
+        refreshMeta={refreshMeta}
+        onRecentChanged={onRecentChanged}
+        onChanged={handleChanged}
+        onGitStatusChange={refreshGitStatus}
+        onOpen={slot === 'main' ? handleSelect : (nextPath) => void changeReference(nextPath)}
+        onDeleted={slot === 'main' ? () => onBack() : handleReferenceDeleted}
+        onBeforeMove={slot === 'reference' ? handleBeforeReferencePaneMove : handleBeforeMainPaneMove}
+        onMoved={slot === 'reference' ? handleReferenceMoved : handleMainPaneMoved}
+        explorerOpen={explorerOpen}
+        onToggleExplorer={() => setExplorerOpen((o) => !o)}
+        onRefresh={handleRefresh}
+        refreshKey={refreshKey}
+        gitStatus={gitStatus[path]}
+        onGitDiffOpenChange={slot === 'main' ? setGitDiffOpen : setReferenceGitDiffOpen}
+        agentSidebarOpen={agentSidebarOpen}
+        openAgentPaneId={openAgentPaneId}
+        taskAgentPaneId={taskAgent?.agent?.pane_id}
+        taskAgentName={taskAgent?.name}
+        onOpenAgentPane={onOpenAgentPane}
+        refreshHerdr={refreshHerdr}
+        onOpenGit={setOpenGitDir}
+        searchHit={slot === 'main' ? searchHit : null}
+        scrollRef={scrollRef}
+        paneLabel={slot === 'main' ? 'Main' : 'Reference'}
+        onDirtyChange={slot === 'main' ? setMainDirty : setReferenceDirty}
+        showExplorerToggle={slot === 'main'}
+      />
+    )
+  }
 
   return (
     <div className="page relative h-full min-h-0">

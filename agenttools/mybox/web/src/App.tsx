@@ -63,12 +63,31 @@ export default function App() {
   const agentSidebar = useAgentSidebarState(project, isMobile)
   const myboxFocusedPaneId = agentSidebar.open ? agentSidebarFocusedPaneId : null
   const herdr = useHerdrOverview(5000, myboxFocusedPaneId)
+  const [pendingOpenAgentPaneId, setPendingOpenAgentPaneId] = useState<string | null>(null)
   const agentStatus = summarizeAgentStatuses(projectAgentsFor(herdr.overview, project))
   useAgentFavicon(herdr.overview)
 
   const handleAgentSidebarFocusChange = useCallback((paneId: string | null) => {
     setAgentSidebarFocusedPaneId(paneId)
   }, [])
+
+  const handleOpenAgentPane = useCallback((paneId: string) => {
+    setPendingOpenAgentPaneId(paneId)
+    agentSidebar.setPaneId(paneId)
+    agentSidebar.setOpen(true)
+  }, [agentSidebar.setOpen, agentSidebar.setPaneId])
+
+  const handleAgentPaneChange = useCallback((paneId: string | null) => {
+    if (!paneId) setPendingOpenAgentPaneId(null)
+    agentSidebar.setPaneId(paneId)
+  }, [agentSidebar.setPaneId])
+
+  useEffect(() => {
+    if (!pendingOpenAgentPaneId) return
+    if (projectAgentsFor(herdr.overview, project).some((agent) => agent.pane_id === pendingOpenAgentPaneId)) {
+      setPendingOpenAgentPaneId(null)
+    }
+  }, [herdr.overview, pendingOpenAgentPaneId, project])
 
   const refreshGitStatus = useCallback(async () => {
     const seq = ++gitStatusRequestSeq.current
@@ -262,6 +281,8 @@ export default function App() {
                         herdrOverview={herdr.overview}
                         refreshHerdr={herdr.refresh}
                         agentSidebarOpen={agentSidebar.open}
+                        openAgentPaneId={agentSidebar.paneId}
+                        onOpenAgentPane={handleOpenAgentPane}
                       />
                     }
                   />
@@ -277,6 +298,8 @@ export default function App() {
                         herdrOverview={herdr.overview}
                         refreshHerdr={herdr.refresh}
                         agentSidebarOpen={agentSidebar.open}
+                        openAgentPaneId={agentSidebar.paneId}
+                        onOpenAgentPane={handleOpenAgentPane}
                       />
                     }
                   />
@@ -331,7 +354,8 @@ export default function App() {
           onDisplayModeChange={agentSidebar.setDisplayMode}
           onWidthChange={setAgentSidebarWidth}
           openAgentPaneId={agentSidebar.paneId}
-          onOpenAgentChange={agentSidebar.setPaneId}
+          pendingOpenAgentPaneId={pendingOpenAgentPaneId}
+          onOpenAgentChange={handleAgentPaneChange}
           refresh={herdr.refresh}
           onFocusChange={handleAgentSidebarFocusChange}
           onFilePathClick={(filePath) => navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))}

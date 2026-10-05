@@ -156,34 +156,33 @@ describe('AgentSidebar', () => {
     expect(onOpenChange).toHaveBeenCalledWith(true)
   })
 
-  it('starts the current Files task with codex and selects the returned agent', async () => {
-    const taskAgent = {
-      name: 'f20260919_foo',
-      status: 'working',
-      workspace_id: 'w1',
-      pane_id: 'w1:p2',
-    }
+  it('does not offer task-agent startup controls', async () => {
     const taskOverview: HerdrOverview = {
       ...overview,
       agents: [],
     }
-    const refresh = vi.fn().mockResolvedValue(undefined)
-    const onOpenAgentChange = vi.fn()
-    vi.mocked(api.startHerdrFileAgent).mockResolvedValueOnce({ ok: true, agent: taskAgent })
 
     renderSidebar(
-      { overview: taskOverview, refresh, onOpenAgentChange },
+      { overview: taskOverview },
       ['/projects/demo/dashboard/files/_tasks/20260919_foo/task.md'],
     )
 
-    expect(screen.getByLabelText('Task agent kind')).toHaveValue('codex')
-    fireEvent.click(screen.getByRole('button', { name: 'Start agent for 20260919_foo' }))
+    expect(screen.queryByTestId('task-agent-launcher')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Task agent kind')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Start agent/ })).not.toBeInTheDocument()
+    expect(api.startHerdrFileAgent).not.toHaveBeenCalled()
+  })
 
-    await waitFor(() => {
-      expect(api.startHerdrFileAgent).toHaveBeenCalledWith('_tasks/20260919_foo/task.md', 'codex')
-      expect(refresh).toHaveBeenCalled()
-      expect(onOpenAgentChange).toHaveBeenCalledWith('w1:p2')
+  it('keeps a pending pane selected until the refreshed overview contains it', () => {
+    const onOpenAgentChange = vi.fn()
+    renderSidebar({
+      overview: { ...overview, agents: [] },
+      openAgentPaneId: 'w1:p2',
+      pendingOpenAgentPaneId: 'w1:p2',
+      onOpenAgentChange,
     })
+
+    expect(onOpenAgentChange).not.toHaveBeenCalled()
   })
 
   it('stops an agent, closes its empty tab, and clears the selection', async () => {
