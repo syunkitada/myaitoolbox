@@ -9,6 +9,7 @@ export interface AgentSidebarProjectState {
   mobileOpen: boolean
   paneId: string | null
   displayMode: AgentOutputDisplayMode
+  drafts: Record<string, string>
 }
 
 const STORAGE_KEY = 'mybox:agent-sidebar-state'
@@ -18,6 +19,15 @@ const DEFAULT_STATE: AgentSidebarProjectState = {
   mobileOpen: false,
   paneId: null,
   displayMode: 'auto',
+  drafts: {},
+}
+
+function readDrafts(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  )
 }
 
 function readRecord(key: string): Record<string, unknown> {
@@ -47,12 +57,13 @@ function loadStates(): Record<string, AgentSidebarProjectState> {
       mobileOpen: item.mobileOpen === true,
       paneId: typeof item.paneId === 'string' ? item.paneId : null,
       displayMode: isAgentOutputDisplayMode(item.displayMode) ? item.displayMode : DEFAULT_STATE.displayMode,
+      drafts: readDrafts(item.drafts),
     }
   }
 
   for (const [project, value] of Object.entries(legacy)) {
     if (states[project] || typeof value !== 'string') continue
-    states[project] = { ...DEFAULT_STATE, paneId: value }
+    states[project] = { ...DEFAULT_STATE, paneId: value, drafts: {} }
   }
 
   return states
@@ -88,13 +99,30 @@ export function useAgentSidebarState(project: string, isMobile = false) {
     [isMobile, patch],
   )
   const setPaneId = useCallback((paneId: string | null) => patch({ paneId }), [patch])
+  const setDraft = useCallback((paneId: string, draft: string) => {
+    setStates((current) => {
+      const projectState = current[project] ?? DEFAULT_STATE
+      const drafts = { ...projectState.drafts }
+      if (draft === '') delete drafts[paneId]
+      else drafts[paneId] = draft
+      return {
+        ...current,
+        [project]: {
+          ...projectState,
+          drafts,
+        },
+      }
+    })
+  }, [project])
   const setDisplayMode = useCallback((displayMode: AgentOutputDisplayMode) => patch({ displayMode }), [patch])
 
   return {
     ...state,
     open: isMobile ? state.mobileOpen : state.open,
+    drafts: state.drafts,
     setOpen,
     setPaneId,
+    setDraft,
     setDisplayMode,
   }
 }

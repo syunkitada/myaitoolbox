@@ -10,7 +10,7 @@
 | [`Explorer/README.md`](./Explorer/README.md) | ファイルツリー表示。 |
 | [`GraphView/README.md`](./GraphView/README.md) | ファイルリンクグラフのSigma表示。 |
 | [`AppDialogs.tsx`](./AppDialogs.tsx) | アプリ全体で使うダイアログ群。 |
-| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通のAgent右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信を提供し、モバイルではSheetとして表示する。 |
+| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通のAgent右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信を提供し、Agentごとの入力途中Promptを保持し、モバイルではSheetとして表示する。 |
 | [`CommitDiffView.tsx`](./CommitDiffView.tsx) / [`CommitDiffView.test.tsx`](./CommitDiffView.test.tsx) | コミット差分表示とそのテスト。 |
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
 | [`DiffView.tsx`](./DiffView.tsx) / [`DiffView.test.tsx`](./DiffView.test.tsx) | unified diff表示とそのテスト。 |
@@ -32,4 +32,4 @@
 | [`TerminalTabs.tsx`](./TerminalTabs.tsx) | ターミナルセッションのタブ操作。 |
 | [`badges.tsx`](./badges.tsx) | ステータス、優先度、タグなどのバッジ。 |
 | [`herdr-status.tsx`](./herdr-status.tsx) | Herdrエージェント状態の表示部品。 |
-| [`HerdrAgentDetail.tsx`](./HerdrAgentDetail.tsx) | Agentの端末出力（自動補正／Herdr準拠の表示切り替え）、キー送信、クイックコマンド、prompt送信、予約送信を表示する共通部品。モバイルのprompt入力は内容に応じて自動拡張し、Enter以外のキーとコマンドは一覧パレットに集約する。 |
+| [`HerdrAgentDetail.tsx`](./HerdrAgentDetail.tsx) | Agentの端末出力（自動補正／Herdr準拠の表示切り替え）、キー送信、クイックコマンド、prompt送信、予約送信を表示する共通部品。入力途中Promptは親からcontrolled stateとして受け取り、モバイルのprompt入力は内容に応じて自動拡張し、Enter以外のキーとコマンドは一覧パレットに集約する。 |

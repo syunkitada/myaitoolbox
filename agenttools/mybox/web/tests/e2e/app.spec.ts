@@ -963,9 +963,17 @@ test('herdr tab shows Herdr workspaces and operates agents', async ({ page }) =>
     scrollHeight: element.scrollHeight,
   }))
   expect(promptMetrics.scrollHeight).toBeLessThanOrEqual(promptMetrics.clientHeight)
+
+  await page.locator('.project-tabs').getByRole('link', { name: 'Files' }).click()
+  await expect(page.getByRole('heading', { name: 'Files', level: 1 })).toBeVisible()
+  await page.locator('.project-tabs').getByRole('link', { name: 'Herdr' }).click()
+  await expect(page.getByTestId('herdr-prompt-input')).toHaveValue('run the tests please')
+
+  const restoredPromptInput = page.getByTestId('herdr-prompt-input')
   await detail.getByRole('button', { name: 'Send', exact: true }).click()
   await expect(detail.locator('.herdr-prompt-notice')).toContainText('prompt submitted')
   await expect(detail.locator('pre')).toContainText('last prompt: run the tests please')
+  await expect(restoredPromptInput).toHaveValue('')
 })
 
 test('herdr tab and pane operations work end to end', async ({ page }) => {

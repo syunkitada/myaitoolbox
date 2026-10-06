@@ -47,6 +47,8 @@ interface AgentSidebarProps {
   onDisplayModeChange: (mode: AgentOutputDisplayMode) => void
   onWidthChange?: (width: number) => void
   openAgentPaneId: string | null
+  drafts: Record<string, string>
+  onDraftChange: (paneId: string, draft: string) => void
   pendingOpenAgentPaneId?: string | null
   onOpenAgentChange: (paneId: string | null) => void
   refresh: () => Promise<void>
@@ -69,6 +71,8 @@ export function AgentSidebar({
   onDisplayModeChange,
   onWidthChange,
   openAgentPaneId,
+  drafts,
+  onDraftChange,
   pendingOpenAgentPaneId,
   onOpenAgentChange,
   refresh,
@@ -345,6 +349,8 @@ export function AgentSidebar({
                       agent={agent}
                       autoReload={autoReload}
                       reloadToken={reloadToken}
+                      draft={drafts[agent.pane_id] ?? ''}
+                      onDraftChange={(draft) => onDraftChange(agent.pane_id, draft)}
                       displayMode={displayMode}
                       onDisplayModeChange={onDisplayModeChange}
                       onFilePathClick={onFilePathClick}

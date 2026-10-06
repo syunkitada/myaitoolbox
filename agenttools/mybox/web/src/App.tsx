@@ -82,6 +82,10 @@ export default function App() {
     agentSidebar.setPaneId(paneId)
   }, [agentSidebar.setPaneId])
 
+  const handleAgentDraftChange = useCallback((paneId: string, draft: string) => {
+    agentSidebar.setDraft(paneId, draft)
+  }, [agentSidebar.setDraft])
+
   useEffect(() => {
     if (!pendingOpenAgentPaneId) return
     if (projectAgentsFor(herdr.overview, project).some((agent) => agent.pane_id === pendingOpenAgentPaneId)) {
@@ -354,6 +358,8 @@ export default function App() {
           onDisplayModeChange={agentSidebar.setDisplayMode}
           onWidthChange={setAgentSidebarWidth}
           openAgentPaneId={agentSidebar.paneId}
+          drafts={agentSidebar.drafts}
+          onDraftChange={handleAgentDraftChange}
           pendingOpenAgentPaneId={pendingOpenAgentPaneId}
           onOpenAgentChange={handleAgentPaneChange}
           refresh={herdr.refresh}

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AgentSidebar } from './AgentSidebar'
@@ -55,11 +56,26 @@ function mockMatchMedia(matches = false) {
   })
 }
 
-function renderSidebar(
-  options: Partial<ComponentProps<typeof AgentSidebar>> = {},
-  initialEntries = ['/projects/demo/dashboard'],
-) {
-  return render(
+function AgentSidebarHarness({
+  options,
+  initialEntries,
+}: {
+  options: Partial<ComponentProps<typeof AgentSidebar>>
+  initialEntries: string[]
+}) {
+  const [drafts, setDrafts] = useState(options.drafts ?? {})
+  const onDraftChange = options.onDraftChange ?? ((paneId: string, draft: string) => {
+    setDrafts((current) => {
+      if (draft === '') {
+        const next = { ...current }
+        delete next[paneId]
+        return next
+      }
+      return { ...current, [paneId]: draft }
+    })
+  })
+
+  return (
     <MemoryRouter initialEntries={initialEntries}>
       <DialogsProvider>
         <AgentSidebar
@@ -75,10 +91,19 @@ function renderSidebar(
           onOpenAgentChange={vi.fn()}
           refresh={() => Promise.resolve()}
           {...options}
+          drafts={drafts}
+          onDraftChange={onDraftChange}
         />
       </DialogsProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   )
+}
+
+function renderSidebar(
+  options: Partial<ComponentProps<typeof AgentSidebar>> = {},
+  initialEntries = ['/projects/demo/dashboard'],
+) {
+  return render(<AgentSidebarHarness options={options} initialEntries={initialEntries} />)
 }
 
 describe('AgentSidebar', () => {
@@ -274,6 +299,28 @@ describe('AgentSidebar', () => {
 
     await waitFor(() => expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', 'send this prompt'))
     expect(promptInput).not.toHaveFocus()
+    expect(promptInput).toHaveValue('')
+  })
+
+  it('restores the saved draft for the selected agent', async () => {
+    renderSidebar({
+      openAgentPaneId: 'w1:p1',
+      drafts: { 'w1:p1': 'resume this prompt' },
+    })
+
+    expect(await screen.findByTestId('herdr-prompt-input')).toHaveValue('resume this prompt')
+  })
+
+  it('keeps the draft when sending fails', async () => {
+    vi.mocked(api.promptHerdrAgent).mockRejectedValueOnce(new Error('send failed'))
+    renderSidebar({ openAgentPaneId: 'w1:p1' })
+
+    const promptInput = await screen.findByTestId('herdr-prompt-input')
+    fireEvent.change(promptInput, { target: { value: 'keep this prompt' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(screen.getByTestId('agent-detail-w1:p1')).toHaveTextContent('send failed'))
+    expect(promptInput).toHaveValue('keep this prompt')
   })
 
   it('keeps focus diagnostics out of the agent list', async () => {
@@ -418,6 +465,8 @@ describe('AgentSidebar', () => {
             displayMode="auto"
             onDisplayModeChange={vi.fn()}
             openAgentPaneId={null}
+            drafts={{}}
+            onDraftChange={vi.fn()}
             onOpenAgentChange={onOpenAgentChange}
             refresh={() => Promise.resolve()}
           />

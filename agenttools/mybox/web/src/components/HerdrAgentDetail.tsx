@@ -26,6 +26,8 @@ interface HerdrAgentDetailProps {
   agent: HerdrAgent
   autoReload: boolean
   reloadToken?: number
+  draft: string
+  onDraftChange: (draft: string) => void
   onFilePathClick?: (path: string) => void
   onDisplayModeChange?: (mode: AgentOutputDisplayMode) => void
   cols?: number
@@ -48,6 +50,8 @@ export function HerdrAgentDetail({
   agent,
   autoReload,
   reloadToken,
+  draft,
+  onDraftChange,
   onFilePathClick,
   onDisplayModeChange,
   cols,
@@ -56,7 +60,6 @@ export function HerdrAgentDetail({
   const isMobile = useIsMobile()
   const [output, setOutput] = useState<string | null>(null)
   const [outputError, setOutputError] = useState<string | null>(null)
-  const [draft, setDraft] = useState('')
   const [scheduleAt, setScheduleAt] = useState('')
   const [scheduledPrompts, setScheduledPrompts] = useState<ScheduledPrompt[]>([])
   const [sending, setSending] = useState(false)
@@ -157,7 +160,7 @@ export function HerdrAgentDetail({
     setNotice(null)
     try {
       await api.promptHerdrAgent(agent.pane_id, text)
-      setDraft('')
+      onDraftChange('')
       promptInputRef.current?.blur()
       setScheduleAt('')
       setScheduleMode(false)
@@ -169,7 +172,7 @@ export function HerdrAgentDetail({
     } finally {
       setSending(false)
     }
-  }, [agent.pane_id, draft, loadOutput, sending])
+  }, [agent.pane_id, draft, loadOutput, onDraftChange, sending])
 
   const loadScheduledPrompts = useCallback(async () => {
     const revision = scheduledRevisionRef.current
@@ -208,7 +211,7 @@ export function HerdrAgentDetail({
       const created = await api.createHerdrScheduledPrompt(agent.pane_id, text, new Date(timestamp).toISOString())
       const scheduled = fromScheduledPromptResponse(created)
       if (scheduled) setScheduledPrompts((current) => [...current, scheduled])
-      setDraft('')
+      onDraftChange('')
       promptInputRef.current?.blur()
       setScheduleAt('')
       setScheduleMode(false)
@@ -218,7 +221,7 @@ export function HerdrAgentDetail({
     } finally {
       setScheduling(false)
     }
-  }, [agent.pane_id, draft, scheduleAt])
+  }, [agent.pane_id, draft, onDraftChange, scheduleAt])
 
   const cancelScheduledPrompt = useCallback(async (id: string) => {
     scheduledRevisionRef.current += 1
@@ -391,7 +394,7 @@ export function HerdrAgentDetail({
           aria-label={`Prompt ${agent.name}`}
           data-testid="herdr-prompt-input"
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') void sendPrompt()
           }}
