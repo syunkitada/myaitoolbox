@@ -185,7 +185,7 @@ describe('AgentSidebar', () => {
     expect(onOpenAgentChange).not.toHaveBeenCalled()
   })
 
-  it('stops an agent, closes its empty tab, and clears the selection', async () => {
+  it('stops an agent, lets herdr close its empty tab, and clears the selection', async () => {
     const taskAgentOverview: HerdrOverview = {
       ...overview,
       agents: [{ ...overview.agents[0], name: 'f20260919_foo' }],
@@ -202,7 +202,7 @@ describe('AgentSidebar', () => {
     await waitFor(() => {
       expect(api.sendKeysHerdrAgent).toHaveBeenCalledWith('w1:p1', ['C-c', 'C-c'])
       expect(api.closeHerdrPane).toHaveBeenCalledWith('w1:p1')
-      expect(api.closeHerdrTab).toHaveBeenCalledWith('w1:t1')
+      expect(api.closeHerdrTab).not.toHaveBeenCalled()
       expect(refresh).toHaveBeenCalled()
       expect(onOpenAgentChange).toHaveBeenCalledWith(null)
     })

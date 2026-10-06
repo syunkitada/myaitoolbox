@@ -217,14 +217,8 @@ export function AgentSidebar({
     setStoppingPaneId(agent.pane_id)
     setOperationError(null)
     try {
-      const pane = panes.find((candidate) => candidate.pane_id === agent.pane_id)
-      const tab = pane ? tabs.find((candidate) => candidate.tab_id === pane.tab_id) : undefined
-      const isOnlyPaneInTab = pane
-        ? panes.filter((candidate) => candidate.tab_id === pane.tab_id).length === 1
-        : false
       await api.sendKeysHerdrAgent(agent.pane_id, ['C-c', 'C-c'])
       await api.closeHerdrPane(agent.pane_id)
-      if (isOnlyPaneInTab && tab) await api.closeHerdrTab(tab.tab_id)
       if (openAgentPaneId === agent.pane_id) {
         onOpenAgentChange(null)
       }
@@ -234,7 +228,7 @@ export function AgentSidebar({
     } finally {
       setStoppingPaneId(null)
     }
-  }, [onOpenAgentChange, openAgentPaneId, panes, refresh, reportError, stoppingPaneId, tabs])
+  }, [onOpenAgentChange, openAgentPaneId, refresh, reportError, stoppingPaneId])
 
   if (!project) return null
 
