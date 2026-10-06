@@ -546,6 +546,9 @@ func newFilesDeleteCommand(project *string) *cobra.Command {
 			if err := app.Files.Delete(cmd.Context(), args[0]); err != nil {
 				return err
 			}
+			if err := app.State.RemoveFavorites(cmd.Context(), app.Project.Name, args[0]); err != nil {
+				return err
+			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "deleted %s\n", args[0])
 			return nil
 		},

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { LAST_SELECTED_FILE_KEY, encodePath, projectUrl, getProject, rememberedFilesUrl } from '../utils/routes'
+import { LAST_SELECTED_FILE_KEY, encodePath, projectUrl, projectUrlFor, getProject, rememberedFilesUrl } from '../utils/routes'
 import { BrowserPage } from './BrowserPage'
-import { api, HerdrOverview, Task, TaskTrigger } from '../api/client'
+import { api, Favorite, HerdrOverview, Task, TaskTrigger } from '../api/client'
 import { NewTaskDialog } from '../components/NewTaskDialog'
 import { useDialogs } from '../components/AppDialogs'
 import { subscribeNavActions } from '../lib/nav-actions'
@@ -10,7 +10,7 @@ import { subscribeNavActions } from '../lib/nav-actions'
 interface DashboardProps {
   refreshMeta: () => Promise<void>
   onRecentChanged?: (path: string) => void
-  favorites: string[]
+  favorites: Favorite[]
   recentFiles: string[]
   herdrOverview?: HerdrOverview | null
   refreshHerdr?: () => void | Promise<void>
@@ -50,8 +50,8 @@ export function Dashboard({
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const persistSelected = (path: string) => {
-    const project = getProject()
+  const persistSelected = (path: string, projectOverride?: string) => {
+    const project = projectOverride || getProject()
     if (!project) return
     try {
       const stored = localStorage.getItem(LAST_SELECTED_FILE_KEY)
@@ -61,7 +61,7 @@ export function Dashboard({
     } catch {
       // ignore
     }
-    navigate(projectUrl(`/dashboard/files/${encodePath(path)}`))
+    navigate(projectUrlFor(project, `/dashboard/files/${encodePath(path)}`))
   }
 
   const handleNewTask = () => {

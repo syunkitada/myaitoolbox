@@ -2,22 +2,33 @@ import { useState } from 'react'
 import { Star, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useEscapeKey } from '../hooks/use-escape-key'
+import type { Favorite } from '../api/client'
 
 interface FileTabsProps {
   tabs: string[]
   active: string
-  favorites: string[]
+  favorites: Favorite[]
   onSelect: (path: string) => void
   onClose: (path: string) => void
+  onSelectFavorite: (favorite: Favorite) => void
+  onRemoveFavorite: (favorite: Favorite) => void
 }
 
-export function FileTabs({ tabs, active, favorites, onSelect, onClose }: FileTabsProps) {
+export function FileTabs({
+  tabs,
+  active,
+  favorites,
+  onSelect,
+  onClose,
+  onSelectFavorite,
+  onRemoveFavorite,
+}: FileTabsProps) {
   const [favoritesOpen, setFavoritesOpen] = useState(false)
   useEscapeKey(() => setFavoritesOpen(false), favoritesOpen)
 
-  const selectFavorite = (path: string) => {
+  const selectFavorite = (favorite: Favorite) => {
     setFavoritesOpen(false)
-    onSelect(path)
+    onSelectFavorite(favorite)
   }
 
   return (
@@ -96,17 +107,36 @@ export function FileTabs({ tabs, active, favorites, onSelect, onClose }: FileTab
                 <p className="px-1 py-4 text-center text-sm text-muted-foreground">No favorites yet.</p>
               ) : (
                 <ul className="m-0 flex list-none flex-col gap-1 p-0">
-                  {favorites.map((path) => (
-                    <li key={path}>
-                      <button
-                        className="flex w-full cursor-pointer items-center rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-muted hover:text-primary"
-                        onClick={() => selectFavorite(path)}
-                        title={path}
-                      >
-                        <span className="truncate">{path}</span>
-                      </button>
-                    </li>
-                  ))}
+                  {favorites.map((favorite) => {
+                    const description = favorite.project
+                      ? `${favorite.project}: ${favorite.path}`
+                      : favorite.path
+                    return (
+                      <li key={`${favorite.project}:${favorite.path}`} className="flex items-center rounded-md hover:bg-muted">
+                        <button
+                          className="min-w-0 flex-1 cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:text-primary"
+                          onClick={() => selectFavorite(favorite)}
+                          aria-label={description}
+                          title={description}
+                        >
+                          <span className="truncate">{favorite.path}</span>
+                          {favorite.project && (
+                            <span className="ml-2 shrink-0 text-xs text-muted-foreground" aria-hidden="true">
+                              {favorite.project}
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          className="mr-1 flex size-7 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-border/60 hover:text-foreground"
+                          onClick={() => onRemoveFavorite(favorite)}
+                          aria-label={`Remove ${description} from favorites`}
+                          title={`Remove ${description} from favorites`}
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>

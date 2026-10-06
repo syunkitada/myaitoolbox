@@ -908,7 +908,7 @@ components:
         favorites:
           type: array
           items:
-            type: string
+            $ref: "#/components/schemas/Favorite"
         recent_files:
           type: array
           items:
@@ -929,6 +929,16 @@ components:
         untracked:
           type: integer
           description: Number of untracked files
+    Favorite:
+      type: object
+      required: [project, path]
+      properties:
+        project:
+          type: string
+          description: Project containing the favorited path
+        path:
+          type: string
+          description: Path relative to the project root
     UpdateFavoriteRequest:
       type: object
       required: [path, enabled]
@@ -937,6 +947,9 @@ components:
           type: string
         enabled:
           type: boolean
+        project:
+          type: string
+          description: Project containing the path; defaults to the current project
     RecordRecentRequest:
       type: object
       required: [path]

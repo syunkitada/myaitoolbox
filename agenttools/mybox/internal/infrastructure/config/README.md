@@ -7,6 +7,7 @@
 | パス | 役割 |
 | --- | --- |
 | [`state.go`](./state.go) | お気に入り・最近開いたファイルを `state.yaml` に保存する実装。 |
+| [`state_test.go`](./state_test.go) | 旧形式のお気に入りstateの読み込みとプロジェクト付き保存のテスト。 |
 | [`scheduled_prompts.go`](./scheduled_prompts.go) | Herdr予約プロンプトを `scheduled-prompts.yaml` に永続化する実装。 |
 | [`scheduled_prompts_test.go`](./scheduled_prompts_test.go) | 予約プロンプトの永続化、プロジェクト絞り込み、削除のテスト。 |
 | [`store.go`](./store.go) | プロジェクト一覧と既定プロジェクトを `config.yaml` に保存し、自動化状態ディレクトリを解決する実装。 |

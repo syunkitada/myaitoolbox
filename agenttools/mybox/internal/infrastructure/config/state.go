@@ -19,8 +19,31 @@ func NewStateStore() *StateStore {
 }
 
 type fileState struct {
-	Favorites   []string `yaml:"favorites"`
-	RecentFiles []string `yaml:"recent_files"`
+	Favorites   []fileFavorite `yaml:"favorites"`
+	RecentFiles []string       `yaml:"recent_files"`
+}
+
+type fileFavorite struct {
+	Project string `yaml:"project,omitempty"`
+	Path    string `yaml:"path"`
+}
+
+// UnmarshalYAML keeps state.yaml files written before favorites stored their
+// project name readable. Legacy scalar entries are resolved when metadata is
+// loaded and then persisted in the object form.
+func (f *fileFavorite) UnmarshalYAML(data []byte) error {
+	var path string
+	if err := yaml.Unmarshal(data, &path); err == nil {
+		f.Path = path
+		return nil
+	}
+	type plainFavorite fileFavorite
+	var favorite plainFavorite
+	if err := yaml.Unmarshal(data, &favorite); err != nil {
+		return err
+	}
+	*f = fileFavorite(favorite)
+	return nil
 }
 
 func (s *StateStore) Load(ctx context.Context) (*domain.State, error) {
@@ -41,7 +64,11 @@ func (s *StateStore) loadLocked(ctx context.Context) (*domain.State, error) {
 	if err := yaml.Unmarshal(data, &fs); err != nil {
 		return nil, err
 	}
-	return &domain.State{Favorites: fs.Favorites, RecentFiles: fs.RecentFiles}, nil
+	favorites := make([]domain.Favorite, 0, len(fs.Favorites))
+	for _, favorite := range fs.Favorites {
+		favorites = append(favorites, domain.Favorite{Project: favorite.Project, Path: favorite.Path})
+	}
+	return &domain.State{Favorites: favorites, RecentFiles: fs.RecentFiles}, nil
 }
 
 // Update applies fn to the persisted state under a global lock, so concurrent
@@ -61,9 +88,13 @@ func (s *StateStore) Update(ctx context.Context, fn func(*domain.State) error) e
 }
 
 func (s *StateStore) saveLocked(ctx context.Context, state *domain.State) error {
-	fs := fileState{Favorites: state.Favorites, RecentFiles: state.RecentFiles}
+	favorites := make([]fileFavorite, 0, len(state.Favorites))
+	for _, favorite := range state.Favorites {
+		favorites = append(favorites, fileFavorite{Project: favorite.Project, Path: favorite.Path})
+	}
+	fs := fileState{Favorites: favorites, RecentFiles: state.RecentFiles}
 	if fs.Favorites == nil {
-		fs.Favorites = []string{}
+		fs.Favorites = []fileFavorite{}
 	}
 	if fs.RecentFiles == nil {
 		fs.RecentFiles = []string{}

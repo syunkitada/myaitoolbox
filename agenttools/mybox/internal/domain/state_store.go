@@ -2,8 +2,13 @@ package domain
 
 import "context"
 
+type Favorite struct {
+	Project string
+	Path    string
+}
+
 type State struct {
-	Favorites   []string
+	Favorites   []Favorite
 	RecentFiles []string
 }
 

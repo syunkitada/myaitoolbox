@@ -665,8 +665,30 @@ test('dashboard favorites a file from the file pane', async ({ page }) => {
   await treeButton(explorer, 'tasks.md').click()
   await page.getByRole('button', { name: '☆ Favorite' }).click()
   await expect(page.getByRole('button', { name: '★ Favorite' })).toBeVisible()
-  const favorites = explorer.locator('.explorer-section').filter({ hasText: 'Favorites' })
-  await expect(favorites).toContainText('tasks.md')
+
+  await page.getByTestId('file-tabs-favorites').click()
+  const dialog = page.getByRole('dialog', { name: 'Favorites' })
+  await expect(dialog).toContainText('tasks.md')
+  await dialog.getByRole('button', { name: 'Remove proj: tasks.md from favorites' }).click()
+  await expect(dialog).toContainText('No favorites yet.')
+  await expect(page.getByRole('button', { name: '☆ Favorite' })).toBeVisible()
+})
+
+test('dashboard opens a favorite in its project from another project', async ({ page }) => {
+  await page.goto('/projects/proj/dashboard/files/knowledge/docs/guide.md')
+  await expect(page.getByText('Deep docs.')).toBeVisible()
+  await page.getByRole('button', { name: '☆ Favorite' }).click()
+
+  await page.goto('/projects/other/dashboard')
+  await page.getByTestId('file-tabs-favorites').click()
+  const dialog = page.getByRole('dialog', { name: 'Favorites' })
+  await expect(dialog).toContainText('proj')
+  await dialog.getByRole('button', { name: 'proj: knowledge/docs/guide.md', exact: true }).click()
+
+  await expect(page).toHaveURL(/\/projects\/proj\/dashboard\/files\/knowledge\/docs\/guide\.md$/)
+  await expect(page.getByText('Deep docs.')).toBeVisible()
+  await page.getByRole('button', { name: '★ Favorite' }).click()
+  await expect(page.getByRole('button', { name: '☆ Favorite' })).toBeVisible()
 })
 
 test('dashboard records recently opened files', async ({ page }) => {

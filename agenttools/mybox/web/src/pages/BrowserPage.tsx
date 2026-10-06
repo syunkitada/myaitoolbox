@@ -1,6 +1,6 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, RefObject, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useBlocker, useParams } from 'react-router-dom'
-import { FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
+import { Favorite, FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileTabs } from '../components/FileTabs'
 import { TASK_AGENT_KIND_STORAGE_KEY, TaskAgentLaunchDialog } from '../components/TaskAgentLaunchDialog'
@@ -136,9 +136,9 @@ export interface FileSearchHit {
 interface BrowserPageProps {
   title: string
   selected: string
-  onSelect: (path: string) => void
+  onSelect: (path: string, project?: string) => void
   onBack: () => void
-  favorites: string[]
+  favorites: Favorite[]
   recentFiles: string[]
   refreshMeta: () => Promise<void>
   onRecentChanged?: (path: string) => void
@@ -1453,7 +1453,7 @@ interface PaneProps {
   entry?: BrowserEntry
   list: BrowserEntry[]
   loadCompletionDir: (dir: string) => Promise<LinkPathItem[]>
-  favorites: string[]
+  favorites: Favorite[]
   refreshMeta: () => Promise<void>
   onRecentChanged?: (path: string) => void
   onChanged: (revealPath?: string) => void | Promise<void>
@@ -1677,7 +1677,6 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     setCopyDialogOpen(false)
     setFileCopied(false)
     editStartLine.current = null
-    setIsFav(favorites.includes(path))
     if (isImage) return
     if (isDir) {
       if (readmePath) {
@@ -1716,6 +1715,11 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     void api.recordRecent(path).then(() => onRecentChanged?.(path)).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, isDir, isImage, readmePath, listing, refreshKey])
+
+  useEffect(() => {
+    const project = getProject()
+    setIsFav(favorites.some((favorite) => favorite.path === path && (!favorite.project || favorite.project === project)))
+  }, [favorites, path])
 
   useEffect(() => {
     if (gitStatus) return
@@ -2944,9 +2948,10 @@ export function BrowserPage({
   )
 
   const handleSelect = useCallback(
-    (p: string, nextSearchHit: FileSearchHit | null = null) => {
+    (p: string, nextSearchHit: FileSearchHit | null = null, project?: string) => {
       setSearchHit(nextSearchHit)
-      onSelect(p)
+      if (project === undefined) onSelect(p)
+      else onSelect(p, project)
       if (isMobile) setExplorerOpen(false)
     },
     [isMobile, onSelect],
@@ -3398,6 +3403,16 @@ export function BrowserPage({
     [selected, visibleRecents, onSelect, refreshMeta],
   )
 
+  const handleRemoveFavorite = useCallback(
+    (favorite: Favorite) => {
+      void api
+        .setFavorite(favorite.path, false, favorite.project)
+        .then(() => refreshMeta())
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    },
+    [refreshMeta],
+  )
+
   const handleMoveFile = async (filePath: string, dirPath: string) => {
     const name = filePath.split('/').pop() ?? filePath
     const newPath = dirPath ? `${dirPath}/${name}` : name
@@ -3611,6 +3626,8 @@ export function BrowserPage({
               favorites={favorites}
               onSelect={handleSelect}
               onClose={handleCloseRecent}
+              onSelectFavorite={(favorite) => handleSelect(favorite.path, null, favorite.project)}
+              onRemoveFavorite={handleRemoveFavorite}
             />
             {referencePath && (
               <div className="flex shrink-0 items-center gap-1 border-b border-border py-1 md:hidden" role="tablist" aria-label="File viewer pane">

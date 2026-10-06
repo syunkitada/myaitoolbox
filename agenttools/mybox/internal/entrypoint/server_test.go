@@ -151,7 +151,7 @@ func (f *fakeStateStore) Save(ctx context.Context, st *domain.State) error {
 }
 
 func (f *fakeStateStore) Update(ctx context.Context, fn func(*domain.State) error) error {
-	st := &domain.State{Favorites: append([]string(nil), f.state.Favorites...), RecentFiles: append([]string(nil), f.state.RecentFiles...)}
+	st := &domain.State{Favorites: append([]domain.Favorite(nil), f.state.Favorites...), RecentFiles: append([]string(nil), f.state.RecentFiles...)}
 	if err := fn(st); err != nil {
 		return err
 	}
@@ -427,7 +427,7 @@ func TestFavoritesAndRecent(t *testing.T) {
 
 	rec = do(t, s, http.MethodGet, "/api/meta", nil, "X-Project", "test")
 	meta := decode[api.Meta](t, rec)
-	assert.Contains(t, meta.Favorites, "notes/n1")
+	assert.Contains(t, meta.Favorites, api.Favorite{Project: "test", Path: "notes/n1"})
 	assert.Contains(t, meta.RecentFiles, "notes/n1")
 
 	rec = do(t, s, http.MethodPost, "/api/meta/recent/delete", map[string]any{"path": "notes/n1"})
@@ -620,11 +620,21 @@ func TestFiles(t *testing.T) {
 		api.MoveFileRequest{OldPath: "notes/guide.md", NewPath: "notes/guide-copy.md"})
 	assert.Equal(t, http.StatusConflict, rec.Code)
 
+	for _, path := range []string{"notes/guide.md", "notes/guide-copy.md"} {
+		rec = do(t, s, http.MethodPut, "/api/meta/favorites",
+			api.UpdateFavoriteRequest{Path: path, Enabled: true})
+		assert.Equal(t, http.StatusNoContent, rec.Code)
+	}
+
 	rec = do(t, s, http.MethodPost, "/api/files/delete",
 		api.FilePathRequest{Path: "notes/guide-copy.md"})
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	_, err = os.Stat(filepath.Join(root, "notes", "guide-copy.md"))
 	assert.True(t, os.IsNotExist(err))
+	rec = do(t, s, http.MethodGet, "/api/meta", nil, "X-Project", "test")
+	meta := decode[api.Meta](t, rec)
+	assert.NotContains(t, meta.Favorites, api.Favorite{Project: "test", Path: "notes/guide-copy.md"})
+	assert.Contains(t, meta.Favorites, api.Favorite{Project: "test", Path: "notes/guide.md"})
 
 	rec = do(t, s, http.MethodPost, "/api/files/delete",
 		api.FilePathRequest{Path: "notes/guide-copy.md"})
@@ -639,6 +649,9 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	_, err = os.Stat(filepath.Join(root, "notes"))
 	assert.True(t, os.IsNotExist(err))
+	rec = do(t, s, http.MethodGet, "/api/meta", nil, "X-Project", "test")
+	meta = decode[api.Meta](t, rec)
+	assert.NotContains(t, meta.Favorites, api.Favorite{Project: "test", Path: "notes/guide.md"})
 }
 
 func TestFilesExecutableFlag(t *testing.T) {
@@ -663,6 +676,25 @@ func TestFilesExecutableFlag(t *testing.T) {
 	readme, ok := byPath["README.md"]
 	require.True(t, ok)
 	assert.Nil(t, readme.Executable)
+}
+
+func TestDeleteFileRemovesFavoriteForNormalizedPath(t *testing.T) {
+	s, app := newTestServer(t)
+	root := app.Project.Path
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "notes"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes", "guide.md"), []byte("# Guide\n"), 0o644))
+
+	rec := do(t, s, http.MethodPut, "/api/meta/favorites",
+		api.UpdateFavoriteRequest{Path: "notes/guide.md", Enabled: true})
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/files/delete",
+		api.FilePathRequest{Path: "notes/./guide.md"})
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+
+	rec = do(t, s, http.MethodGet, "/api/meta", nil, "X-Project", "test")
+	meta := decode[api.Meta](t, rec)
+	assert.NotContains(t, meta.Favorites, api.Favorite{Project: "test", Path: "notes/guide.md"})
 }
 
 func TestFilesExecute(t *testing.T) {

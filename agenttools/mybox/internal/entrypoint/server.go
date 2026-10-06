@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"os/exec"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -387,7 +388,7 @@ func (s *Server) GetMeta(w http.ResponseWriter, r *http.Request) {
 			Projects:       projects,
 			DefaultProject: cfg.DefaultProject,
 			Tags:           []string{},
-			Favorites:      []string{},
+			Favorites:      []api.Favorite{},
 			RecentFiles:    []string{},
 		})
 		return
@@ -416,6 +417,17 @@ func (s *Server) GetMeta(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	favorites := s.resolveFavoriteProjects(r.Context(), state.Favorites, app.Project.Name, cfgProjects)
+	resolutions := make(map[string]string)
+	for i, favorite := range state.Favorites {
+		if favorite.Project == "" && favorites[i].Project != "" {
+			resolutions[favorite.Path] = favorites[i].Project
+		}
+	}
+	if err := app.State.ResolveFavoriteProjects(r.Context(), resolutions); err != nil {
+		writeError(w, err)
+		return
+	}
 	tags, err := s.collectTags(r.Context(), app)
 	if err != nil {
 		writeError(w, err)
@@ -426,9 +438,67 @@ func (s *Server) GetMeta(w http.ResponseWriter, r *http.Request) {
 		Projects:       projects,
 		DefaultProject: defaultProject,
 		Tags:           tags,
-		Favorites:      state.Favorites,
+		Favorites:      toAPIFavorites(favorites),
 		RecentFiles:    state.RecentFiles,
 	})
+}
+
+func (s *Server) resolveFavoriteProjects(ctx context.Context, favorites []domain.Favorite, currentProject string, projects []domain.Project) []domain.Favorite {
+	resolved := append([]domain.Favorite(nil), favorites...)
+	for i := range resolved {
+		if resolved[i].Project != "" || resolved[i].Path == "" {
+			continue
+		}
+		candidates := projects
+		if currentProject != "" {
+			candidates = make([]domain.Project, 0, len(projects))
+			for _, project := range projects {
+				if project.Name == currentProject {
+					candidates = append(candidates, project)
+					break
+				}
+			}
+			for _, project := range projects {
+				if project.Name != currentProject {
+					candidates = append(candidates, project)
+				}
+			}
+		}
+		for _, project := range candidates {
+			app, err := s.getAppByProject(ctx, project.Name)
+			if err != nil || !favoritePathExists(ctx, app, resolved[i].Path) {
+				continue
+			}
+			resolved[i].Project = project.Name
+			break
+		}
+	}
+	return resolved
+}
+
+func favoritePathExists(ctx context.Context, app *App, favoritePath string) bool {
+	parent := pathpkg.Dir(favoritePath)
+	if parent == "." {
+		parent = ""
+	}
+	entries, err := app.Files.Children(ctx, parent, true)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.Path == favoritePath {
+			return true
+		}
+	}
+	return false
+}
+
+func toAPIFavorites(favorites []domain.Favorite) []api.Favorite {
+	out := make([]api.Favorite, 0, len(favorites))
+	for _, favorite := range favorites {
+		out = append(out, api.Favorite{Project: favorite.Project, Path: favorite.Path})
+	}
+	return out
 }
 
 func (s *Server) collectTags(ctx context.Context, app *App) ([]string, error) {
@@ -467,7 +537,11 @@ func (s *Server) UpdateFavorite(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := app.State.ToggleFavorite(r.Context(), req.Path, req.Enabled); err != nil {
+	project := app.Project.Name
+	if req.Project != nil && *req.Project != "" {
+		project = *req.Project
+	}
+	if err := app.State.ToggleFavorite(r.Context(), req.Path, project, req.Enabled); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -1158,6 +1232,10 @@ func (s *Server) DeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := app.Files.Delete(r.Context(), req.Path); err != nil {
+		writeError(w, err)
+		return
+	}
+	if err := app.State.RemoveFavorites(r.Context(), app.Project.Name, req.Path); err != nil {
 		writeError(w, err)
 		return
 	}

@@ -119,6 +119,15 @@ type CreateTaskRequest struct {
 	Tags        *[]string     `json:"tags,omitempty"`
 }
 
+// Favorite defines model for Favorite.
+type Favorite struct {
+	// Path Path relative to the project root
+	Path string `json:"path"`
+
+	// Project Project containing the favorited path
+	Project string `json:"project"`
+}
+
 // FileContent defines model for FileContent.
 type FileContent struct {
 	Content string `json:"content"`
@@ -332,12 +341,12 @@ type HerdrWorkspace struct {
 
 // Meta defines model for Meta.
 type Meta struct {
-	DefaultProject string   `json:"default_project"`
-	Favorites      []string `json:"favorites"`
-	Project        string   `json:"project"`
-	Projects       []string `json:"projects"`
-	RecentFiles    []string `json:"recent_files"`
-	Tags           []string `json:"tags"`
+	DefaultProject string     `json:"default_project"`
+	Favorites      []Favorite `json:"favorites"`
+	Project        string     `json:"project"`
+	Projects       []string   `json:"projects"`
+	RecentFiles    []string   `json:"recent_files"`
+	Tags           []string   `json:"tags"`
 }
 
 // MoveFileRequest defines model for MoveFileRequest.
@@ -414,6 +423,9 @@ type TaskStatus string
 type UpdateFavoriteRequest struct {
 	Enabled bool   `json:"enabled"`
 	Path    string `json:"path"`
+
+	// Project Project containing the path; defaults to the current project
+	Project *string `json:"project,omitempty"`
 }
 
 // UpdateTaskRequest defines model for UpdateTaskRequest.

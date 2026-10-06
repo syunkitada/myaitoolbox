@@ -121,12 +121,17 @@ export interface FileExecuteStreamHandlers {
   onError: (error: Error) => void
 }
 
+export interface Favorite {
+  project: string
+  path: string
+}
+
 export interface Meta {
   project: string
   projects: string[]
   default_project: string
   tags: string[]
-  favorites: string[]
+  favorites: Favorite[]
   recent_files: string[]
 }
 
@@ -426,8 +431,8 @@ export const api = {
   getProjectGitStatus: () =>
     request<Record<string, ProjectGitStatus>>('GET', '/api/projects/git-status'),
 
-  setFavorite: (path: string, enabled: boolean) =>
-    request<void>('PUT', '/api/meta/favorites', { path, enabled }),
+  setFavorite: (path: string, enabled: boolean, project = getProject()) =>
+    request<void>('PUT', '/api/meta/favorites', { path, enabled, project }),
 
   recordRecent: (path: string) => request<void>('POST', '/api/meta/recent', { path }),
 
