@@ -275,7 +275,7 @@ body,
   }
 
   .markdown-copy-dialog-preview {
-    @apply max-h-[60vh] min-h-64 w-full resize-y rounded-md border border-border bg-muted p-3 font-mono text-xs leading-5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50;
+    @apply max-h-[60vh] min-h-64 w-full resize-y rounded-md border border-border bg-muted p-3 font-mono text-base leading-5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-xs;
   }
 
   .markdown-copy-dialog-actions {
@@ -377,6 +377,14 @@ pre[class*='language-'] {
 /* On small screens use overlay scrollbars so the terminal fits the full
    available width (xterm reserves ~16px for a layout scrollbar otherwise). */
 @media (max-width: 767px) {
+  /* Monaco focuses this hidden textarea while editing. Keep its font size at
+     iOS Safari's no-auto-zoom threshold without changing the editor text size. */
+  .monaco-editor .inputarea,
+  .monaco-editor .ime-text-area,
+  .monaco-editor .native-edit-context {
+    font-size: 16px !important;
+  }
+
   .terminal-panel .xterm .xterm-viewport {
     scrollbar-width: none;
     -ms-overflow-style: none;

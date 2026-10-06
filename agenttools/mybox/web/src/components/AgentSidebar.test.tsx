@@ -259,6 +259,23 @@ describe('AgentSidebar', () => {
     await waitFor(() => expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', '/status'))
   })
 
+  it('keeps the mobile prompt readable and blurs it after sending', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    mockMatchMedia(true)
+    const user = userEvent.setup()
+    renderSidebar({ openAgentPaneId: 'w1:p1' })
+
+    const promptInput = await screen.findByTestId('herdr-prompt-input')
+    expect(promptInput).toHaveClass('text-base', 'md:text-sm')
+
+    await user.click(promptInput)
+    await user.type(promptInput, 'send this prompt')
+    await user.click(screen.getByRole('button', { name: /^Send$/ }))
+
+    await waitFor(() => expect(api.promptHerdrAgent).toHaveBeenCalledWith('w1:p1', 'send this prompt'))
+    expect(promptInput).not.toHaveFocus()
+  })
+
   it('keeps focus diagnostics out of the agent list', async () => {
     const focusedOverview: HerdrOverview = {
       ...overview,

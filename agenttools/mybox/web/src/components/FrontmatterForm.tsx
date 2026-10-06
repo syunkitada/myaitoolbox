@@ -24,7 +24,7 @@ const fieldClasses =
   'field flex min-w-[140px] flex-1 flex-col gap-1 text-[13px] font-semibold'
 
 const controlClasses =
-  'h-9 rounded-md border border-input bg-card px-3 text-sm font-normal text-foreground transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50'
+  'h-9 rounded-md border border-input bg-card px-3 text-base font-normal text-foreground transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm'
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : ''
@@ -256,7 +256,7 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
           {extraKeys.map((k) => (
             <div className="extra-field-row mb-1.5 flex gap-2" key={k}>
               <Input
-                className="extra-key grow-0 basis-[160px] font-mono text-[13px]"
+                className="extra-key grow-0 basis-[160px] font-mono text-base md:text-[13px]"
                 defaultValue={k}
                 aria-label="Metadata key"
                 onBlur={(e) => renameField(k, e.target.value)}
@@ -265,7 +265,7 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
                 }}
               />
               <Input
-                className="extra-value flex-1 font-mono text-[13px]"
+                className="extra-value flex-1 font-mono text-base md:text-[13px]"
                 value={genericDisplay(value[k])}
                 aria-label="Metadata value"
                 onChange={(e) => setField(k, genericParse(value[k], e.target.value))}

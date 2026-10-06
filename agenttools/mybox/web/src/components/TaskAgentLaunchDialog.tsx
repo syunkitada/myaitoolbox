@@ -71,7 +71,7 @@ export function TaskAgentLaunchDialog({
             onChange={(event) => onAgentKindChange(event.target.value)}
             aria-label="Task agent kind"
             disabled={starting}
-            className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
           >
             {TASK_AGENT_KIND_OPTIONS.map((kind) => (
               <option key={kind} value={kind}>{kind}</option>

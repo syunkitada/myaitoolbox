@@ -2265,7 +2265,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                     onChange={(e) => void updateTaskStatus(e.target.value as TaskStatus)}
                     disabled={taskStatusUpdating}
                     aria-label="Task status"
-                    className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-8 rounded-md border border-input bg-card px-2 text-base text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
                   >
                     {TASK_STATUS_OPTIONS.map((status) => (
                       <option key={status} value={status}>

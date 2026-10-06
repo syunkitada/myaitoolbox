@@ -11,6 +11,8 @@ vi.mock('../api/client', () => ({
     focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
     sendKeysHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
+    sendKeysHerdrPane: vi.fn().mockResolvedValue({ ok: true }),
+    sendTextHerdrPane: vi.fn().mockResolvedValue({ ok: true }),
     listFiles: vi.fn().mockResolvedValue([]),
     moveFile: vi.fn().mockResolvedValue(undefined),
     renameHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
@@ -123,6 +125,32 @@ describe('HerdrPage agent commands', () => {
     )
 
     expect(screen.getByTestId('herdr-workspaces-toggle')).toHaveAttribute('data-state', 'closed')
+  })
+
+  it('keeps the pane input readable on mobile and blurs it after sending', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={overview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByTestId('herdr-workspaces-toggle'))
+    const input = screen.getByRole('textbox', { name: 'Input pane w1:p1' })
+    expect(input).toHaveClass('text-base', 'md:text-xs')
+
+    fireEvent.change(input, { target: { value: 'send this text' } })
+    input.focus()
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/ }))
+
+    await waitFor(() => expect(api.sendTextHerdrPane).toHaveBeenCalledWith('w1:p1', 'send this text'))
+    expect(input).not.toHaveFocus()
   })
 
   it('renames a linked task directory, agent, and tab together', async () => {

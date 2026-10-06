@@ -158,6 +158,7 @@ export function HerdrAgentDetail({
     try {
       await api.promptHerdrAgent(agent.pane_id, text)
       setDraft('')
+      promptInputRef.current?.blur()
       setScheduleAt('')
       setScheduleMode(false)
       setNotice('prompt submitted')
@@ -208,6 +209,7 @@ export function HerdrAgentDetail({
       const scheduled = fromScheduledPromptResponse(created)
       if (scheduled) setScheduledPrompts((current) => [...current, scheduled])
       setDraft('')
+      promptInputRef.current?.blur()
       setScheduleAt('')
       setScheduleMode(false)
       setNotice('prompt scheduled')
@@ -308,7 +310,7 @@ export function HerdrAgentDetail({
               aria-label="Agent output display mode"
               value={displayMode}
               onChange={(event) => onDisplayModeChange?.(event.target.value as AgentOutputDisplayMode)}
-              className="h-6 max-w-32 min-w-0 cursor-pointer rounded border bg-background px-1 text-[10px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="h-6 max-w-32 min-w-0 cursor-pointer rounded border bg-background px-1 text-base text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-[10px]"
             >
               <option value="auto">Auto-correct</option>
               <option value="herdr">Herdr format</option>
@@ -395,7 +397,7 @@ export function HerdrAgentDetail({
           }}
           placeholder="Send a prompt to this agent (Ctrl+Enter to submit)"
           rows={2}
-          className={`min-h-6 max-h-[40vh] w-full min-w-0 rounded-md border bg-background px-2 py-0 text-sm leading-5 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 ${isMobile ? 'resize-none' : 'resize-y'}`}
+          className={`min-h-6 max-h-[40vh] w-full min-w-0 rounded-md border bg-background px-2 py-0 text-base leading-5 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm ${isMobile ? 'resize-none' : 'resize-y'}`}
           style={{ height: isMobile ? mobilePromptHeight : promptSize.height }}
         />
         <div data-testid="herdr-prompt-actions" className="flex w-full min-w-0 flex-col items-stretch gap-2">
@@ -438,7 +440,7 @@ export function HerdrAgentDetail({
                 value={scheduleAt}
                 min={formatDateTimeLocal(new Date())}
                 onChange={(event) => setScheduleAt(event.target.value)}
-                className="h-8 w-full min-w-0 rounded-md border bg-background px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="h-8 w-full min-w-0 rounded-md border bg-background px-1.5 text-base outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-xs"
               />
               <div className="flex min-w-0 items-center gap-1">
                 <Button

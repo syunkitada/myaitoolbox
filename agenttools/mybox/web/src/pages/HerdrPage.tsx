@@ -80,6 +80,7 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
   const [notice, setNotice] = useState<string | null>(null)
   const loadingRef = useRef(false)
   const preRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   // While true the viewport follows new output; scrolling up pauses the follow.
   const pinnedRef = useRef(true)
 
@@ -142,7 +143,10 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
         const keys = textToSend.split(/\s+/).filter(Boolean)
         await api.sendKeysHerdrPane(pane.pane_id, keys)
       }
-      if (!customText) setDraft('')
+      if (!customText) {
+        setDraft('')
+        inputRef.current?.blur()
+      }
       setNotice(`${targetMode} sent`)
       setTimeout(() => setNotice(null), 3000)
       if (open) void loadOutput()
@@ -315,7 +319,7 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
             <select
               value={mode}
               onChange={(e) => setMode(e.target.value as 'send-text-enter' | 'send-text' | 'send-keys' | 'prompt')}
-              className="rounded border bg-background px-1.5 py-0.5 text-xs outline-none cursor-pointer font-medium"
+              className="rounded border bg-background px-1.5 py-0.5 text-base outline-none cursor-pointer font-medium md:text-xs"
             >
               <option value="send-text-enter">send-text + Enter (default)</option>
               <option value="send-text">send-text (literal text only)</option>
@@ -343,6 +347,7 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
 
         <div className="flex items-center gap-1.5">
           <input
+            ref={inputRef}
             type="text"
             aria-label={`Input pane ${pane.pane_id}`}
             value={draft}
@@ -359,7 +364,7 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
                     ? 'Send keys (e.g. Enter, C-c)...'
                     : 'Send agent prompt...'
             }
-            className="flex-1 rounded border bg-background px-2.5 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex-1 rounded border bg-background px-2.5 py-1 text-base outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring md:text-xs"
           />
           <Button
             size="xs"

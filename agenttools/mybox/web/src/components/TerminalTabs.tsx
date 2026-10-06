@@ -301,7 +301,7 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
           </p>
           <textarea
             ref={pasteInputRef}
-            className="mb-3 w-full max-w-none resize rounded border border-border bg-white p-3 text-black focus:outline-none"
+            className="mb-3 w-full max-w-none resize rounded border border-border bg-white p-3 text-base text-black focus:outline-none md:text-sm"
             rows={6}
             placeholder="Tap here, then long-press → Paste"
             autoFocus

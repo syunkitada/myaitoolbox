@@ -243,7 +243,7 @@ export function NewTaskDialog({
             </Label>
             <select
               id="new-task-creation-kind"
-              className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+              className="h-9 w-full rounded-md border bg-transparent px-3 text-base md:text-sm"
               value={creationKind}
               onChange={(e) => changeCreationKind(e.target.value as CreationKind)}
             >
@@ -275,7 +275,7 @@ export function NewTaskDialog({
                 </Label>
                 <select
                   id="new-task-trigger-type"
-                  className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                  className="h-9 w-full rounded-md border bg-transparent px-3 text-base md:text-sm"
                   value={triggerType}
                   onChange={(e) => setTriggerType(e.target.value as TaskTriggerType)}
                 >
@@ -352,7 +352,7 @@ export function NewTaskDialog({
               }}
               rows={18}
               spellCheck={false}
-              className="min-h-[360px] w-full resize-y rounded-md border bg-transparent px-3 py-2 font-mono text-sm leading-6 outline-none focus:ring-2 focus:ring-ring"
+              className="min-h-[360px] w-full resize-y rounded-md border bg-transparent px-3 py-2 font-mono text-base leading-6 outline-none focus:ring-2 focus:ring-ring md:text-sm"
             />
           </div>
 
@@ -363,7 +363,7 @@ export function NewTaskDialog({
               </Label>
               <select
                 id="new-task-agent-kind"
-                className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                className="h-9 w-full rounded-md border bg-transparent px-3 text-base md:text-sm"
                 value={agentKind}
                 onChange={(e) => setAgentKind(e.target.value)}
               >
