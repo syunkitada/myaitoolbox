@@ -37,7 +37,6 @@ Markdown本文の `vega-lite` コードフェンスにJSON仕様を書くと、F
 | --- | --- |
 | [`src/README.md`](./src/README.md) | UI本体、APIクライアント、状態、グラフ、ページ。 |
 | [`tests/README.md`](./tests/README.md) | Playwright E2Eテスト。 |
-| [`test-results/README.md`](./test-results/README.md) | Git管理下に残っているPlaywright実行状態。編集対象外。 |
 | [`components.json`](./components.json) | UIコンポーネント生成・スタイル設定。 |
 | [`dumpstate.cjs`](./dumpstate.cjs) | 開発時の状態確認用スクリプト。 |
 | [`e2e-debug.cjs`](./e2e-debug.cjs) | E2Eデバッグ用スクリプト。 |

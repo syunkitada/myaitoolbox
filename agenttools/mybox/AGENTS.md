@@ -48,7 +48,7 @@
 
 - `internal/entrypoint/api/`の生成コードは[`openapi.yaml`](./openapi.yaml)から生成されるため、生成ファイルを直接編集しない。
 - `internal/webui/dist/`は`web/`のビルド成果物を置くディレクトリで、実体は生成物として扱う。
-- `node_modules/`、`test-results/`など既存のGit管理下にある生成物は、機能追加やドキュメント更新で編集しない。
+- `node_modules/`など既存のGit管理下にある生成物は、機能追加やドキュメント更新で編集しない。
 
 ## 開発完了時の必須確認
 

@@ -2,6 +2,8 @@
 ./bin
 /web/node_modules
 /web/dist
+/test-results/
+/web/test-results/
 *.log
 # TypeScriptの増分ビルドキャッシュ
 *.tsbuildinfo

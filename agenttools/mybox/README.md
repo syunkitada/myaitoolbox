@@ -14,7 +14,6 @@ CLI と Web UI の両方から操作でき、タスクは Markdown ファイル�
 | [`tests/README.md`](./tests/README.md) | CLI E2E テスト。 |
 | [`web/README.md`](./web/README.md) | Web UI のソース、ビルド、テスト。 |
 | [`node_modules/README.md`](./node_modules/README.md) | Git 管理下に残っている開発ツールの実行時生成物。編集対象外。 |
-| [`test-results/README.md`](./test-results/README.md) | Git 管理下に残っているテスト実行結果。編集対象外。 |
 | [`.gitignore`](./.gitignore) | ローカル生成物・ビルド成果物の除外設定。 |
 | [`.golangci.yml`](./.golangci.yml) | Go lint の設定。 |
 | [`Makefile`](./Makefile) | ビルド、テスト、lint、Web UI 開発用コマンド。 |
@@ -23,7 +22,7 @@ CLI と Web UI の両方から操作でき、タスクは Markdown ファイル�
 | [`openapi.yaml`](./openapi.yaml) | HTTP API の仕様。生成コードの入力。 |
 | [`README.md`](./README.md) | リポジトリ全体の使い方と構成。本文書。 |
 
-`node_modules/`、`test-results/`、および `web/test-results/` は現状Git管理下にある実行時ファイルです。内容はツールが生成するため、機能追加やドキュメント更新では編集しません。
+`node_modules/` はGit管理下に残っている開発ツールの実行時ファイルです。内容はツールが生成するため、機能追加やドキュメント更新では編集しません。テスト実行結果は `.gitignore` で除外しています。
 
 ## 機能
 
