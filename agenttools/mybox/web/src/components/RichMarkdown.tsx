@@ -348,10 +348,16 @@ function MarkdownCopyDialog({ text, onClose }: { text: string; onClose: () => vo
           </button>
         </div>
         <Tabs value={copyDialogFormat} onValueChange={changeCopyDialogFormat} className="gap-3">
-          <TabsList aria-label="Copy format">
-            <TabsTrigger value="text">Text</TabsTrigger>
-            <TabsTrigger value="jira">Jira</TabsTrigger>
-          </TabsList>
+          <div className="markdown-copy-dialog-format-row">
+            <TabsList aria-label="Copy format" className="shrink-0">
+              <TabsTrigger value="text">Text</TabsTrigger>
+              <TabsTrigger value="jira">Jira</TabsTrigger>
+            </TabsList>
+            <button type="button" className="markdown-text-copy ml-auto shrink-0" onClick={handleCopyDialog}>
+              {copyDialogCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              {copyDialogCopied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
           <TabsContent value="text">
             <textarea
               className="markdown-copy-dialog-preview"
@@ -372,15 +378,6 @@ function MarkdownCopyDialog({ text, onClose }: { text: string; onClose: () => vo
         {copyDialogError && (
           <p className="mt-2 text-sm text-destructive">Unable to copy to clipboard.</p>
         )}
-        <div className="markdown-copy-dialog-actions">
-          <button type="button" className="markdown-text-copy" onClick={handleCopyDialog}>
-            {copyDialogCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-            {copyDialogCopied ? 'Copied' : 'Copy'}
-          </button>
-          <button type="button" className="markdown-copy-dialog-cancel" onClick={closeCopyDialog}>
-            Close
-          </button>
-        </div>
       </div>
     </div>,
     document.body,

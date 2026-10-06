@@ -245,10 +245,6 @@ body,
     @apply inline-flex cursor-pointer items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-xs leading-5 text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground;
   }
 
-  .markdown-text-copy:focus-visible {
-    @apply outline-none ring-[3px] ring-ring/50;
-  }
-
   .markdown-text-copy.is-copied {
     @apply text-primary;
   }
@@ -265,25 +261,21 @@ body,
     @apply mb-3 flex items-center justify-between gap-3;
   }
 
+  .markdown-copy-dialog-format-row {
+    @apply flex flex-wrap items-center gap-3;
+  }
+
   .markdown-copy-dialog-close {
     @apply inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground;
   }
 
   .markdown-copy-dialog-close:focus-visible,
-  .markdown-copy-dialog-cancel:focus-visible {
+  .markdown-text-copy:focus-visible {
     @apply outline-none ring-[3px] ring-ring/50;
   }
 
   .markdown-copy-dialog-preview {
     @apply max-h-[60vh] min-h-64 w-full resize-y rounded-md border border-border bg-muted p-3 font-mono text-base leading-5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-xs;
-  }
-
-  .markdown-copy-dialog-actions {
-    @apply mt-3 flex justify-end gap-2;
-  }
-
-  .markdown-copy-dialog-cancel {
-    @apply cursor-pointer rounded border border-border px-2.5 py-1.5 text-xs leading-5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground;
   }
 
   .markdown-body code {
