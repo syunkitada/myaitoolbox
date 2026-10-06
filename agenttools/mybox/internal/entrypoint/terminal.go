@@ -57,13 +57,19 @@ type terminalMessage struct {
 // to the socket so that a shell can stream to several clients at once. `stop`
 // is closed to terminate the serve goroutine when the client disconnects.
 type terminalClient struct {
-	send     chan []byte
-	stop     chan struct{}
-	stopOnce sync.Once
+	send      chan []byte
+	stop      chan struct{}
+	stopOnce  sync.Once
+	closeConn func()
 }
 
 func (c *terminalClient) halt() {
-	c.stopOnce.Do(func() { close(c.stop) })
+	c.stopOnce.Do(func() {
+		close(c.stop)
+		if c.closeConn != nil {
+			c.closeConn()
+		}
+	})
 }
 
 // terminalSession represents a persistent shell (PTY) for a project. Unlike a
@@ -186,7 +192,12 @@ func (s *terminalSession) broadcast(data []byte) {
 		select {
 		case c.send <- data:
 		default:
-			// slow client; drop this chunk
+			// Terminal output is an ordered byte stream; dropping a chunk can
+			// corrupt both visible text and VT escape sequences. Disconnect a
+			// client that cannot keep up so it can reattach and replay history
+			// instead of remaining attached with silently incomplete output.
+			c.halt()
+			delete(s.clients, c)
 		}
 	}
 	s.mu.Unlock()
@@ -451,7 +462,13 @@ func (s *Server) Terminal(c echo.Context) error {
 
 	// send capacity must exceed the ring bounds (512) so the replayed history
 	// plus terminalClientReset always fit without blocking or being dropped.
-	client := &terminalClient{send: make(chan []byte, 1024), stop: make(chan struct{})}
+	client := &terminalClient{
+		send: make(chan []byte, 1024),
+		stop: make(chan struct{}),
+		closeConn: func() {
+			_ = conn.Close()
+		},
+	}
 	sess.addClient(client)
 	go sess.serveClient(conn, client, &writeMu)
 

@@ -380,3 +380,36 @@ func TestTerminalReattachCommandShellKeepsAppMouseMode(t *testing.T) {
 	require.True(t, sawReassert,
 		"mouse-tracking mode was not carried over for a command-started app")
 }
+
+func TestTerminalBroadcastDisconnectsSlowClient(t *testing.T) {
+	s := &terminalSession{
+		clients: map[*terminalClient]struct{}{},
+	}
+	closed := make(chan struct{})
+	client := &terminalClient{
+		send:      make(chan []byte, 1),
+		stop:      make(chan struct{}),
+		closeConn: func() { close(closed) },
+	}
+	s.clients[client] = struct{}{}
+
+	s.broadcast([]byte("first"))
+	s.broadcast([]byte("second"))
+
+	select {
+	case <-client.stop:
+	default:
+		t.Fatal("slow client was not stopped")
+	}
+	select {
+	case <-closed:
+	default:
+		t.Fatal("slow client connection was not closed")
+	}
+	s.mu.Lock()
+	_, ok := s.clients[client]
+	s.mu.Unlock()
+	if ok {
+		t.Fatal("slow client remained attached after its queue overflowed")
+	}
+}

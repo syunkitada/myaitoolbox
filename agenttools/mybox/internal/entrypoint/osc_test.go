@@ -23,6 +23,7 @@ func TestOsc52Stripper(t *testing.T) {
 		{"esc single byte not osc", "\x1bM", "\x1bM"},
 		{"command 5 not 52", "\x1b]5;\x07", "\x1b]5;\x07"},
 		{"non-numeric partly matches", "\x1b]52x\x07", "\x1b]52x\x07"},
+		{"incomplete command escape passes", "\x1b]52\x1bXok", "\x1b]52\x1bXok"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -31,6 +32,13 @@ func TestOsc52Stripper(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestOsc52StripperIncompleteCommandEscapeAcrossCalls(t *testing.T) {
+	st := &osc52Stripper{}
+
+	require.Empty(t, st.filter([]byte("\x1b]52\x1b")))
+	require.Equal(t, "\x1b]52\x1bX", string(st.filter([]byte("X"))))
 }
 
 func TestOsc52StripperSplitAcrossCalls(t *testing.T) {

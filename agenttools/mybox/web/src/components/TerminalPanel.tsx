@@ -49,8 +49,17 @@ function loadProjectMap(): ProjectTermMap {
         const p = parsed[key] as ProjectTermState | null | undefined
         if (!p || typeof p !== 'object' || Array.isArray(p)) continue
         // Drop entries that were persisted as JSON null or arrays of tabs.
-        let tabs: any[] = []
-        if (Array.isArray(p.tabs)) tabs = p.tabs
+        const tabs = Array.isArray(p.tabs)
+          ? p.tabs.filter((tab): tab is TerminalTabData => {
+              if (!tab || typeof tab !== 'object') return false
+              const value = tab as unknown as Record<string, unknown>
+              return Number.isSafeInteger(value.id)
+                && Number(value.id) > 0
+                && typeof value.title === 'string'
+                && (value.command === undefined || typeof value.command === 'string')
+                && (value.sessionId === undefined || typeof value.sessionId === 'string')
+            })
+          : []
         const entry: ProjectTermState = {
           tabs,
           activeId: typeof p.activeId === 'number' ? p.activeId : null,
@@ -64,12 +73,44 @@ function loadProjectMap(): ProjectTermMap {
         }
         map[key] = entry
       }
-      return map
+      return normalizePersistedTerminalIds(map)
     }
   } catch {
     // ignore malformed storage
   }
   return {}
+}
+
+export function maxPersistedTerminalId(map: ProjectTermMap): number {
+  let max = 0
+  for (const state of Object.values(map)) {
+    for (const tab of state.tabs) {
+      if (Number.isSafeInteger(tab.id) && tab.id > max) max = tab.id
+    }
+  }
+  return max
+}
+
+export function normalizePersistedTerminalIds(map: ProjectTermMap): ProjectTermMap {
+  const used = new Set<number>()
+  let next = maxPersistedTerminalId(map)
+  for (const state of Object.values(map)) {
+    for (const tab of state.tabs) {
+      const original = tab.id
+      if (used.has(original)) {
+        do {
+          next += 1
+        } while (used.has(next))
+        tab.id = next
+        if (tab.title === `Terminal ${original}`) tab.title = `Terminal ${next}`
+        // New tabs were appended and made active, so prefer the latest
+        // duplicate when repairing the active tab reference from old data.
+        if (state.activeId === original) state.activeId = tab.id
+      }
+      used.add(tab.id)
+    }
+  }
+  return map
 }
 
 function newSessionId(): string {
@@ -81,7 +122,10 @@ export function TerminalPanel({ className }: { className?: string }) {
   const [byProject, setByProject] = useState<ProjectTermMap>(loadProjectMap)
   const [maximized, setMaximized] = useState(false)
   const [height, setHeight] = useState(520)
-  const idRef = useRef(0)
+  const idRef = useRef<number | null>(null)
+  if (idRef.current === null) {
+    idRef.current = maxPersistedTerminalId(byProject)
+  }
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null)
   const isMobile = useMediaQuery('(max-width: 1023px)')
   const { state: sidebarState } = useSidebar()
@@ -164,7 +208,7 @@ export function TerminalPanel({ className }: { className?: string }) {
 
   const addTerminal = useCallback(
     (title?: string, command?: string) => {
-      idRef.current += 1
+      idRef.current = (idRef.current ?? 0) + 1
       const id = idRef.current
       const tab: TerminalTabData = {
         id,
@@ -185,7 +229,7 @@ export function TerminalPanel({ className }: { className?: string }) {
         setByProject((prev) => {
           const cur = prev[project] ?? EMPTY
           if (cur.tabs.length === 0) {
-            idRef.current += 1
+            idRef.current = (idRef.current ?? 0) + 1
             const id = idRef.current
             return {
               ...prev,

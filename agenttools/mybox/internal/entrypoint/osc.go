@@ -78,9 +78,19 @@ func (o *osc52Stripper) filter(data []byte) []byte {
 				out = append(out, 0x1b, b)
 				o.state = oscIdle
 			} else {
-				// The ESC was not an ST; treat it as part of the examined
-				// command region and re-process this byte there.
-				out = append(out, o.filter([]byte{b})...)
+				// The ESC was not an ST. Preserve the incomplete OSC and the
+				// ESC that preceded this byte, then handle the current byte
+				// without recursively re-entering this state.
+				out = append(out, 0x1b, ']')
+				out = append(out, o.osc...)
+				out = append(out, 0x1b)
+				o.osc = o.osc[:0]
+				if b == 0x1b {
+					o.state = oscEsc
+				} else {
+					out = append(out, b)
+					o.state = oscIdle
+				}
 			}
 		case oscPass:
 			switch b {
