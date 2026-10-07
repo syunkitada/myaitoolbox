@@ -2132,7 +2132,8 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                     <div
                       role="menu"
                       aria-label="File actions"
-                      className="absolute right-0 top-full z-50 mt-1 min-w-44 origin-top rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                      className="absolute left-0 top-full z-50 mt-1 min-w-44 origin-top rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                      onMouseDown={(event) => event.stopPropagation()}
                     >
                       {isDir && (
                         <>

@@ -214,7 +214,7 @@ test('dashboard opens a directory README from the explorer', async ({ page }) =>
   )
   await expect(treeButton(explorer, 'knowledge')).toHaveClass(/active/)
   await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Rename' })).toHaveCount(0)
+  await expect(page.locator('.knowledge-pane').getByRole('button', { name: 'Rename' })).toHaveCount(0)
   await page.getByRole('button', { name: 'File actions' }).click()
   await expect(page.getByRole('menuitem', { name: 'Move' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: 'Duplicate' })).toBeVisible()
@@ -694,19 +694,29 @@ test('dashboard opens a favorite in its project from another project', async ({ 
 test('dashboard records recently opened files', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await treeButton(explorer, 'tasks.md').click()
-  const recent = explorer.locator('.explorer-section').filter({ hasText: 'Recent' })
-  await expect(recent).toContainText('tasks.md')
+  await expect(page.locator('.file-tabs').getByRole('button', { name: 'tasks.md', exact: true })).toBeVisible()
 })
 
 test('dashboard moves a file by dragging onto a directory', async ({ page }) => {
-  const explorer = page.locator('.knowledge-explorer')
-  await expect(explorer).toContainText('tasks.md')
-  await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
-  await treeButton(explorer, 'tasks.md')
-    .dragTo(explorer.getByRole('button', { name: 'Collapse knowledge' }))
-  await explorer.locator('.search-bar input').fill('knowledge/tasks')
-  const list = explorer.locator('.file-list')
-  await expect(list.getByRole('button', { name: 'knowledge/tasks.md' })).toBeVisible()
+  let moved = false
+  try {
+    const explorer = page.locator('.knowledge-explorer')
+    await expect(explorer).toContainText('tasks.md')
+    await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
+    await treeButton(explorer, 'tasks.md')
+      .dragTo(explorer.getByRole('button', { name: 'Collapse knowledge' }))
+    moved = true
+    await explorer.locator('.search-bar input').fill('knowledge/tasks')
+    const list = explorer.locator('.file-list')
+    await expect(list.getByRole('button', { name: 'knowledge/tasks.md' })).toBeVisible()
+  } finally {
+    if (moved) {
+      const restored = await page.request.post('/api/files/move', {
+        data: { old_path: 'knowledge/tasks.md', new_path: 'tasks.md' },
+      })
+      expect(restored.status()).toBe(204)
+    }
+  }
 })
 
 test('dashboard renames a file via Move', async ({ page }) => {
@@ -714,10 +724,11 @@ test('dashboard renames a file via Move', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks.md').click()
+  await expect(page).toHaveURL(/\/projects\/proj\/dashboard\/files\/tasks\.md$/)
   await page.getByRole('button', { name: 'File actions' }).click()
-  await page.getByRole('menuitem', { name: 'Move' }).click({ force: true })
+  await page.getByRole('menuitem', { name: 'Move' }).click()
   await acceptAppDialog(page, 'knowledge/tasks2.md')
-  await expect(page.getByRole('button', { name: 'knowledge/tasks2.md', exact: true })).toBeVisible()
+  await expect(treeButton(explorer, 'tasks2.md')).toBeVisible()
   await expect(explorer).toContainText('tasks2.md')
 })
 
@@ -726,25 +737,38 @@ test('dashboard duplicates a file', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
   await treeButton(explorer, 'tasks2.md').click()
+  await expect(page).toHaveURL(/\/projects\/proj\/dashboard\/files\/knowledge\/tasks2\.md$/)
   await page.getByRole('button', { name: 'File actions' }).click()
-  await page.getByRole('menuitem', { name: 'Duplicate' }).click({ force: true })
+  await page.getByRole('menuitem', { name: 'Duplicate' }).click()
   await acceptAppDialog(page, 'knowledge/tasks2-copy.md')
   // Scope to the tree: the opened viewer's meta line shows the same path.
   await expect(treeButton(explorer, 'tasks2-copy.md')).toBeVisible()
 })
 
 test('dashboard deletes a file', async ({ page }) => {
-  await closeAgentSidebar(page)
-  const explorer = page.locator('.knowledge-explorer')
-  await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
-  await treeButton(explorer, 'tasks2-copy.md').click()
-  await page.getByRole('button', { name: 'File actions' }).click()
-  await page.getByRole('menuitem', { name: 'Delete' }).click({ force: true })
-  await acceptAppDialog(page)
-  await expect(
-    page.getByText('Select a file from the explorer to view it here.', { exact: true }),
-  ).toBeVisible()
-  await expect(explorer).not.toContainText('tasks2-copy.md')
+  let deleted = false
+  try {
+    await closeAgentSidebar(page)
+    const explorer = page.locator('.knowledge-explorer')
+    await explorer.getByRole('button', { name: 'Expand knowledge' }).click()
+    await treeButton(explorer, 'tasks2-copy.md').click()
+    await expect(page).toHaveURL(/\/projects\/proj\/dashboard\/files\/knowledge\/tasks2-copy\.md$/)
+    await page.getByRole('button', { name: 'File actions' }).click()
+    await page.getByRole('menuitem', { name: 'Delete' }).click()
+    await acceptAppDialog(page)
+    deleted = true
+    await expect(
+      page.getByText('Select a file from the explorer to view it here.', { exact: true }),
+    ).toBeVisible()
+    await expect(explorer).not.toContainText('tasks2-copy.md')
+  } finally {
+    if (deleted) {
+      const restored = await page.request.post('/api/files/move', {
+        data: { old_path: 'knowledge/tasks2.md', new_path: 'tasks.md' },
+      })
+      expect(restored.status()).toBe(204)
+    }
+  }
 })
 
 test('dashboard executes an executable file and shows its output', async ({ page }) => {
@@ -815,7 +839,10 @@ test('dashboard keeps a running execution after closing and reloading its modal'
 })
 
 test('clicking the mybox brand returns to the unselected projects page', async ({ page }) => {
+  await expect(page).toHaveURL(/\/projects\/proj\/dashboard(?:\/files\/.*)?$/)
+  await expect(page.getByRole('heading', { name: 'Files', level: 1 })).toBeVisible()
   await page.locator('.sidebar-nav').getByRole('link', { name: 'Board', exact: true }).click()
+  await expect(page).toHaveURL(/\/board$/)
   await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()
   await page.getByRole('button', { name: 'Go to top' }).click()
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()
@@ -1184,6 +1211,7 @@ test('sidebar shows Herdr workspace status and agents', async ({ page }) => {
   await expect(row).toContainText('proj')
   await expect(row).toContainText('proj-dir')
   await expect(row).toContainText('OC | stub agent')
+  await expect(page.getByTestId('sidebar-agent-w7:p2')).toHaveCount(0)
 })
 
 test('clicking a sidebar agent opens its operation panel in the herdr tab', async ({ page }) => {
@@ -1429,7 +1457,9 @@ test.describe('mobile viewport', () => {
   test('grows the agent prompt input as text wraps on mobile', async ({ page }) => {
     await page.getByTestId('agent-sidebar-toggle').click()
     await expect(page.getByTestId('agent-sidebar-sheet')).toBeVisible()
-    await page.getByTestId('agent-sidebar-row-w7:p1').click()
+    const agentRow = page.locator('[data-testid^="agent-sidebar-row-"]').first()
+    await expect(agentRow).toBeVisible()
+    await agentRow.click()
 
     const promptInput = page.getByTestId('herdr-prompt-input')
     await expect(promptInput).toHaveCSS('height', '48px')
@@ -1444,23 +1474,26 @@ test.describe('mobile viewport', () => {
   test('groups secondary agent controls in a mobile command palette', async ({ page }) => {
     await page.getByTestId('agent-sidebar-toggle').click()
     await expect(page.getByTestId('agent-sidebar-sheet')).toBeVisible()
-    await page.getByTestId('agent-sidebar-row-w7:p1').click()
+    const agentRow = page.locator('[data-testid^="agent-sidebar-row-"]').first()
+    await expect(agentRow).toBeVisible()
+    await agentRow.click()
+    const paneId = (await agentRow.getAttribute('data-testid'))!.replace('agent-sidebar-row-', '')
 
-    await expect(page.getByTestId('agent-key-w7:p1-Enter')).toBeVisible()
-    await expect(page.getByTestId('agent-key-w7:p1-↑')).toBeVisible()
-    await expect(page.getByTestId('agent-key-w7:p1-↓')).toBeVisible()
-    await expect(page.getByTestId('agent-key-w7:p1-Esc')).toHaveCount(0)
+    await expect(page.getByTestId(`agent-key-${paneId}-Enter`)).toBeVisible()
+    await expect(page.getByTestId(`agent-key-${paneId}-↑`)).toBeVisible()
+    await expect(page.getByTestId(`agent-key-${paneId}-↓`)).toBeVisible()
+    await expect(page.getByTestId(`agent-key-${paneId}-Esc`)).toHaveCount(0)
     await page.getByTestId('agent-command-palette-toggle').click()
 
     const palette = page.getByTestId('agent-command-palette')
     await expect(palette).toBeVisible()
     await expect(page.getByTestId('agent-command-palette-commands')).toHaveClass(/grid-cols-2/)
-    await expect(page.getByTestId('agent-key-w7:p1-Esc')).toBeVisible()
-    await expect(palette.getByTestId('agent-key-w7:p1-↑')).toHaveCount(0)
-    await expect(palette.getByTestId('agent-key-w7:p1-↓')).toHaveCount(0)
-    await expect(page.getByTestId('agent-command-w7:p1-status')).toHaveAttribute('data-size', 'xs')
+    await expect(page.getByTestId(`agent-key-${paneId}-Esc`)).toBeVisible()
+    await expect(palette.getByTestId(`agent-key-${paneId}-↑`)).toHaveCount(0)
+    await expect(palette.getByTestId(`agent-key-${paneId}-↓`)).toHaveCount(0)
+    await expect(page.getByTestId(`agent-command-${paneId}-status`)).toHaveAttribute('data-size', 'xs')
     await expect(palette.getByRole('searchbox', { name: 'Filter keys and commands' })).toHaveCount(0)
-    await page.getByTestId('agent-command-w7:p1-status').click()
+    await page.getByTestId(`agent-command-${paneId}-status`).click()
     await expect(palette).toHaveCount(0)
     await closeAgentSidebar(page)
   })

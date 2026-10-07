@@ -277,6 +277,20 @@ elif cmd == "agent":
                    "state_change_seq": 26, "tab_id": "w8:t1", "terminal_id": "term_2",
                    "terminal_title": "OC | other agent", "terminal_title_stripped": "OC | other agent",
                    "workspace_id": "w8"}]
+        # The seed also contains ordinary terminal panes such as w7:p2.
+        # Only panes created after the seed should receive a dynamic agent
+        # record; otherwise the fixture reports non-agent panes as agents.
+        seed_panes = {"w5:p1", "w7:p1", "w7:p2", "w8:p1"}
+        known_panes = seed_panes | {agent["pane_id"] for agent in agents}
+        for pane in load("panes.json", []):
+            if pane["pane_id"] in known_panes:
+                continue
+            agents.append({"agent": "opencode", "agent_status": "working", "cwd": pane.get("cwd", "/tmp/stub"),
+                           "focused": bool(pane.get("focused")), "pane_id": pane["pane_id"],
+                           "revision": 1, "screen_detection_skipped": True, "state_change_seq": 1,
+                           "tab_id": pane.get("tab_id"), "terminal_id": f"term_{pane['pane_id']}",
+                           "terminal_title": "OC | dynamic agent", "terminal_title_stripped": "OC | dynamic agent",
+                           "workspace_id": pane.get("workspace_id")})
         out("cli:agent:list", "agent_list", "agents", agents)
     elif sub == "read":
         cnt = load("agent-read-count.json", {"n": 0})
