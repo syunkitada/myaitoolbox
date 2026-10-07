@@ -382,6 +382,75 @@ paths:
           description: invalid path or not executable
         "404":
           description: not found
+  /api/files/execute/runs:
+    get:
+      operationId: listFileExecutions
+      summary: List server-owned file executions
+      responses:
+        "200":
+          description: execution history for the current project
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FileExecutionSnapshot"
+    post:
+      operationId: startFileExecution
+      summary: Start a server-owned file execution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilePathRequest"
+      responses:
+        "201":
+          description: execution started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileExecutionSnapshot"
+        "400":
+          description: invalid path
+        "404":
+          description: not found
+        "429":
+          description: concurrent file execution limit reached
+  /api/files/execute/runs/{id}/stop:
+    post:
+      operationId: stopFileExecution
+      summary: Stop a server-owned file execution
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: stopped or already completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileExecutionSnapshot"
+        "404":
+          description: execution not found
+  /api/files/execute/runs/{id}:
+    delete:
+      operationId: dismissFileExecution
+      summary: Dismiss a completed file execution
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: dismissed
+        "404":
+          description: execution not found or still running
   /api/tasks:
     get:
       operationId: listTasks
@@ -1192,6 +1261,29 @@ components:
         timed_out:
           type: boolean
           description: True when the process was killed after the timeout
+    FileExecutionSnapshot:
+      type: object
+      required: [id, path, status, output, started_at]
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+        status:
+          type: string
+          enum: [running, completed, failed, stopped]
+        output:
+          type: string
+          description: Recent combined stdout and stderr, capped at 1 MiB
+        exit_code:
+          type: integer
+        timed_out:
+          type: boolean
+        error:
+          type: string
+        started_at:
+          type: string
+          format: date-time
     FileContent:
       type: object
       required: [path, content]

@@ -115,9 +115,22 @@ export interface FileExecuteResult {
   timed_out?: boolean
 }
 
+export type FileExecutionStatus = 'running' | 'completed' | 'failed' | 'stopped'
+
+export interface FileExecutionSnapshot {
+  id: string
+  path: string
+  status: FileExecutionStatus
+  output: string
+  exit_code?: number
+  timed_out?: boolean
+  error?: string
+  started_at: string
+}
+
 export interface FileExecuteStreamHandlers {
   onOutput: (chunk: string) => void
-  onComplete: (result: FileExecuteResult) => void
+  onSnapshot: (snapshot: FileExecutionSnapshot) => void
   onError: (error: Error) => void
 }
 
@@ -594,14 +607,21 @@ export const api = {
 
   deleteFile: (path: string) => request<void>('POST', '/api/files/delete', { path }),
   executeFile: (path: string) => request<FileExecuteResult>('POST', '/api/files/execute', { path }),
-  executeFileStream: (path: string, handlers: FileExecuteStreamHandlers) => {
+  listFileExecutions: () => request<FileExecutionSnapshot[]>('GET', '/api/files/execute/runs'),
+  startFileExecution: (path: string) =>
+    request<FileExecutionSnapshot>('POST', '/api/files/execute/runs', { path }),
+  stopFileExecution: (runId: string) =>
+    request<FileExecutionSnapshot>('POST', `/api/files/execute/runs/${encodeURIComponent(runId)}/stop`),
+  dismissFileExecution: (runId: string) =>
+    request<void>('DELETE', `/api/files/execute/runs/${encodeURIComponent(runId)}`),
+  executeFileStream: (runId: string, handlers: FileExecuteStreamHandlers) => {
     let settled = false
     const fail = (error: Error) => {
       if (settled) return
       settled = true
       handlers.onError(error)
     }
-    const ws = new WebSocket(fileExecuteWsUrl(path))
+    const ws = new WebSocket(fileExecuteWsUrl(runId))
     ws.onmessage = (event) => {
       if (typeof event.data !== 'string') {
         fail(new Error('Invalid file execution stream message'))
@@ -611,10 +631,14 @@ export const api = {
       let message: {
         type?: string
         data?: string
+        id?: string
         path?: string
+        status?: FileExecutionStatus
+        output?: string
         exit_code?: number
         timed_out?: boolean
-        message?: string
+        error?: string
+        started_at?: string
       }
       try {
         message = JSON.parse(event.data) as typeof message
@@ -627,19 +651,25 @@ export const api = {
         handlers.onOutput(message.data ?? '')
         return
       }
-      if (message.type === 'exit') {
-        settled = true
-        handlers.onComplete({
-          path: message.path ?? path,
-          exit_code: message.exit_code ?? 0,
-          output: '',
+      if (message.type === 'state' && message.id && message.path && message.status && message.started_at) {
+        handlers.onSnapshot({
+          id: message.id,
+          path: message.path,
+          status: message.status,
+          output: message.output ?? '',
+          exit_code: message.exit_code,
           timed_out: message.timed_out,
+          error: message.error,
+          started_at: message.started_at,
         })
-        ws.close()
+        if (message.status !== 'running') {
+          settled = true
+          ws.close()
+        }
         return
       }
       if (message.type === 'error') {
-        fail(new Error(message.message || 'File execution failed'))
+        fail(new Error(message.error || 'File execution failed'))
         ws.close()
       }
     }

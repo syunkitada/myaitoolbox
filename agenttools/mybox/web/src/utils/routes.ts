@@ -93,13 +93,13 @@ export function terminalWsUrl(command?: string, session?: string): string {
   return `${protocol}://${window.location.host}${base}/api/terminal${query ? `?${query}` : ''}`
 }
 
-// fileExecuteWsUrl points at the WebSocket endpoint that streams output from
-// an executable file in the current project.
-export function fileExecuteWsUrl(path: string): string {
-  const base = getBasePath()
-  const project = getProject()
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const params = new URLSearchParams({ path })
+// fileExecuteWsUrl points at the WebSocket endpoint that attaches to a
+// server-owned executable file run in the current project.
+export function fileExecuteWsUrl(runId: string): string {
+	const base = getBasePath()
+	const project = getProject()
+	const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+	const params = new URLSearchParams({ run_id: runId })
   if (project) params.set('project', project)
   return `${protocol}://${window.location.host}${base}/api/files/execute/stream?${params.toString()}`
 }

@@ -48,6 +48,7 @@ type FileRepository interface {
 	Move(ctx context.Context, oldPath string, newPath string) error
 	Copy(ctx context.Context, oldPath string, newPath string) error
 	Delete(ctx context.Context, path string) error
+	ValidateExecutable(ctx context.Context, path string) error
 	Execute(ctx context.Context, path string) (FileExecResult, error)
 	ExecuteStream(ctx context.Context, path string, output io.Writer) (FileExecResult, error)
 }

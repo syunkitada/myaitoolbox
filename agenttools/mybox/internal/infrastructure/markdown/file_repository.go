@@ -767,23 +767,39 @@ func (r *FileRepository) Execute(ctx context.Context, path string) (domain.FileE
 	return res, nil
 }
 
-func (r *FileRepository) ExecuteStream(ctx context.Context, path string, output io.Writer) (domain.FileExecResult, error) {
+func (r *FileRepository) executableFile(ctx context.Context, path string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	file, err := r.safePath(path)
 	if err != nil {
-		return domain.FileExecResult{}, err
+		return "", err
 	}
 	info, err := os.Stat(file)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return domain.FileExecResult{}, fmt.Errorf("%w: %s", domain.ErrNotFound, path)
+			return "", fmt.Errorf("%w: %s", domain.ErrNotFound, path)
 		}
-		return domain.FileExecResult{}, err
+		return "", err
 	}
 	if info.IsDir() {
-		return domain.FileExecResult{}, fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
+		return "", fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
 	}
 	if info.Mode()&0o111 == 0 {
-		return domain.FileExecResult{}, fmt.Errorf("%w: %s is not executable", domain.ErrInvalidPath, path)
+		return "", fmt.Errorf("%w: %s is not executable", domain.ErrInvalidPath, path)
+	}
+	return file, nil
+}
+
+func (r *FileRepository) ValidateExecutable(ctx context.Context, path string) error {
+	_, err := r.executableFile(ctx, path)
+	return err
+}
+
+func (r *FileRepository) ExecuteStream(ctx context.Context, path string, output io.Writer) (domain.FileExecResult, error) {
+	file, err := r.executableFile(ctx, path)
+	if err != nil {
+		return domain.FileExecResult{}, err
 	}
 	ctx2, cancel := context.WithTimeout(ctx, executeTimeout)
 	defer cancel()

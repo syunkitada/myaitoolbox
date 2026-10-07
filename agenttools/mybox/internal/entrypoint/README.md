@@ -13,6 +13,7 @@
 | [`cli_test.go`](./cli_test.go) | CLIコマンドのテスト。 |
 | [`file_execute.go`](./file_execute.go) | Filesタブからの実行可能ファイル実行とWebSocket出力ストリーム。 |
 | [`file_execute_test.go`](./file_execute_test.go) | Filesタブの実行ストリームの統合テスト。 |
+| [`file_execution.go`](./file_execution.go) | ブラウザ切断後も継続するサーバー管理のファイル実行ジョブ、履歴、再接続、停止API。 |
 | [`git.go`](./git.go) | Git状態、remote同期差分、fetch、差分、ブランチ、ステージ、コミットの処理。 |
 | [`git_test.go`](./git_test.go) | Git操作のHTTPテスト。 |
 | [`herdr.go`](./herdr.go) | Herdrワークスペース、タブ、ペイン、エージェントの連携。 |

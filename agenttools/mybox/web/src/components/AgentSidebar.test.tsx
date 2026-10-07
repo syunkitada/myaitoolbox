@@ -26,6 +26,22 @@ vi.mock('../api/client', () => ({
     startHerdrFileAgent: vi.fn().mockResolvedValue({ ok: true }),
     closeHerdrPane: vi.fn().mockResolvedValue({ ok: true }),
     closeHerdrTab: vi.fn().mockResolvedValue({ ok: true }),
+    listFileExecutions: vi.fn().mockResolvedValue([]),
+    startFileExecution: vi.fn().mockResolvedValue({
+      id: 'server-run',
+      path: 'scripts/long.sh',
+      status: 'running',
+      output: '',
+      started_at: new Date().toISOString(),
+    }),
+    stopFileExecution: vi.fn().mockResolvedValue({
+      id: 'server-run',
+      path: 'scripts/long.sh',
+      status: 'stopped',
+      output: '',
+      started_at: new Date().toISOString(),
+    }),
+    dismissFileExecution: vi.fn().mockResolvedValue(undefined),
     executeFileStream: vi.fn().mockReturnValue(vi.fn()),
   },
 }))

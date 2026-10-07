@@ -9,6 +9,11 @@ vi.mock('./api/client', () => ({
   api: {
     getMeta: vi.fn(),
     getProjectGitStatus: vi.fn(),
+    listFileExecutions: vi.fn().mockResolvedValue([]),
+    startFileExecution: vi.fn(),
+    stopFileExecution: vi.fn(),
+    dismissFileExecution: vi.fn(),
+    executeFileStream: vi.fn().mockReturnValue(vi.fn()),
   },
 }))
 

@@ -46,7 +46,7 @@ describe('api client', () => {
     )
   })
 
-  it('streams file execution output before completion', () => {
+  it('attaches to a server-owned file execution stream', () => {
     class FakeWebSocket {
       static latest: FakeWebSocket
       readonly url: string
@@ -63,27 +63,39 @@ describe('api client', () => {
 
     vi.stubGlobal('WebSocket', FakeWebSocket)
     const output: string[] = []
-    const complete = vi.fn()
+    const snapshot = vi.fn()
     const error = vi.fn()
-    api.executeFileStream('scripts/run.sh', {
+    api.executeFileStream('run-1', {
       onOutput: (chunk) => output.push(chunk),
-      onComplete: complete,
+      onSnapshot: snapshot,
       onError: error,
     })
 
-    expect(FakeWebSocket.latest.url).toContain('/api/files/execute/stream?path=scripts%2Frun.sh')
+    expect(FakeWebSocket.latest.url).toContain('/api/files/execute/stream?run_id=run-1')
     FakeWebSocket.latest.onmessage?.({ data: JSON.stringify({ type: 'output', data: 'first\n' }) } as MessageEvent)
     expect(output).toEqual(['first\n'])
-    expect(complete).not.toHaveBeenCalled()
+    expect(snapshot).not.toHaveBeenCalled()
 
     FakeWebSocket.latest.onmessage?.({
-      data: JSON.stringify({ type: 'exit', path: 'scripts/run.sh', exit_code: 0 }),
+      data: JSON.stringify({
+        type: 'state',
+        id: 'run-1',
+        path: 'scripts/run.sh',
+        status: 'completed',
+        output: 'first\n',
+        exit_code: 0,
+        started_at: '1970-01-01T00:00:00Z',
+      }),
     } as MessageEvent)
-    expect(complete).toHaveBeenCalledWith({
+    expect(snapshot).toHaveBeenCalledWith({
+      id: 'run-1',
       path: 'scripts/run.sh',
+      status: 'completed',
+      output: 'first\n',
       exit_code: 0,
-      output: '',
       timed_out: undefined,
+      error: undefined,
+      started_at: '1970-01-01T00:00:00Z',
     })
     expect(error).not.toHaveBeenCalled()
   })

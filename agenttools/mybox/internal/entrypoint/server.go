@@ -46,6 +46,7 @@ type Server struct {
 	newApp         func(context.Context, string) (*App, error)
 	herdrRun       herdrRunFunc
 	terminals      *terminalHub
+	fileExecutions *fileExecutionHub
 	scheduled      *promptScheduler
 }
 
@@ -64,6 +65,7 @@ func NewServer(cfg *domain.Config, defaultProject string, basePath string) *Serv
 		basePath:       basePath,
 		newApp:         NewApp,
 		terminals:      newTerminalHub(),
+		fileExecutions: newFileExecutionHub(),
 	}
 	s.scheduled = newPromptScheduler(config.NewScheduledPromptStore(), s.runScheduledPrompt)
 	return s
@@ -74,6 +76,13 @@ func NewServer(cfg *domain.Config, defaultProject string, basePath string) *Serv
 func (s *Server) StartPromptScheduler(ctx context.Context) {
 	if s.scheduled != nil {
 		s.scheduled.Start(ctx)
+	}
+}
+
+// Shutdown stops server-owned file executions before the HTTP server exits.
+func (s *Server) Shutdown() {
+	if s.fileExecutions != nil {
+		s.fileExecutions.stopAll()
 	}
 }
 
@@ -154,6 +163,10 @@ func (s *Server) Handler() http.Handler {
 		e.GET("/api/task-template", getTaskTemplate)
 		e.POST("/api/task-triggers", createTaskTrigger)
 		e.POST("/api/task-triggers/:id/run", runTaskTrigger)
+		e.POST("/api/files/execute/runs", s.StartFileExecution)
+		e.GET("/api/files/execute/runs", s.ListFileExecutions)
+		e.POST("/api/files/execute/runs/:id/stop", s.StopFileExecution)
+		e.DELETE("/api/files/execute/runs/:id", s.DismissFileExecution)
 		e.GET("/api/files/execute/stream", s.ExecuteFileStream)
 		e.GET("/api/terminal", s.Terminal)
 		e.DELETE("/api/terminal/destroy", s.DestroyTerminal)
@@ -171,6 +184,10 @@ func (s *Server) Handler() http.Handler {
 	g.GET("/api/task-template", getTaskTemplate)
 	g.POST("/api/task-triggers", createTaskTrigger)
 	g.POST("/api/task-triggers/:id/run", runTaskTrigger)
+	g.POST("/api/files/execute/runs", s.StartFileExecution)
+	g.GET("/api/files/execute/runs", s.ListFileExecutions)
+	g.POST("/api/files/execute/runs/:id/stop", s.StopFileExecution)
+	g.DELETE("/api/files/execute/runs/:id", s.DismissFileExecution)
 	g.GET("/api/files/execute/stream", s.ExecuteFileStream)
 	g.GET("/api/terminal", s.Terminal)
 	g.DELETE("/api/terminal/destroy", s.DestroyTerminal)

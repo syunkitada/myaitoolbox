@@ -772,7 +772,7 @@ test('dashboard executes an executable file and shows its output', async ({ page
   await expect(modal).toHaveCount(0)
 })
 
-test('dashboard keeps a running execution in the right sidebar after closing its modal', async ({ page }) => {
+test('dashboard keeps a running execution after closing and reloading its modal', async ({ page }) => {
   const projectsRes = await page.request.get('/api/projects')
   const projects = (await projectsRes.json()) as Array<{ name: string; path: string }>
   const proj = projects.find((p) => p.name === 'proj')
@@ -782,7 +782,7 @@ test('dashboard keeps a running execution in the right sidebar after closing its
   const script = path.join(scripts, 'slow-greet.sh')
   fs.writeFileSync(
     script,
-    '#!/bin/sh\nprintf "first line\\n"\nsleep 2\nprintf "second line\\n"\n',
+    '#!/bin/sh\nprintf "first line\\n"\nsleep 3\nprintf "second line\\n"\n',
     { mode: 0o755 },
   )
 
@@ -800,7 +800,10 @@ test('dashboard keeps a running execution in the right sidebar after closing its
     await modal.getByRole('button', { name: 'Close execution result' }).click()
     await expect(modal).toHaveCount(0)
 
-    const executionStatus = page.locator('[data-testid^="agent-sidebar-execution-status-"]')
+    await page.reload()
+    const executionStatus = page.getByRole('button', {
+      name: /Open execution scripts\/slow-greet\.sh \(/,
+    })
     await expect(executionStatus).toHaveCount(1)
     await executionStatus.click()
     await expect(page.getByRole('dialog', { name: 'Execute scripts/slow-greet.sh' })).toContainText('first line')

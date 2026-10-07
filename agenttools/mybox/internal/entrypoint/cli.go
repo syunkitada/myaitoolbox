@@ -571,6 +571,7 @@ func newServeCommand() *cobra.Command {
 				return err
 			}
 			server := NewServer(cfg, project, basePath)
+			defer server.Shutdown()
 			basePath = normalizeBasePath(basePath)
 			addr := net.JoinHostPort(host, strconv.Itoa(port))
 			if !isLoopbackHost(host) {
