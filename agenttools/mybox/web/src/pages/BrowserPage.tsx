@@ -1,6 +1,6 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, RefObject, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useBlocker, useParams } from 'react-router-dom'
-import { Favorite, FileEntry, FileExecuteResult, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
+import { Favorite, FileEntry, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileTabs } from '../components/FileTabs'
 import { TASK_AGENT_KIND_STORAGE_KEY, TaskAgentLaunchDialog } from '../components/TaskAgentLaunchDialog'
@@ -33,6 +33,7 @@ import type { LinkPathItem } from '../utils/markdown-link-completions'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useDialogs } from '../components/AppDialogs'
 import { useEscapeKey } from '../hooks/use-escape-key'
+import { useFileExecution } from '../state/fileExecution'
 import { filesUrl, getProject, rawFileUrl } from '../utils/routes'
 import { copyToClipboard } from '../utils/clipboard'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
@@ -393,6 +394,7 @@ interface ExplorerProps {
 
 export function Explorer({ entries, selected, onSelect, title, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onBeforePathMove, onPathMoved, onSearchHit }: ExplorerProps) {
   const { prompt, confirm, alert, showProgress, hideProgress } = useDialogs()
+  const { start: startFileExecution } = useFileExecution()
   const [q, setQ] = useState('')
   const [searchMode, setSearchMode] = useState<'name' | 'text'>('name')
   const [textResults, setTextResults] = useState<FileSearchResult[]>([])
@@ -405,7 +407,6 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverDir, setDragOverDir] = useState<string | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; kind: 'file' | 'dir'; executable?: boolean } | null>(null)
-  const [execState, setExecState] = useState<{ path: string; running: boolean; output: string; result?: FileExecuteResult; error?: string } | null>(null)
   const [triggerRunState, setTriggerRunState] = useState<{ path: string; running: boolean; result?: TaskTriggerRun; error?: string } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -413,10 +414,6 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
   const uploadDirRef = useRef('')
   const noticeTimer = useRef<number | null>(null)
-  const executeCancel = useRef<(() => void) | null>(null)
-
-  useEffect(() => () => executeCancel.current?.(), [])
-
   const showNotice = (text: string) => {
     setNotice(text)
     if (noticeTimer.current) window.clearTimeout(noticeTimer.current)
@@ -644,33 +641,7 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
     if (!ctxMenu) return
     const path = ctxMenu.path
     setCtxMenu(null)
-    executeCancel.current?.()
-    setExecState({ path, running: true, output: '' })
-    executeCancel.current = api.executeFileStream(path, {
-      onOutput: (chunk) => {
-        setExecState((current) =>
-          current?.path === path ? { ...current, output: current.output + chunk } : current,
-        )
-      },
-      onComplete: (result) => {
-        setExecState((current) =>
-          current?.path === path
-            ? { ...current, running: false, result: { ...result, output: current.output } }
-            : current,
-        )
-      },
-      onError: (error) => {
-        setExecState((current) =>
-          current?.path === path ? { ...current, running: false, error: error.message } : current,
-        )
-      },
-    })
-  }
-
-  const closeExecution = () => {
-    executeCancel.current?.()
-    executeCancel.current = null
-    setExecState(null)
+    startFileExecution(path)
   }
 
   const runTriggerEntry = () => {
@@ -1239,16 +1210,6 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
           {notice}
         </div>
       )}
-      {execState && (
-        <ExecuteResultModal
-          path={execState.path}
-          running={execState.running}
-          output={execState.output}
-          result={execState.result}
-          error={execState.error}
-          onClose={closeExecution}
-        />
-      )}
       {triggerRunState && (
         <TaskTriggerRunResultModal
           path={triggerRunState.path}
@@ -1338,110 +1299,6 @@ function TaskTriggerRunResultModal({
   )
 }
 
-function ExecuteResultModal({
-  path,
-  running,
-  output,
-  result,
-  error,
-  onClose,
-}: {
-  path: string
-  running: boolean
-  output: string
-  result?: FileExecuteResult
-  error?: string
-  onClose: () => void
-}) {
-  const [copied, setCopied] = useState(false)
-
-  useEscapeKey(onClose)
-
-  useEffect(() => {
-    if (!copied) return
-    const timer = window.setTimeout(() => setCopied(false), 1500)
-    return () => window.clearTimeout(timer)
-  }, [copied])
-
-  const copyOutput = () => {
-    void copyToClipboard(output)
-      .then(() => setCopied(true))
-      .catch(() => undefined)
-  }
-
-  const exitedCleanly = result && result.exit_code === 0 && !result.timed_out
-
-  return (
-    <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Execute ${path}`}
-    >
-      <div
-        className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-lg border bg-card shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <Terminal className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="truncate text-sm font-semibold">{path}</span>
-          </div>
-          <button
-            className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={onClose}
-            aria-label="Close execution result"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {running && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              Running…
-            </div>
-          )}
-          {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-          {result && (
-            <div className="mt-3 flex flex-col gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                    result.timed_out
-                      ? 'bg-amber-100 text-amber-700'
-                      : exitedCleanly
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700',
-                  )}
-                >
-                  <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
-                  {result.timed_out ? `Timed out (exit ${result.exit_code})` : `Exit code ${result.exit_code}`}
-                </span>
-                <Button variant="ghost" size="sm" className="ml-auto cursor-pointer" onClick={copyOutput}>
-                  {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-                  {copied ? 'Copied' : 'Copy output'}
-                </Button>
-              </div>
-            </div>
-          )}
-          {(output || result) && (
-            <pre className="exec-result-output mt-3 m-0 max-h-96 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed whitespace-pre-wrap break-words">
-              {output || '(no output)'}
-            </pre>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export interface PaneHandle {
   hasUnsavedChanges: () => boolean
   save: () => Promise<boolean>
@@ -1518,6 +1375,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   showExplorerToggle = true,
 }, ref) {
   const { prompt, confirm } = useDialogs()
+  const { start: startFileExecution } = useFileExecution()
   const [content, setContent] = useState('')
   const [draft, setDraft] = useState('')
   const [draftFm, setDraftFm] = useState<Record<string, unknown>>({})
@@ -1545,8 +1403,6 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   const [copyDialogOpen, setCopyDialogOpen] = useState(false)
   const [fileCopied, setFileCopied] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
-  const [execState, setExecState] = useState<{ path: string; running: boolean; output: string; result?: FileExecuteResult; error?: string } | null>(null)
-  const executeCancel = useRef<(() => void) | null>(null)
   const editStartLine = useRef<number | null>(null)
   const viewScroll = useRef<{ path: string; top: number; maxTop: number } | null>(null)
 
@@ -1836,35 +1692,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   }
 
   const execute = () => {
-    executeCancel.current?.()
-    setExecState({ path, running: true, output: '' })
-    executeCancel.current = api.executeFileStream(path, {
-      onOutput: (chunk) => {
-        setExecState((current) =>
-          current?.path === path ? { ...current, output: current.output + chunk } : current,
-        )
-      },
-      onComplete: (result) => {
-        setExecState((current) =>
-          current?.path === path
-            ? { ...current, running: false, result: { ...result, output: current.output } }
-            : current,
-        )
-      },
-      onError: (error) => {
-        setExecState((current) =>
-          current?.path === path ? { ...current, running: false, error: error.message } : current,
-        )
-      },
-    })
-  }
-
-  useEffect(() => () => executeCancel.current?.(), [])
-
-  const closeExecution = () => {
-    executeCancel.current?.()
-    executeCancel.current = null
-    setExecState(null)
+    startFileExecution(path)
   }
 
   const copyPath = async () => {
@@ -2669,16 +2497,6 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
             {outlinePanel}
           </SheetContent>
         </Sheet>
-      )}
-      {execState && (
-        <ExecuteResultModal
-          path={execState.path}
-          running={execState.running}
-          output={execState.output}
-          result={execState.result}
-          error={execState.error}
-          onClose={closeExecution}
-        />
       )}
       <TaskAgentLaunchDialog
         open={taskAgentLaunchOpen}

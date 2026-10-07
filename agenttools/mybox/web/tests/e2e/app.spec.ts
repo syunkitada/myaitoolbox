@@ -772,6 +772,45 @@ test('dashboard executes an executable file and shows its output', async ({ page
   await expect(modal).toHaveCount(0)
 })
 
+test('dashboard keeps a running execution in the right sidebar after closing its modal', async ({ page }) => {
+  const projectsRes = await page.request.get('/api/projects')
+  const projects = (await projectsRes.json()) as Array<{ name: string; path: string }>
+  const proj = projects.find((p) => p.name === 'proj')
+  expect(proj).toBeTruthy()
+  const scripts = path.join(proj!.path, 'scripts')
+  fs.mkdirSync(scripts, { recursive: true })
+  const script = path.join(scripts, 'slow-greet.sh')
+  fs.writeFileSync(
+    script,
+    '#!/bin/sh\nprintf "first line\\n"\nsleep 2\nprintf "second line\\n"\n',
+    { mode: 0o755 },
+  )
+
+  try {
+    await page.goto('/projects/proj/dashboard')
+    await closeAgentSidebar(page)
+    const explorer = page.locator('.knowledge-explorer')
+    await explorer.getByRole('button', { name: 'Expand scripts' }).click()
+    const row = explorer.locator('.knowledge-tree-row', { hasText: 'slow-greet.sh' })
+    await row.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Execute' }).click()
+
+    const modal = page.getByRole('dialog', { name: 'Execute scripts/slow-greet.sh' })
+    await expect(modal).toContainText('Running…')
+    await modal.getByRole('button', { name: 'Close execution result' }).click()
+    await expect(modal).toHaveCount(0)
+
+    const executionStatus = page.locator('[data-testid^="agent-sidebar-execution-status-"]')
+    await expect(executionStatus).toHaveCount(1)
+    await executionStatus.click()
+    await expect(page.getByRole('dialog', { name: 'Execute scripts/slow-greet.sh' })).toContainText('first line')
+    await expect(page.getByRole('dialog', { name: 'Execute scripts/slow-greet.sh' })).toContainText('second line')
+    await expect(page.getByRole('dialog', { name: 'Execute scripts/slow-greet.sh' })).toContainText('Exit code 0')
+  } finally {
+    fs.rmSync(script, { force: true })
+  }
+})
+
 test('clicking the mybox brand returns to the unselected projects page', async ({ page }) => {
   await page.locator('.sidebar-nav').getByRole('link', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()

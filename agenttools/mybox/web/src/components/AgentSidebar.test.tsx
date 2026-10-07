@@ -8,6 +8,7 @@ import { AgentSidebar } from './AgentSidebar'
 import { DialogsProvider } from './AppDialogs'
 import { api } from '../api/client'
 import type { HerdrOverview } from '../api/client'
+import { FileExecutionProvider, useFileExecution } from '../state/fileExecution'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -25,6 +26,7 @@ vi.mock('../api/client', () => ({
     startHerdrFileAgent: vi.fn().mockResolvedValue({ ok: true }),
     closeHerdrPane: vi.fn().mockResolvedValue({ ok: true }),
     closeHerdrTab: vi.fn().mockResolvedValue({ ok: true }),
+    executeFileStream: vi.fn().mockReturnValue(vi.fn()),
   },
 }))
 
@@ -106,6 +108,22 @@ function renderSidebar(
   return render(<AgentSidebarHarness options={options} initialEntries={initialEntries} />)
 }
 
+function ExecutionStarter() {
+  const { start } = useFileExecution()
+  return <button onClick={() => start('scripts/long.sh')}>start execution</button>
+}
+
+function renderExecutionSidebar(
+  options: Partial<ComponentProps<typeof AgentSidebar>> = {},
+) {
+  return render(
+    <FileExecutionProvider project="demo">
+      <ExecutionStarter />
+      <AgentSidebarHarness options={options} initialEntries={['/projects/demo/dashboard']} />
+    </FileExecutionProvider>,
+  )
+}
+
 describe('AgentSidebar', () => {
   beforeEach(() => {
     mockMatchMedia()
@@ -179,6 +197,28 @@ describe('AgentSidebar', () => {
     fireEvent.click(screen.getByTestId('agent-sidebar-status-w1:p1'))
     expect(onOpenAgentChange).toHaveBeenCalledWith('w1:p1')
     expect(onOpenChange).toHaveBeenCalledWith(true)
+  })
+
+  it('shows script executions and reopens their modal from the open sidebar', () => {
+    renderExecutionSidebar()
+
+    fireEvent.click(screen.getByRole('button', { name: 'start execution' }))
+    expect(screen.getByTestId('agent-sidebar-executions')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Open execution scripts\/long\.sh/ }))
+
+    expect(screen.getByRole('dialog', { name: 'Execute scripts/long.sh' })).toHaveTextContent('Running…')
+    fireEvent.click(screen.getByRole('button', { name: 'Close execution result' }))
+    expect(screen.queryByRole('dialog', { name: 'Execute scripts/long.sh' })).not.toBeInTheDocument()
+  })
+
+  it('opens a script execution modal directly from the collapsed desktop strip', () => {
+    renderExecutionSidebar({ open: false })
+
+    fireEvent.click(screen.getByRole('button', { name: 'start execution' }))
+    const executionStatus = screen.getByTestId(/agent-sidebar-execution-status-/)
+    fireEvent.click(executionStatus)
+
+    expect(screen.getByRole('dialog', { name: 'Execute scripts/long.sh' })).toBeInTheDocument()
   })
 
   it('does not offer task-agent startup controls', async () => {

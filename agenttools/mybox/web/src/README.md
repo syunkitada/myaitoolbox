@@ -12,7 +12,7 @@ Web UIのアプリケーションコードです。ページと再利用コン�
 | [`hooks/README.md`](./hooks/README.md) | React hooksと非同期UI状態。 |
 | [`lib/README.md`](./lib/README.md) | UI共通の小さなライブラリとナビゲーションイベント。 |
 | [`pages/README.md`](./pages/README.md) | 画面単位のコンポーネント。 |
-| [`state/README.md`](./state/README.md) | エクスプローラーとグラフの永続状態。 |
+| [`state/README.md`](./state/README.md) | エクスプローラー、グラフ、ファイル実行の共有状態。 |
 | [`test/README.md`](./test/README.md) | テスト環境の初期化。 |
 | [`utils/README.md`](./utils/README.md) | Markdown、Herdr、レイアウト、パスなどの純粋な補助処理。 |
 | [`App.tsx`](./App.tsx) | ルーティングとアプリケーション全体のレイアウト。 |

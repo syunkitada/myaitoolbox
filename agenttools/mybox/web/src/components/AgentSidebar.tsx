@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
-import { Bot, FileText, Loader2, PanelRightOpen, RefreshCw, Square } from 'lucide-react'
+import { Bot, CheckCircle2, CircleX, FileText, Loader2, PanelRightOpen, RefreshCw, Square, X } from 'lucide-react'
 import type { HerdrAgent, HerdrOverview } from '../api/client'
 import { api } from '../api/client'
 import { StatusBadge, StatusDot } from './herdr-status'
@@ -20,6 +20,7 @@ import {
 import { useDialogs } from './AppDialogs'
 import type { AgentOutputDisplayMode } from '../utils/agent-output-display'
 import { projectAgentsFor } from '../utils/agent-sidebar-status'
+import { useFileExecution, type FileExecutionRun } from '../state/fileExecution'
 
 export const AGENT_SIDEBAR_WIDTH_STORAGE_KEY = 'mybox_agent_sidebar_width'
 export const DEFAULT_AGENT_SIDEBAR_WIDTH = 400
@@ -60,6 +61,21 @@ function runError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function executionStatusLabel(run: FileExecutionRun): string {
+  if (run.status === 'running') return 'Running'
+  if (run.status === 'stopped') return 'Stopped'
+  if (run.result?.timed_out) return `Timed out (exit ${run.result.exit_code})`
+  if (run.result) return `Exit code ${run.result.exit_code}`
+  return 'Failed'
+}
+
+function ExecutionStatusIcon({ run }: { run: FileExecutionRun }) {
+  if (run.status === 'running') return <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden="true" />
+  if (run.status === 'completed') return <CheckCircle2 className="size-3.5 text-green-600" aria-hidden="true" />
+  if (run.status === 'stopped') return <Square className="size-3.5 text-amber-600" aria-hidden="true" />
+  return <CircleX className="size-3.5 text-red-600" aria-hidden="true" />
+}
+
 export function AgentSidebar({
   project,
   overview,
@@ -83,6 +99,7 @@ export function AgentSidebar({
   const { pathname } = useLocation()
   const [searchParams] = useSearchParams()
   const { prompt } = useDialogs()
+  const fileExecution = useFileExecution()
   const [autoReload, setAutoReload] = useState(true)
   const [reloadToken, setReloadToken] = useState(0)
   const [operationError, setOperationError] = useState<string | null>(null)
@@ -281,6 +298,54 @@ export function AgentSidebar({
             No herdr agents running for project "{project}".
           </p>
         )}
+        {fileExecution.runs.length > 0 && (
+          <section className="mb-3" aria-labelledby="script-executions-heading" data-testid="agent-sidebar-executions">
+            <h3 id="script-executions-heading" className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Script executions
+            </h3>
+            <div className="flex min-w-0 flex-col gap-2">
+              {fileExecution.runs.map((run) => (
+                <div key={run.id} className="min-w-0 rounded-lg border bg-background p-2.5" data-testid={`agent-sidebar-execution-${run.id}`}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                      onClick={() => fileExecution.open(run.id)}
+                      aria-label={`Open execution ${run.path} (${executionStatusLabel(run)})`}
+                    >
+                      <ExecutionStatusIcon run={run} />
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs">{run.path}</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">{executionStatusLabel(run)}</span>
+                    </button>
+                    {run.status === 'running' ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className="h-6 shrink-0 cursor-pointer px-1.5 text-[11px]"
+                        onClick={() => fileExecution.stop(run.id)}
+                        aria-label={`Stop execution ${run.path}`}
+                      >
+                        <Square className="mr-1 size-3" />
+                        Stop
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="shrink-0 cursor-pointer"
+                        onClick={() => fileExecution.dismiss(run.id)}
+                        aria-label={`Dismiss execution ${run.path}`}
+                        title="Dismiss execution"
+                      >
+                        <X />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {overview?.available && projectAgents.length > 0 && (
           <div className="flex min-w-0 flex-col gap-2">
             {projectAgents.map((agent) => {
@@ -424,6 +489,23 @@ export function AgentSidebar({
               </button>
             ))}
           </div>
+          {fileExecution.runs.length > 0 && (
+            <div className="flex min-h-0 flex-col items-center gap-3 overflow-y-auto" aria-label="Script executions">
+              {fileExecution.runs.map((run) => (
+                <button
+                  key={run.id}
+                  type="button"
+                  className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  onClick={() => fileExecution.open(run.id)}
+                  aria-label={`Open execution ${run.path} (${executionStatusLabel(run)})`}
+                  title={`${run.path}: ${executionStatusLabel(run)}`}
+                  data-testid={`agent-sidebar-execution-status-${run.id}`}
+                >
+                  <ExecutionStatusIcon run={run} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </aside>
     )

@@ -10,10 +10,11 @@
 | [`Explorer/README.md`](./Explorer/README.md) | ファイルツリー表示。 |
 | [`GraphView/README.md`](./GraphView/README.md) | ファイルリンクグラフのSigma表示。 |
 | [`AppDialogs.tsx`](./AppDialogs.tsx) | アプリ全体で使うダイアログ群。 |
-| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通のAgent右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信を提供し、Agentごとの入力途中Promptを保持し、モバイルではSheetとして表示する。 |
+| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通の右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信と、実行中・完了・失敗したスクリプトの状態表示・再表示・停止・Dismiss（完了済み履歴は直近20件）を提供し、Agentごとの入力途中Promptを保持し、モバイルではSheetとして表示する。 |
 | [`CommitDiffView.tsx`](./CommitDiffView.tsx) / [`CommitDiffView.test.tsx`](./CommitDiffView.test.tsx) | コミット差分表示とそのテスト。 |
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
 | [`DiffView.tsx`](./DiffView.tsx) / [`DiffView.test.tsx`](./DiffView.test.tsx) | unified diff表示とそのテスト。 |
+| [`FileExecutionModal.tsx`](./FileExecutionModal.tsx) / [`FileExecutionModal.test.tsx`](./FileExecutionModal.test.tsx) | スクリプト実行中の出力、終了結果、停止、Dismissを表示するモーダルとテスト。 |
 | [`FileTabs.tsx`](./FileTabs.tsx) / [`FileTabs.test.tsx`](./FileTabs.test.tsx) | 最近開いたファイルのタブと、プロジェクト付きお気に入りの追加・削除および横断遷移モーダルとテスト。 |
 | [`FrontmatterForm.tsx`](./FrontmatterForm.tsx) | タスクフロントマターの編集フォーム。 |
 | [`GitViewer.tsx`](./GitViewer.tsx) | Git状態・差分画面を埋め込むビュー。 |

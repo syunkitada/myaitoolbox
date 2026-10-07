@@ -21,6 +21,7 @@ import {
 } from './components/AgentSidebar'
 import { StatusDot } from './components/herdr-status'
 import { DialogsProvider } from './components/AppDialogs'
+import { FileExecutionProvider } from './state/fileExecution'
 import { HerdrPage } from './pages/HerdrPage'
 import { Bot, Folder, GitBranch, Network, PanelRightClose, PanelRightOpen, SquareKanban, TerminalSquare } from 'lucide-react'
 
@@ -179,14 +180,15 @@ export default function App() {
 
   return (
     <DialogsProvider>
-      <SidebarProvider
-        style={{
-          '--sidebar-width': '20rem',
-          '--sidebar-right-width': isMobile
-            ? '0px'
-            : agentSidebar.open ? agentSidebarWidthStyle(agentSidebarWidth) : `${AGENT_SIDEBAR_COLLAPSED_WIDTH}px`,
-        } as React.CSSProperties}
-      >
+      <FileExecutionProvider project={project}>
+        <SidebarProvider
+          style={{
+            '--sidebar-width': '20rem',
+            '--sidebar-right-width': isMobile
+              ? '0px'
+              : agentSidebar.open ? agentSidebarWidthStyle(agentSidebarWidth) : `${AGENT_SIDEBAR_COLLAPSED_WIDTH}px`,
+          } as React.CSSProperties}
+        >
       <AppSidebar
         meta={meta}
         project={project}
@@ -367,7 +369,8 @@ export default function App() {
           onFilePathClick={(filePath) => navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))}
         />
       )}
-      </SidebarProvider>
+        </SidebarProvider>
+      </FileExecutionProvider>
     </DialogsProvider>
   )
 }
