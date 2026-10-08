@@ -210,11 +210,13 @@ function MonacoEditorInner({
       if (!match) return
       const row = document.querySelector<HTMLElement>('.suggest-widget .monaco-list-row.focused')
       const target = row?.querySelector<HTMLElement>('.details-label')?.textContent?.trim()
-      if (!row || !target) return
+      const suggestionKind = row?.getAttribute('aria-label') ?? ''
+      const isDir = suggestionKind.endsWith(', Folder')
+      const isFile = suggestionKind.endsWith(', File')
+      if (!row || !target || (!isFile && !isDir)) return
       const typed = match[1]
       const fileDir = pathRef.current?.slice(0, pathRef.current.lastIndexOf('/')) ?? ''
       const prefix = typed.startsWith('./') ? './' : ''
-      const isDir = row.getAttribute('aria-label')?.endsWith(', Folder') ?? false
       const insertText = `${prefix}${relativeLinkPath(fileDir, target)}${isDir ? '/' : ''}`
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -256,15 +258,8 @@ function MonacoEditorInner({
       })()
     }
     window.addEventListener('keydown', onNativeKeyDown, true)
-    const onMonacoKeyDown = editor.onKeyDown((event) => {
-      if (event.keyCode !== monaco.KeyCode.Enter || resolvedLanguage !== 'markdown') return
-      if (!document.querySelector('.suggest-widget .monaco-list-row')) return
-      event.preventDefault()
-      event.stopPropagation()
-    })
     editor.onDidDispose(() => {
       window.removeEventListener('keydown', onNativeKeyDown, true)
-      onMonacoKeyDown.dispose()
       completionReleaseRef.current?.()
       completionReleaseRef.current = null
     })
@@ -324,7 +319,7 @@ function MonacoEditorInner({
           tabSize: 2,
           scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
           fixedOverflowWidgets: true,
-          acceptSuggestionOnEnter: 'off',
+          acceptSuggestionOnEnter: resolvedLanguage === 'markdown' ? 'on' : 'off',
           ariaLabel,
           ...(resolvedLanguage === 'markdown'
             ? { quickSuggestions: { other: 'on', comments: 'off', strings: 'on' } }

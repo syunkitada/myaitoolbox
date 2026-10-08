@@ -19,6 +19,39 @@ async function fillMonacoEditor(
   await page.keyboard.insertText(content)
 }
 
+async function expectNoFileMutations(
+  page: import('@playwright/test').Page,
+  action: () => Promise<void>,
+) {
+  const fileMutations: string[] = []
+  const onRequest = (request: import('@playwright/test').Request) => {
+    const url = new URL(request.url())
+    const isFileMutation =
+      (request.method() === 'POST' && ['/api/files', '/api/files/dir'].includes(url.pathname)) ||
+      (request.method() === 'PUT' && url.pathname === '/api/files/content')
+    if (!isFileMutation) return
+    const body = request.postDataJSON() as { path?: string } | null
+    fileMutations.push(`${request.method()} ${url.pathname}${body?.path ? `:${body.path}` : ''}`)
+  }
+  page.on('request', onRequest)
+  try {
+    const beforeResponse = await page.request.get('/api/files?show_hidden=true')
+    expect(beforeResponse.ok()).toBe(true)
+    const beforeFiles = (await beforeResponse.json()) as Array<{ path: string; kind: string }>
+
+    await action()
+    await page.waitForTimeout(250)
+    expect(fileMutations).toEqual([])
+
+    const afterResponse = await page.request.get('/api/files?show_hidden=true')
+    expect(afterResponse.ok()).toBe(true)
+    const afterFiles = (await afterResponse.json()) as Array<{ path: string; kind: string }>
+    expect(afterFiles).toEqual(beforeFiles)
+  } finally {
+    page.off('request', onRequest)
+  }
+}
+
 // The web UI uses a custom modal (AppDialogs) instead of native browser
 // prompt/confirm/alert dialogs. This helper accepts it: it fills a value when
 // one is given (prompt) and otherwise just confirms (confirm/alert).
@@ -576,49 +609,53 @@ test('markdown editor completes link targets with project files', async ({ page 
   await page.goto('/projects/proj/dashboard/files/knowledge/index.md')
   await page.getByRole('button', { name: 'Edit' }).click()
   const editor = page.locator('.monaco-editor', { has: page.getByLabel('File editor') })
-  await editor.click()
-  await page.keyboard.press('ControlOrMeta+A')
-  await page.keyboard.insertText('')
-  const rows = page.locator('.suggest-widget .monaco-list-row')
+  await expectNoFileMutations(page, async () => {
+    await editor.click()
+    await page.keyboard.press('ControlOrMeta+A')
+    await page.keyboard.insertText('')
+    const rows = page.locator('.suggest-widget .monaco-list-row')
 
-  // opening a link bracket-pair shows the project root as candidates
-  await page.keyboard.type('[todo](')
-  await expect(rows.filter({ hasText: 'docs/' })).toBeVisible()
-  await expect(rows.filter({ hasText: 'README.md' })).toBeVisible()
+    // opening a link bracket-pair shows the project root as candidates
+    await page.keyboard.type('[todo](')
+    await expect(rows.filter({ hasText: 'docs/' })).toBeVisible()
+    await expect(rows.filter({ hasText: 'README.md' })).toBeVisible()
 
-  // typing further into a directory narrows to files and subdirectories
-  await page.keyboard.type('./docs/gu')
-  await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
+    // typing further into a directory narrows to files and subdirectories
+    await page.keyboard.type('./docs/gu')
+    await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
 
-  // accepting inserts the full relative path
-  await page.keyboard.press('Enter')
-  await expect(editor).toContainText('./docs/guide.md')
+    // accepting inserts the full relative path
+    await page.keyboard.press('Enter')
+    await expect(editor).toContainText('./docs/guide.md')
+  })
 })
 
 test('markdown editor completes nested links after Tab-accepting a directory', async ({ page }) => {
   await page.goto('/projects/proj/dashboard/files/knowledge/index.md')
   await page.getByRole('button', { name: 'Edit' }).click()
   const editor = page.locator('.monaco-editor', { has: page.getByLabel('File editor') })
-  await editor.click()
-  await page.keyboard.press('ControlOrMeta+A')
-  await page.keyboard.insertText('')
-  const rows = page.locator('.suggest-widget .monaco-list-row')
+  await expectNoFileMutations(page, async () => {
+    await editor.click()
+    await page.keyboard.press('ControlOrMeta+A')
+    await page.keyboard.insertText('')
+    const rows = page.locator('.suggest-widget .monaco-list-row')
 
-  // Tab accepts the top suggestion (the docs/ directory, never the parent ..)
-  await page.keyboard.type('[todo](')
-  await expect(rows.filter({ hasText: 'docs/' })).toBeVisible()
-  await page.keyboard.press('Tab')
-  await expect(editor.locator('.view-line').first()).toContainText('./docs/')
+    // Tab accepts the top suggestion (the docs/ directory, never the parent ..)
+    await page.keyboard.type('[todo](')
+    await expect(rows.filter({ hasText: 'docs/' })).toBeVisible()
+    await page.keyboard.press('Tab')
+    await expect(editor.locator('.view-line').first()).toContainText('./docs/')
 
-  // accepting a directory re-triggers suggestions for its children
-  await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
-  await expect(rows.filter({ hasText: 'recipes/' })).toBeVisible()
+    // accepting a directory re-triggers suggestions for its children
+    await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
+    await expect(rows.filter({ hasText: 'recipes/' })).toBeVisible()
 
-  // completing further into the directory still works
-  await page.keyboard.type('gu')
-  await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
-  await page.keyboard.press('Enter')
-  await expect(editor).toContainText('./docs/guide.md')
+    // completing further into the directory still works
+    await page.keyboard.type('gu')
+    await expect(rows.filter({ hasText: 'guide.md' })).toBeVisible()
+    await page.keyboard.press('Enter')
+    await expect(editor).toContainText('./docs/guide.md')
+  })
 })
 
 test('dashboard edits and saves a file', async ({ page }) => {
