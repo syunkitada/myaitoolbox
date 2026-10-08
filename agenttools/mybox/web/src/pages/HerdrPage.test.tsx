@@ -133,7 +133,7 @@ describe('HerdrPage agent commands', () => {
     expect(screen.getByTestId('herdr-workspaces-toggle')).toHaveAttribute('data-state', 'open')
   })
 
-  it('keeps the pane input readable on mobile and blurs it after sending', async () => {
+  it('keeps the pane input focused after sending with Enter', async () => {
     render(
       <MemoryRouter initialEntries={['/projects/demo/herdr']}>
         <DialogsProvider>
@@ -152,10 +152,10 @@ describe('HerdrPage agent commands', () => {
 
     fireEvent.change(input, { target: { value: 'send this text' } })
     input.focus()
-    fireEvent.click(screen.getByRole('button', { name: /^Send$/ }))
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
 
     await waitFor(() => expect(api.sendTextHerdrPane).toHaveBeenCalledWith('w1:p1', 'send this text'))
-    expect(input).not.toHaveFocus()
+    expect(input).toHaveFocus()
   })
 
   it('auto reloads every visible pane, including unfocused panes', async () => {

@@ -80,7 +80,6 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
   const [notice, setNotice] = useState<string | null>(null)
   const loadingRef = useRef(false)
   const preRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
   // While true the viewport follows new output; scrolling up pauses the follow.
   const pinnedRef = useRef(true)
 
@@ -145,7 +144,6 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
       }
       if (!customText) {
         setDraft('')
-        inputRef.current?.blur()
       }
       setNotice(`${targetMode} sent`)
       setTimeout(() => setNotice(null), 3000)
@@ -347,7 +345,6 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
 
         <div className="flex items-center gap-1.5">
           <input
-            ref={inputRef}
             type="text"
             aria-label={`Input pane ${pane.pane_id}`}
             value={draft}
