@@ -648,6 +648,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HerdrOverview"
+  /api/herdr/agents/start:
+    post:
+      operationId: startHerdrAgent
+      summary: Start a herdr agent in a project tab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HerdrAgentStartRequest"
+      responses:
+        "200":
+          description: started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HerdrAgentStartResponse"
   /api/herdr/agents/read:
     post:
       operationId: readHerdrAgent
@@ -1396,6 +1413,25 @@ components:
           type: boolean
         pane_id:
           type: string
+    HerdrAgentStartRequest:
+      type: object
+      required: [kind, tab]
+      properties:
+        kind:
+          type: string
+          minLength: 1
+        tab:
+          type: string
+          minLength: 1
+          maxLength: 80
+    HerdrAgentStartResponse:
+      type: object
+      required: [ok, agent]
+      properties:
+        ok:
+          type: boolean
+        agent:
+          $ref: "#/components/schemas/HerdrAgent"
     HerdrReadRequest:
       type: object
       required: [target]

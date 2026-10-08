@@ -13,6 +13,7 @@ import { FileExecutionProvider, useFileExecution } from '../state/fileExecution'
 vi.mock('../api/client', () => ({
   api: {
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
+    getHerdrAgentKinds: vi.fn().mockResolvedValue({ kinds: ['claude', 'codex', 'opencode'] }),
     focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     readHerdrAgent: vi.fn().mockResolvedValue({ output: 'hello' }),
     promptHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
@@ -24,6 +25,10 @@ vi.mock('../api/client', () => ({
     renameHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     listFiles: vi.fn().mockResolvedValue([]),
     startHerdrFileAgent: vi.fn().mockResolvedValue({ ok: true }),
+    startHerdrAgent: vi.fn().mockResolvedValue({
+      ok: true,
+      agent: { name: 'mybox-review', status: 'working', workspace_id: 'w1', pane_id: 'w1:p3' },
+    }),
     closeHerdrPane: vi.fn().mockResolvedValue({ ok: true }),
     closeHerdrTab: vi.fn().mockResolvedValue({ ok: true }),
     listFileExecutions: vi.fn().mockResolvedValue([]),
@@ -159,6 +164,37 @@ describe('AgentSidebar', () => {
     expect(screen.queryByTestId('agent-sidebar-agent-w2:p1')).not.toBeInTheDocument()
   })
 
+  it('starts a general agent from the sidebar with a selected kind and tab', async () => {
+    const onOpenAgentPane = vi.fn()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    const projectOverview: HerdrOverview = {
+      ...overview,
+      tabs: [
+        { tab_id: 'w1:t1', workspace_id: 'w1', label: 'main', number: 1 },
+        { tab_id: 'w1:t2', workspace_id: 'w1', label: 'review', number: 2 },
+      ],
+    }
+
+    renderSidebar({ overview: projectOverview, onOpenAgentPane, refresh })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start agent' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Start agent' })
+    expect(within(dialog).getByLabelText('Agent tab')).toHaveValue('main')
+    expect(dialog.querySelector('option[value="review"]')).toBeInTheDocument()
+
+    await waitFor(() => expect(within(dialog).getByLabelText('Agent kind')).toHaveValue('codex'))
+    fireEvent.change(within(dialog).getByLabelText('Agent kind'), { target: { value: 'claude' } })
+    fireEvent.change(within(dialog).getByLabelText('Agent tab'), { target: { value: 'review' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Start agent' }))
+
+    await waitFor(() => {
+      expect(api.startHerdrAgent).toHaveBeenCalledWith('claude', 'review')
+      expect(onOpenAgentPane).toHaveBeenCalledWith('w1:p3')
+      expect(refresh).toHaveBeenCalled()
+    })
+    expect(screen.queryByRole('dialog', { name: 'Start agent' })).not.toBeInTheDocument()
+  })
+
   it('does not render an internal close button', () => {
     renderSidebar()
 
@@ -250,7 +286,7 @@ describe('AgentSidebar', () => {
 
     expect(screen.queryByTestId('task-agent-launcher')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Task agent kind')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Start agent/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start agent' })).toBeInTheDocument()
     expect(api.startHerdrFileAgent).not.toHaveBeenCalled()
   })
 

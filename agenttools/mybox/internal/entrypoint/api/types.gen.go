@@ -217,6 +217,18 @@ type HerdrAgentSendKeysRequest struct {
 	Target string   `json:"target"`
 }
 
+// HerdrAgentStartRequest defines model for HerdrAgentStartRequest.
+type HerdrAgentStartRequest struct {
+	Kind string `json:"kind"`
+	Tab  string `json:"tab"`
+}
+
+// HerdrAgentStartResponse defines model for HerdrAgentStartResponse.
+type HerdrAgentStartResponse struct {
+	Agent HerdrAgent `json:"agent"`
+	Ok    bool       `json:"ok"`
+}
+
 // HerdrOpResponse defines model for HerdrOpResponse.
 type HerdrOpResponse struct {
 	Ok bool `json:"ok"`
@@ -510,6 +522,9 @@ type CreateHerdrScheduledPromptJSONRequestBody = CreateHerdrScheduledPromptReque
 
 // SendKeysHerdrAgentJSONRequestBody defines body for SendKeysHerdrAgent for application/json ContentType.
 type SendKeysHerdrAgentJSONRequestBody = HerdrAgentSendKeysRequest
+
+// StartHerdrAgentJSONRequestBody defines body for StartHerdrAgent for application/json ContentType.
+type StartHerdrAgentJSONRequestBody = HerdrAgentStartRequest
 
 // CloseHerdrPaneJSONRequestBody defines body for CloseHerdrPane for application/json ContentType.
 type CloseHerdrPaneJSONRequestBody = HerdrPaneCloseRequest

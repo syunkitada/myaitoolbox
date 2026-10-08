@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { useIsMobile } from '../hooks/use-mobile'
 import { useResizableWidth } from '../hooks/use-resizable-width'
 import { HerdrAgentDetail } from './HerdrAgentDetail'
+import { AgentLaunchDialog } from './AgentLaunchDialog'
 import {
   hasTaskFile,
   linkedTaskAgentForTab,
@@ -52,6 +53,7 @@ interface AgentSidebarProps {
   onDraftChange: (paneId: string, draft: string) => void
   pendingOpenAgentPaneId?: string | null
   onOpenAgentChange: (paneId: string | null) => void
+  onOpenAgentPane?: (paneId: string) => void
   refresh: () => Promise<void>
   onFocusChange?: (paneId: string | null) => void
   onFilePathClick?: (path: string) => void
@@ -91,6 +93,7 @@ export function AgentSidebar({
   onDraftChange,
   pendingOpenAgentPaneId,
   onOpenAgentChange,
+  onOpenAgentPane,
   refresh,
   onFocusChange,
   onFilePathClick,
@@ -105,6 +108,13 @@ export function AgentSidebar({
   const [operationError, setOperationError] = useState<string | null>(null)
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [stoppingPaneId, setStoppingPaneId] = useState<string | null>(null)
+  const [agentLaunchOpen, setAgentLaunchOpen] = useState(false)
+  const [agentKinds, setAgentKinds] = useState<string[]>([])
+  const [agentKind, setAgentKind] = useState('codex')
+  const [agentTab, setAgentTab] = useState('main')
+  const [loadingAgentKinds, setLoadingAgentKinds] = useState(false)
+  const [startingAgent, setStartingAgent] = useState(false)
+  const [agentLaunchError, setAgentLaunchError] = useState<string | null>(null)
   const requestedAgent = pathname.endsWith('/herdr') ? searchParams.get('agent') : null
   const handledRequestRef = useRef<string | null>(null)
   const focusedPaneRef = useRef<string | null>(null)
@@ -160,6 +170,72 @@ export function AgentSidebar({
     setOperationError(message)
     window.setTimeout(() => setOperationError((current) => (current === message ? null : current)), 6000)
   }, [])
+
+  const projectTabLabels = useMemo(() => {
+    const workspaceIds = new Set(
+      (overview?.workspaces ?? [])
+        .filter((workspace) => workspace.label === project)
+        .map((workspace) => workspace.workspace_id),
+    )
+    return [...new Set(
+      tabs
+        .filter((tab) => workspaceIds.has(tab.workspace_id))
+        .sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
+        .map((tab) => tab.label),
+    )]
+  }, [overview?.workspaces, project, tabs])
+
+  useEffect(() => {
+    if (!agentLaunchOpen) return
+    let cancelled = false
+    setAgentLaunchError(null)
+    setAgentTab('main')
+    setAgentKind('codex')
+    setLoadingAgentKinds(true)
+    void api.getHerdrAgentKinds().then(({ kinds }) => {
+      if (cancelled) return
+      const available = [...new Set(kinds.filter((kind) => kind.trim()))]
+      setAgentKinds(available)
+      setAgentKind((current) => available.includes(current) ? current : available.includes('codex') ? 'codex' : (available[0] ?? ''))
+      if (available.length === 0) setAgentLaunchError('No Herdr agent kinds are available.')
+    }).catch((error) => {
+      if (!cancelled) setAgentLaunchError(runError(error))
+    }).finally(() => {
+      if (!cancelled) setLoadingAgentKinds(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [agentLaunchOpen])
+
+  const startAgent = useCallback(async () => {
+    if (startingAgent) return
+    const kind = agentKind.trim()
+    const tab = agentTab.trim()
+    if (!kind || !tab) return
+    setStartingAgent(true)
+    setAgentLaunchError(null)
+    try {
+      const result = await api.startHerdrAgent(kind, tab)
+      if (!result.agent?.pane_id) throw new Error('The agent started without a pane.')
+      setAgentLaunchOpen(false)
+      if (onOpenAgentPane) {
+        onOpenAgentPane(result.agent.pane_id)
+      } else {
+        onOpenAgentChange(result.agent.pane_id)
+        onOpenChange(true)
+      }
+      try {
+        await refresh()
+      } catch (refreshError) {
+        reportError(`Agent started, but its status could not be refreshed: ${runError(refreshError)}`)
+      }
+    } catch (error) {
+      setAgentLaunchError(runError(error))
+    } finally {
+      setStartingAgent(false)
+    }
+  }, [agentKind, agentTab, onOpenAgentChange, onOpenAgentPane, onOpenChange, refresh, reportError, startingAgent])
 
   useEffect(() => {
     if (overview?.available && openAgentPaneId && !selectedAgent) {
@@ -259,6 +335,16 @@ export function AgentSidebar({
         <div className="flex items-center gap-2">
           <Bot className="size-4 shrink-0" />
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Agents</h2>
+          <Button
+            size="xs"
+            className="cursor-pointer px-1.5 text-[10px]"
+            onClick={() => setAgentLaunchOpen(true)}
+            aria-label="Start agent"
+            title="Start agent"
+          >
+            <Bot />
+            Start agent
+          </Button>
           <Button
             variant={autoReload ? 'secondary' : 'ghost'}
             size="xs"
@@ -430,8 +516,25 @@ export function AgentSidebar({
     </div>
   )
 
+  const launchDialog = (
+    <AgentLaunchDialog
+      open={agentLaunchOpen}
+      kinds={agentKinds}
+      tabs={projectTabLabels}
+      agentKind={agentKind}
+      tab={agentTab}
+      loadingKinds={loadingAgentKinds}
+      starting={startingAgent}
+      error={agentLaunchError}
+      onAgentKindChange={setAgentKind}
+      onTabChange={setAgentTab}
+      onOpenChange={setAgentLaunchOpen}
+      onSubmit={() => void startAgent()}
+    />
+  )
+
   if (isMobile) {
-    return (
+    return <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
@@ -446,7 +549,8 @@ export function AgentSidebar({
           {content}
         </SheetContent>
       </Sheet>
-    )
+      {launchDialog}
+    </>
   }
 
   if (!open) {
@@ -511,7 +615,7 @@ export function AgentSidebar({
     )
   }
 
-  return (
+  return <>
     <aside
       className={cn('relative hidden h-svh shrink-0 border-l md:flex', !width.resizing && 'transition-[width] duration-200 ease-linear')}
       style={{ width: agentSidebarWidthStyle(displayedWidth) }}
@@ -531,5 +635,6 @@ export function AgentSidebar({
       />
       {content}
     </aside>
-  )
+    {launchDialog}
+  </>
 }

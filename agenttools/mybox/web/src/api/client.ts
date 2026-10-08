@@ -505,6 +505,12 @@ export const api = {
 
   getHerdrAgentKinds: () => request<{ kinds: string[] }>('GET', '/api/herdr/agent-kinds'),
 
+  startHerdrAgent: (kind: string, tab: string) =>
+    request<{ ok: boolean; agent?: HerdrAgent }>('POST', '/api/herdr/agents/start', {
+      kind,
+      tab,
+    }),
+
   startHerdrFileAgent: (path: string, kind?: string) =>
     request<{ ok: boolean; agent?: HerdrAgent }>('POST', '/api/herdr/agents/start-file', {
       path,

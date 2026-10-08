@@ -10,7 +10,8 @@
 | [`Explorer/README.md`](./Explorer/README.md) | ファイルツリー表示。 |
 | [`GraphView/README.md`](./GraphView/README.md) | ファイルリンクグラフのSigma表示。 |
 | [`AppDialogs.tsx`](./AppDialogs.tsx) | アプリ全体で使うダイアログ群。 |
-| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通の右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信と、実行中・完了・失敗したスクリプトの状態表示・再表示・停止・Dismiss（完了済み履歴は直近20件）を提供し、Agentごとの入力途中Promptを保持し、モバイルではSheetとして表示する。 |
+| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通の右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信と、Tabを指定した一般Agentの起動、実行中・完了・失敗したスクリプトの状態表示・再表示・停止・Dismiss（完了済み履歴は直近20件）を提供し、Agentごとの入力途中Promptを保持し、モバイルではSheetとして表示する。 |
+| [`AgentLaunchDialog.tsx`](./AgentLaunchDialog.tsx) | Agent kindとHerdr Tabを指定して一般Agentを起動するモーダル。Tabは既存候補を表示しつつ自由入力できる。 |
 | [`CommitDiffView.tsx`](./CommitDiffView.tsx) / [`CommitDiffView.test.tsx`](./CommitDiffView.test.tsx) | コミット差分表示とそのテスト。 |
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
 | [`DiffView.tsx`](./DiffView.tsx) / [`DiffView.test.tsx`](./DiffView.test.tsx) | unified diff表示とそのテスト。 |

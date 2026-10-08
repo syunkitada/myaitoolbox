@@ -1053,24 +1053,112 @@ func (s *Server) herdrFileTab(ctx context.Context, wsID, label string) (string, 
 // that is still at an interactive shell prompt (i.e. not already running an
 // agent). ok is false when no such pane exists.
 func (s *Server) firstHerdrTabPane(ctx context.Context, tabID string) (string, bool, error) {
-	paneOut, err := s.runHerdr(ctx, "pane", "list")
+	panes, err := s.herdrPanesForTab(ctx, tabID)
 	if err != nil {
 		return "", false, err
 	}
-	var env herdrEnvelope
-	if err := json.Unmarshal(paneOut, &env); err != nil {
-		return "", false, fmt.Errorf("unexpected herdr pane list output")
-	}
-	var list herdrPaneListResult
-	if err := json.Unmarshal(env.Result, &list); err != nil {
-		return "", false, fmt.Errorf("unexpected herdr pane list result")
-	}
-	for _, raw := range list.Panes {
-		if raw.TabID == tabID && herdrTargetPattern.MatchString(raw.PaneID) && raw.Agent == "" {
+	for _, raw := range panes {
+		if raw.Agent == "" {
 			return raw.PaneID, true, nil
 		}
 	}
 	return "", false, nil
+}
+
+func (s *Server) herdrPanesForTab(ctx context.Context, tabID string) ([]herdrPaneRaw, error) {
+	paneOut, err := s.runHerdr(ctx, "pane", "list")
+	if err != nil {
+		return nil, err
+	}
+	var env herdrEnvelope
+	if err := json.Unmarshal(paneOut, &env); err != nil {
+		return nil, fmt.Errorf("unexpected herdr pane list output")
+	}
+	var list herdrPaneListResult
+	if err := json.Unmarshal(env.Result, &list); err != nil {
+		return nil, fmt.Errorf("unexpected herdr pane list result")
+	}
+	panes := make([]herdrPaneRaw, 0, len(list.Panes))
+	for _, raw := range list.Panes {
+		if raw.TabID == tabID && herdrTargetPattern.MatchString(raw.PaneID) {
+			panes = append(panes, raw)
+		}
+	}
+	return panes, nil
+}
+
+// herdrAgentPaneForTab returns an interactive shell pane in the requested
+// tab, creating a tab or splitting an occupied tab when necessary.
+func (s *Server) herdrAgentPaneForTab(ctx context.Context, wsID, label, cwd string) (string, error) {
+	tabOut, err := s.runHerdr(ctx, "tab", "list", "--workspace", wsID)
+	if err != nil {
+		return "", err
+	}
+	var env herdrEnvelope
+	if err := json.Unmarshal(tabOut, &env); err != nil {
+		return "", fmt.Errorf("unexpected herdr tab list output")
+	}
+	var list herdrTabListResult
+	if err := json.Unmarshal(env.Result, &list); err != nil {
+		return "", fmt.Errorf("unexpected herdr tab list result")
+	}
+	sort.SliceStable(list.Tabs, func(i, j int) bool {
+		return list.Tabs[i].Number < list.Tabs[j].Number
+	})
+
+	var occupiedPaneID string
+	for _, tab := range list.Tabs {
+		if tab.Label != label || !herdrTargetPattern.MatchString(tab.TabID) {
+			continue
+		}
+		panes, err := s.herdrPanesForTab(ctx, tab.TabID)
+		if err != nil {
+			return "", err
+		}
+		for _, pane := range panes {
+			if pane.Agent == "" {
+				return pane.PaneID, nil
+			}
+			if occupiedPaneID == "" {
+				occupiedPaneID = pane.PaneID
+			}
+		}
+	}
+	if occupiedPaneID != "" {
+		out, err := s.runHerdr(ctx, "pane", "split", "--pane", occupiedPaneID, "--direction", "right", "--cwd", cwd, "--no-focus")
+		if err != nil {
+			return "", err
+		}
+		paneID := herdrSplitPaneID(out)
+		if paneID == "" {
+			return "", fmt.Errorf("herdr pane split returned no pane")
+		}
+		return paneID, nil
+	}
+
+	out, err := s.runHerdr(ctx, "tab", "create", "--workspace", wsID, "--label", label, "--cwd", cwd, "--no-focus")
+	if err != nil {
+		return "", err
+	}
+	_, _, paneID := herdrCreatedTabParse(out)
+	if paneID == "" {
+		return "", fmt.Errorf("herdr tab create returned no root pane")
+	}
+	return paneID, nil
+}
+
+func herdrSplitPaneID(out []byte) string {
+	var env struct {
+		Result struct {
+			Pane struct {
+				PaneID string `json:"pane_id"`
+			} `json:"pane"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(out, &env) != nil || !herdrTargetPattern.MatchString(env.Result.Pane.PaneID) {
+		return ""
+	}
+	return env.Result.Pane.PaneID
 }
 
 // herdrCreateFileTab creates a tab labelled after the task directory in the
@@ -1151,6 +1239,161 @@ func (s *Server) ListHerdrAgentKinds(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(kinds)
 	writeJSONResponse(w, http.StatusOK, map[string]any{"kinds": kinds})
+}
+
+// StartHerdrAgent starts a general-purpose agent in a tab belonging to the
+// current project. The tab and pane are resolved server-side so that the
+// client never has to coordinate Herdr's workspace topology itself.
+func (s *Server) StartHerdrAgent(w http.ResponseWriter, r *http.Request) {
+	var req api.HerdrAgentStartRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	tab := strings.TrimSpace(req.Tab)
+	if _, ok := validHerdrLabel(tab); !ok {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("tab must be between 1 and 80 characters")})
+		return
+	}
+	kind := strings.TrimSpace(req.Kind)
+	if !validHerdrAgentKind(kind) {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: fmt.Errorf("unsupported agent kind %q", kind)})
+		return
+	}
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	// Keep workspace/tab selection and generated-name allocation atomic across
+	// concurrent browser requests.
+	s.herdrAgentStartMu.Lock()
+	defer s.herdrAgentStartMu.Unlock()
+
+	agent, err := s.startHerdrAgent(r.Context(), app, kind, tab)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, api.HerdrAgentStartResponse{Ok: true, Agent: *agent})
+}
+
+func herdrGenericAgentSlug(label string) string {
+	var b strings.Builder
+	separator := false
+	for _, r := range strings.ToLower(strings.TrimSpace(label)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_':
+			b.WriteRune(r)
+			separator = false
+		case r == '-':
+			if b.Len() > 0 && !separator {
+				b.WriteRune(r)
+				separator = true
+			}
+		default:
+			if b.Len() > 0 && !separator {
+				b.WriteByte('-')
+				separator = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-_")
+}
+
+func herdrGenericAgentName(label string, used map[string]bool) string {
+	slug := herdrGenericAgentSlug(label)
+	if slug == "" {
+		slug = "agent"
+	}
+	base := "mybox-" + slug
+	if len(base) > 32 {
+		base = strings.TrimRight(base[:32], "-_")
+	}
+	if !used[base] {
+		return base
+	}
+	for suffix := 2; ; suffix++ {
+		tail := fmt.Sprintf("-%d", suffix)
+		prefix := base
+		if len(prefix)+len(tail) > 32 {
+			prefix = strings.TrimRight(prefix[:32-len(tail)], "-_")
+		}
+		candidate := prefix + tail
+		if !used[candidate] {
+			return candidate
+		}
+	}
+}
+
+func (s *Server) herdrLiveAgentNames(ctx context.Context) (map[string]bool, error) {
+	out, err := s.runHerdr(ctx, "agent", "list")
+	if err != nil {
+		return nil, err
+	}
+	var env herdrEnvelope
+	if err := json.Unmarshal(out, &env); err != nil {
+		return nil, fmt.Errorf("unexpected herdr agent list output")
+	}
+	var list herdrAgentListResult
+	if err := json.Unmarshal(env.Result, &list); err != nil {
+		return nil, fmt.Errorf("unexpected herdr agent list result")
+	}
+	used := make(map[string]bool, len(list.Agents))
+	for _, raw := range list.Agents {
+		name := raw.Name
+		if name == "" {
+			name = raw.Agent
+		}
+		if name != "" {
+			used[name] = true
+		}
+	}
+	return used, nil
+}
+
+func (s *Server) startHerdrAgent(ctx context.Context, app *App, kind, label string) (*api.HerdrAgent, error) {
+	usedNames, err := s.herdrLiveAgentNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	name := herdrGenericAgentName(label, usedNames)
+
+	wsID, err := s.herdrProjectWorkspaceID(ctx, app.Project.Name)
+	if err != nil {
+		return nil, err
+	}
+	var paneID string
+	if wsID == "" {
+		var createdTabID string
+		wsID, createdTabID, paneID, err = s.bootstrapHerdrWorkspaceIDs(ctx, app.Project.Path)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := s.runHerdr(ctx, "tab", "rename", createdTabID, label); err != nil {
+			return nil, err
+		}
+	} else {
+		paneID, err = s.herdrAgentPaneForTab(ctx, wsID, label, app.Project.Path)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if paneID == "" {
+		return nil, fmt.Errorf("no usable pane for herdr tab %q", label)
+	}
+	if _, err := s.runHerdr(ctx, "agent", "start", name, "--kind", kind, "--pane", paneID); err != nil {
+		return nil, err
+	}
+	if agent := s.findHerdrAgent(ctx, name); agent != nil {
+		return agent, nil
+	}
+	return &api.HerdrAgent{
+		Name:        name,
+		Status:      "unknown",
+		WorkspaceId: wsID,
+		PaneId:      paneID,
+	}, nil
 }
 
 // StartHerdrFileAgent starts a herdr agent dedicated to a task directory. It

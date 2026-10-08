@@ -462,6 +462,191 @@ func TestHerdrTabOperations(t *testing.T) {
 	assert.Equal(t, []string{"tab", "close", "w7:t2"}, gotArgs)
 }
 
+func TestHerdrStartAgentReusesExistingTabShell(t *testing.T) {
+	var calls [][]string
+	s, _ := newTestServer(t)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "agent" && args[1] == "list":
+			if len(calls) == 1 {
+				return []byte(`{"id":"cli:agent:list","result":{"agents":[]}}`), nil
+			}
+			return []byte(`{"id":"cli:agent:list","result":{"agents":[{"name":"mybox-main","agent_status":"working","pane_id":"w7:p2","workspace_id":"w7"}]}}`), nil
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(`{"id":"cli:tab:list","result":{"tabs":[{"label":"main","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "list":
+			return []byte(`{"id":"cli:pane:list","result":{"panes":[{"cwd":"/tmp/test","pane_id":"w7:p2","tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "agent" && args[1] == "start":
+			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
+		}
+		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
+	}
+
+	rec := do(t, s, "POST", "/api/herdr/agents/start", map[string]string{
+		"kind": "codex",
+		"tab":  "main",
+	}, "X-Project", "test")
+	require.Equal(t, http.StatusOK, rec.Code)
+	res := decode[struct {
+		Ok    bool           `json:"ok"`
+		Agent api.HerdrAgent `json:"agent"`
+	}](t, rec)
+	assert.True(t, res.Ok)
+	assert.Equal(t, "mybox-main", res.Agent.Name)
+	assert.Equal(t, "w7:p2", res.Agent.PaneId)
+
+	var startArgs []string
+	for _, call := range calls {
+		if len(call) > 1 && call[0] == "agent" && call[1] == "start" {
+			startArgs = call
+		}
+		assert.NotEqual(t, []string{"tab", "create"}, call)
+	}
+	assert.Equal(t, []string{"agent", "start", "mybox-main", "--kind", "codex", "--pane", "w7:p2"}, startArgs)
+}
+
+func TestHerdrStartAgentUsesUniqueName(t *testing.T) {
+	var startArgs []string
+	s, _ := newTestServer(t)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		switch {
+		case args[0] == "agent" && args[1] == "list":
+			if startArgs == nil {
+				return []byte(`{"id":"cli:agent:list","result":{"agents":[{"name":"mybox-main","agent_status":"working","pane_id":"w7:p1","workspace_id":"w7"}]}}`), nil
+			}
+			return []byte(`{"id":"cli:agent:list","result":{"agents":[{"name":"mybox-main-2","agent_status":"working","pane_id":"w7:p2","workspace_id":"w7"}]}}`), nil
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(`{"id":"cli:tab:list","result":{"tabs":[{"label":"main","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "list":
+			return []byte(`{"id":"cli:pane:list","result":{"panes":[{"pane_id":"w7:p2","tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "agent" && args[1] == "start":
+			startArgs = args
+			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
+		}
+		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
+	}
+
+	rec := do(t, s, "POST", "/api/herdr/agents/start", map[string]string{"kind": "codex", "tab": "main"}, "X-Project", "test")
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, []string{"agent", "start", "mybox-main-2", "--kind", "codex", "--pane", "w7:p2"}, startArgs)
+}
+
+func TestHerdrStartAgentCreatesMissingTab(t *testing.T) {
+	var calls [][]string
+	s, app := newTestServer(t)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "agent" && args[1] == "list":
+			if len(calls) == 1 {
+				return []byte(`{"id":"cli:agent:list","result":{"agents":[]}}`), nil
+			}
+			return []byte(`{"id":"cli:agent:list","result":{"agents":[{"name":"mybox-review","agent_status":"working","pane_id":"w7:p3","workspace_id":"w7"}]}}`), nil
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(`{"id":"cli:tab:list","result":{"tabs":[{"label":"main","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "tab" && args[1] == "create":
+			return []byte(`{"id":"cli:tab:create","result":{"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "agent" && args[1] == "start":
+			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
+		}
+		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
+	}
+
+	rec := do(t, s, "POST", "/api/herdr/agents/start", map[string]string{
+		"kind": "codex",
+		"tab":  "review",
+	}, "X-Project", "test")
+	require.Equal(t, http.StatusOK, rec.Code)
+	var createArgs []string
+	for _, call := range calls {
+		if len(call) > 1 && call[0] == "tab" && call[1] == "create" {
+			createArgs = call
+		}
+	}
+	assert.Equal(t, []string{"tab", "create", "--workspace", "w7", "--label", "review", "--cwd", app.Project.Path, "--no-focus"}, createArgs)
+}
+
+func TestHerdrStartAgentBootstrapsProjectWorkspace(t *testing.T) {
+	var calls [][]string
+	s, app := newTestServer(t)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "agent" && args[1] == "list":
+			if len(calls) == 1 {
+				return []byte(`{"id":"cli:agent:list","result":{"agents":[]}}`), nil
+			}
+			return []byte(`{"id":"cli:agent:list","result":{"agents":[{"name":"mybox-review","agent_status":"working","pane_id":"w9:p1","workspace_id":"w9"}]}}`), nil
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(`{"id":"cli:workspace:list","result":{"workspaces":[]}}`), nil
+		case args[0] == "workspace" && args[1] == "create":
+			return []byte(`{"id":"cli:workspace:create","result":{"workspace":{"workspace_id":"w9","label":"test"},"tab":{"tab_id":"w9:t1","workspace_id":"w9"},"root_pane":{"pane_id":"w9:p1"}}}`), nil
+		case args[0] == "tab" && args[1] == "rename":
+			return []byte(`{"id":"cli:tab:rename","result":{}}`), nil
+		case args[0] == "agent" && args[1] == "start":
+			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
+		}
+		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
+	}
+
+	rec := do(t, s, "POST", "/api/herdr/agents/start", map[string]string{"kind": "codex", "tab": "review"}, "X-Project", "test")
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, []string{"workspace", "create", "--cwd", app.Project.Path}, calls[2])
+	assert.Equal(t, []string{"tab", "rename", "w9:t1", "review"}, calls[3])
+}
+
+func TestHerdrStartAgentSplitsOccupiedTab(t *testing.T) {
+	var splitArgs []string
+	s, app := newTestServer(t)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		switch {
+		case args[0] == "agent" && args[1] == "list":
+			if splitArgs == nil {
+				return []byte(`{"id":"cli:agent:list","result":{"agents":[]}}`), nil
+			}
+			return []byte(`{"id":"cli:agent:list","result":{"agents":[{"name":"mybox-main-2","agent_status":"working","pane_id":"w7:p3","workspace_id":"w7"}]}}`), nil
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(`{"id":"cli:tab:list","result":{"tabs":[{"label":"main","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "list":
+			return []byte(`{"id":"cli:pane:list","result":{"panes":[{"agent":"opencode","pane_id":"w7:p1","tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "split":
+			splitArgs = args
+			return []byte(`{"id":"cli:pane:split","result":{"pane":{"pane_id":"w7:p3","tab_id":"w7:t1","workspace_id":"w7"}}}`), nil
+		case args[0] == "agent" && args[1] == "start":
+			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
+		}
+		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
+	}
+
+	rec := do(t, s, "POST", "/api/herdr/agents/start", map[string]string{
+		"kind": "codex",
+		"tab":  "main",
+	}, "X-Project", "test")
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, []string{"pane", "split", "--pane", "w7:p1", "--direction", "right", "--cwd", app.Project.Path, "--no-focus"}, splitArgs)
+}
+
+func TestHerdrStartAgentValidatesRequest(t *testing.T) {
+	calls := 0
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		calls++
+		return nil, errors.New("should not run")
+	})
+
+	assert.Equal(t, http.StatusBadRequest, do(t, s, "POST", "/api/herdr/agents/start", map[string]string{"kind": "invalid", "tab": "main"}).Code)
+	assert.Equal(t, http.StatusBadRequest, do(t, s, "POST", "/api/herdr/agents/start", map[string]string{"kind": "codex", "tab": ""}).Code)
+	assert.Zero(t, calls)
+}
+
 // herdrNoActiveWorkspaceError mimics the CLI failure emitted when herdr holds
 // no tabs/panes at all (the JSON error arrives on stderr).
 func herdrNoActiveWorkspaceError() error {

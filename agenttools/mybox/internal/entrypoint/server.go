@@ -37,17 +37,18 @@ var webDist = func() fs.FS {
 }()
 
 type Server struct {
-	config         *domain.Config
-	apps           map[string]*App
-	projects       *application.ProjectUseCase
-	mu             sync.RWMutex
-	defaultProject string
-	basePath       string
-	newApp         func(context.Context, string) (*App, error)
-	herdrRun       herdrRunFunc
-	terminals      *terminalHub
-	fileExecutions *fileExecutionHub
-	scheduled      *promptScheduler
+	config            *domain.Config
+	apps              map[string]*App
+	projects          *application.ProjectUseCase
+	mu                sync.RWMutex
+	defaultProject    string
+	basePath          string
+	newApp            func(context.Context, string) (*App, error)
+	herdrRun          herdrRunFunc
+	herdrAgentStartMu sync.Mutex
+	terminals         *terminalHub
+	fileExecutions    *fileExecutionHub
+	scheduled         *promptScheduler
 }
 
 const maxJSONBodySize = 16 << 20

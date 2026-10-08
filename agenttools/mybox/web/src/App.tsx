@@ -364,6 +364,7 @@ export default function App() {
           onDraftChange={handleAgentDraftChange}
           pendingOpenAgentPaneId={pendingOpenAgentPaneId}
           onOpenAgentChange={handleAgentPaneChange}
+          onOpenAgentPane={handleOpenAgentPane}
           refresh={herdr.refresh}
           onFocusChange={handleAgentSidebarFocusChange}
           onFilePathClick={(filePath) => navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))}
