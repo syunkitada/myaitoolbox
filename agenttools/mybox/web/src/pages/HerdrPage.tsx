@@ -98,7 +98,7 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
   }, [output])
 
   const loadOutput = useCallback(async (reportError = true) => {
-    // Skip if a reload is already in flight (e.g. the 1s focus poller).
+    // Skip if a reload is already in flight (e.g. the 1s pane poller).
     if (loadingRef.current) return
     if (typeof api.readHerdrPane !== 'function') return
     loadingRef.current = true
@@ -116,13 +116,13 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
   useEffect(() => {
     if (!open) return
     void loadOutput()
-    // The focused pane keeps its terminal output fresh by polling every second.
-    if (!focused || !autoReload) return
+    // Every visible pane keeps its terminal output fresh by polling every second.
+    if (!autoReload) return
     const id = setInterval(() => {
       if (!document.hidden) void loadOutput(false)
     }, 1000)
     return () => clearInterval(id)
-  }, [open, focused, autoReload, loadOutput])
+  }, [open, autoReload, loadOutput])
 
   const handleSend = useCallback(async (customText?: string, customMode?: 'send-text-enter' | 'send-text' | 'send-keys' | 'prompt') => {
     const targetMode = customMode ?? mode
@@ -816,7 +816,7 @@ export function HerdrPage({
   // reloading the browser restores exactly the same tab/pane focus.
   const urlTabId = searchParams.get('tab')
   const urlPaneId = searchParams.get('pane')
-  // Auto reload refreshes the focused pane's terminal output every second.
+  // Auto reload refreshes every visible pane's terminal output every second.
   const [autoReload, setAutoReload] = useState(true)
 
   const selectTab = useCallback(
@@ -932,7 +932,7 @@ export function HerdrPage({
             onClick={() => setAutoReload((v) => !v)}
             aria-pressed={autoReload}
             data-testid="herdr-auto-reload-toggle"
-            title="Toggle auto reload of the focused pane's terminal output"
+            title="Toggle auto reload of visible panes' terminal output"
           >
             <RefreshCw className={cn(autoReload && loading && 'animate-spin')} />
             Auto reload: {autoReload ? 'ON' : 'OFF'}

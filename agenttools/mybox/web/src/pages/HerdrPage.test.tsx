@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { HerdrPage } from './HerdrPage'
 import { api } from '../api/client'
@@ -8,6 +8,7 @@ import { DialogsProvider } from '../components/AppDialogs'
 vi.mock('../api/client', () => ({
   api: {
     readHerdrAgent: vi.fn().mockResolvedValue({ output: 'hello' }),
+    readHerdrPane: vi.fn().mockResolvedValue({ output: 'hello' }),
     focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
     sendKeysHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
@@ -56,6 +57,11 @@ const linkedOverview = {
   ...overview,
   agents: [{ ...overview.agents[0], name: 'f20260919_foo', custom_name: 'f20260919_foo' }],
   tabs: [{ ...overview.tabs[0], label: '20260919_foo' }],
+}
+
+const multiPaneOverview = {
+  ...overview,
+  panes: [overview.panes[0], { ...overview.panes[0], pane_id: 'w1:p2' }],
 }
 
 class TestResizeObserver {
@@ -150,6 +156,33 @@ describe('HerdrPage agent commands', () => {
 
     await waitFor(() => expect(api.sendTextHerdrPane).toHaveBeenCalledWith('w1:p1', 'send this text'))
     expect(input).not.toHaveFocus()
+  })
+
+  it('auto reloads every visible pane, including unfocused panes', async () => {
+    vi.useFakeTimers()
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr?pane=w1%3Ap1']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={multiPaneOverview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    await act(async () => {})
+    expect(screen.getByTestId('herdr-pane-w1:p2')).toHaveAttribute('data-focused', 'false')
+    vi.mocked(api.readHerdrPane).mockClear()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+
+    expect(api.readHerdrPane).toHaveBeenCalledWith('w1:p1')
+    expect(api.readHerdrPane).toHaveBeenCalledWith('w1:p2')
   })
 
   it('renames a linked task directory, agent, and tab together', async () => {
