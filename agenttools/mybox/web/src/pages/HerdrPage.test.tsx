@@ -110,7 +110,7 @@ describe('HerdrPage agent commands', () => {
     vi.useRealTimers()
   })
 
-  it('keeps the workspace tabs and panes panel collapsed by default', () => {
+  it('expands the workspace tabs and panes panel by default', () => {
     render(
       <MemoryRouter initialEntries={['/projects/demo/herdr']}>
         <DialogsProvider>
@@ -124,7 +124,7 @@ describe('HerdrPage agent commands', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByTestId('herdr-workspaces-toggle')).toHaveAttribute('data-state', 'closed')
+    expect(screen.getByTestId('herdr-workspaces-toggle')).toHaveAttribute('data-state', 'open')
   })
 
   it('keeps the pane input readable on mobile and blurs it after sending', async () => {
@@ -141,7 +141,6 @@ describe('HerdrPage agent commands', () => {
       </MemoryRouter>,
     )
 
-    fireEvent.click(screen.getByTestId('herdr-workspaces-toggle'))
     const input = screen.getByRole('textbox', { name: 'Input pane w1:p1' })
     expect(input).toHaveClass('text-base', 'md:text-xs')
 
@@ -167,7 +166,6 @@ describe('HerdrPage agent commands', () => {
       </MemoryRouter>,
     )
 
-    fireEvent.click(screen.getByTestId('herdr-workspaces-toggle'))
     fireEvent.click(await screen.findByRole('button', { name: 'Rename tab w1:t1' }))
     const input = await screen.findByTestId('app-dialog-input')
     fireEvent.change(input, { target: { value: '20260920_bar' } })

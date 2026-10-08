@@ -964,7 +964,7 @@ export function HerdrPage({
       )}
 
       <section className="herdr-workspaces mb-6">
-        <Collapsible defaultOpen={false}>
+        <Collapsible defaultOpen>
           <CollapsibleTrigger asChild>
             <button
               type="button"
