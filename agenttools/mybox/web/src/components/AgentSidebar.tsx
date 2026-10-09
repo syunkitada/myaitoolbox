@@ -535,7 +535,7 @@ export function AgentSidebar({
 
   if (isMobile) {
     return <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
+      <Sheet open={open && !agentLaunchOpen} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
           showCloseButton={false}

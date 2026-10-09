@@ -248,6 +248,21 @@ describe('AgentSidebar', () => {
     expect(backdrop).toHaveClass('z-[60]')
   })
 
+  it('closes the start agent dialog from the mobile close button', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 })
+    mockMatchMedia(true)
+    renderSidebar()
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'Start agent' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Start agent' })
+    expect(screen.queryByTestId('agent-sidebar-sheet')).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Start agent' })).not.toBeInTheDocument()
+    expect(await screen.findByTestId('agent-sidebar-sheet')).toBeInTheDocument()
+  })
+
   it('keeps agent statuses visible when the sidebar is closed', () => {
     const onOpenChange = vi.fn()
     const onOpenAgentChange = vi.fn()
