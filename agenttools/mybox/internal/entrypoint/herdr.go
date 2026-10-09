@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -123,6 +125,60 @@ type herdrPaneRaw struct {
 	AgentStatus string `json:"agent_status"`
 	Title       string `json:"title"`
 	Focused     bool   `json:"focused"`
+}
+
+const (
+	herdrPaneReadyTimeout   = 5 * time.Second
+	herdrPanePollInterval   = 50 * time.Millisecond
+	herdrAgentStartAttempts = 3
+)
+
+type herdrPaneForegroundProcessRaw struct {
+	PID  int      `json:"pid"`
+	Name string   `json:"name"`
+	Argv []string `json:"argv"`
+}
+
+type herdrPaneProcessInfoRaw struct {
+	ShellPID            int                             `json:"shell_pid"`
+	ForegroundProcesses []herdrPaneForegroundProcessRaw `json:"foreground_processes"`
+}
+
+func herdrPaneProcessInfoReady(out []byte) (bool, error) {
+	var env struct {
+		Result struct {
+			ProcessInfo herdrPaneProcessInfoRaw `json:"process_info"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out, &env); err != nil {
+		return false, fmt.Errorf("unexpected herdr pane process info output")
+	}
+	if env.Result.ProcessInfo.ShellPID <= 0 {
+		return false, nil
+	}
+	processes := env.Result.ProcessInfo.ForegroundProcesses
+	return len(processes) == 1 &&
+		processes[0].PID == env.Result.ProcessInfo.ShellPID &&
+		herdrForegroundProcessIsShell(processes[0]), nil
+}
+
+func herdrForegroundProcessIsShell(process herdrPaneForegroundProcessRaw) bool {
+	name := strings.TrimPrefix(filepath.Base(strings.TrimSpace(process.Name)), "-")
+	if name == "" && len(process.Argv) > 0 {
+		name = strings.TrimPrefix(filepath.Base(strings.TrimSpace(process.Argv[0])), "-")
+	}
+	if name == "" {
+		return false
+	}
+	if shell := filepath.Base(strings.TrimSpace(os.Getenv("SHELL"))); shell != "" && name == shell {
+		return true
+	}
+	switch name {
+	case "ash", "bash", "csh", "dash", "fish", "ksh", "mksh", "nu", "sh", "tcsh", "yash", "zsh":
+		return true
+	default:
+		return false
+	}
 }
 
 type herdrPaneListResult struct {
@@ -1058,7 +1114,14 @@ func (s *Server) firstHerdrTabPane(ctx context.Context, tabID string) (string, b
 		return "", false, err
 	}
 	for _, raw := range panes {
-		if raw.Agent == "" {
+		if raw.Agent != "" {
+			continue
+		}
+		ready, err := s.herdrPaneProcessInfoReady(ctx, raw.PaneID)
+		if err != nil {
+			return "", false, err
+		}
+		if ready {
 			return raw.PaneID, true, nil
 		}
 	}
@@ -1085,6 +1148,75 @@ func (s *Server) herdrPanesForTab(ctx context.Context, tabID string) ([]herdrPan
 		}
 	}
 	return panes, nil
+}
+
+func (s *Server) herdrPaneProcessInfoReady(ctx context.Context, paneID string) (bool, error) {
+	out, err := s.runHerdr(ctx, "pane", "process-info", "--pane", paneID)
+	if err != nil {
+		return false, err
+	}
+	return herdrPaneProcessInfoReady(out)
+}
+
+// waitForHerdrShellPane waits until the pane's interactive shell owns the
+// foreground. Herdr can return a newly-created pane before the shell has
+// finished startup, and `agent start` rejects that transient state as busy.
+func (s *Server) waitForHerdrShellPane(ctx context.Context, paneID string) error {
+	waitCtx, cancel := context.WithTimeout(ctx, herdrPaneReadyTimeout)
+	defer cancel()
+
+	ticker := time.NewTicker(herdrPanePollInterval)
+	defer ticker.Stop()
+	for {
+		ready, err := s.herdrPaneProcessInfoReady(waitCtx, paneID)
+		if err != nil {
+			return err
+		}
+		if ready {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("herdr pane %q did not become an available shell: %w", paneID, waitCtx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func herdrPaneUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "target pane") &&
+		(strings.Contains(message, "not available") || strings.Contains(message, "not an available shell"))
+}
+
+func (s *Server) startHerdrAgentOnPane(ctx context.Context, name, kind, paneID string) error {
+	startCtx, cancel := context.WithTimeout(ctx, herdrPaneReadyTimeout+herdrTimeout)
+	defer cancel()
+
+	var lastErr error
+	for attempt := 0; attempt < herdrAgentStartAttempts; attempt++ {
+		if err := s.waitForHerdrShellPane(startCtx, paneID); err != nil {
+			return err
+		}
+		if _, err := s.runHerdr(startCtx, "agent", "start", name, "--kind", kind, "--pane", paneID); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			if !herdrPaneUnavailableError(err) || attempt == herdrAgentStartAttempts-1 {
+				return err
+			}
+		}
+
+		select {
+		case <-startCtx.Done():
+			return startCtx.Err()
+		case <-time.After(herdrPanePollInterval):
+		}
+	}
+	return lastErr
 }
 
 // herdrAgentPaneForTab returns an interactive shell pane in the requested
@@ -1117,7 +1249,13 @@ func (s *Server) herdrAgentPaneForTab(ctx context.Context, wsID, label, cwd stri
 		}
 		for _, pane := range panes {
 			if pane.Agent == "" {
-				return pane.PaneID, nil
+				ready, err := s.herdrPaneProcessInfoReady(ctx, pane.PaneID)
+				if err != nil {
+					return "", err
+				}
+				if ready {
+					return pane.PaneID, nil
+				}
 			}
 			if occupiedPaneID == "" {
 				occupiedPaneID = pane.PaneID
@@ -1382,7 +1520,7 @@ func (s *Server) startHerdrAgent(ctx context.Context, app *App, kind, label stri
 	if paneID == "" {
 		return nil, fmt.Errorf("no usable pane for herdr tab %q", label)
 	}
-	if _, err := s.runHerdr(ctx, "agent", "start", name, "--kind", kind, "--pane", paneID); err != nil {
+	if err := s.startHerdrAgentOnPane(ctx, name, kind, paneID); err != nil {
 		return nil, err
 	}
 	if agent := s.findHerdrAgent(ctx, name); agent != nil {
@@ -1492,7 +1630,7 @@ func (s *Server) startHerdrFileAgent(ctx context.Context, app *App, path string,
 		return nil, fmt.Errorf("no usable pane for task agent %q", name)
 	}
 
-	if _, err := s.runHerdr(ctx, "agent", "start", name, "--kind", kind, "--pane", paneID); err != nil {
+	if err := s.startHerdrAgentOnPane(ctx, name, kind, paneID); err != nil {
 		return nil, err
 	}
 

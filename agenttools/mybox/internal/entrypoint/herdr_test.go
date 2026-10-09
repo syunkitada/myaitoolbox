@@ -38,6 +38,87 @@ const herdrPanesJSON = `{"id":"cli:pane:list","result":{"panes":[` +
 	`{"agent_status":"unknown","cwd":"/tmp/test/sub","focused":false,"pane_id":"w7:p2","tab_id":"w7:t1","workspace_id":"w7","title":"review logs"},` +
 	`{"agent_status":"working","cwd":"/tmp/test","focused":true,"pane_id":"w7:p1","tab_id":"w7:t1","workspace_id":"w7"}]}}`
 
+const herdrShellProcessInfoJSON = `{"id":"cli:pane:process_info","result":{"process_info":{"shell_pid":10,"foreground_processes":[{"pid":10,"name":"zsh"}]}}}`
+
+func TestHerdrPaneProcessInfoReady(t *testing.T) {
+	ready, err := herdrPaneProcessInfoReady([]byte(`{"id":"cli:pane:process_info","result":{"process_info":{"shell_pid":10,"foreground_processes":[{"pid":10,"name":"zsh"}]}}}`))
+	require.NoError(t, err)
+	assert.True(t, ready)
+
+	ready, err = herdrPaneProcessInfoReady([]byte(`{"id":"cli:pane:process_info","result":{"process_info":{"shell_pid":10,"foreground_processes":[{"pid":10,"name":"npm"}]}}}`))
+	require.NoError(t, err)
+	assert.False(t, ready)
+
+	ready, err = herdrPaneProcessInfoReady([]byte(`{"id":"cli:pane:process_info","result":{"process_info":{"shell_pid":10,"foreground_processes":[{"pid":11,"name":"zsh"}]}}}`))
+	require.NoError(t, err)
+	assert.False(t, ready)
+}
+
+func TestHerdrWaitForShellPaneWaitsForShellStartup(t *testing.T) {
+	s, _ := newTestServer(t)
+	checks := 0
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		assert.Equal(t, []string{"pane", "process-info", "--pane", "w7:p3"}, args)
+		checks++
+		if checks == 1 {
+			return []byte(`{"id":"cli:pane:process_info","result":{"process_info":{"shell_pid":10,"foreground_processes":[{"pid":11,"name":"zsh"}]}}}`), nil
+		}
+		return []byte(`{"id":"cli:pane:process_info","result":{"process_info":{"shell_pid":10,"foreground_processes":[{"pid":10,"name":"zsh"}]}}}`), nil
+	}
+
+	require.NoError(t, s.waitForHerdrShellPane(context.Background(), "w7:p3"))
+	assert.Equal(t, 2, checks)
+}
+
+func TestHerdrStartAgentRetriesUnavailablePane(t *testing.T) {
+	s, _ := newTestServer(t)
+	var calls [][]string
+	startAttempts := 0
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
+		case args[0] == "agent" && args[1] == "start":
+			startAttempts++
+			if startAttempts == 1 {
+				return nil, errors.New("agent target pane is not available")
+			}
+			return []byte(`{}`), nil
+		default:
+			return nil, errors.New("unexpected args")
+		}
+	}
+
+	require.NoError(t, s.startHerdrAgentOnPane(context.Background(), "mybox-main", "codex", "w7:p3"))
+	assert.Equal(t, [][]string{
+		{"pane", "process-info", "--pane", "w7:p3"},
+		{"agent", "start", "mybox-main", "--kind", "codex", "--pane", "w7:p3"},
+		{"pane", "process-info", "--pane", "w7:p3"},
+		{"agent", "start", "mybox-main", "--kind", "codex", "--pane", "w7:p3"},
+	}, calls)
+}
+
+func TestHerdrStartAgentDoesNotRetryUnrelatedError(t *testing.T) {
+	s, _ := newTestServer(t)
+	startAttempts := 0
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		switch {
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
+		case args[0] == "agent" && args[1] == "start":
+			startAttempts++
+			return nil, errors.New("unsupported agent kind")
+		default:
+			return nil, errors.New("unexpected args")
+		}
+	}
+
+	err := s.startHerdrAgentOnPane(context.Background(), "mybox-main", "codex", "w7:p3")
+	require.EqualError(t, err, "unsupported agent kind")
+	assert.Equal(t, 1, startAttempts)
+}
+
 func herdrStubRunner(calls *[][]string) herdrRunFunc {
 	return func(ctx context.Context, args ...string) ([]byte, error) {
 		*calls = append(*calls, args)
@@ -67,6 +148,8 @@ func TestHerdrStartTaskAgent(t *testing.T) {
 			return []byte(herdrTabsJSON), nil
 		case args[0] == "tab" && args[1] == "create":
 			return []byte(`{"id":"cli:tab:create","result":{"workspace":{"workspace_id":"w7"},"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && (args[1] == "list" || args[1] == "start" || args[1] == "prompt"):
 			return []byte(`{}`), nil
 		}
@@ -128,6 +211,8 @@ func TestHerdrStartTaskAgentDefaultKind(t *testing.T) {
 			return []byte(herdrTabsJSON), nil
 		case args[0] == "tab" && args[1] == "create":
 			return []byte(`{"id":"cli:tab:create","result":{"workspace":{"workspace_id":"w7"},"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			startCall = args
 			return []byte(`{}`), nil
@@ -157,6 +242,8 @@ func TestHerdrStartTaskAgentInlinePrompt(t *testing.T) {
 			return []byte(herdrTabsJSON), nil
 		case args[0] == "tab" && args[1] == "create":
 			return []byte(`{"id":"cli:tab:create","result":{"workspace":{"workspace_id":"w7"},"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent":
 			if args[1] == "prompt" {
 				gotPrompt = args
@@ -201,6 +288,8 @@ func TestHerdrStartTaskAgentForcedMissingTemplate(t *testing.T) {
 			return []byte(herdrTabsJSON), nil
 		case args[0] == "tab" && args[1] == "create":
 			return []byte(`{"id":"cli:tab:create","result":{"workspace":{"workspace_id":"w7"},"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent":
 			return []byte(`{}`), nil
 		}
@@ -479,6 +568,8 @@ func TestHerdrStartAgentReusesExistingTabShell(t *testing.T) {
 			return []byte(`{"id":"cli:tab:list","result":{"tabs":[{"label":"main","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
 		case args[0] == "pane" && args[1] == "list":
 			return []byte(`{"id":"cli:pane:list","result":{"panes":[{"cwd":"/tmp/test","pane_id":"w7:p2","tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
 		}
@@ -524,6 +615,8 @@ func TestHerdrStartAgentUsesUniqueName(t *testing.T) {
 			return []byte(`{"id":"cli:tab:list","result":{"tabs":[{"label":"main","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
 		case args[0] == "pane" && args[1] == "list":
 			return []byte(`{"id":"cli:pane:list","result":{"panes":[{"pane_id":"w7:p2","tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			startArgs = args
 			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
@@ -553,6 +646,8 @@ func TestHerdrStartAgentCreatesMissingTab(t *testing.T) {
 			return []byte(`{"id":"cli:tab:list","result":{"tabs":[{"label":"main","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
 		case args[0] == "tab" && args[1] == "create":
 			return []byte(`{"id":"cli:tab:create","result":{"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
 		}
@@ -590,6 +685,8 @@ func TestHerdrStartAgentBootstrapsProjectWorkspace(t *testing.T) {
 			return []byte(`{"id":"cli:workspace:create","result":{"workspace":{"workspace_id":"w9","label":"test"},"tab":{"tab_id":"w9:t1","workspace_id":"w9"},"root_pane":{"pane_id":"w9:p1"}}}`), nil
 		case args[0] == "tab" && args[1] == "rename":
 			return []byte(`{"id":"cli:tab:rename","result":{}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
 		}
@@ -621,6 +718,8 @@ func TestHerdrStartAgentSplitsOccupiedTab(t *testing.T) {
 		case args[0] == "pane" && args[1] == "split":
 			splitArgs = args
 			return []byte(`{"id":"cli:pane:split","result":{"pane":{"pane_id":"w7:p3","tab_id":"w7:t1","workspace_id":"w7"}}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
 		}
@@ -633,6 +732,47 @@ func TestHerdrStartAgentSplitsOccupiedTab(t *testing.T) {
 	}, "X-Project", "test")
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, []string{"pane", "split", "--pane", "w7:p1", "--direction", "right", "--cwd", app.Project.Path, "--no-focus"}, splitArgs)
+}
+
+func TestHerdrStartAgentSplitsPaneWithForegroundCommand(t *testing.T) {
+	var startArgs []string
+	var splitArgs []string
+	s, app := newTestServer(t)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		switch {
+		case args[0] == "agent" && args[1] == "list":
+			if startArgs == nil {
+				return []byte(`{"id":"cli:agent:list","result":{"agents":[]}}`), nil
+			}
+			return []byte(`{"id":"cli:agent:list","result":{"agents":[{"name":"mybox-main","agent_status":"working","pane_id":"w7:p3","workspace_id":"w7"}]}}`), nil
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(`{"id":"cli:tab:list","result":{"tabs":[{"label":"main","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "list":
+			return []byte(`{"id":"cli:pane:list","result":{"panes":[{"pane_id":"w7:p1","tab_id":"w7:t1","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			if splitArgs == nil {
+				return []byte(`{"id":"cli:pane:process_info","result":{"process_info":{"shell_pid":10,"foreground_processes":[{"pid":11,"name":"npm"}]}}}`), nil
+			}
+			return []byte(herdrShellProcessInfoJSON), nil
+		case args[0] == "pane" && args[1] == "split":
+			splitArgs = args
+			return []byte(`{"id":"cli:pane:split","result":{"pane":{"pane_id":"w7:p3","tab_id":"w7:t1","workspace_id":"w7"}}}`), nil
+		case args[0] == "agent" && args[1] == "start":
+			startArgs = args
+			return []byte(`{"id":"cli:agent:start","result":{}}`), nil
+		}
+		return nil, errors.New("unexpected args: " + strings.Join(args, " "))
+	}
+
+	rec := do(t, s, "POST", "/api/herdr/agents/start", map[string]string{
+		"kind": "codex",
+		"tab":  "main",
+	}, "X-Project", "test")
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, []string{"pane", "split", "--pane", "w7:p1", "--direction", "right", "--cwd", app.Project.Path, "--no-focus"}, splitArgs)
+	assert.Equal(t, []string{"agent", "start", "mybox-main", "--kind", "codex", "--pane", "w7:p3"}, startArgs)
 }
 
 func TestHerdrStartAgentValidatesRequest(t *testing.T) {
@@ -942,6 +1082,8 @@ func TestHerdrStartFileAgentCreatesTabAndStarts(t *testing.T) {
 			return []byte(herdrTabsJSON), nil
 		case args[0] == "tab" && args[1] == "create":
 			return []byte(herdrStartFileTabCreateJSON), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			return []byte("ok"), nil
 		}
@@ -961,12 +1103,13 @@ func TestHerdrStartFileAgentCreatesTabAndStarts(t *testing.T) {
 	assert.Equal(t, "f20260919_foo", res.Agent.Name)
 	assert.Equal(t, "unknown", res.Agent.Status)
 
-	require.Len(t, calls, 6)
+	require.Len(t, calls, 7)
 	assert.Equal(t, []string{"agent", "list"}, calls[0])
 	assert.Equal(t, []string{"workspace", "list"}, calls[1])
 	assert.Equal(t, []string{"tab", "list", "--workspace", "w7"}, calls[2])
 	assert.Equal(t, []string{"tab", "create", "--workspace", "w7", "--label", "20260919_foo", "--cwd", app.Project.Path}, calls[3])
-	assert.Equal(t, []string{"agent", "start", "f20260919_foo", "--kind", "opencode", "--pane", "w7:p3"}, calls[4])
+	assert.Equal(t, []string{"pane", "process-info", "--pane", "w7:p3"}, calls[4])
+	assert.Equal(t, []string{"agent", "start", "f20260919_foo", "--kind", "opencode", "--pane", "w7:p3"}, calls[5])
 }
 
 func TestHerdrStartFileAgentHonorsKind(t *testing.T) {
@@ -982,6 +1125,8 @@ func TestHerdrStartFileAgentHonorsKind(t *testing.T) {
 			return []byte(herdrTabsJSON), nil
 		case args[0] == "tab" && args[1] == "create":
 			return []byte(herdrStartFileTabCreateJSON), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			startArgs = args
 			return []byte("ok"), nil
@@ -1012,6 +1157,8 @@ func TestHerdrStartFileAgentReusesTab(t *testing.T) {
 		case args[0] == "pane" && args[1] == "list":
 			return []byte(`{"id":"cli:pane:list","result":{"panes":[` +
 				`{"cwd":"/tmp/test","focused":false,"pane_id":"w7:p4","tab_id":"w7:t4","workspace_id":"w7"}]}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			startArgs = args
 			return []byte("ok"), nil
@@ -1053,6 +1200,8 @@ func TestHerdrStartFileAgentSkippedOccupiedTab(t *testing.T) {
 				`"pane_id":"w7:p4","tab_id":"w7:t4","workspace_id":"w7"}]}}`), nil
 		case args[0] == "tab" && args[1] == "create":
 			return []byte(herdrStartFileTabCreateJSON), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			startArgs = args
 			return []byte("ok"), nil
@@ -1084,6 +1233,8 @@ func TestHerdrStartFileAgentBootstrapsWorkspace(t *testing.T) {
 				`"root_pane":{"pane_id":"w9:p1","workspace_id":"w9"}}}`), nil
 		case args[0] == "tab" && args[1] == "rename":
 			return []byte("ok"), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
 		case args[0] == "agent" && args[1] == "start":
 			startArgs = args
 			return []byte("ok"), nil
@@ -1093,7 +1244,7 @@ func TestHerdrStartFileAgentBootstrapsWorkspace(t *testing.T) {
 
 	rec := do(t, s, "POST", "/api/herdr/agents/start-file", map[string]string{"path": "_tasks/20260919_foo/task.md"})
 	require.Equal(t, 200, rec.Code)
-	require.Len(t, calls, 6)
+	require.Len(t, calls, 7)
 	assert.Equal(t, []string{"workspace", "list"}, calls[1])
 	assert.Equal(t, []string{"workspace", "create", "--cwd", app.Project.Path}, calls[2])
 	assert.Equal(t, []string{"tab", "rename", "w9:t1", "20260919_foo"}, calls[3])

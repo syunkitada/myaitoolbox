@@ -221,6 +221,16 @@ elif cmd == "pane":
     panes = load("panes.json", [])
     if sub == "list":
         out("cli:pane:list", "pane_list", "panes", panes)
+    elif sub == "process-info":
+        pane_id = opt(args, "--pane") or ""
+        print(json.dumps({"id": "cli:pane:process_info", "result": {
+            "type": "pane_process_info",
+            "process_info": {
+                "pane_id": pane_id,
+                "shell_pid": 1000,
+                "foreground_processes": [{"argv": ["/bin/zsh"], "name": "zsh", "pid": 1000}],
+            },
+        }}))
     elif sub == "split":
         pid = opt(args, "--pane")
         direction = opt(args, "--direction") or "right"
