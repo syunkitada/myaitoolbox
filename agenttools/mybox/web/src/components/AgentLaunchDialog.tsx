@@ -38,7 +38,7 @@ export function AgentLaunchDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" data-testid="agent-launch-dialog-backdrop">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" data-testid="agent-launch-dialog-backdrop">
       <div
         className="w-full max-w-md rounded-lg border bg-card p-4 text-card-foreground shadow-lg"
         role="dialog"
