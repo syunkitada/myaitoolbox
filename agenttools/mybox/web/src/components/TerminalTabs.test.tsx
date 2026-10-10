@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { terminalHostHasLayout } from './TerminalTabs'
+import { terminalHostHasLayout, terminalHostLayoutIsStable } from './TerminalTabs'
 
 vi.mock('@xterm/xterm', () => ({ Terminal: class {} }))
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class {} }))
@@ -13,5 +13,21 @@ describe('terminal host layout checks', () => {
 
   it('accepts a host with a measurable layout', () => {
     expect(terminalHostHasLayout({ clientWidth: 640, clientHeight: 240 })).toBe(true)
+  })
+
+  it('waits for two consecutive frames with the same measurable layout', () => {
+    expect(terminalHostLayoutIsStable(null, { clientWidth: 640, clientHeight: 240 })).toBe(false)
+    expect(
+      terminalHostLayoutIsStable(
+        { clientWidth: 480, clientHeight: 240 },
+        { clientWidth: 640, clientHeight: 240 },
+      ),
+    ).toBe(false)
+    expect(
+      terminalHostLayoutIsStable(
+        { clientWidth: 640, clientHeight: 240 },
+        { clientWidth: 640, clientHeight: 240 },
+      ),
+    ).toBe(true)
   })
 })

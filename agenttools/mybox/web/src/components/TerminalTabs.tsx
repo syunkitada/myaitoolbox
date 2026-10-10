@@ -42,6 +42,8 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   error: 'Connection failed',
 }
 
+const TERMINAL_REFIT_MAX_FRAMES = 30
+
 export interface TerminalViewHandle {
   paste: () => void
   copySelection: () => void
@@ -49,6 +51,16 @@ export interface TerminalViewHandle {
 
 export function terminalHostHasLayout(host: Pick<HTMLElement, 'clientWidth' | 'clientHeight'>): boolean {
   return host.clientWidth > 0 && host.clientHeight > 0
+}
+
+export function terminalHostLayoutIsStable(
+  previous: Pick<HTMLElement, 'clientWidth' | 'clientHeight'> | null,
+  current: Pick<HTMLElement, 'clientWidth' | 'clientHeight'>,
+): boolean {
+  return terminalHostHasLayout(current)
+    && previous !== null
+    && previous.clientWidth === current.clientWidth
+    && previous.clientHeight === current.clientHeight
 }
 
 const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?: string; sessionId?: string }>(function TerminalView({ active, command, sessionId }, ref) {
@@ -181,7 +193,7 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
     const fitToWidth = () => {
       if (!hostVisible()) return false
       const core = (term as unknown as { _core?: { viewport?: { scrollBarWidth?: number } } })._core
-      if (window.innerWidth < 768 && core?.viewport) {
+      if (core?.viewport) {
         core.viewport.scrollBarWidth = 0
       }
       fit.fit()
@@ -276,16 +288,28 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
     if (!active) return
     let frame = 0
     let attempts = 0
+    let previousLayout: Pick<HTMLElement, 'clientWidth' | 'clientHeight'> | null = null
     const refit = () => {
       const term = termRef.current
       const host = hostRef.current
       const fit = fitRef.current
       if (!term || !host || !fit) return
-      if (!terminalHostHasLayout(host)) {
-        if (attempts < 10) {
+      const currentLayout = {
+        clientWidth: host.clientWidth,
+        clientHeight: host.clientHeight,
+      }
+      const stable = terminalHostLayoutIsStable(previousLayout, currentLayout)
+      previousLayout = currentLayout
+      if (!terminalHostHasLayout(currentLayout)) {
+        if (attempts < TERMINAL_REFIT_MAX_FRAMES) {
           attempts += 1
           frame = window.requestAnimationFrame(refit)
         }
+        return
+      }
+      if (!stable && attempts < TERMINAL_REFIT_MAX_FRAMES) {
+        attempts += 1
+        frame = window.requestAnimationFrame(refit)
         return
       }
       fit.fit()

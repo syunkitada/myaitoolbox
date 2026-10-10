@@ -502,7 +502,6 @@ test('terminal tabs refit after tab and project switches', async ({ page }) => {
   const openButton = page.getByRole('button', { name: 'Open terminal' })
   await openButton.click()
   await page.getByRole('button', { name: 'New terminal' }).click()
-  await page.getByRole('button', { name: 'Activate terminal 1' }).click()
 
   const terminalLayout = () => page.locator('.terminal-xterm:visible').evaluate((host) => {
     const screen = host.querySelector('.xterm-screen')
@@ -516,13 +515,22 @@ test('terminal tabs refit after tab and project switches', async ({ page }) => {
     await expect
       .poll(async () => {
         const layout = await terminalLayout()
-        return layout.hostWidth > 0 && layout.screenWidth >= layout.hostWidth * 0.8
+        // xterm rounds down to whole character cells, but should not reserve
+        // a native scrollbar-sized gap in the terminal grid.
+        return layout.hostWidth > 0 && layout.screenWidth >= layout.hostWidth - 12
       })
       .toBe(true)
     await expect(page.locator('.terminal-xterm:visible')).toContainText('mybox terminal')
   }
 
-  await expectHealthyTerminalLayout()
+  const activateAndExpectHealthyLayout = async (id: number) => {
+    await page.getByRole('button', { name: `Activate terminal ${id}` }).click()
+    await expectHealthyTerminalLayout()
+  }
+
+  await activateAndExpectHealthyLayout(1)
+  await activateAndExpectHealthyLayout(2)
+  await activateAndExpectHealthyLayout(1)
 
   await page.goto('/projects/other/dashboard')
   await openButton.click()

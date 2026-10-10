@@ -366,8 +366,16 @@ pre[class*='language-'] {
 .dark .token.important,
 .dark .token.variable { color: oklch(0.83 0.1 20); }
 
-/* On small screens use overlay scrollbars so the terminal fits the full
-   available width (xterm reserves ~16px for a layout scrollbar otherwise). */
+/* Use an overlay scrollbar so the terminal fits the full available width.
+   FitAddon otherwise reserves the native scrollbar width in its grid. */
+.terminal-panel .xterm .xterm-viewport {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.terminal-panel .xterm .xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
 @media (max-width: 767px) {
   /* Monaco focuses this hidden textarea while editing. Keep its font size at
      iOS Safari's no-auto-zoom threshold without changing the editor text size. */
@@ -377,13 +385,6 @@ pre[class*='language-'] {
     font-size: 16px !important;
   }
 
-  .terminal-panel .xterm .xterm-viewport {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .terminal-panel .xterm .xterm-viewport::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 /* Inline diff decorations drawn on the live, editable Monaco editor. */
