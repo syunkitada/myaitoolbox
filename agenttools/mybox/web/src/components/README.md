@@ -31,7 +31,7 @@
 | [`TaskAgentLaunchDialog.tsx`](./TaskAgentLaunchDialog.tsx) | FilesビューアからタスクAgentを起動する種類選択・エラー表示付きモーダル。 |
 | [`VegaLite.tsx`](./VegaLite.tsx) | Vega-Lite仕様の解析、相対データURL解決、グラフ描画。 |
 | [`TerminalPanel.tsx`](./TerminalPanel.tsx) / [`TerminalPanel.test.tsx`](./TerminalPanel.test.tsx) | WebSocketターミナルの表示、プロジェクト内で再利用するタブ表示番号と復元処理のテスト。 |
-| [`TerminalTabs.tsx`](./TerminalTabs.tsx) | ターミナルセッションのタブ操作。 |
+| [`TerminalTabs.tsx`](./TerminalTabs.tsx) | ターミナルセッションのタブ操作とドラッグによる並び替え。 |
 | [`badges.tsx`](./badges.tsx) | ステータス、優先度、タグなどのバッジ。 |
 | [`herdr-status.tsx`](./herdr-status.tsx) | Herdrエージェント状態の表示部品。 |
 | [`HerdrAgentDetail.tsx`](./HerdrAgentDetail.tsx) | Agentの端末出力（自動補正／Herdr準拠の表示切り替え）、キー送信、クイックコマンド、prompt送信、予約送信を表示する共通部品。入力途中Promptは親からcontrolled stateとして受け取り、モバイルのprompt入力は内容に応じて自動拡張し、Enter以外のキーとコマンドは一覧パレットに集約する。 |

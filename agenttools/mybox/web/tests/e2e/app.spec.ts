@@ -473,6 +473,31 @@ test('closing the last terminal reuses its display number', async ({ page }) => 
   await expect(page.getByRole('button', { name: 'Activate terminal 2' })).toHaveCount(0)
 })
 
+test('terminal tabs can be reordered and keep their order after reload', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  await page.getByRole('button', { name: 'New terminal' }).click()
+  await page.getByRole('button', { name: 'New terminal' }).click()
+
+  const tabOrder = () => page.locator('.terminal-tabbar button[aria-label^="Activate terminal "]').evaluateAll(
+    (buttons) => buttons.map((button) => button.textContent),
+  )
+  await expect.poll(tabOrder).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3'])
+
+  const source = page.getByRole('button', { name: 'Reorder terminal 3' })
+  const target = page.getByRole('button', { name: 'Reorder terminal 1' })
+  const sourceBox = (await source.boundingBox())!
+  const targetBox = (await target.boundingBox())!
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 10 })
+  await page.mouse.up()
+
+  await expect.poll(tabOrder).toEqual(['Terminal 3', 'Terminal 1', 'Terminal 2'])
+  await page.reload()
+  await expect(page.locator('.terminal-panel')).toBeVisible()
+  await expect.poll(tabOrder).toEqual(['Terminal 3', 'Terminal 1', 'Terminal 2'])
+})
+
 test('New file menu creates files and folders from the Files tab', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   const newFileButton = page.getByRole('button', { name: 'New file', exact: true })

@@ -2,10 +2,13 @@ import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 're
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { terminalWsUrl } from '../utils/routes'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
-import { Copy, ClipboardPaste, Maximize2, Minimize2, PanelTopClose } from 'lucide-react'
+import { Copy, ClipboardPaste, GripVertical, Maximize2, Minimize2, PanelTopClose } from 'lucide-react'
 import { Separator } from './ui/separator'
 import { useIsMobile } from '../hooks/use-mobile'
 import { useEscapeKey } from '../hooks/use-escape-key'
@@ -25,6 +28,7 @@ interface TerminalTabsProps {
   onAdd: () => void
   onClose: (id: number) => void
   onActivate: (id: number) => void
+  onReorder: (activeId: number, overId: number) => void
   onToggleMaximize: () => void
   onToggleVisible: () => void
 }
@@ -387,9 +391,79 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
   )
 })
 
-export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onClose, onActivate, onToggleMaximize, onToggleVisible }: TerminalTabsProps) {
+interface SortableTerminalTabProps {
+  tab: TerminalTabData
+  active: boolean
+  onClose: (id: number) => void
+  onActivate: (id: number) => void
+}
+
+function SortableTerminalTab({ tab, active, onClose, onActivate }: SortableTerminalTabProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tab.id,
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }}
+      className={cn(
+        'group flex items-center rounded-t-md border border-b-0 text-xs',
+        active
+          ? 'border-border bg-[#0a0e17] text-green-400'
+          : 'border-transparent bg-muted/60 text-muted-foreground hover:text-foreground',
+      )}
+    >
+      <button
+        type="button"
+        className="flex h-8 cursor-pointer items-center px-3"
+        onClick={() => onActivate(tab.id)}
+        aria-label={`Activate terminal ${tab.id}`}
+      >
+        {tab.title}
+      </button>
+      <button
+        type="button"
+        className="flex h-6 w-5 cursor-grab touch-none items-center justify-center rounded text-muted-foreground hover:bg-border/60 hover:text-foreground active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+        aria-label={`Reorder terminal ${tab.id}`}
+        title="Reorder terminal"
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        className="mr-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-border/60 hover:text-foreground"
+        onClick={() => onClose(tab.id)}
+        aria-label={`Close terminal ${tab.id}`}
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
+export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onClose, onActivate, onReorder, onToggleMaximize, onToggleVisible }: TerminalTabsProps) {
   const termRefs = useRef<Map<number, TerminalViewHandle>>(new Map())
   const isMobile = useIsMobile()
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    if (!event.over) return
+    const activeId = Number(event.active.id)
+    const overId = Number(event.over.id)
+    if (!Number.isSafeInteger(activeId) || !Number.isSafeInteger(overId)) return
+    onReorder(activeId, overId)
+  }
 
   const activeTermRef = termRefs.current.get(activeId)
 
@@ -402,35 +476,19 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
       )}
     >
       <div className="terminal-tabbar flex items-center gap-0.5 border-b border-border/70 bg-card px-2 pt-1.5">
-        {tabs.map((t) => {
-          const active = t.id === activeId
-          return (
-            <div
-              key={t.id}
-              className={cn(
-                'group flex items-center rounded-t-md border border-b-0 text-xs',
-                active
-                  ? 'border-border bg-[#0a0e17] text-green-400'
-                  : 'border-transparent bg-muted/60 text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <button
-                className="flex h-8 cursor-pointer items-center px-3"
-                onClick={() => onActivate(t.id)}
-                aria-label={`Activate terminal ${t.id}`}
-              >
-                {t.title}
-              </button>
-              <button
-                className="mr-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-border/60 hover:text-foreground"
-                onClick={() => onClose(t.id)}
-                aria-label={`Close terminal ${t.id}`}
-              >
-                ×
-              </button>
-            </div>
-          )
-        })}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={tabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
+            {tabs.map((tab) => (
+              <SortableTerminalTab
+                key={tab.id}
+                tab={tab}
+                active={tab.id === activeId}
+                onClose={onClose}
+                onActivate={onActivate}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
         <div className="flex items-center gap-1.5">
           <Button
             variant="ghost"

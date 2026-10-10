@@ -88,6 +88,21 @@ export function nextTerminalId(tabs: TerminalTabData[]): number {
   return next
 }
 
+export function reorderTerminalTabs(
+  tabs: TerminalTabData[],
+  activeId: number,
+  overId: number,
+): TerminalTabData[] {
+  const oldIndex = tabs.findIndex((tab) => tab.id === activeId)
+  const newIndex = tabs.findIndex((tab) => tab.id === overId)
+  if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return tabs
+
+  const next = [...tabs]
+  const [moved] = next.splice(oldIndex, 1)
+  next.splice(newIndex, 0, moved)
+  return next
+}
+
 export function normalizePersistedTerminalIds(map: ProjectTermMap): ProjectTermMap {
   for (const state of Object.values(map)) {
     const used = new Set<number>()
@@ -274,6 +289,16 @@ export function TerminalPanel({ className }: { className?: string }) {
     [patchProject],
   )
 
+  const reorderTerminals = useCallback(
+    (activeId: number, overId: number) => {
+      patchProject((s) => {
+        const tabs = reorderTerminalTabs(s.tabs, activeId, overId)
+        return tabs === s.tabs ? s : { ...s, tabs }
+      })
+    },
+    [patchProject],
+  )
+
   if (tabs.length === 0 || activeId === null || !visible) return null
 
   const fullscreen = isMobile || maximized
@@ -318,6 +343,7 @@ export function TerminalPanel({ className }: { className?: string }) {
           onAdd={() => addTerminal()}
           onClose={closeTerminal}
           onActivate={activateTerminal}
+          onReorder={reorderTerminals}
           onToggleMaximize={toggleMaximize}
           onToggleVisible={() => patchProject((s) => ({ ...s, visible: !s.visible }))}
         />
