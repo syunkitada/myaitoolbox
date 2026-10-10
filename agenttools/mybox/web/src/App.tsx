@@ -345,7 +345,7 @@ export default function App() {
               </Routes>
             </Suspense>
           </div>
-          {project && <TerminalPanel />}
+          {project && <TerminalPanel key={project} />}
         </div>
       </SidebarInset>
       {project && (

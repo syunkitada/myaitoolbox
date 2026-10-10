@@ -128,6 +128,10 @@ func TestTerminalModesReconcileEncoding(t *testing.T) {
 	require.NotContains(t, got, "\x1b[?1016h")
 }
 
+func TestTerminalShellResetDoesNotRestoreCursorPosition(t *testing.T) {
+	require.NotContains(t, string(terminalShellReset), "\x1b[?1049l")
+}
+
 func indexOf(s, sub string) int {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

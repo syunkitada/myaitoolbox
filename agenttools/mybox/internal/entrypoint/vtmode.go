@@ -232,7 +232,10 @@ func (t *terminalModes) reconcile() []byte {
 }
 
 // terminalShellReset returns the terminal to the state of an idle shell: every
-// input mode off, cursor visible and default shaped, alternate screen left.
+// input mode off, cursor visible and default shaped. It intentionally leaves
+// screen selection and cursor position alone; emitting 1049l here can restore
+// an old saved cursor position (often the top-left corner) after replaying the
+// shell prompt to a newly attached client.
 // It is applied when the shell itself owns the foreground, i.e. no application
 // is running, so stale modes leftover from a killed or suspended program are
 // cleared rather than resurrected by the ring replay. Bracketed paste (2004)
@@ -240,4 +243,4 @@ func (t *terminalModes) reconcile() []byte {
 // and clearing it would make multi-line pastes execute immediately.
 var terminalShellReset = []byte(
 	"\x1b[?9l\x1b[?25h\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l" +
-		"\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[?1049l\x1b[?2026l\x1b[0 q\x1b[>4;0m")
+		"\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[?2026l\x1b[0 q\x1b[>4;0m")

@@ -47,6 +47,10 @@ export interface TerminalViewHandle {
   copySelection: () => void
 }
 
+export function terminalHostHasLayout(host: Pick<HTMLElement, 'clientWidth' | 'clientHeight'>): boolean {
+  return host.clientWidth > 0 && host.clientHeight > 0
+}
+
 const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?: string; sessionId?: string }>(function TerminalView({ active, command, sessionId }, ref) {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -172,12 +176,16 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
     termRef.current = term
     fitRef.current = fit
 
+    const hostVisible = () => terminalHostHasLayout(host)
+
     const fitToWidth = () => {
+      if (!hostVisible()) return false
       const core = (term as unknown as { _core?: { viewport?: { scrollBarWidth?: number } } })._core
       if (window.innerWidth < 768 && core?.viewport) {
         core.viewport.scrollBarWidth = 0
       }
       fit.fit()
+      return true
     }
     fitToWidth()
 
@@ -195,9 +203,6 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
       if (!termRef.current) return
       send({ type: 'resize', cols: term.cols, rows: term.rows })
     }
-
-    const hostVisible = () =>
-      host.offsetParent !== null && host.clientWidth > 0 && host.clientHeight > 0
 
     term.onData((data) => send({ type: 'input', data }))
 
@@ -236,7 +241,7 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
 
     ws.onopen = () => {
       setStatus('connected')
-      if (hostVisible()) {
+      if (fitToWidth()) {
         sendResize()
       }
     }
@@ -252,9 +257,7 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
 
     const ro = new ResizeObserver(() => {
       if (!termRef.current) return
-      if (!hostVisible()) return
-      fitToWidth()
-      sendResize()
+      if (fitToWidth()) sendResize()
     })
     ro.observe(host)
 
@@ -271,18 +274,28 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
   // Re-fit when the tab becomes visible again.
   useEffect(() => {
     if (!active) return
-    const term = termRef.current
-    if (!term) return
-    const host = hostRef.current
-    if (host && (host.offsetParent === null || host.clientWidth === 0 || host.clientHeight === 0)) {
-      return
+    let frame = 0
+    let attempts = 0
+    const refit = () => {
+      const term = termRef.current
+      const host = hostRef.current
+      const fit = fitRef.current
+      if (!term || !host || !fit) return
+      if (!terminalHostHasLayout(host)) {
+        if (attempts < 10) {
+          attempts += 1
+          frame = window.requestAnimationFrame(refit)
+        }
+        return
+      }
+      fit.fit()
+      const ws = wsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+      }
     }
-    const fit = fitRef.current
-    if (fit) fit.fit()
-    const ws = wsRef.current
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
-    }
+    frame = window.requestAnimationFrame(refit)
+    return () => window.cancelAnimationFrame(frame)
   }, [active])
 
   return (

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { type ReactNode } from 'react'
-import { MemoryRouter } from 'react-router-dom'
+import { type ReactNode, useEffect } from 'react'
+import { BrowserRouter, MemoryRouter, useNavigate } from 'react-router-dom'
 import App from './App'
 import { api } from './api/client'
 
@@ -22,6 +22,8 @@ vi.mock('./components/AppDialogs', () => ({
   useDialogs: () => ({ prompt: vi.fn() }),
 }))
 
+const terminalPanelLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }))
+
 vi.mock('./components/Sidebar', () => ({
   AppSidebar: ({
     gitStatus,
@@ -38,7 +40,15 @@ vi.mock('./components/Sidebar', () => ({
 }))
 
 vi.mock('./components/TerminalPanel', () => ({
-  TerminalPanel: () => null,
+  TerminalPanel: () => {
+    useEffect(() => {
+      terminalPanelLifecycle.mounts += 1
+      return () => {
+        terminalPanelLifecycle.unmounts += 1
+      }
+    }, [])
+    return <div data-testid="terminal-panel-mock" />
+  },
 }))
 
 vi.mock('./components/AgentSidebar', () => ({
@@ -113,9 +123,20 @@ const meta = {
   recent_files: [],
 }
 
+function ProjectSwitcher() {
+  const navigate = useNavigate()
+  return (
+    <button type="button" data-testid="switch-project" onClick={() => navigate('/projects/other/dashboard')}>
+      switch project
+    </button>
+  )
+}
+
 describe('App project status refresh', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    terminalPanelLifecycle.mounts = 0
+    terminalPanelLifecycle.unmounts = 0
     window.history.pushState({}, '', '/projects/demo/dashboard')
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
@@ -249,5 +270,23 @@ describe('App project status refresh', () => {
     const wrapper = document.querySelector('[data-slot="sidebar-wrapper"]') as HTMLElement
     await act(async () => undefined)
     expect(wrapper.style.getPropertyValue('--sidebar-right-width')).toBe('0px')
+  })
+
+  it('remounts the terminal panel when the project changes', async () => {
+    render(
+      <BrowserRouter>
+        <App />
+        <ProjectSwitcher />
+      </BrowserRouter>,
+    )
+
+    expect(terminalPanelLifecycle.mounts).toBe(1)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('switch-project'))
+    })
+
+    expect(terminalPanelLifecycle.mounts).toBe(2)
+    expect(terminalPanelLifecycle.unmounts).toBe(1)
   })
 })

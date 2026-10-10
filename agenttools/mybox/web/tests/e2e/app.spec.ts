@@ -498,6 +498,40 @@ test('terminal tabs can be reordered and keep their order after reload', async (
   await expect.poll(tabOrder).toEqual(['Terminal 3', 'Terminal 1', 'Terminal 2'])
 })
 
+test('terminal tabs refit after tab and project switches', async ({ page }) => {
+  const openButton = page.getByRole('button', { name: 'Open terminal' })
+  await openButton.click()
+  await page.getByRole('button', { name: 'New terminal' }).click()
+  await page.getByRole('button', { name: 'Activate terminal 1' }).click()
+
+  const terminalLayout = () => page.locator('.terminal-xterm:visible').evaluate((host) => {
+    const screen = host.querySelector('.xterm-screen')
+    return {
+      hostWidth: host.clientWidth,
+      screenWidth: screen?.clientWidth ?? 0,
+    }
+  })
+
+  const expectHealthyTerminalLayout = async () => {
+    await expect
+      .poll(async () => {
+        const layout = await terminalLayout()
+        return layout.hostWidth > 0 && layout.screenWidth >= layout.hostWidth * 0.8
+      })
+      .toBe(true)
+    await expect(page.locator('.terminal-xterm:visible')).toContainText('mybox terminal')
+  }
+
+  await expectHealthyTerminalLayout()
+
+  await page.goto('/projects/other/dashboard')
+  await openButton.click()
+  await expectHealthyTerminalLayout()
+
+  await page.goto('/projects/proj/dashboard')
+  await expectHealthyTerminalLayout()
+})
+
 test('New file menu creates files and folders from the Files tab', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   const newFileButton = page.getByRole('button', { name: 'New file', exact: true })
