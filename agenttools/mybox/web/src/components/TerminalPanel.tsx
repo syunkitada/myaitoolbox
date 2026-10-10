@@ -81,20 +81,17 @@ function loadProjectMap(): ProjectTermMap {
   return {}
 }
 
-export function maxPersistedTerminalId(map: ProjectTermMap): number {
-  let max = 0
-  for (const state of Object.values(map)) {
-    for (const tab of state.tabs) {
-      if (Number.isSafeInteger(tab.id) && tab.id > max) max = tab.id
-    }
-  }
-  return max
+export function nextTerminalId(tabs: TerminalTabData[]): number {
+  const used = new Set(tabs.map((tab) => tab.id))
+  let next = 1
+  while (used.has(next)) next += 1
+  return next
 }
 
 export function normalizePersistedTerminalIds(map: ProjectTermMap): ProjectTermMap {
-  const used = new Set<number>()
-  let next = maxPersistedTerminalId(map)
   for (const state of Object.values(map)) {
+    const used = new Set<number>()
+    let next = Math.max(0, ...state.tabs.map((tab) => tab.id))
     for (const tab of state.tabs) {
       const original = tab.id
       if (used.has(original)) {
@@ -122,10 +119,6 @@ export function TerminalPanel({ className }: { className?: string }) {
   const [byProject, setByProject] = useState<ProjectTermMap>(loadProjectMap)
   const [maximized, setMaximized] = useState(false)
   const [height, setHeight] = useState(520)
-  const idRef = useRef<number | null>(null)
-  if (idRef.current === null) {
-    idRef.current = maxPersistedTerminalId(byProject)
-  }
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null)
   const isMobile = useMediaQuery('(max-width: 1023px)')
   const { state: sidebarState } = useSidebar()
@@ -208,15 +201,16 @@ export function TerminalPanel({ className }: { className?: string }) {
 
   const addTerminal = useCallback(
     (title?: string, command?: string) => {
-      idRef.current = (idRef.current ?? 0) + 1
-      const id = idRef.current
-      const tab: TerminalTabData = {
-        id,
-        title: title ?? `Terminal ${id}`,
-        command,
-        sessionId: newSessionId(),
-      }
-      patchProject((s) => ({ ...s, tabs: [...s.tabs, tab], activeId: id, collapsed: false, visible: true }))
+      patchProject((s) => {
+        const id = nextTerminalId(s.tabs)
+        const tab: TerminalTabData = {
+          id,
+          title: title ?? `Terminal ${id}`,
+          command,
+          sessionId: newSessionId(),
+        }
+        return { ...s, tabs: [...s.tabs, tab], activeId: id, collapsed: false, visible: true }
+      })
     },
     [patchProject],
   )
@@ -229,8 +223,7 @@ export function TerminalPanel({ className }: { className?: string }) {
         setByProject((prev) => {
           const cur = prev[project] ?? EMPTY
           if (cur.tabs.length === 0) {
-            idRef.current = (idRef.current ?? 0) + 1
-            const id = idRef.current
+            const id = nextTerminalId(cur.tabs)
             return {
               ...prev,
               [project]: {

@@ -1,27 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
-import { maxPersistedTerminalId, normalizePersistedTerminalIds } from './TerminalPanel'
+import { nextTerminalId, normalizePersistedTerminalIds } from './TerminalPanel'
 
 vi.mock('./TerminalTabs', () => ({ TerminalTabs: () => null }))
 
-describe('terminal tab persistence', () => {
-  it('allocates after the largest restored tab id', () => {
-    expect(maxPersistedTerminalId({
-      first: {
-        tabs: [
-          { id: 2, title: 'Terminal 2', sessionId: 'session-2' },
-          { id: 7, title: 'Terminal 7', sessionId: 'session-7' },
-        ],
-        activeId: 7,
-        collapsed: false,
-        visible: true,
-      },
-      second: {
-        tabs: [{ id: 4, title: 'Terminal 4', sessionId: 'session-4' }],
-        activeId: 4,
-        collapsed: false,
-        visible: true,
-      },
-    })).toBe(7)
+describe('terminal tab ids', () => {
+  it('reuses the smallest available display number', () => {
+    expect(nextTerminalId([
+      { id: 2, title: 'Terminal 2', sessionId: 'session-2' },
+      { id: 4, title: 'Terminal 4', sessionId: 'session-4' },
+    ])).toBe(1)
+
+    expect(nextTerminalId([
+      { id: 1, title: 'Terminal 1', sessionId: 'session-1' },
+      { id: 2, title: 'Terminal 2', sessionId: 'session-2' },
+    ])).toBe(3)
   })
 
   it('repairs duplicate restored ids while preserving sessions', () => {

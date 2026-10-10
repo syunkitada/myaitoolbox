@@ -460,6 +460,19 @@ test('nav bar file actions open a terminal', async ({ page }) => {
   await expect(page.locator('.terminal-panel')).toBeVisible()
 })
 
+test('closing the last terminal reuses its display number', async ({ page }) => {
+  const openButton = page.getByRole('button', { name: 'Open terminal' })
+  await openButton.click()
+  await expect(page.getByRole('button', { name: 'Activate terminal 1' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Close terminal 1' }).click()
+  await expect(page.locator('.terminal-panel')).toBeHidden()
+
+  await openButton.click()
+  await expect(page.getByRole('button', { name: 'Activate terminal 1' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Activate terminal 2' })).toHaveCount(0)
+})
+
 test('New file menu creates files and folders from the Files tab', async ({ page }) => {
   const explorer = page.locator('.knowledge-explorer')
   const newFileButton = page.getByRole('button', { name: 'New file', exact: true })

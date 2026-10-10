@@ -30,7 +30,7 @@
 | [`TaskProgress.tsx`](./TaskProgress.tsx) / [`TaskProgress.test.tsx`](./TaskProgress.test.tsx) | Markdownタスクリストの進捗表示とテスト。 |
 | [`TaskAgentLaunchDialog.tsx`](./TaskAgentLaunchDialog.tsx) | FilesビューアからタスクAgentを起動する種類選択・エラー表示付きモーダル。 |
 | [`VegaLite.tsx`](./VegaLite.tsx) | Vega-Lite仕様の解析、相対データURL解決、グラフ描画。 |
-| [`TerminalPanel.tsx`](./TerminalPanel.tsx) / [`TerminalPanel.test.tsx`](./TerminalPanel.test.tsx) | WebSocketターミナルの表示、復元タブIDのテスト。 |
+| [`TerminalPanel.tsx`](./TerminalPanel.tsx) / [`TerminalPanel.test.tsx`](./TerminalPanel.test.tsx) | WebSocketターミナルの表示、プロジェクト内で再利用するタブ表示番号と復元処理のテスト。 |
 | [`TerminalTabs.tsx`](./TerminalTabs.tsx) | ターミナルセッションのタブ操作。 |
 | [`badges.tsx`](./badges.tsx) | ステータス、優先度、タグなどのバッジ。 |
 | [`herdr-status.tsx`](./herdr-status.tsx) | Herdrエージェント状態の表示部品。 |
