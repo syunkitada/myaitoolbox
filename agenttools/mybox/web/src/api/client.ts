@@ -2,17 +2,12 @@ import { fileExecuteWsUrl, getBasePath, getProject } from '../utils/routes'
 export { getBasePath, getProject, setProject, clearProject } from '../utils/routes'
 
 export type TaskStatus = 'todo' | 'doing' | 'blocked' | 'review' | 'done'
-export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 export type TaskTriggerType = 'cron' | 'file_created' | 'manual'
 
 export interface Task {
   id: string
   title: string
-  description?: string | null
-  agent_kind?: string | null
   status: TaskStatus
-  priority: TaskPriority
-  assignee?: string | null
   due?: string | null
   pending_until?: string | null
   pending_reason?: string | null
@@ -26,11 +21,7 @@ export interface Task {
 export interface CreateTaskRequest {
   name: string
   content?: string
-  description?: string
-  agent_kind?: string
   status?: TaskStatus
-  priority?: TaskPriority
-  assignee?: string
   due?: string
   tags?: string[]
 }

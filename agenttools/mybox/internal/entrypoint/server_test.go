@@ -204,7 +204,7 @@ func TestMetaAndLifecycle(t *testing.T) {
 	require.NotNil(t, task.Project)
 	assert.Equal(t, "test", *task.Project)
 
-	customContent := "---\ntitle: API draft\n---\n\n## Written in the dialog\n"
+	customContent := "---\ntitle: API draft\npriority: high\nagent_kind: opencode\nassignee: owner\ndescription: legacy summary\n---\n\n## Written in the dialog\n"
 	rec = do(t, s, http.MethodPost, "/api/tasks", map[string]any{
 		"name":    "from api with content",
 		"content": customContent,
@@ -213,6 +213,10 @@ func TestMetaAndLifecycle(t *testing.T) {
 	customTask := decode[api.Task](t, rec)
 	data, err := os.ReadFile(filepath.Join(app.Project.Path, "_tasks", customTask.Id, "task.md"))
 	require.NoError(t, err)
+	assert.NotContains(t, string(data), "priority:")
+	assert.NotContains(t, string(data), "agent_kind:")
+	assert.NotContains(t, string(data), "assignee:")
+	assert.NotContains(t, string(data), "description:")
 	assert.Contains(t, string(data), "## Written in the dialog")
 
 	rec = do(t, s, http.MethodGet, "/api/task-template?name=Template%20task", nil)
@@ -336,21 +340,15 @@ func TestTaskAPILifecycle(t *testing.T) {
 	assert.Equal(t, "review PR", task.Title)
 
 	rec = do(t, s, http.MethodPatch, "/api/tasks/"+task.Id, map[string]any{
-		"description": "details",
-		"assignee":    "owner",
-		"tags":        []string{"review"},
+		"tags": []string{"review"},
 	})
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	rec = do(t, s, http.MethodPatch, "/api/tasks/"+task.Id, map[string]any{
-		"description": "",
-		"assignee":    "",
-		"tags":        []string{},
+		"tags": []string{},
 	})
 	assert.Equal(t, http.StatusOK, rec.Code)
 	updated := decode[api.Task](t, rec)
-	assert.Empty(t, updated.Description)
-	assert.Empty(t, updated.Assignee)
 	assert.Empty(t, updated.Tags)
 
 	rec = do(t, s, http.MethodGet, "/api/tasks", nil)

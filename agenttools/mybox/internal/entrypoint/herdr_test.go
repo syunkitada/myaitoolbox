@@ -158,8 +158,7 @@ func TestHerdrStartTaskAgent(t *testing.T) {
 	}
 
 	task, err := app.Tasks.Create(context.Background(), application.TaskInput{
-		Name:      "start the parser",
-		AgentKind: "codex",
+		Name: "start the parser",
 	})
 	require.NoError(t, err)
 
@@ -171,8 +170,9 @@ func TestHerdrStartTaskAgent(t *testing.T) {
 	))
 
 	rec := do(t, s, "POST", "/api/herdr/agents/start-task", map[string]string{
-		"task_id": task.ID,
-		"prompt":  "do-the-task",
+		"task_id":    task.ID,
+		"agent_kind": "codex",
+		"prompt":     "do-the-task",
 	})
 	require.Equal(t, http.StatusOK, rec.Code)
 	res := decode[herdrStartTaskAgentResponse](t, rec)
@@ -184,7 +184,7 @@ func TestHerdrStartTaskAgent(t *testing.T) {
 	assert.Equal(t, "w7:p3", res.Agent.PaneId)
 	assert.Equal(t, "`"+relPath+"` を実施してください", res.Prompt)
 
-	// The agent must be started with the task's agent_kind and the rendered
+	// The agent must be started with the request's agent_kind and the rendered
 	// prompt submitted with the task's file path.
 	var startCall, promptCall []string
 	for _, c := range calls {
@@ -1335,8 +1335,7 @@ func TestHerdrStartFileAgentSupportsJapaneseTaskDirectory(t *testing.T) {
 	}
 
 	task, err := app.Tasks.Create(context.Background(), application.TaskInput{
-		Name:      "日本語のタスク",
-		AgentKind: "codex",
+		Name: "日本語のタスク",
 	})
 	require.NoError(t, err)
 

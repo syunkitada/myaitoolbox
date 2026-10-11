@@ -22,37 +22,28 @@ type TaskUseCase struct {
 }
 
 type TaskFilter struct {
-	All      bool
-	Status   string
-	Tag      string
-	Assignee string
+	All    bool
+	Status string
+	Tag    string
 }
 
 type TaskInput struct {
 	Name string
 	// Content nil uses the rendered template; a non-nil value can explicitly
 	// provide an empty task.md.
-	Content     *string
-	Description string
-	AgentKind   string
-	Status      string
-	Priority    string
-	Assignee    string
-	Due         string
-	Tags        []string
+	Content *string
+	Status  string
+	Due     string
+	Tags    []string
 }
 
 // TaskPatch preserves field presence so callers can distinguish an omitted
 // value from an explicit empty value.
 type TaskPatch struct {
-	Name        *string
-	Description *string
-	AgentKind   *string
-	Status      *string
-	Priority    *string
-	Assignee    *string
-	Due         *string
-	Tags        *[]string
+	Name   *string
+	Status *string
+	Due    *string
+	Tags   *[]string
 }
 
 func NewTaskUseCase(tasks domain.TaskRepository, template domain.TemplateRenderer, prompts domain.PromptTemplateRepository, project string, projectPath string) *TaskUseCase {
@@ -82,9 +73,6 @@ func (u *TaskUseCase) List(ctx context.Context, filter TaskFilter) ([]domain.Tas
 			continue
 		}
 		if filter.Tag != "" && !contains(t.Tags, filter.Tag) {
-			continue
-		}
-		if filter.Assignee != "" && t.Assignee != filter.Assignee {
 			continue
 		}
 		// リポジトリはプロジェクト名を持たないため UseCase 層で補完する
@@ -150,25 +138,17 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 	if err != nil {
 		return nil, err
 	}
-	priority, err := parsePriority(input.Priority)
-	if err != nil {
-		return nil, err
-	}
 	if err := u.ensureUniqueTaskTitle(ctx, name, ""); err != nil {
 		return nil, err
 	}
 	now := time.Now()
 	task := &domain.Task{
-		Title:       name,
-		Description: strings.TrimSpace(input.Description),
-		AgentKind:   strings.TrimSpace(input.AgentKind),
-		Status:      status,
-		Priority:    priority,
-		Assignee:    input.Assignee,
-		Due:         input.Due,
-		Tags:        input.Tags,
-		Project:     u.Project,
-		Created:     now,
+		Title:   name,
+		Status:  status,
+		Due:     input.Due,
+		Tags:    input.Tags,
+		Project: u.Project,
+		Created: now,
 	}
 	task.ID = now.Format("20060102") + "_" + slugify(name)
 	content := ""
@@ -192,7 +172,7 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 // CreateFromContent creates an execution task from an already rendered
 // Markdown template. The template's body and unknown frontmatter fields are
 // preserved, while runtime-owned status and automation fields are applied.
-func (u *TaskUseCase) CreateFromContent(ctx context.Context, id, content, agentKind string, tags []string) (*domain.Task, error) {
+func (u *TaskUseCase) CreateFromContent(ctx context.Context, id, content string, tags []string) (*domain.Task, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, fmt.Errorf("%w: task id is required", domain.ErrInvalidArgument)
 	}
@@ -206,9 +186,6 @@ func (u *TaskUseCase) CreateFromContent(ctx context.Context, id, content, agentK
 	}
 	task.Project = u.Project
 	task.Status = domain.TaskStatusTodo
-	if strings.TrimSpace(agentKind) != "" {
-		task.AgentKind = strings.TrimSpace(agentKind)
-	}
 	if tags != nil {
 		task.Tags = append([]string(nil), tags...)
 	}
@@ -236,28 +213,12 @@ func (u *TaskUseCase) Update(ctx context.Context, id string, input TaskInput) (*
 		}
 		task.Title = name
 	}
-	if input.Description != "" {
-		task.Description = strings.TrimSpace(input.Description)
-	}
-	if input.AgentKind != "" {
-		task.AgentKind = strings.TrimSpace(input.AgentKind)
-	}
 	if input.Status != "" {
 		status, err := parseStatus(input.Status)
 		if err != nil {
 			return nil, err
 		}
 		task.Status = status
-	}
-	if input.Priority != "" {
-		priority, err := parsePriority(input.Priority)
-		if err != nil {
-			return nil, err
-		}
-		task.Priority = priority
-	}
-	if input.Assignee != "" {
-		task.Assignee = input.Assignee
 	}
 	if input.Due != "" {
 		task.Due = input.Due
@@ -288,12 +249,6 @@ func (u *TaskUseCase) Patch(ctx context.Context, id string, patch TaskPatch) (*d
 		}
 		task.Title = name
 	}
-	if patch.Description != nil {
-		task.Description = strings.TrimSpace(*patch.Description)
-	}
-	if patch.AgentKind != nil {
-		task.AgentKind = strings.TrimSpace(*patch.AgentKind)
-	}
 	if patch.Status != nil {
 		if *patch.Status == "" {
 			return nil, fmt.Errorf("%w: invalid status %q", domain.ErrInvalidArgument, *patch.Status)
@@ -303,19 +258,6 @@ func (u *TaskUseCase) Patch(ctx context.Context, id string, patch TaskPatch) (*d
 			return nil, parseErr
 		}
 		task.Status = status
-	}
-	if patch.Priority != nil {
-		if *patch.Priority == "" {
-			return nil, fmt.Errorf("%w: invalid priority %q", domain.ErrInvalidArgument, *patch.Priority)
-		}
-		priority, parseErr := parsePriority(*patch.Priority)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		task.Priority = priority
-	}
-	if patch.Assignee != nil {
-		task.Assignee = *patch.Assignee
 	}
 	if patch.Due != nil {
 		task.Due = *patch.Due
@@ -419,18 +361,6 @@ func parseStatus(s string) (domain.TaskStatus, error) {
 		return domain.TaskStatus(s), nil
 	}
 	return "", fmt.Errorf("%w: invalid status %q", domain.ErrInvalidArgument, s)
-}
-
-func parsePriority(s string) (domain.TaskPriority, error) {
-	if s == "" {
-		return domain.TaskPriorityMedium, nil
-	}
-	switch domain.TaskPriority(s) {
-	case domain.TaskPriorityLow, domain.TaskPriorityMedium,
-		domain.TaskPriorityHigh, domain.TaskPriorityUrgent:
-		return domain.TaskPriority(s), nil
-	}
-	return "", fmt.Errorf("%w: invalid priority %q", domain.ErrInvalidArgument, s)
 }
 
 func slugify(s string) string {

@@ -1,18 +1,15 @@
 import { ReactNode } from 'react'
 import { Input } from './ui/input'
 import { Button } from './ui/button'
-import { PriorityBadge, StatusBadge, TagBadge } from './badges'
+import { StatusBadge, TagBadge } from './badges'
 
 export const STATUS_OPTIONS = ['todo', 'doing', 'blocked', 'review', 'done']
-export const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent']
 
 const FIELD_ORDER = [
   'title',
   'status',
-  'priority',
   'tags',
   'aliases',
-  'assignee',
   'due',
   'pending_until',
   'pending_reason',
@@ -211,13 +208,6 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
           ariaLabel="Metadata status"
           options={STATUS_OPTIONS}
         />
-        <SelectField
-          label="Priority"
-          value={value.priority}
-          onChange={(v) => setField('priority', v)}
-          ariaLabel="Metadata priority"
-          options={PRIORITY_OPTIONS}
-        />
       </div>
       <div className="field-row flex flex-wrap gap-3">
         <ListField label="Tags" value={value.tags} onChange={(v) => setField('tags', v)} ariaLabel="Metadata tags" />
@@ -229,7 +219,6 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
         />
       </div>
       <div className="field-row flex flex-wrap gap-3">
-        <Field label="Assignee" value={value.assignee} onChange={(v) => setField('assignee', v)} ariaLabel="Metadata assignee" />
         <DateField label="Due" value={value.due} onChange={(v) => setField('due', v)} ariaLabel="Metadata due" />
       </div>
       <div className="field-row flex flex-wrap gap-3">
@@ -311,9 +300,6 @@ export function FrontmatterSummary({ data }: { data: Record<string, unknown> }) 
   const renderValue = (k: string, v: unknown): ReactNode => {
     if (k === 'status' && typeof v === 'string') {
       return <StatusBadge status={v} />
-    }
-    if (k === 'priority' && typeof v === 'string') {
-      return <PriorityBadge priority={v} />
     }
     if (Array.isArray(v)) {
       return v.map((x, i) => (

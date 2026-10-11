@@ -26,7 +26,7 @@ CLI と Web UI の両方から操作でき、タスクは Markdown ファイル�
 
 ## 機能
 
-- **タスク管理** — `_tasks/` 配下の Markdown ファイル（1 タスク＝1 ディレクトリ）で管理。ステータス（todo / doing / blocked / review / done）・優先度（low / medium / high / urgent）・担当者・期限・タグ・エージェント種別（`agent_kind`）をフロントマターで保持
+- **タスク管理** — `_tasks/` 配下の Markdown ファイル（1 タスク＝1 ディレクトリ）で管理。タイトル・ステータス（todo / doing / blocked / review / done）・期限・保留情報・タグをフロントマターで保持。優先度・担当者・説明・Agent種別はTaskの正式メタデータとして扱わない。新規作成時は雛形や入力に残る旧キーも除去し、既存タスクの更新時はファイル上の旧キーを保持する
   - CLI: 作成・一覧（フィルタ / JSON 出力）・表示・編集・フィールド更新・アーカイブ
   - Web UI: GTD ボード（Todo / Doing / Blocked / Review / Done）とドラッグ＆ドロップ
   - 同じプロジェクト内では、アクティブ・アーカイブ済みを含めて、前後の空白を除いたタスク名を一意に管理
@@ -81,7 +81,7 @@ mybox task list --project proj
 mybox task list --project proj --status doing --tag web
 mybox task list --project proj --all          # アーカイブ済みも含める
 mybox task show --project proj 20260802_design-the-login-flow
-mybox task set --project proj <task-id> --status review --priority high --tags web,ux
+mybox task set --project proj <task-id> --status review --tags web,ux
 mybox task edit --project proj <task-id>      # $EDITOR で編集
 mybox task archive --project proj <task-id>
 ```
@@ -205,7 +205,7 @@ myproject/
 │   └── tasks/
 ├── _tasks/
 │   └── 20260802_design-the-login-flow/
-│       └── task.md          # フロントマターで status / priority / assignee / due / tags / agent_kind 等を保持
+│       └── task.md          # フロントマターで title / status / due / pending_* / tags 等を保持
 ├── _task_triggers/
 │   └── daily_report/
 │       ├── trigger.yaml     # 自動タスクの発動条件と実行設定

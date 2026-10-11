@@ -1048,22 +1048,14 @@ components:
           type: string
     Task:
       type: object
-      required: [id, title, status, priority]
+      required: [id, title, status]
       properties:
         id:
           type: string
         title:
           type: string
-        description:
-          type: string
-        agent_kind:
-          type: string
         status:
           $ref: "#/components/schemas/TaskStatus"
-        priority:
-          $ref: "#/components/schemas/TaskPriority"
-        assignee:
-          type: string
         due:
           type: string
         pending_until:
@@ -1086,9 +1078,6 @@ components:
     TaskStatus:
       type: string
       enum: ["todo", "doing", "blocked", "review", "done"]
-    TaskPriority:
-      type: string
-      enum: ["low", "medium", "high", "urgent"]
     CreateTaskRequest:
       type: object
       required: [name]
@@ -1097,16 +1086,8 @@ components:
           type: string
         content:
           type: string
-        description:
-          type: string
-        agent_kind:
-          type: string
         status:
           $ref: "#/components/schemas/TaskStatus"
-        priority:
-          $ref: "#/components/schemas/TaskPriority"
-        assignee:
-          type: string
         due:
           type: string
         tags:
@@ -1203,16 +1184,8 @@ components:
       properties:
         name:
           type: string
-        description:
-          type: string
-        agent_kind:
-          type: string
         status:
           $ref: "#/components/schemas/TaskStatus"
-        priority:
-          $ref: "#/components/schemas/TaskPriority"
-        assignee:
-          type: string
         due:
           type: string
         tags:

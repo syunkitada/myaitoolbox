@@ -22,7 +22,6 @@ describe('NewTaskDialog', () => {
       id: '20260927_task',
       title: 'Task',
       status: 'todo',
-      priority: 'medium',
     })
     vi.mocked(api.createTaskTrigger).mockResolvedValue({
       id: 'daily-report',
@@ -85,7 +84,6 @@ describe('NewTaskDialog', () => {
 
     await waitFor(() => expect(api.createTask).toHaveBeenCalledWith({
       name: 'Task',
-      agent_kind: 'codex',
       content: DEFAULT_TASK_TEMPLATE.replace(DEFAULT_TASK_BODY, 'custom task body'),
     }))
     expect(api.startTaskAgent).toHaveBeenCalledWith('20260927_task', { kind: 'codex', prompt: undefined })

@@ -50,14 +50,12 @@ func TestTaskRepositoryLifecycle(t *testing.T) {
 	assert.Equal(t, "fix-login", task.Title)
 
 	task.Status = domain.TaskStatusDoing
-	task.Priority = domain.TaskPriorityHigh
 	err = repo.Update(ctx, *task)
 	require.NoError(t, err)
 
 	got, err := repo.Find(ctx, "20260801_0900_fix-login")
 	require.NoError(t, err)
 	assert.Equal(t, domain.TaskStatusDoing, got.Status)
-	assert.Equal(t, domain.TaskPriorityHigh, got.Priority)
 	assert.Equal(t, "body", got.Body)
 
 	err = repo.Archive(ctx, "20260801_0900_fix-login")

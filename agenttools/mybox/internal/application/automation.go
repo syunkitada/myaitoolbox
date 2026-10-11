@@ -104,7 +104,7 @@ func (u *AutomationUseCase) RunEvent(ctx context.Context, def domain.TriggerDefi
 		return u.failRun(ctx, run, err)
 	}
 	taskID := automationTaskID(def.ID, event.ID, eventTime(event, now))
-	task, err := u.Tasks.CreateFromContent(ctx, taskID, string(content), def.AgentKind, def.Tags)
+	task, err := u.Tasks.CreateFromContent(ctx, taskID, string(content), def.Tags)
 	if err != nil {
 		return u.failRun(ctx, run, err)
 	}

@@ -25,7 +25,7 @@ describe('api client', () => {
   })
 
   it('serializes body as json', async () => {
-    mockFetch(201, { id: 'x', title: 'T', status: 'todo', priority: 'low' })
+    mockFetch(201, { id: 'x', title: 'T', status: 'todo' })
     await api.createTask({ name: 'T' })
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/tasks',

@@ -120,7 +120,7 @@ func TestCLITaskLifecycle(t *testing.T) {
 	require.Len(t, tasks, 1)
 	assert.Equal(t, id, tasks[0].ID)
 
-	runCLIOk(t, "task", "set", "--status", "doing", "--priority", "high", "--assignee", "me", id)
+	runCLIOk(t, "task", "set", "--status", "doing", id)
 	out = runCLIOk(t, "task", "show", id)
 	assert.Contains(t, out, "doing")
 
@@ -128,7 +128,7 @@ func TestCLITaskLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	content := string(raw)
 	assert.Contains(t, content, "status: doing")
-	assert.Contains(t, content, "priority: high")
+	assert.NotContains(t, content, "priority:")
 
 	runCLIOk(t, "task", "archive", id)
 	out = runCLIOk(t, "task", "list", "--json")

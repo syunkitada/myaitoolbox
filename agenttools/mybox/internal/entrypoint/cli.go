@@ -131,7 +131,7 @@ func newTaskCommand(project *string) *cobra.Command {
 
 func newTaskListCommand(project *string) *cobra.Command {
 	var all, jsonOut bool
-	var status, tag, assignee string
+	var status, tag string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List tasks",
@@ -141,7 +141,7 @@ func newTaskListCommand(project *string) *cobra.Command {
 				return err
 			}
 			tasks, err := app.Tasks.List(cmd.Context(), application.TaskFilter{
-				All: all, Status: status, Tag: tag, Assignee: assignee,
+				All: all, Status: status, Tag: tag,
 			})
 			if err != nil {
 				return err
@@ -152,7 +152,6 @@ func newTaskListCommand(project *string) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "include archived tasks")
 	cmd.Flags().StringVar(&status, "status", "", "filter by status")
 	cmd.Flags().StringVar(&tag, "tag", "", "filter by tag")
-	cmd.Flags().StringVar(&assignee, "assignee", "", "filter by assignee")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 	return cmd
 }
@@ -177,7 +176,7 @@ func newTaskShowCommand(project *string) *cobra.Command {
 }
 
 func newTaskCreateCommand(project *string) *cobra.Command {
-	var name, description, agentKind, prompt string
+	var name, agentKind, prompt string
 	var jsonOut, noAgent bool
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -192,17 +191,12 @@ func newTaskCreateCommand(project *string) *cobra.Command {
 				return fmt.Errorf("unsupported agent kind %q", agentKind)
 			}
 			task, err := app.Tasks.Create(cmd.Context(), application.TaskInput{
-				Name:        name,
-				Description: description,
-				AgentKind:   agentKind,
+				Name: name,
 			})
 			if err != nil {
 				return err
 			}
 			kind := agentKind
-			if kind == "" {
-				kind = task.AgentKind
-			}
 			if kind != "" && !validHerdrAgentKind(kind) {
 				return fmt.Errorf("unsupported agent kind %q", kind)
 			}
@@ -230,7 +224,6 @@ func newTaskCreateCommand(project *string) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "task name")
-	cmd.Flags().StringVar(&description, "description", "", "task description")
 	cmd.Flags().StringVar(&agentKind, "agent-kind", "", "agent kind to launch for this task (e.g. opencode)")
 	cmd.Flags().StringVar(&prompt, "prompt", "", "prompt template name or inline prompt sent to the agent")
 	cmd.Flags().BoolVar(&noAgent, "no-agent", false, "do not start a herdr agent")
@@ -288,7 +281,7 @@ func newTaskEditCommand(project *string) *cobra.Command {
 }
 
 func newTaskSetCommand(project *string) *cobra.Command {
-	var status, priority, assignee, due string
+	var status, due string
 	var tags string
 	cmd := &cobra.Command{
 		Use:   "set <task-id>",
@@ -299,7 +292,7 @@ func newTaskSetCommand(project *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			input := application.TaskInput{Status: status, Priority: priority, Assignee: assignee, Due: due}
+			input := application.TaskInput{Status: status, Due: due}
 			if tags != "" {
 				input.Tags = splitTags(tags)
 			}
@@ -307,13 +300,11 @@ func newTaskSetCommand(project *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "updated %s (status=%s priority=%s)\n", task.ID, task.Status, task.Priority)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "updated %s (status=%s)\n", task.ID, task.Status)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&status, "status", "", "status (todo|doing|blocked|review|done)")
-	cmd.Flags().StringVar(&priority, "priority", "", "priority (low|medium|high|urgent)")
-	cmd.Flags().StringVar(&assignee, "assignee", "", "assignee")
 	cmd.Flags().StringVar(&due, "due", "", "due date")
 	cmd.Flags().StringVar(&tags, "tags", "", "comma-separated tags")
 	return cmd
@@ -676,9 +667,9 @@ func printTasks(cmd *cobra.Command, tasks []domain.Task, jsonOut bool) error {
 		return nil
 	}
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "ID\tSTATUS\tPRIORITY\tASSIGNEE\tDUE\tTITLE")
+	_, _ = fmt.Fprintln(w, "ID\tSTATUS\tDUE\tTITLE")
 	for _, t := range tasks {
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", t.ID, t.Status, t.Priority, t.Assignee, t.Due, t.Title)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, t.Status, t.Due, t.Title)
 	}
 	return w.Flush()
 }
@@ -688,8 +679,6 @@ func printTaskDetail(cmd *cobra.Command, task *domain.Task) error {
 	_, _ = fmt.Fprintf(w, "ID:\t%s\n", task.ID)
 	_, _ = fmt.Fprintf(w, "Title:\t%s\n", task.Title)
 	_, _ = fmt.Fprintf(w, "Status:\t%s\n", task.Status)
-	_, _ = fmt.Fprintf(w, "Priority:\t%s\n", task.Priority)
-	_, _ = fmt.Fprintf(w, "Assignee:\t%s\n", task.Assignee)
 	_, _ = fmt.Fprintf(w, "Due:\t%s\n", task.Due)
 	_, _ = fmt.Fprintf(w, "Tags:\t%s\n", strings.Join(task.Tags, ", "))
 	_, _ = fmt.Fprintf(w, "Project:\t%s\n", task.Project)

@@ -679,20 +679,8 @@ func (s *Server) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	input := application.TaskInput{Name: req.Name}
 	input.Content = req.Content
-	if req.Description != nil {
-		input.Description = *req.Description
-	}
-	if req.AgentKind != nil {
-		input.AgentKind = *req.AgentKind
-	}
 	if req.Status != nil {
 		input.Status = string(*req.Status)
-	}
-	if req.Priority != nil {
-		input.Priority = string(*req.Priority)
-	}
-	if req.Assignee != nil {
-		input.Assignee = *req.Assignee
 	}
 	if req.Due != nil {
 		input.Due = *req.Due
@@ -886,22 +874,9 @@ func (s *Server) UpdateTask(w http.ResponseWriter, r *http.Request, id string) {
 	if req.Name != nil {
 		patch.Name = req.Name
 	}
-	if req.Description != nil {
-		patch.Description = req.Description
-	}
-	if req.AgentKind != nil {
-		patch.AgentKind = req.AgentKind
-	}
 	if req.Status != nil {
 		status := string(*req.Status)
 		patch.Status = &status
-	}
-	if req.Priority != nil {
-		priority := string(*req.Priority)
-		patch.Priority = &priority
-	}
-	if req.Assignee != nil {
-		patch.Assignee = req.Assignee
 	}
 	if req.Due != nil {
 		patch.Due = req.Due
@@ -1370,11 +1345,7 @@ func toAPITask(t domain.Task) api.Task {
 	return api.Task{
 		Id:            t.ID,
 		Title:         t.Title,
-		Description:   strPtr(t.Description),
-		AgentKind:     strPtr(t.AgentKind),
 		Status:        api.TaskStatus(t.Status),
-		Priority:      api.TaskPriority(t.Priority),
-		Assignee:      strPtr(t.Assignee),
 		Due:           strPtr(t.Due),
 		PendingUntil:  strPtr(t.PendingUntil),
 		PendingReason: strPtr(t.PendingReason),

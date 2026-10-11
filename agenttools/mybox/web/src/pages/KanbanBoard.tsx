@@ -16,7 +16,7 @@ import { NewTaskDialog } from '../components/NewTaskDialog'
 import { useDialogs } from '../components/AppDialogs'
 import { Archive, ListPlus, MoreVertical, ExternalLink, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { DueBadge, PendingBadge, PriorityBadge, ProjectBadge, TagBadge } from '../components/badges'
+import { DueBadge, PendingBadge, ProjectBadge, TagBadge } from '../components/badges'
 import { StatusBadge } from '../components/herdr-status'
 import { TaskProgress } from '../components/TaskProgress'
 import { extractMarkdownTaskProgress } from '../utils/markdown'
@@ -183,7 +183,6 @@ function TaskCard({ task, herdrOverview, onOpen, onArchive, onDelete, showProjec
       <TaskProgress {...taskProgress} className="mt-1.5" />
       <div className="board-card-meta mt-1.5 flex flex-wrap gap-1">
         {showProject && task.project && <ProjectBadge>{task.project}</ProjectBadge>}
-        <PriorityBadge priority={task.priority} />
         {agent && (
           <span data-testid="task-agent-status" title={`Agent ${agent.name}`}>
             <StatusBadge status={agent.status} />

@@ -43,30 +43,6 @@ func (e HerdrPaneSplitRequestDirection) Valid() bool {
 	}
 }
 
-// Defines values for TaskPriority.
-const (
-	High   TaskPriority = "high"
-	Low    TaskPriority = "low"
-	Medium TaskPriority = "medium"
-	Urgent TaskPriority = "urgent"
-)
-
-// Valid indicates whether the value is a known member of the TaskPriority enum.
-func (e TaskPriority) Valid() bool {
-	switch e {
-	case High:
-		return true
-	case Low:
-		return true
-	case Medium:
-		return true
-	case Urgent:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for TaskStatus.
 const (
 	Blocked TaskStatus = "blocked"
@@ -108,15 +84,11 @@ type CreateProjectRequest struct {
 
 // CreateTaskRequest defines model for CreateTaskRequest.
 type CreateTaskRequest struct {
-	AgentKind   *string       `json:"agent_kind,omitempty"`
-	Assignee    *string       `json:"assignee,omitempty"`
-	Content     *string       `json:"content,omitempty"`
-	Description *string       `json:"description,omitempty"`
-	Due         *string       `json:"due,omitempty"`
-	Name        string        `json:"name"`
-	Priority    *TaskPriority `json:"priority,omitempty"`
-	Status      *TaskStatus   `json:"status,omitempty"`
-	Tags        *[]string     `json:"tags,omitempty"`
+	Content *string     `json:"content,omitempty"`
+	Due     *string     `json:"due,omitempty"`
+	Name    string      `json:"name"`
+	Status  *TaskStatus `json:"status,omitempty"`
+	Tags    *[]string   `json:"tags,omitempty"`
 }
 
 // Favorite defines model for Favorite.
@@ -414,25 +386,18 @@ type ScheduledPrompt struct {
 
 // Task defines model for Task.
 type Task struct {
-	AgentKind     *string      `json:"agent_kind,omitempty"`
-	Archived      *bool        `json:"archived,omitempty"`
-	Assignee      *string      `json:"assignee,omitempty"`
-	Body          *string      `json:"body,omitempty"`
-	Created       *time.Time   `json:"created,omitempty"`
-	Description   *string      `json:"description,omitempty"`
-	Due           *string      `json:"due,omitempty"`
-	Id            string       `json:"id"`
-	PendingReason *string      `json:"pending_reason,omitempty"`
-	PendingUntil  *string      `json:"pending_until,omitempty"`
-	Priority      TaskPriority `json:"priority"`
-	Project       *string      `json:"project,omitempty"`
-	Status        TaskStatus   `json:"status"`
-	Tags          *[]string    `json:"tags,omitempty"`
-	Title         string       `json:"title"`
+	Archived      *bool      `json:"archived,omitempty"`
+	Body          *string    `json:"body,omitempty"`
+	Created       *time.Time `json:"created,omitempty"`
+	Due           *string    `json:"due,omitempty"`
+	Id            string     `json:"id"`
+	PendingReason *string    `json:"pending_reason,omitempty"`
+	PendingUntil  *string    `json:"pending_until,omitempty"`
+	Project       *string    `json:"project,omitempty"`
+	Status        TaskStatus `json:"status"`
+	Tags          *[]string  `json:"tags,omitempty"`
+	Title         string     `json:"title"`
 }
-
-// TaskPriority defines model for TaskPriority.
-type TaskPriority string
 
 // TaskStatus defines model for TaskStatus.
 type TaskStatus string
@@ -448,14 +413,10 @@ type UpdateFavoriteRequest struct {
 
 // UpdateTaskRequest defines model for UpdateTaskRequest.
 type UpdateTaskRequest struct {
-	AgentKind   *string       `json:"agent_kind,omitempty"`
-	Assignee    *string       `json:"assignee,omitempty"`
-	Description *string       `json:"description,omitempty"`
-	Due         *string       `json:"due,omitempty"`
-	Name        *string       `json:"name,omitempty"`
-	Priority    *TaskPriority `json:"priority,omitempty"`
-	Status      *TaskStatus   `json:"status,omitempty"`
-	Tags        *[]string     `json:"tags,omitempty"`
+	Due    *string     `json:"due,omitempty"`
+	Name   *string     `json:"name,omitempty"`
+	Status *TaskStatus `json:"status,omitempty"`
+	Tags   *[]string   `json:"tags,omitempty"`
 }
 
 // ListFilesParams defines parameters for ListFiles.

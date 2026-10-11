@@ -1502,7 +1502,6 @@ describe('task actions in file viewer', () => {
       id: '20260927_demo',
       title: 'demo',
       status: 'review',
-      priority: 'medium',
     })
     renderTaskFile()
 

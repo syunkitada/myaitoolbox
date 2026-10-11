@@ -28,10 +28,10 @@ function renderBoard(herdrOverview?: HerdrOverview | null, path = '/projects/tes
 }
 
 const tasks: Task[] = [
-  { id: 't1', title: 'Todo item', status: 'todo', priority: 'high' },
-  { id: 't2', title: 'Doing item', status: 'doing', priority: 'medium' },
-  { id: 't3', title: 'Done item', status: 'done', priority: 'low' },
-  { id: 't4', title: 'Archived item', status: 'done', priority: 'low', archived: true },
+  { id: 't1', title: 'Todo item', status: 'todo' },
+  { id: 't2', title: 'Doing item', status: 'doing' },
+  { id: 't3', title: 'Done item', status: 'done' },
+  { id: 't4', title: 'Archived item', status: 'done', archived: true },
 ]
 
 describe('KanbanBoard', () => {
@@ -79,7 +79,6 @@ describe('KanbanBoard', () => {
         id: 'progress',
         title: 'Progress item',
         status: 'todo',
-        priority: 'medium',
         body: '- [ ] first\n- [x] second\n- [X] third',
       },
     ])
@@ -95,8 +94,6 @@ describe('KanbanBoard', () => {
       id: '20260929_linked-agent',
       title: 'Linked agent task',
       status: 'doing',
-      priority: 'high',
-      agent_kind: 'opencode',
     }
     vi.mocked(api.listTasks).mockResolvedValue([linkedTask])
 
@@ -124,7 +121,6 @@ describe('KanbanBoard', () => {
       id: '20260929_unlinked-agent',
       title: 'Unlinked agent task',
       status: 'todo',
-      priority: 'medium',
     }
     vi.mocked(api.listTasks).mockResolvedValue([taskWithoutAgent])
 
@@ -152,7 +148,6 @@ describe('KanbanBoard', () => {
       id: '20260929_cross-project-agent',
       title: 'Cross-project agent task',
       status: 'doing',
-      priority: 'high',
       project: 'other-project',
     }
     vi.mocked(api.listTasks).mockResolvedValue([linkedTask])
@@ -181,14 +176,13 @@ describe('KanbanBoard', () => {
   it('dims a task only until its pending date, while keeping expired metadata visible', async () => {
     vi.setSystemTime(new Date(2026, 8, 27, 12))
     vi.mocked(api.listTasks).mockResolvedValue([
-      { id: 'future', title: 'Future pending item', status: 'todo', priority: 'medium', pending_until: '20260928' },
-      { id: 'today', title: 'Today pending item', status: 'todo', priority: 'medium', pending_until: '20260927' },
-      { id: 'expired', title: 'Expired pending item', status: 'todo', priority: 'medium', pending_until: '20260926' },
+      { id: 'future', title: 'Future pending item', status: 'todo', pending_until: '20260928' },
+      { id: 'today', title: 'Today pending item', status: 'todo', pending_until: '20260927' },
+      { id: 'expired', title: 'Expired pending item', status: 'todo', pending_until: '20260926' },
       {
         id: 'reason-only',
         title: 'Reason-only pending item',
         status: 'todo',
-        priority: 'medium',
         pending_reason: 'Waiting for review',
       },
     ])

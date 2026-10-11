@@ -33,7 +33,7 @@ func newAutomationUC(t *testing.T, dispatcher domain.AgentDispatcher) (*Automati
 	triggerDir := filepath.Join(root, "_task_triggers", "daily_report")
 	require.NoError(t, os.MkdirAll(triggerDir, 0o755))
 	templatePath := filepath.Join(triggerDir, "task.md")
-	require.NoError(t, os.WriteFile(templatePath, []byte("---\ntitle: Daily report\npriority: high\n---\n\nPrepare the report."), 0o644))
+	require.NoError(t, os.WriteFile(templatePath, []byte("---\ntitle: Daily report\n---\n\nPrepare the report."), 0o644))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "prompts"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "prompts", "run-report.md"), []byte("run `$task_file_path` for $trigger_id"), 0o644))
 	store := automation.NewRunStore(filepath.Join(root, "state"))
@@ -75,7 +75,6 @@ func TestAutomationRunEventCreatesAndDispatchesTask(t *testing.T) {
 	task, err := uc.Tasks.Show(context.Background(), run.TaskID)
 	require.NoError(t, err)
 	assert.Equal(t, domain.TaskStatusTodo, task.Status)
-	assert.Equal(t, domain.TaskPriorityHigh, task.Priority)
 	assert.Contains(t, task.Body, "Prepare the report.")
 
 	stored, err := store.Find(context.Background(), "demo", def.ID, event.ID)

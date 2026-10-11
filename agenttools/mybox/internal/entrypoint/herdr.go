@@ -1741,7 +1741,7 @@ func (s *Server) startHerdrFileAgent(ctx context.Context, app *App, path string,
 type herdrStartTaskAgentRequest struct {
 	// TaskID identifies the task whose markdown file the agent works on.
 	TaskID string `json:"task_id"`
-	// AgentKind overrides the task's agent_kind metadata (default: opencode).
+	// AgentKind selects the agent executable (default: opencode).
 	AgentKind string `json:"agent_kind"`
 	// Prompt is either a prompt template name (prompts/<name>.md, "@"-prefixed
 	// or matching an existing template) or an inline prompt. When empty no
@@ -1784,9 +1784,6 @@ func (s *Server) StartTaskAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := strings.TrimSpace(req.AgentKind)
-	if kind == "" {
-		kind = task.AgentKind
-	}
 	if kind == "" {
 		kind = "opencode"
 	}

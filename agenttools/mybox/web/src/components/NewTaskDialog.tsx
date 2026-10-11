@@ -171,7 +171,6 @@ export function NewTaskDialog({
       }
       const task = await api.createTask({
         name: trimmed,
-        agent_kind: agentKind || undefined,
         content: composeTaskContent(templateContent, content),
       })
       if (agentKind || prompt.trim()) {

@@ -24,16 +24,14 @@ func NewTaskRepository(root string) *TaskRepository {
 
 type taskFields struct {
 	Title         string   `yaml:"title"`
-	Description   string   `yaml:"description"`
-	AgentKind     string   `yaml:"agent_kind"`
 	Status        string   `yaml:"status"`
-	Priority      string   `yaml:"priority"`
-	Assignee      string   `yaml:"assignee"`
 	Due           string   `yaml:"due"`
 	PendingUntil  string   `yaml:"pending_until"`
 	PendingReason string   `yaml:"pending_reason"`
 	Tags          []string `yaml:"tags"`
 }
+
+var deprecatedTaskMetadataKeys = []string{"priority", "agent_kind", "assignee", "description"}
 
 func (r *TaskRepository) List(ctx context.Context) ([]domain.Task, error) {
 	return r.list(filepath.Join(r.root, "_tasks"), false)
@@ -90,17 +88,10 @@ func (r *TaskRepository) readTaskFile(path string, id string, archived bool) (*d
 	if f.Status == "" {
 		f.Status = string(domain.TaskStatusTodo)
 	}
-	if f.Priority == "" {
-		f.Priority = string(domain.TaskPriorityMedium)
-	}
 	return &domain.Task{
 		ID:            id,
 		Title:         f.Title,
-		Description:   f.Description,
-		AgentKind:     f.AgentKind,
 		Status:        domain.TaskStatus(f.Status),
-		Priority:      domain.TaskPriority(f.Priority),
-		Assignee:      f.Assignee,
 		Due:           f.Due,
 		PendingUntil:  f.PendingUntil,
 		PendingReason: f.PendingReason,
@@ -147,10 +138,36 @@ func (r *TaskRepository) Create(ctx context.Context, id string, content string) 
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, id)
 	}
+	content, err := removeDeprecatedTaskMetadata(content)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	return fsutil.WriteFileAtomic(filepath.Join(dir, "task.md"), []byte(content), 0o644)
+}
+
+func removeDeprecatedTaskMetadata(content string) (string, error) {
+	fmStr, body, ok := splitFrontMatter(content)
+	if !ok {
+		return content, nil
+	}
+	fm, err := parseFrontMatter(fmStr)
+	if err != nil {
+		return "", err
+	}
+	changed := false
+	for _, key := range deprecatedTaskMetadataKeys {
+		if _, exists := fm[key]; exists {
+			delete(fm, key)
+			changed = true
+		}
+	}
+	if !changed {
+		return content, nil
+	}
+	return buildFrontMatter(fm, body)
 }
 
 func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
@@ -183,11 +200,7 @@ func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
 	delete(fm, "type")
 	delete(fm, "task_kind")
 	fm["title"] = task.Title
-	fm["description"] = task.Description
-	fm["agent_kind"] = task.AgentKind
 	fm["status"] = string(task.Status)
-	fm["priority"] = string(task.Priority)
-	fm["assignee"] = task.Assignee
 	fm["due"] = task.Due
 	if task.Tags == nil {
 		task.Tags = []string{}

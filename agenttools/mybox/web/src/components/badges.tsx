@@ -26,18 +26,6 @@ export function StatusBadge({ status, className }: { status: string; className?:
   )
 }
 
-export function PriorityBadge({ priority, className }: { priority: string; className?: string }) {
-  const style =
-    priority === 'high' || priority === 'urgent'
-      ? 'border-transparent bg-red-100 text-red-800'
-      : 'border-transparent bg-slate-100 text-slate-600'
-  return (
-    <Badge variant="outline" className={cn('badge', `priority-${priority}`, style, className)}>
-      {priority}
-    </Badge>
-  )
-}
-
 export function TagBadge({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <Badge variant="outline" className={cn('badge tag border-transparent bg-indigo-100 text-indigo-700', className)}>

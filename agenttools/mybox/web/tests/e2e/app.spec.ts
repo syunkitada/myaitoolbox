@@ -1111,20 +1111,17 @@ test('dashboard edits frontmatter metadata separately from the body', async ({ p
   // the metadata form is collapsed by default; expand it first
   await page.getByRole('button', { name: /Metadata/ }).click()
   await page.getByLabel('Metadata status').selectOption('done')
-  await page.getByLabel('Metadata priority').selectOption('high')
   await page.getByLabel('Metadata tags').fill('docs, meta')
   await fillMonacoEditor(page, '# Tasks\n\nMetadata added.\n')
   await page.getByRole('button', { name: 'Save' }).click()
 
   await expect(page.locator('.frontmatter-card .badge.status-done')).toBeVisible()
-  await expect(page.locator('.frontmatter-card .badge.priority-high')).toBeVisible()
   await expect(page.locator('.frontmatter-card .badge.tag').filter({ hasText: 'docs' })).toBeVisible()
   await expect(page.getByText('Metadata added.')).toBeVisible()
 
   const res = await page.request.get('/api/files/content?path=tasks.md')
   const body = (await res.json()) as { content: string }
   expect(body.content).toContain('status: done')
-  expect(body.content).toContain('priority: high')
   expect(body.content).toContain('tags')
   expect(body.content).toContain('docs')
   expect(body.content).toContain('Metadata added.')
@@ -1867,7 +1864,7 @@ test('board drag-and-drop changes task status and front matter', async ({ page }
 test('task without type is created and listed plainly, and can be archived', async ({ page }) => {
   const created = await page.request.post('/api/tasks', {
     headers: { 'X-Project': 'proj' },
-    data: { name: 'Review PR #99', priority: 'urgent' },
+    data: { name: 'Review PR #99' },
   })
   expect(created.ok()).toBeTruthy()
   const task = (await created.json()) as { id: string; type?: string }

@@ -38,10 +38,10 @@ show="$("$BIN" task show --project proj "$id")"
 case "$show" in *Test\ task*) ok "task shown";; *) fail "task shown";; esac
 
 step "task set / archive"
-"$BIN" task set --project proj "$id" --status doing --priority high >/dev/null
+"$BIN" task set --project proj "$id" --status doing >/dev/null
 front="$(cat "$PROJ/_tasks/$id/task.md")"
 case "$front" in *"status: doing"*) ok "task set wrote status";; *) fail "task set wrote status";; esac
-case "$front" in *"priority: high"*) ok "task set wrote priority";; *) fail "task set wrote priority";; esac
+case "$front" in *"priority:"*) fail "task set did not write priority";; *) ok "task set did not write priority";; esac
 "$BIN" task archive --project proj "$id" >/dev/null
 archived="$("$BIN" task list --project proj --all)"
 case "$archived" in *test-task*) ok "archived task visible with --all";; *) fail "archived task visible with --all";; esac

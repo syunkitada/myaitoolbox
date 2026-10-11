@@ -12,23 +12,10 @@ const (
 	TaskStatusDone    TaskStatus = "done"
 )
 
-type TaskPriority string
-
-const (
-	TaskPriorityLow    TaskPriority = "low"
-	TaskPriorityMedium TaskPriority = "medium"
-	TaskPriorityHigh   TaskPriority = "high"
-	TaskPriorityUrgent TaskPriority = "urgent"
-)
-
 type Task struct {
 	ID            string
 	Title         string
-	Description   string
-	AgentKind     string
 	Status        TaskStatus
-	Priority      TaskPriority
-	Assignee      string
 	Due           string
 	PendingUntil  string
 	PendingReason string

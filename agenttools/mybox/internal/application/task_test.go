@@ -34,11 +34,9 @@ func TestTaskCreateUpdateArchive(t *testing.T) {
 	assert.Equal(t, domain.TaskStatusTodo, task.Status)
 	assert.Equal(t, "test", task.Project)
 
-	updated, err := uc.Update(ctx, task.ID, TaskInput{Status: "doing", Priority: "high", Assignee: "owner"})
+	updated, err := uc.Update(ctx, task.ID, TaskInput{Status: "doing"})
 	require.NoError(t, err)
 	assert.Equal(t, domain.TaskStatusDoing, updated.Status)
-	assert.Equal(t, domain.TaskPriorityHigh, updated.Priority)
-	assert.Equal(t, "owner", updated.Assignee)
 
 	got, err := uc.Show(ctx, task.ID)
 	require.NoError(t, err)
@@ -55,22 +53,58 @@ func TestTaskCreateUpdateArchive(t *testing.T) {
 	assert.True(t, all[0].Archived)
 }
 
+func TestTaskCreateOmitsDeprecatedMetadata(t *testing.T) {
+	uc := newTaskUC(t)
+
+	task, err := uc.Create(context.Background(), TaskInput{Name: "minimal task"})
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(filepath.Join(uc.ProjectPath, "_tasks", task.ID, "task.md"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(content), "priority:")
+	assert.NotContains(t, string(content), "agent_kind:")
+	assert.NotContains(t, string(content), "assignee:")
+	assert.NotContains(t, string(content), "description:")
+}
+
+func TestTaskUpdatePreservesDeprecatedMetadataInExistingFile(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+	content := "---\ntitle: legacy task\nstatus: todo\npriority: high\nagent_kind: opencode\nassignee: owner\ndescription: legacy summary\n---\n\nbody"
+	id := "20260927_legacy-task"
+	taskDir := filepath.Join(uc.ProjectPath, "_tasks", id)
+	require.NoError(t, os.MkdirAll(taskDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(taskDir, "task.md"), []byte(content), 0o644))
+
+	_, err := uc.Update(ctx, id, TaskInput{Status: "doing"})
+	require.NoError(t, err)
+
+	updated, err := os.ReadFile(filepath.Join(uc.ProjectPath, "_tasks", id, "task.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(updated), "priority: high")
+	assert.Contains(t, string(updated), "agent_kind: opencode")
+	assert.Contains(t, string(updated), "assignee: owner")
+	assert.Contains(t, string(updated), "description: legacy summary")
+}
+
 func TestTaskCreateFromContent(t *testing.T) {
 	uc := newTaskUC(t)
 	ctx := context.Background()
-	content := "---\ntitle: Daily report\nstatus: done\npriority: high\ncustom: preserve\n---\n\nPrepare the report."
+	content := "---\ntitle: Daily report\nstatus: done\npriority: high\nagent_kind: opencode\nassignee: owner\ndescription: legacy summary\ncustom: preserve\n---\n\nPrepare the report."
 
-	task, err := uc.CreateFromContent(ctx, "20260927_daily-report", content, "opencode", []string{"scheduled"})
+	task, err := uc.CreateFromContent(ctx, "20260927_daily-report", content, []string{"scheduled"})
 	require.NoError(t, err)
 	assert.Equal(t, "20260927_daily-report", task.ID)
 	assert.Equal(t, "Daily report", task.Title)
 	assert.Equal(t, domain.TaskStatusTodo, task.Status)
-	assert.Equal(t, domain.TaskPriorityHigh, task.Priority)
-	assert.Equal(t, "opencode", task.AgentKind)
 	assert.Equal(t, []string{"scheduled"}, task.Tags)
 
 	data, err := os.ReadFile(filepath.Join(uc.ProjectPath, "_tasks", task.ID, "task.md"))
 	require.NoError(t, err)
+	assert.NotContains(t, string(data), "priority:")
+	assert.NotContains(t, string(data), "agent_kind:")
+	assert.NotContains(t, string(data), "assignee:")
+	assert.NotContains(t, string(data), "description:")
 	assert.Contains(t, string(data), "custom: preserve")
 	assert.Contains(t, string(data), "Prepare the report.")
 }
@@ -82,7 +116,7 @@ func TestTaskCreateFromContentRejectsDuplicateName(t *testing.T) {
 	require.NoError(t, err)
 
 	content := "---\ntitle: Daily report\n---\n\nGenerated report."
-	_, err = uc.CreateFromContent(ctx, "20260927_daily-report-2", content, "opencode", nil)
+	_, err = uc.CreateFromContent(ctx, "20260927_daily-report-2", content, nil)
 	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
 
 	_, err = uc.Show(ctx, "20260927_daily-report-2")
@@ -91,15 +125,37 @@ func TestTaskCreateFromContentRejectsDuplicateName(t *testing.T) {
 
 func TestTaskCreateUsesProvidedContent(t *testing.T) {
 	uc := newTaskUC(t)
-	content := "---\ntitle: Draft\n---\n\n## Custom body\n\n- supplied by the user\n"
+	content := "---\ntitle: Draft\npriority: high\nagent_kind: opencode\nassignee: owner\ndescription: legacy summary\n---\n\n## Custom body\n\n- supplied by the user\n"
 
 	task, err := uc.Create(context.Background(), TaskInput{Name: "Custom task", Content: &content})
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(uc.ProjectPath, "_tasks", task.ID, "task.md"))
 	require.NoError(t, err)
+	assert.NotContains(t, string(data), "priority:")
+	assert.NotContains(t, string(data), "agent_kind:")
+	assert.NotContains(t, string(data), "assignee:")
+	assert.NotContains(t, string(data), "description:")
 	assert.Contains(t, string(data), "## Custom body")
 	assert.Contains(t, string(data), "- supplied by the user")
+}
+
+func TestTaskCreateStripsDeprecatedMetadataFromProjectTemplate(t *testing.T) {
+	uc := newTaskUC(t)
+	templateDir := filepath.Join(uc.ProjectPath, "templates", "task")
+	require.NoError(t, os.MkdirAll(templateDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(templateDir, "task.md"), []byte("---\ntitle: {{.Name}}\npriority: high\nagent_kind: opencode\nassignee: owner\ndescription: legacy summary\n---\n\nProject template body\n"), 0o644))
+
+	task, err := uc.Create(context.Background(), TaskInput{Name: "Project template task"})
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(uc.ProjectPath, "_tasks", task.ID, "task.md"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "priority:")
+	assert.NotContains(t, string(data), "agent_kind:")
+	assert.NotContains(t, string(data), "assignee:")
+	assert.NotContains(t, string(data), "description:")
+	assert.Contains(t, string(data), "Project template body")
 }
 
 func TestRenderTaskTemplate(t *testing.T) {
@@ -206,57 +262,24 @@ func TestTaskCreateInvalidStatus(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
 }
 
-func TestTaskDescriptionAgentKind(t *testing.T) {
-	uc := newTaskUC(t)
-	ctx := context.Background()
-
-	task, err := uc.Create(ctx, TaskInput{Name: "Ship parser", Description: "parse everything", AgentKind: "opencode"})
-	require.NoError(t, err)
-	assert.Equal(t, "parse everything", task.Description)
-	assert.Equal(t, "opencode", task.AgentKind)
-
-	got, err := uc.Show(ctx, task.ID)
-	require.NoError(t, err)
-	assert.Equal(t, "parse everything", got.Description)
-	assert.Equal(t, "opencode", got.AgentKind)
-
-	updated, err := uc.Update(ctx, task.ID, TaskInput{AgentKind: "codex"})
-	require.NoError(t, err)
-	assert.Equal(t, "parse everything", updated.Description)
-	assert.Equal(t, "codex", updated.AgentKind)
-
-	got, err = uc.Show(ctx, task.ID)
-	require.NoError(t, err)
-	assert.Equal(t, "codex", got.AgentKind)
-}
-
 func TestTaskPatchClearsOptionalFields(t *testing.T) {
 	uc := newTaskUC(t)
 	ctx := context.Background()
 	task, err := uc.Create(ctx, TaskInput{
-		Name:        "clear fields",
-		Description: "description",
-		AgentKind:   "opencode",
-		Assignee:    "owner",
-		Due:         "2026-09-21",
-		Tags:        []string{"one", "two"},
+		Name: "clear fields",
+		Due:  "2026-09-21",
+		Tags: []string{"one", "two"},
 	})
 	require.NoError(t, err)
 	empty := ""
 	emptyTags := []string{}
 	_, err = uc.Patch(ctx, task.ID, TaskPatch{
-		Description: &empty,
-		AgentKind:   &empty,
-		Assignee:    &empty,
-		Due:         &empty,
-		Tags:        &emptyTags,
+		Due:  &empty,
+		Tags: &emptyTags,
 	})
 	require.NoError(t, err)
 	got, err := uc.Show(ctx, task.ID)
 	require.NoError(t, err)
-	assert.Empty(t, got.Description)
-	assert.Empty(t, got.AgentKind)
-	assert.Empty(t, got.Assignee)
 	assert.Empty(t, got.Due)
 	assert.Empty(t, got.Tags)
 }
