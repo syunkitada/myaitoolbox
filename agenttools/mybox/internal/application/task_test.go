@@ -207,6 +207,24 @@ func TestTaskCreateRejectsDuplicateName(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
 }
 
+func TestTaskCreateAllowsNameUsedByArchivedTask(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+
+	content := "---\ntitle: Archived task\n---\n"
+	require.NoError(t, uc.Tasks.Create(ctx, "20260101_archived", content))
+	archived, err := uc.Tasks.Find(ctx, "20260101_archived")
+	require.NoError(t, err)
+	archived.Title = "日本語のタスク"
+	require.NoError(t, uc.Tasks.Update(ctx, *archived))
+	require.NoError(t, uc.Archive(ctx, archived.ID))
+
+	created, err := uc.Create(ctx, TaskInput{Name: " 日本語のタスク "})
+	require.NoError(t, err)
+	assert.Equal(t, "日本語のタスク", created.Title)
+	assert.False(t, created.Archived)
+}
+
 func TestTaskUpdateRejectsDuplicateName(t *testing.T) {
 	uc := newTaskUC(t)
 	ctx := context.Background()

@@ -115,8 +115,8 @@ func (u *TaskUseCase) RenderTaskTemplate(name string) (string, error) {
 	return u.Template.RenderTask(domain.TaskTemplateData{Name: strings.TrimSpace(name)})
 }
 
-func (u *TaskUseCase) ensureUniqueTaskTitle(ctx context.Context, title, excludeID string) error {
-	tasks, err := u.List(ctx, TaskFilter{All: true})
+func (u *TaskUseCase) ensureUniqueTaskTitle(ctx context.Context, title, excludeID string, includeArchived bool) error {
+	tasks, err := u.List(ctx, TaskFilter{All: includeArchived})
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 	if err != nil {
 		return nil, err
 	}
-	if err := u.ensureUniqueTaskTitle(ctx, name, ""); err != nil {
+	if err := u.ensureUniqueTaskTitle(ctx, name, "", false); err != nil {
 		return nil, err
 	}
 	now := time.Now()
@@ -189,7 +189,7 @@ func (u *TaskUseCase) CreateFromContent(ctx context.Context, id, content string,
 	if tags != nil {
 		task.Tags = append([]string(nil), tags...)
 	}
-	if err := u.ensureUniqueTaskTitle(ctx, task.Title, task.ID); err != nil {
+	if err := u.ensureUniqueTaskTitle(ctx, task.Title, task.ID, false); err != nil {
 		_ = u.Tasks.Delete(ctx, id)
 		return nil, err
 	}
@@ -207,7 +207,7 @@ func (u *TaskUseCase) Update(ctx context.Context, id string, input TaskInput) (*
 	}
 	if name := strings.TrimSpace(input.Name); name != "" {
 		if name != task.Title {
-			if err := u.ensureUniqueTaskTitle(ctx, name, id); err != nil {
+			if err := u.ensureUniqueTaskTitle(ctx, name, id, true); err != nil {
 				return nil, err
 			}
 		}
@@ -243,7 +243,7 @@ func (u *TaskUseCase) Patch(ctx context.Context, id string, patch TaskPatch) (*d
 			return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidArgument)
 		}
 		if name != task.Title {
-			if err := u.ensureUniqueTaskTitle(ctx, name, id); err != nil {
+			if err := u.ensureUniqueTaskTitle(ctx, name, id, true); err != nil {
 				return nil, err
 			}
 		}
