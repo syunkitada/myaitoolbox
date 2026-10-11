@@ -164,6 +164,17 @@ describe('AgentSidebar', () => {
     expect(screen.queryByTestId('agent-sidebar-agent-w2:p1')).not.toBeInTheDocument()
   })
 
+  it('shows the Japanese task title for a linked task agent', () => {
+    renderSidebar({
+      overview: {
+        ...overview,
+        agents: [{ ...overview.agents[0], task_title: '日本語のタスク' }],
+      },
+    })
+
+    expect(screen.getByText('日本語のタスク')).toBeInTheDocument()
+  })
+
   it('starts a general agent from the sidebar with a selected kind and tab', async () => {
     const onOpenAgentPane = vi.fn()
     const refresh = vi.fn().mockResolvedValue(undefined)

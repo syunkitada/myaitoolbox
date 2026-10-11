@@ -493,6 +493,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+        "409":
+          description: a task with the same name already exists in the project
   /api/task-template:
     get:
       operationId: getTaskTemplate
@@ -552,7 +554,7 @@ paths:
         "404":
           description: trigger not found
         "409":
-          description: automation is busy
+          description: automation is busy or the generated task name already exists
   /api/tasks/{id}:
     get:
       operationId: getTask
@@ -594,6 +596,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+        "409":
+          description: a task with the same name already exists in the project
     delete:
       operationId: deleteTask
       summary: Delete a task
@@ -1399,6 +1403,12 @@ components:
       properties:
         name:
           type: string
+        task_id:
+          type: string
+          description: Stable mybox task ID associated with this agent, when applicable.
+        task_title:
+          type: string
+          description: Current mybox task title used as the Herdr tab label, when applicable.
         custom_name:
           type: string
         status:

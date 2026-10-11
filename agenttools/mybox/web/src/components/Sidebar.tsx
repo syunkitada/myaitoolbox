@@ -297,10 +297,9 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
       ''
     if (!agentProject) return
     handleNav()
-    // File-agent tabs retain the original task directory label. Resolve the
-    // candidate from the already-loaded herdr overview, then verify only its
-    // task directory before navigating.
-    if (agent.custom_name) {
+    // Resolve task agents from the stable task metadata in the herdr overview;
+    // legacy responses fall back to the tab label inside the helper.
+    if (agent.task_id || agent.custom_name) {
       const filePath = taskFilePathForAgent(agent, herdr?.panes ?? [], herdr?.tabs ?? [])
       if (filePath) {
         try {

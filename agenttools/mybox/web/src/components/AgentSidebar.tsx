@@ -451,7 +451,7 @@ export function AgentSidebar({
                       data-testid={`agent-sidebar-row-${agent.pane_id}`}
                     >
                       <StatusDot status={agent.status} />
-                      <span className="truncate font-semibold">{agent.name}</span>
+                      <span className="truncate font-semibold" title={agent.name}>{agent.task_title?.trim() || agent.name}</span>
                       <StatusBadge status={agent.status} />
                       <span className="truncate font-mono text-xs text-muted-foreground">{agent.pane_id}</span>
                       {agent.title && <span className="w-full truncate text-xs text-muted-foreground">{agent.title}</span>}

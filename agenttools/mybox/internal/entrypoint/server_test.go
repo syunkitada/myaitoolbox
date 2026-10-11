@@ -307,9 +307,7 @@ func TestRunTaskTrigger(t *testing.T) {
 	assert.DirExists(t, taskDir)
 
 	rec = do(t, s, http.MethodPost, "/api/task-triggers/manual_report/run", nil)
-	assert.Equal(t, http.StatusOK, rec.Code)
-	second := decode[map[string]any](t, rec)
-	assert.NotEqual(t, result["task_id"], second["task_id"])
+	assert.Equal(t, http.StatusConflict, rec.Code)
 
 	rec = do(t, s, http.MethodPost, "/api/task-triggers/missing/run", nil)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
@@ -368,6 +366,16 @@ func TestTaskAPILifecycle(t *testing.T) {
 	list = decode[[]api.Task](t, rec)
 	require.Len(t, list, 1)
 	assert.True(t, *list[0].Archived)
+}
+
+func TestTaskAPIDuplicateNameReturnsConflict(t *testing.T) {
+	s, _ := newTestServer(t)
+
+	rec := do(t, s, http.MethodPost, "/api/tasks", map[string]any{"name": "同じタスク"})
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	rec = do(t, s, http.MethodPost, "/api/tasks", map[string]any{"name": " 同じタスク "})
+	assert.Equal(t, http.StatusConflict, rec.Code)
 }
 
 func TestMetaUnselectedProject(t *testing.T) {

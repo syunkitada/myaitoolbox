@@ -194,12 +194,18 @@ type FileSearchResult struct {
 
 // HerdrAgent defines model for HerdrAgent.
 type HerdrAgent struct {
-	CustomName  *string `json:"custom_name,omitempty"`
-	Cwd         *string `json:"cwd,omitempty"`
-	Focused     *bool   `json:"focused,omitempty"`
-	Name        string  `json:"name"`
-	PaneId      string  `json:"pane_id"`
-	Status      string  `json:"status"`
+	CustomName *string `json:"custom_name,omitempty"`
+	Cwd        *string `json:"cwd,omitempty"`
+	Focused    *bool   `json:"focused,omitempty"`
+	Name       string  `json:"name"`
+	PaneId     string  `json:"pane_id"`
+	Status     string  `json:"status"`
+
+	// TaskId Stable mybox task ID associated with this agent, when applicable.
+	TaskId *string `json:"task_id,omitempty"`
+
+	// TaskTitle Current mybox task title used as the Herdr tab label, when applicable.
+	TaskTitle   *string `json:"task_title,omitempty"`
 	Title       *string `json:"title,omitempty"`
 	WorkspaceId string  `json:"workspace_id"`
 }

@@ -98,7 +98,7 @@ func TestAutomationRunEventIsIdempotent(t *testing.T) {
 	assert.Equal(t, first.Status, second.Status)
 }
 
-func TestAutomationRunManualCreatesIndependentRuns(t *testing.T) {
+func TestAutomationRunManualRejectsDuplicateTaskName(t *testing.T) {
 	dispatcher := &fakeAgentDispatcher{}
 	uc, store, templatePath := newAutomationUC(t, dispatcher)
 	now := time.Date(2026, 9, 27, 9, 0, 0, 0, time.UTC)
@@ -115,12 +115,12 @@ func TestAutomationRunManualCreatesIndependentRuns(t *testing.T) {
 	first, err := uc.RunManual(context.Background(), def)
 	require.NoError(t, err)
 	second, err := uc.RunManual(context.Background(), def)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, domain.ErrAlreadyExists)
 
 	assert.Equal(t, domain.RunDispatched, first.Status)
-	assert.Equal(t, domain.RunDispatched, second.Status)
+	assert.Equal(t, domain.RunFailed, second.Status)
 	assert.NotEqual(t, first.EventID, second.EventID)
-	assert.NotEqual(t, first.TaskID, second.TaskID)
+	assert.Empty(t, second.TaskID)
 	runs, err := store.List(context.Background(), "demo", def.ID)
 	require.NoError(t, err)
 	assert.Len(t, runs, 2)

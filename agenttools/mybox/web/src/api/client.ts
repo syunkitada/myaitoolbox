@@ -226,6 +226,8 @@ export interface HerdrWorkspace {
 
 export interface HerdrAgent {
   name: string
+  task_id?: string | null
+  task_title?: string | null
   custom_name?: string | null
   status: string
   workspace_id: string

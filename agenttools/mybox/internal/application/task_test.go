@@ -75,6 +75,20 @@ func TestTaskCreateFromContent(t *testing.T) {
 	assert.Contains(t, string(data), "Prepare the report.")
 }
 
+func TestTaskCreateFromContentRejectsDuplicateName(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+	_, err := uc.Create(ctx, TaskInput{Name: "Daily report"})
+	require.NoError(t, err)
+
+	content := "---\ntitle: Daily report\n---\n\nGenerated report."
+	_, err = uc.CreateFromContent(ctx, "20260927_daily-report-2", content, "opencode", nil)
+	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
+
+	_, err = uc.Show(ctx, "20260927_daily-report-2")
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
 func TestTaskCreateUsesProvidedContent(t *testing.T) {
 	uc := newTaskUC(t)
 	content := "---\ntitle: Draft\n---\n\n## Custom body\n\n- supplied by the user\n"
@@ -120,6 +134,55 @@ func TestTaskCreateEmptyName(t *testing.T) {
 	uc := newTaskUC(t)
 	_, err := uc.Create(context.Background(), TaskInput{Name: "   "})
 	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+}
+
+func TestTaskCreateRejectsDuplicateName(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+
+	content := "---\ntitle: Existing task\n---\n"
+	require.NoError(t, uc.Tasks.Create(ctx, "20260101_existing", content))
+	existing, err := uc.Tasks.Find(ctx, "20260101_existing")
+	require.NoError(t, err)
+	existing.Title = "日本語のタスク"
+	require.NoError(t, uc.Tasks.Update(ctx, *existing))
+
+	_, err = uc.Create(ctx, TaskInput{Name: " 日本語のタスク "})
+	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
+}
+
+func TestTaskUpdateRejectsDuplicateName(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+
+	first, err := uc.Create(ctx, TaskInput{Name: "first"})
+	require.NoError(t, err)
+	second, err := uc.Create(ctx, TaskInput{Name: "second"})
+	require.NoError(t, err)
+
+	_, err = uc.Update(ctx, second.ID, TaskInput{Name: " first "})
+	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
+
+	got, err := uc.Show(ctx, second.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "second", got.Title)
+	assert.NotEqual(t, first.ID, second.ID)
+}
+
+func TestTaskPatchRejectsDuplicateNameIncludingArchivedTasks(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+
+	archived, err := uc.Create(ctx, TaskInput{Name: "archived task"})
+	require.NoError(t, err)
+	require.NoError(t, uc.Archive(ctx, archived.ID))
+
+	current, err := uc.Create(ctx, TaskInput{Name: "current task"})
+	require.NoError(t, err)
+	name := "archived task"
+	_, err = uc.Patch(ctx, current.ID, TaskPatch{Name: &name})
+
+	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
 }
 
 func TestTaskUpdateInvalidStatus(t *testing.T) {

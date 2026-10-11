@@ -3,6 +3,7 @@ package entrypoint
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -363,6 +364,41 @@ func TestHerdrOverview(t *testing.T) {
 	assert.Equal(t, "review logs", *res.Panes[0].Title)
 
 	require.Len(t, calls, 4)
+}
+
+func TestHerdrOverviewIncludesTaskMetadata(t *testing.T) {
+	s, app := newTestServer(t)
+	task, err := app.Tasks.Create(context.Background(), application.TaskInput{Name: "日本語のタスク"})
+	require.NoError(t, err)
+	agentName := herdrTaskAgentName(task.ID)
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		switch args[0] {
+		case "workspace":
+			return []byte(herdrWorkspacesJSON), nil
+		case "agent":
+			return []byte(fmt.Sprintf(`{"id":"cli:agent:list","result":{"agents":[{"agent":"opencode","name":"%s","agent_status":"working","cwd":"/tmp/test","focused":true,"pane_id":"w7:p1","workspace_id":"w7"}]}}`, agentName)), nil
+		case "tab":
+			return []byte(herdrTabsJSON), nil
+		case "pane":
+			return []byte(herdrPanesJSON), nil
+		default:
+			return nil, errors.New("unexpected herdr command")
+		}
+	}
+
+	rec := do(t, s, "GET", "/api/herdr/overview", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	res := decode[struct {
+		Agents []struct {
+			Name      string  `json:"name"`
+			TaskID    *string `json:"task_id"`
+			TaskTitle *string `json:"task_title"`
+		} `json:"agents"`
+	}](t, rec)
+	require.Len(t, res.Agents, 1)
+	assert.Equal(t, agentName, res.Agents[0].Name)
+	assert.Equal(t, task.ID, stringValue(res.Agents[0].TaskID))
+	assert.Equal(t, task.Title, stringValue(res.Agents[0].TaskTitle))
 }
 
 func TestHerdrOverviewUnavailable(t *testing.T) {
@@ -1278,6 +1314,52 @@ func TestHerdrStartFileAgentValidation(t *testing.T) {
 	assert.Equal(t, 500, rec.Code)
 }
 
+func TestHerdrStartFileAgentSupportsJapaneseTaskDirectory(t *testing.T) {
+	s, app := newTestServer(t)
+	var calls [][]string
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "workspace" && args[1] == "list":
+			return []byte(herdrWorkspacesJSON), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(herdrTabsJSON), nil
+		case args[0] == "tab" && args[1] == "create":
+			return []byte(`{"id":"cli:tab:create","result":{"workspace":{"workspace_id":"w7"},"tab":{"tab_id":"w7:t3","workspace_id":"w7"},"root_pane":{"pane_id":"w7:p3"}}}`), nil
+		case args[0] == "pane" && args[1] == "process-info":
+			return []byte(herdrShellProcessInfoJSON), nil
+		case args[0] == "agent":
+			return []byte(`{}`), nil
+		}
+		return nil, errors.New("unexpected args")
+	}
+
+	task, err := app.Tasks.Create(context.Background(), application.TaskInput{
+		Name:      "日本語のタスク",
+		AgentKind: "codex",
+	})
+	require.NoError(t, err)
+
+	agent, err := s.startHerdrFileAgent(
+		context.Background(),
+		app,
+		app.Tasks.RelativePathFor(task),
+		"codex",
+	)
+	require.NoError(t, err)
+	assert.Regexp(t, `^[a-z][a-z0-9_-]{0,31}$`, agent.Name)
+	assert.Equal(t, task.ID, stringValue(agent.TaskId))
+	assert.Equal(t, task.Title, stringValue(agent.TaskTitle))
+	assert.Contains(t, calls, []string{"tab", "create", "--workspace", "w7", "--label", task.Title, "--cwd", app.Project.Path})
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 func TestHerdrTaskAgentName(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"20260919_foo", "f20260919_foo"},
@@ -1300,4 +1382,10 @@ func TestHerdrTaskAgentName(t *testing.T) {
 	got := herdrTaskAgentName(long)
 	require.Len(t, got, 32)
 	assert.Regexp(t, `^[a-z][a-z0-9_-]*$`, got)
+
+	japanese := herdrTaskAgentName("20261011_日本語のタスク")
+	otherJapanese := herdrTaskAgentName("20261011_別のタスク")
+	assert.Equal(t, "f20261011_-4ab607ddd08d9c75", japanese)
+	assert.Regexp(t, `^[a-z][a-z0-9_-]{0,31}$`, japanese)
+	assert.NotEqual(t, japanese, otherJapanese)
 }

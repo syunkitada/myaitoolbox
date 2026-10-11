@@ -402,38 +402,30 @@ function TabRow({ tab, panes, active, linkedTask, onSelect, onChanged, onError }
     }
     const renamePlan = linkedTaskRenameForLabel(linkedTask, nextLabel)
     if (!renamePlan) {
-      onError('File-agent tabs must use a valid _tasks directory name (letters, digits, _, ., :, -).')
+      onError('Task tab titles must be between 1 and 80 characters and cannot contain control characters.')
       return
     }
     void runOp(async () => {
-      let directoryMoved = false
-      let agentRenamed = false
+      let taskUpdated = false
+      let tabRenamed = false
+      const oldTaskTitle = linkedTask.agent.task_title?.trim() || tab.label.trim()
       try {
-        if (renamePlan.oldTaskDirectory !== renamePlan.newTaskDirectory) {
-          const taskDirs = await api.listFiles({ path: '_tasks', showHidden: true })
-          if (taskDirs.some((entry) => entry.path === renamePlan.newTaskDirectory)) {
-            throw new Error(`The task directory already exists: ${renamePlan.newTaskDirectory}`)
-          }
-          await api.moveFile(renamePlan.oldTaskDirectory, renamePlan.newTaskDirectory)
-          directoryMoved = true
-        }
-        if (renamePlan.oldAgentName !== renamePlan.newAgentName) {
-          await api.renameHerdrAgent(linkedTask.agent.pane_id, renamePlan.newAgentName)
-          agentRenamed = true
-        }
+        await api.updateTask(renamePlan.taskId, { name: renamePlan.label })
+        taskUpdated = true
         await api.renameHerdrTab(tab.tab_id, renamePlan.label)
+        tabRenamed = true
       } catch (error) {
         const rollbackErrors: string[] = []
-        if (agentRenamed) {
+        if (tabRenamed) {
           try {
-            await api.renameHerdrAgent(linkedTask.agent.pane_id, renamePlan.oldAgentName)
+            await api.renameHerdrTab(tab.tab_id, oldTaskTitle)
           } catch (rollbackError) {
             rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError))
           }
         }
-        if (directoryMoved) {
+        if (taskUpdated) {
           try {
-            await api.moveFile(renamePlan.newTaskDirectory, renamePlan.oldTaskDirectory)
+            await api.updateTask(renamePlan.taskId, { name: oldTaskTitle })
           } catch (rollbackError) {
             rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError))
           }

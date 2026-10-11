@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"net/http"
 	"os"
@@ -15,8 +16,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/labstack/echo/v4"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/application"
+	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/entrypoint/api"
 )
 
@@ -185,6 +190,36 @@ type herdrPaneListResult struct {
 	Panes []herdrPaneRaw `json:"panes"`
 }
 
+func attachHerdrTask(agent *api.HerdrAgent, task *domain.Task) {
+	if agent == nil || task == nil {
+		return
+	}
+	taskID := task.ID
+	taskTitle := task.Title
+	agent.TaskId = &taskID
+	agent.TaskTitle = &taskTitle
+}
+
+func (s *Server) enrichHerdrAgentsWithTasks(ctx context.Context, app *App, agents []api.HerdrAgent) {
+	if app == nil || app.Tasks == nil {
+		return
+	}
+	tasks, err := app.Tasks.List(ctx, application.TaskFilter{})
+	if err != nil {
+		return
+	}
+	byAgentName := make(map[string]*domain.Task, len(tasks))
+	for i := range tasks {
+		task := &tasks[i]
+		if name := herdrTaskAgentName(task.ID); name != "" {
+			byAgentName[name] = task
+		}
+	}
+	for i := range agents {
+		attachHerdrTask(&agents[i], byAgentName[agents[i].Name])
+	}
+}
+
 // GetHerdrOverview returns herdr workspaces and agents in one call.
 // When the herdr CLI or server is unavailable it reports available=false
 // instead of failing so that the UI can degrade gracefully.
@@ -294,6 +329,9 @@ func (s *Server) GetHerdrOverview(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+	}
+	if app, err := s.getApp(r); err == nil {
+		s.enrichHerdrAgentsWithTasks(r.Context(), app, overview.Agents)
 	}
 	writeJSONResponse(w, http.StatusOK, overview)
 }
@@ -434,7 +472,20 @@ func (s *Server) RenameHerdrAgent(w http.ResponseWriter, r *http.Request) {
 
 func validHerdrLabel(label string) (string, bool) {
 	label = strings.TrimSpace(label)
-	return label, label != "" && len(label) <= 80
+	return label, label != "" && utf8.RuneCountInString(label) <= 80
+}
+
+func validHerdrTaskTitle(title string) (string, bool) {
+	title, ok := validHerdrLabel(title)
+	if !ok {
+		return title, false
+	}
+	for _, r := range title {
+		if unicode.IsControl(r) {
+			return title, false
+		}
+	}
+	return title, true
 }
 
 // CreateHerdrTab creates a new tab in the given (or active) workspace.
@@ -944,7 +995,7 @@ func herdrTaskDirFromPath(path string) (string, bool) {
 		return "", false
 	}
 	dir := parts[1]
-	if !herdrTargetPattern.MatchString(dir) {
+	if !validHerdrTaskDir(dir) {
 		return "", false
 	}
 	for _, p := range parts[2:] {
@@ -955,17 +1006,39 @@ func herdrTaskDirFromPath(path string) (string, bool) {
 	return dir, true
 }
 
+// validHerdrTaskDir accepts task directory names that can be represented as a
+// single safe path component and a herdr tab label. Task IDs generated from
+// Japanese names contain non-ASCII letters, while whitespace and path
+// separators must still be rejected.
+func validHerdrTaskDir(dir string) bool {
+	if dir == "" || dir == "." || dir == ".." || utf8.RuneCountInString(dir) > 80 {
+		return false
+	}
+	for _, r := range dir {
+		if unicode.IsSpace(r) || unicode.IsControl(r) || r == '/' || r == '\\' {
+			return false
+		}
+	}
+	return true
+}
+
 // herdrTaskAgentName derives a herdr agent name from a task directory name
 // (e.g. "20260919_foo" -> "f20260919_foo"). herdr agent names must match
 // [a-z][a-z0-9_-]{0,31} (lowercase letters/digits, hyphens, underscores) while
-// task directory names can carry uppercase and other characters, so the name
-// is lowercased and every other character is folded into a single hyphen. It
-// returns "" when no usable name can be produced.
+// task directory names can carry uppercase and other characters. ASCII names
+// retain their existing folded form; names containing non-ASCII characters get
+// a deterministic 64-bit hash suffix to minimize collisions.
+// It returns "" when no usable name can be produced.
 func herdrTaskAgentName(dir string) string {
-	slug := strings.TrimSpace(strings.ToLower(dir))
+	normalized := strings.TrimSpace(strings.ToLower(dir))
+	slug := normalized
+	nonASCII := false
 	var b strings.Builder
 	prevDash := false
 	for _, r := range slug {
+		if r > unicode.MaxASCII {
+			nonASCII = true
+		}
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
 			b.WriteRune(r)
@@ -982,12 +1055,24 @@ func herdrTaskAgentName(dir string) string {
 	}
 	slug = strings.Trim(b.String(), "-")
 	if slug == "" {
-		return ""
+		if !nonASCII {
+			return ""
+		}
+		slug = "task"
 	}
 	if slug[0] < 'a' || slug[0] > 'z' {
 		slug = "f" + slug
 	}
-	if len(slug) > 32 {
+	if nonASCII {
+		hash := fnv.New64a()
+		_, _ = hash.Write([]byte(normalized))
+		suffix := fmt.Sprintf("%016x", hash.Sum64())
+		maxBaseLen := 32 - len(suffix) - 1
+		if len(slug) > maxBaseLen {
+			slug = strings.TrimRight(slug[:maxBaseLen], "-")
+		}
+		slug += "-" + suffix
+	} else if len(slug) > 32 {
 		slug = strings.TrimRight(slug[:32], "-")
 	}
 	return slug
@@ -1071,8 +1156,8 @@ func (s *Server) herdrProjectWorkspaceID(ctx context.Context, project string) (s
 	return "", nil
 }
 
-// herdrFileTab looks up an existing tab whose label matches the task
-// directory and whose pane is still at an interactive shell prompt, so that
+// herdrFileTab looks up an existing tab whose label matches the task title and
+// whose pane is still at an interactive shell prompt, so that
 // restarting an agent reuses the previous tab instead of stacking duplicates.
 // It returns the tab id and its pane id; both are "" when none matches (a
 // matching tab whose pane already runs an agent is deliberately skipped so the
@@ -1299,7 +1384,7 @@ func herdrSplitPaneID(out []byte) string {
 	return env.Result.Pane.PaneID
 }
 
-// herdrCreateFileTab creates a tab labelled after the task directory in the
+// herdrCreateFileTab creates a tab labelled after the task title in the
 // given workspace and returns the id of its fresh root pane. The root pane
 // starts at an interactive shell prompt, which `herdr agent start` requires.
 func (s *Server) herdrCreateFileTab(ctx context.Context, wsID, label, cwd string) (string, error) {
@@ -1535,7 +1620,7 @@ func (s *Server) startHerdrAgent(ctx context.Context, app *App, kind, label stri
 }
 
 // StartHerdrFileAgent starts a herdr agent dedicated to a task directory. It
-// creates a tab labelled with the task directory name in the project's
+// creates a tab labelled with the task title in the project's
 // workspace, starts the agent on the tab's root pane using the task-directory
 // derived agent name, and returns the agent so the UI can read output / send
 // prompts. When an agent for the task directory is already running (or a tab
@@ -1574,9 +1659,17 @@ func (s *Server) startHerdrFileAgent(ctx context.Context, app *App, path string,
 	if !ok {
 		return nil, &httpError{status: http.StatusBadRequest, err: errors.New("agents can only be started for files inside a task directory (_tasks/<dir>/...)")}
 	}
-	label, ok := validHerdrLabel(dir)
+	var task *domain.Task
+	if candidate, err := app.Tasks.Show(ctx, dir); err == nil {
+		task = candidate
+	}
+	label := dir
+	if task != nil && strings.TrimSpace(task.Title) != "" {
+		label = task.Title
+	}
+	label, ok = validHerdrTaskTitle(label)
 	if !ok {
-		return nil, &httpError{status: http.StatusBadRequest, err: errors.New("task directory name must be between 1 and 80 characters")}
+		return nil, &httpError{status: http.StatusBadRequest, err: errors.New("task title must be between 1 and 80 characters and cannot contain control characters")}
 	}
 	name := herdrTaskAgentName(dir)
 	if name == "" {
@@ -1593,6 +1686,7 @@ func (s *Server) startHerdrFileAgent(ctx context.Context, app *App, path string,
 	// The task directory already has a live agent: report it instead of
 	// stacking tabs. Every file in the directory shares the same agent.
 	if agent := s.findHerdrAgent(ctx, name); agent != nil {
+		attachHerdrTask(agent, task)
 		return agent, nil
 	}
 
@@ -1638,6 +1732,7 @@ func (s *Server) startHerdrFileAgent(ctx context.Context, app *App, path string,
 	if agent == nil {
 		agent = &api.HerdrAgent{Name: name, Status: "unknown", WorkspaceId: wsID, PaneId: paneID}
 	}
+	attachHerdrTask(agent, task)
 	return agent, nil
 }
 
@@ -1664,7 +1759,7 @@ type herdrStartTaskAgentResponse struct {
 }
 
 // StartTaskAgent starts a herdr agent dedicated to a task's markdown file. The
-// tab is labelled after the task file and the agent (agent_kind) runs bound to
+// tab is labelled after the task title and the agent (agent_kind) runs bound to
 // that file, mirroring the file-agent flow. When a prompt is given it is
 // rendered (via a prompts/<name>.md template when it matches one) and submitted
 // to the agent immediately.

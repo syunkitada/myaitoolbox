@@ -15,6 +15,7 @@ describe('taskDirFromPath', () => {
   it('returns the task directory for files under _tasks/<dir>/', () => {
     expect(taskDirFromPath('_tasks/20260919_foo/task.md')).toBe('20260919_foo')
     expect(taskDirFromPath('_tasks/20260919_foo/notes/design.md')).toBe('20260919_foo')
+    expect(taskDirFromPath('_tasks/20261011_日本語のタスク/task.md')).toBe('20261011_日本語のタスク')
   })
 
   it('returns null outside a task directory', () => {
@@ -32,6 +33,10 @@ describe('taskAgentName', () => {
     expect(taskAgentName('_tasks/20260919_foo/task.md')).toBe('f20260919_foo')
     expect(taskAgentName('_tasks/foo/notes.md')).toBe('foo')
     expect(taskAgentName('_tasks/My-Task/a.md')).toBe('my-task')
+    expect(taskAgentName('_tasks/20261011_日本語のタスク/task.md')).toBe('f20261011_-4ab607ddd08d9c75')
+    expect(taskAgentName('_tasks/20261011_日本語のタスク/task.md')).not.toBe(
+      taskAgentName('_tasks/20261011_別のタスク/task.md'),
+    )
   })
 
   it('keeps underscore separators', () => {
@@ -91,6 +96,14 @@ describe('taskFilePathForAgent', () => {
     expect(taskFilePathForAgent({ name: agent.name, pane_id: 'missing' }, panes, tabs)).toBeNull()
     expect(taskFilePathForAgent(agent, panes, [{ tab_id: 'w1:t1', label: 'shell' }])).toBeNull()
   })
+
+  it('uses task metadata when the tab label is the Japanese task title', () => {
+    expect(taskFilePathForAgent(
+      { ...agent, task_id: '20260919_foo' },
+      panes,
+      [{ tab_id: 'w1:t1', label: '日本語のタスク' }],
+    )).toBe('_tasks/20260919_foo/task.md')
+  })
 })
 
 describe('linked task agent helpers', () => {
@@ -100,6 +113,7 @@ describe('linked task agent helpers', () => {
 
   it('accepts task-directory labels and rejects labels unsupported by file agents', () => {
     expect(taskDirectoryPathForLabel('20260919_foo')).toBe('_tasks/20260919_foo')
+    expect(taskDirectoryPathForLabel('20261011_日本語のタスク')).toBe('_tasks/20261011_日本語のタスク')
     expect(taskDirectoryPathForLabel('has space')).toBeNull()
     expect(taskDirectoryPathForLabel('nested/name')).toBeNull()
   })
@@ -128,20 +142,42 @@ describe('linked task agent helpers', () => {
     expect(link?.agent.pane_id).toBe('w1:p1')
   })
 
-  it('builds synchronized rename plans for tab and directory changes', () => {
+  it('keeps title renames separate from directory moves', () => {
     const link = linkedTaskAgentForTab('w1:t1', [agent], panes, tabs)
     expect(link).not.toBeNull()
     expect(linkedTaskRenameForLabel(link!, '20260920_bar')).toEqual({
+      taskId: '20260919_foo',
       oldTaskDirectory: '_tasks/20260919_foo',
-      newTaskDirectory: '_tasks/20260920_bar',
+      newTaskDirectory: '_tasks/20260919_foo',
       oldAgentName: 'f20260919_foo',
-      newAgentName: 'f20260920_bar',
+      newAgentName: 'f20260919_foo',
       label: '20260920_bar',
     })
-    expect(linkedTaskRenameForLabel(link!, 'has space')).toBeNull()
     expect(linkedTaskRenameForPathMove(link!, '_tasks/20260920_bar/task.md')).toMatchObject({
+      taskId: '20260920_bar',
       newTaskDirectory: '_tasks/20260920_bar',
       newAgentName: 'f20260920_bar',
+      label: '20260919_foo',
+    })
+  })
+
+  it('renames a task title without changing its directory or agent name', () => {
+    const titledAgent = {
+      ...agent,
+      task_id: '20260919_foo',
+      task_title: '旧タイトル',
+    }
+    const link = linkedTaskAgentForTab('w1:t1', [titledAgent], panes, [
+      { tab_id: 'w1:t1', label: '旧タイトル' },
+    ])
+    expect(link).not.toBeNull()
+    expect(linkedTaskRenameForLabel(link!, '日本語の新しいタスク')).toEqual({
+      taskId: '20260919_foo',
+      oldTaskDirectory: '_tasks/20260919_foo',
+      newTaskDirectory: '_tasks/20260919_foo',
+      oldAgentName: 'f20260919_foo',
+      newAgentName: 'f20260919_foo',
+      label: '日本語の新しいタスク',
     })
   })
 })

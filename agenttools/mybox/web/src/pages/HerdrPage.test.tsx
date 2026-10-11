@@ -16,6 +16,7 @@ vi.mock('../api/client', () => ({
     sendTextHerdrPane: vi.fn().mockResolvedValue({ ok: true }),
     listFiles: vi.fn().mockResolvedValue([]),
     moveFile: vi.fn().mockResolvedValue(undefined),
+    updateTask: vi.fn().mockResolvedValue({}),
     renameHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     renameHerdrTab: vi.fn().mockResolvedValue({ ok: true }),
     promptHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
@@ -55,8 +56,14 @@ const overview = {
 
 const linkedOverview = {
   ...overview,
-  agents: [{ ...overview.agents[0], name: 'f20260919_foo', custom_name: 'f20260919_foo' }],
-  tabs: [{ ...overview.tabs[0], label: '20260919_foo' }],
+  agents: [{
+    ...overview.agents[0],
+    name: 'f20260919_foo',
+    custom_name: 'f20260919_foo',
+    task_id: '20260919_foo',
+    task_title: '旧タイトル',
+  }],
+  tabs: [{ ...overview.tabs[0], label: '旧タイトル' }],
 }
 
 const multiPaneOverview = {
@@ -185,7 +192,7 @@ describe('HerdrPage agent commands', () => {
     expect(api.readHerdrPane).toHaveBeenCalledWith('w1:p2')
   })
 
-  it('renames a linked task directory, agent, and tab together', async () => {
+  it('renames a linked task title and tab together', async () => {
     render(
       <MemoryRouter initialEntries={['/projects/demo/herdr']}>
         <DialogsProvider>
@@ -201,14 +208,15 @@ describe('HerdrPage agent commands', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Rename tab w1:t1' }))
     const input = await screen.findByTestId('app-dialog-input')
-    fireEvent.change(input, { target: { value: '20260920_bar' } })
+    fireEvent.change(input, { target: { value: '日本語の新しいタスク' } })
     fireEvent.click(screen.getByTestId('app-dialog-ok'))
 
     await waitFor(() => {
-      expect(api.moveFile).toHaveBeenCalledWith('_tasks/20260919_foo', '_tasks/20260920_bar')
-      expect(api.renameHerdrAgent).toHaveBeenCalledWith('w1:p1', 'f20260920_bar')
-      expect(api.renameHerdrTab).toHaveBeenCalledWith('w1:t1', '20260920_bar')
+      expect(api.updateTask).toHaveBeenCalledWith('20260919_foo', { name: '日本語の新しいタスク' })
+      expect(api.renameHerdrTab).toHaveBeenCalledWith('w1:t1', '日本語の新しいタスク')
     })
+    expect(api.moveFile).not.toHaveBeenCalled()
+    expect(api.renameHerdrAgent).not.toHaveBeenCalled()
   })
 
 })

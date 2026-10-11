@@ -29,6 +29,7 @@ CLI と Web UI の両方から操作でき、タスクは Markdown ファイル�
 - **タスク管理** — `_tasks/` 配下の Markdown ファイル（1 タスク＝1 ディレクトリ）で管理。ステータス（todo / doing / blocked / review / done）・優先度（low / medium / high / urgent）・担当者・期限・タグ・エージェント種別（`agent_kind`）をフロントマターで保持
   - CLI: 作成・一覧（フィルタ / JSON 出力）・表示・編集・フィールド更新・アーカイブ
   - Web UI: GTD ボード（Todo / Doing / Blocked / Review / Done）とドラッグ＆ドロップ
+  - 同じプロジェクト内では、アクティブ・アーカイブ済みを含めて、前後の空白を除いたタスク名を一意に管理
 - **自動タスク実行** — `_task_triggers/<id>/trigger.yaml` と `task.md` で定義したcron・ファイル作成・manualトリガーから、`_tasks/` に実行タスクを生成
   - CLI: `automation validate`、`list`、`run-once`、`daemon`、`runs`
   - Web UI: 新規タスクモーダルからtriggerを作成し、triggerディレクトリの右クリックから即時実行
@@ -219,6 +220,8 @@ myproject/
 ```
 
 - タスク ID は `YYYYMMDD_<slug>` 形式（例: `20260802_design-the-login-flow`）で、常に `_tasks/<id>/task.md` に保存されます。
+- タスク名には日本語などのUnicode文字を使用できます。タスクAgentの内部名はHerdrの制約に合わせてASCII化し、日本語を含むタスク同士の衝突を避ける決定的な識別子を使います。
+- Herdrのタブ名にはタスクタイトルを表示します。タブ名を変更するとタスクタイトルも更新され、タスクIDとAgent内部名は維持されます。
 - タスクのメタデータはフロントマター、Markdown ファイル同士の関連付けは通常の Markdown リンクで記述します。
 - myboxが管理する領域であることを示すため、タスクは `_tasks/`、アーカイブは `_archives/tasks/` に保存されます。
 - 完了後はアーカイブして `_archives/tasks/<id>/` へ移動できます（`task archive`）。

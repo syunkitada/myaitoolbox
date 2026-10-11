@@ -127,6 +127,20 @@ func (u *TaskUseCase) RenderTaskTemplate(name string) (string, error) {
 	return u.Template.RenderTask(domain.TaskTemplateData{Name: strings.TrimSpace(name)})
 }
 
+func (u *TaskUseCase) ensureUniqueTaskTitle(ctx context.Context, title, excludeID string) error {
+	tasks, err := u.List(ctx, TaskFilter{All: true})
+	if err != nil {
+		return err
+	}
+	normalized := strings.TrimSpace(title)
+	for _, task := range tasks {
+		if task.ID != excludeID && strings.TrimSpace(task.Title) == normalized {
+			return fmt.Errorf("%w: task name %q already exists", domain.ErrAlreadyExists, normalized)
+		}
+	}
+	return nil
+}
+
 func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -138,6 +152,9 @@ func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task
 	}
 	priority, err := parsePriority(input.Priority)
 	if err != nil {
+		return nil, err
+	}
+	if err := u.ensureUniqueTaskTitle(ctx, name, ""); err != nil {
 		return nil, err
 	}
 	now := time.Now()
@@ -195,6 +212,10 @@ func (u *TaskUseCase) CreateFromContent(ctx context.Context, id, content, agentK
 	if tags != nil {
 		task.Tags = append([]string(nil), tags...)
 	}
+	if err := u.ensureUniqueTaskTitle(ctx, task.Title, task.ID); err != nil {
+		_ = u.Tasks.Delete(ctx, id)
+		return nil, err
+	}
 	if err := u.Tasks.Update(ctx, *task); err != nil {
 		_ = u.Tasks.Delete(ctx, id)
 		return nil, err
@@ -208,6 +229,11 @@ func (u *TaskUseCase) Update(ctx context.Context, id string, input TaskInput) (*
 		return nil, err
 	}
 	if name := strings.TrimSpace(input.Name); name != "" {
+		if name != task.Title {
+			if err := u.ensureUniqueTaskTitle(ctx, name, id); err != nil {
+				return nil, err
+			}
+		}
 		task.Title = name
 	}
 	if input.Description != "" {
@@ -254,6 +280,11 @@ func (u *TaskUseCase) Patch(ctx context.Context, id string, patch TaskPatch) (*d
 		name := strings.TrimSpace(*patch.Name)
 		if name == "" {
 			return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidArgument)
+		}
+		if name != task.Title {
+			if err := u.ensureUniqueTaskTitle(ctx, name, id); err != nil {
+				return nil, err
+			}
 		}
 		task.Title = name
 	}
