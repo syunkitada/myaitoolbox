@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Activity, Bot, Box, Boxes, ChevronDown, Cpu, GitBranch, HardDrive, MemoryStick, SquareKanban } from 'lucide-react'
 import { api, Meta, Stats } from '../api/client'
-import { clearProject, dirName, encodePath, projectUrlFor, setProject } from '../utils/routes'
+import { clearProject, dirName, encodePath, getProject, projectUrlFor, setProject } from '../utils/routes'
 import type { HerdrAgent, HerdrOverview, ProjectGitStatus } from '../api/client'
 import { hasTaskFile, taskDirectoryForFilePath, taskFilePathForAgent } from '../utils/herdr-file-agent'
 import { statusDotClass } from './herdr-status'
@@ -384,7 +384,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
                 <SidebarMenuButton
                   onClick={() => {
                     handleNav()
-                    if (p !== project) setProject(p, navigate)
+                    if (p !== getProject()) setProject(p, navigate)
                   }}
                   isActive={project === p}
                   tooltip={status ? `${p} (${status})` : p}

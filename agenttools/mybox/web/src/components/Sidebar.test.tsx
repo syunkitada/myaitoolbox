@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppSidebar } from './Sidebar'
 import { SidebarProvider } from './ui/sidebar'
@@ -23,6 +23,11 @@ const meta = {
   tags: [],
   favorites: [],
   recent_files: [],
+}
+
+const multiProjectMeta = {
+  ...meta,
+  projects: ['demo', 'other'],
 }
 
 const herdr = {
@@ -100,6 +105,26 @@ describe('AppSidebar agent navigation', () => {
     })
 
     expect(screen.getByTestId('location')).toHaveTextContent('/projects/demo/herdr?agent=w1%3Ap2')
+  })
+
+  it('switches back when a project button is clicked immediately after another switch', () => {
+    window.history.replaceState({}, '', '/projects/demo/dashboard')
+    render(
+      <BrowserRouter>
+        <SidebarProvider>
+          <AppSidebar meta={multiProjectMeta} project="demo" herdr={herdr} gitStatus={{}} />
+          <LocationProbe />
+        </SidebarProvider>
+      </BrowserRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^other/ }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/projects/other/dashboard')
+
+    // The second click uses the first render's handler, matching the rapid
+    // project-switch sequence in the E2E test.
+    fireEvent.click(screen.getByRole('button', { name: /^demo/ }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/projects/demo/dashboard')
   })
 
   it('shows Mybox focus state in a collapsed debug section', () => {

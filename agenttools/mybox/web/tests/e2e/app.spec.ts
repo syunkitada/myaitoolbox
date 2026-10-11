@@ -70,7 +70,10 @@ async function acceptAppDialog(
 async function openHerdrWorkspaces(page: import('@playwright/test').Page) {
   const toggle = page.getByTestId('herdr-workspaces-toggle')
   await expect(toggle).toBeVisible()
-  await toggle.click()
+  if (await toggle.getAttribute('data-state') !== 'open') {
+    await toggle.click()
+  }
+  await expect(toggle).toHaveAttribute('data-state', 'open')
 }
 
 async function closeAgentSidebar(page: import('@playwright/test').Page) {
