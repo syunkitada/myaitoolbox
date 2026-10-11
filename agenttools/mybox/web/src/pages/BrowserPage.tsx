@@ -2410,6 +2410,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                   {isMarkdown ? (
                     <RichMarkdown
                       text={viewText}
+                      copyText={content}
                       relativeTo={viewRelativeTo}
                       linkUrl={filesUrl}
                       imageUrl={rawFileUrl}

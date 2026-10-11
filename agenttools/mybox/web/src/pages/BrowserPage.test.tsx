@@ -1004,19 +1004,23 @@ describe('file viewer Git diff', () => {
     untracked: [],
   }
 
-  const renderFileViewer = (status: Record<string, string>, fileContent = 'current body') => {
+  const renderFileViewer = (
+    status: Record<string, string>,
+    fileContent = 'current body',
+    path = 'notes.txt',
+  ) => {
     vi.spyOn(api, 'listFiles').mockResolvedValue([
-      { path: 'notes.txt', name: 'notes.txt', kind: 'file' },
+      { path, name: path.split('/').pop() ?? path, kind: 'file' },
     ])
     vi.spyOn(api, 'getFileGitStatus').mockResolvedValue(status)
-    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path: 'notes.txt', content: fileContent })
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path, content: fileContent })
     vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
     const refreshMeta = vi.fn().mockResolvedValue(undefined)
     const router = createMemoryRouter(
       [{ path: '*', element: (
         <BrowserPage
           title="Files"
-          selected="notes.txt"
+          selected={path}
           onSelect={vi.fn()}
           onBack={vi.fn()}
           favorites={[]}
@@ -1024,7 +1028,7 @@ describe('file viewer Git diff', () => {
           refreshMeta={refreshMeta}
         />
       ) }],
-      { initialEntries: ['/projects/proj/dashboard/files/notes.txt'] },
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
     )
     render(
       <DialogsProvider>
@@ -1124,6 +1128,17 @@ describe('file viewer Git diff', () => {
         value: originalClipboard,
       })
     }
+  })
+
+  it('includes Markdown front matter in the copy dialog', async () => {
+    const fileContent = '---\ntitle: Demo\ncustom: value\n---\n\n# Main document'
+    renderFileViewer({}, fileContent, 'notes.md')
+
+    const button = await screen.findByRole('button', { name: 'Copy file contents' })
+    fireEvent.click(button)
+
+    const dialog = screen.getByRole('dialog', { name: 'Copy file contents' })
+    expect(within(dialog).getByRole('textbox', { name: 'Text copy preview' })).toHaveValue(fileContent)
   })
 
   it('shows loading and error states for the Git diff panel', () => {

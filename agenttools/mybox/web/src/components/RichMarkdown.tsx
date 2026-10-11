@@ -237,6 +237,7 @@ export function extractOutline(text: string): Array<{ level: number; id: string;
 
 export interface RichMarkdownProps {
   text: string
+  copyText?: string
   relativeTo?: string
   linkUrl?: (resolved: string) => string
   imageUrl?: (resolved: string) => string
@@ -386,6 +387,7 @@ function MarkdownCopyDialog({ text, onClose }: { text: string; onClose: () => vo
 
 export function RichMarkdown({
   text,
+  copyText,
   relativeTo,
   linkUrl,
   imageUrl,
@@ -554,7 +556,7 @@ export function RichMarkdown({
         })}
       </div>
       {copyDialogOpen && onCopyDialogClose && (
-        <MarkdownCopyDialog text={text} onClose={onCopyDialogClose} />
+        <MarkdownCopyDialog text={copyText ?? text} onClose={onCopyDialogClose} />
       )}
     </div>
   )

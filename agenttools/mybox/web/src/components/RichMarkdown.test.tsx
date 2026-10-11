@@ -12,13 +12,14 @@ function renderMd(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>)
 }
 
-function CopyableMarkdown({ text }: { text: string }) {
+function CopyableMarkdown({ text, copyText }: { text: string; copyText?: string }) {
   const [copyDialogOpen, setCopyDialogOpen] = useState(false)
   return (
     <>
       <button type="button" onClick={() => setCopyDialogOpen(true)} aria-label="Copy file contents" />
       <RichMarkdown
         text={text}
+        copyText={copyText}
         copyDialogOpen={copyDialogOpen}
         onCopyDialogClose={() => setCopyDialogOpen(false)}
       />
@@ -359,6 +360,33 @@ describe('RichMarkdown', () => {
       await user.click(within(dialog).getByRole('button', { name: 'Copy' }))
 
       await waitFor(() => expect(writeText).toHaveBeenCalledWith('h1. Hello\n\n*bold*'))
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: originalClipboard,
+      })
+    }
+  })
+
+  it('includes front matter in the copy preview and clipboard target', async () => {
+    const originalClipboard = navigator.clipboard
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const body = '# Hello\n\nThis is the note.'
+    const source = `---\ntitle: Demo\ncustom:\n  enabled: true\n---\n\n${body}`
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+
+    try {
+      renderMd(<CopyableMarkdown text={body} copyText={source} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Copy file contents' }))
+
+      const dialog = screen.getByRole('dialog', { name: 'Copy file contents' })
+      expect(within(dialog).getByRole('textbox', { name: 'Text copy preview' })).toHaveValue(source)
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Copy' }))
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(source))
     } finally {
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
