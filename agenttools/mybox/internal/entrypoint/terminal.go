@@ -61,6 +61,7 @@ type terminalClient struct {
 	stop      chan struct{}
 	stopOnce  sync.Once
 	closeConn func()
+	attachSeq uint64
 }
 
 func (c *terminalClient) halt() {
@@ -84,14 +85,16 @@ type terminalSession struct {
 	cmd     *exec.Cmd
 	ptmx    *os.File
 
-	mu        sync.Mutex
-	clients   map[*terminalClient]struct{}
-	ring      [][]byte      // bounded recent output replayed to late attachments
-	ringOsc52 osc52Stripper // strips OSC 52 (clipboard) payloads from the ring
-	modes     *terminalModes
-	done      chan struct{}
-	once      sync.Once
-	closed    bool
+	mu            sync.Mutex
+	clients       map[*terminalClient]struct{}
+	resizeClient  *terminalClient
+	nextAttachSeq uint64
+	ring          [][]byte      // bounded recent output replayed to late attachments
+	ringOsc52     osc52Stripper // strips OSC 52 (clipboard) payloads from the ring
+	modes         *terminalModes
+	done          chan struct{}
+	once          sync.Once
+	closed        bool
 }
 
 func (s *terminalSession) addClient(c *terminalClient) {
@@ -121,7 +124,14 @@ func (s *terminalSession) addClient(c *terminalClient) {
 		default:
 		}
 	}
+	s.nextAttachSeq++
+	c.attachSeq = s.nextAttachSeq
 	s.clients[c] = struct{}{}
+	// A reconnecting browser can briefly leave the previous WebSocket alive
+	// while the new project view is already attached. The newest client owns
+	// the PTY size so a late resize from the old view cannot move the shell
+	// back to stale dimensions.
+	s.resizeClient = c
 	s.mu.Unlock()
 }
 
@@ -175,6 +185,15 @@ func fgpgid(s *terminalSession) int {
 func (s *terminalSession) removeClient(c *terminalClient) {
 	s.mu.Lock()
 	delete(s.clients, c)
+	if s.resizeClient == c {
+		var latest *terminalClient
+		for candidate := range s.clients {
+			if latest == nil || candidate.attachSeq > latest.attachSeq {
+				latest = candidate
+			}
+		}
+		s.resizeClient = latest
+	}
 	s.mu.Unlock()
 }
 
@@ -213,8 +232,13 @@ func (s *terminalSession) writeInput(data []byte) {
 	_, _ = s.ptmx.Write(data)
 }
 
-func (s *terminalSession) resize(cols, rows int) {
+func (s *terminalSession) resize(client *terminalClient, cols, rows int) {
 	if cols <= 0 || rows <= 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.resizeClient != client {
 		return
 	}
 	_ = pty.Setsize(s.ptmx, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
@@ -516,7 +540,7 @@ func (s *Server) Terminal(c echo.Context) error {
 		case "input":
 			sess.writeInput([]byte(msg.Data))
 		case "resize":
-			sess.resize(msg.Cols, msg.Rows)
+			sess.resize(client, msg.Cols, msg.Rows)
 		case "close":
 			if !ephemeral {
 				s.terminals.destroy(project, sessionID)

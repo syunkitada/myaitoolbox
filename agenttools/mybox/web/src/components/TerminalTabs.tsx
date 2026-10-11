@@ -43,6 +43,8 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
 }
 
 const TERMINAL_REFIT_MAX_FRAMES = 30
+const TERMINAL_REFIT_RETRY_DELAY_MS = 250
+const TERMINAL_WIDTH_TOLERANCE_PX = 12
 
 export interface TerminalViewHandle {
   paste: () => void
@@ -51,6 +53,20 @@ export interface TerminalViewHandle {
 
 export function terminalHostHasLayout(host: Pick<HTMLElement, 'clientWidth' | 'clientHeight'>): boolean {
   return host.clientWidth > 0 && host.clientHeight > 0
+}
+
+export function terminalHostWidthIsAligned(hostWidth: number, panelWidth: number): boolean {
+  return hostWidth > 0
+    && panelWidth > 0
+    && Math.abs(hostWidth - panelWidth) <= TERMINAL_WIDTH_TOLERANCE_PX
+}
+
+export function terminalRefitRetryAllowed(
+  host: Pick<HTMLElement, 'clientWidth' | 'clientHeight'>,
+  active: boolean,
+  documentVisible = true,
+): boolean {
+  return documentVisible && active && terminalHostHasLayout(host)
 }
 
 export function terminalHostLayoutIsStable(
@@ -63,17 +79,45 @@ export function terminalHostLayoutIsStable(
     && previous.clientHeight === current.clientHeight
 }
 
+export function terminalFitIsReady(
+  proposed: Pick<{ cols: number; rows: number }, 'cols' | 'rows'> | undefined,
+  actual: Pick<{ cols: number; rows: number }, 'cols' | 'rows'>,
+): boolean {
+  return proposed !== undefined
+    && proposed.cols > 0
+    && proposed.rows > 0
+    && proposed.cols === actual.cols
+    && proposed.rows === actual.rows
+}
+
+export function terminalLayoutRefitDecision(
+  previous: Pick<HTMLElement, 'clientWidth' | 'clientHeight'> | null,
+  current: Pick<HTMLElement, 'clientWidth' | 'clientHeight'>,
+  attempts: number,
+): { fit: boolean; retry: boolean; attempts: number } {
+  if (terminalHostLayoutIsStable(previous, current)) {
+    return { fit: true, retry: false, attempts }
+  }
+  if (attempts < TERMINAL_REFIT_MAX_FRAMES) {
+    return { fit: false, retry: true, attempts: attempts + 1 }
+  }
+  return { fit: false, retry: false, attempts }
+}
+
 const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?: string; sessionId?: string }>(function TerminalView({ active, command, sessionId }, ref) {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
-  const fitRef = useRef<FitAddon | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
+  const activeRef = useRef(active)
+  const refitRequestRef = useRef<(() => void) | null>(null)
+  const cancelRefitRef = useRef<(() => void) | null>(null)
   const hiddenInputRef = useRef<HTMLTextAreaElement>(null)
   const pasteInputRef = useRef<HTMLTextAreaElement>(null)
   const [status, setStatus] = useState<ConnStatus>('connecting')
   const [notice, setNotice] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
   const [pasteMode, setPasteMode] = useState(false)
   const [osc52Modal, setOsc52Modal] = useState<{ text: string } | null>(null)
+
+  activeRef.current = active
 
   useEscapeKey(() => {
     if (osc52Modal) {
@@ -186,24 +230,57 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
       return true
     })
     termRef.current = term
-    fitRef.current = fit
 
-    const hostVisible = () => terminalHostHasLayout(host)
-
+    const panel = host.closest<HTMLElement>('.terminal-panel')
     const fitToWidth = () => {
-      if (!hostVisible()) return false
-      const core = (term as unknown as { _core?: { viewport?: { scrollBarWidth?: number } } })._core
+      if (!terminalHostHasLayout(host)) return false
+      if (panel && !terminalHostWidthIsAligned(host.clientWidth, panel.clientWidth)) return false
+      const core = (term as unknown as {
+        _core?: {
+          _charSizeService?: { measure: () => void }
+          _renderService?: {
+            clear: () => void
+            handleCharSizeChanged: () => void
+            handleResize: (cols: number, rows: number) => void
+          }
+          viewport?: { scrollBarWidth?: number }
+        }
+      })._core
+      // A terminal opened during a context switch can retain stale font
+      // metrics even when its host already has a measurable layout. Refresh
+      // xterm's character measurement before FitAddon calculates dimensions.
+      core?._charSizeService?.measure()
+      core?._renderService?.handleCharSizeChanged()
+      term.resize(term.cols, term.rows)
       if (core?.viewport) {
         core.viewport.scrollBarWidth = 0
       }
       fit.fit()
+      const proposed = fit.proposeDimensions()
+      const actual = { cols: term.cols, rows: term.rows }
+      host.dataset.terminalProposedCols = proposed ? String(proposed.cols) : ''
+      host.dataset.terminalProposedRows = proposed ? String(proposed.rows) : ''
+      if (!terminalFitIsReady(proposed, actual)) return false
+      // FitAddon skips Terminal.resize when the calculated cell count has not
+      // changed. A terminal can still have stale row dimensions after a
+      // route/tab transition in that case; clear and update the renderer
+      // explicitly so this follows the same repaint path as a real resize
+      // drag.
+      core?._renderService?.handleCharSizeChanged()
+      core?._renderService?.clear()
+      core?._renderService?.handleResize(term.cols, term.rows)
+      if (term.rows > 0) {
+        term.refresh(0, term.rows - 1)
+      }
+      const renderedWidth = term.element?.querySelector<HTMLElement>('.xterm-screen')?.clientWidth ?? 0
+      if (!terminalHostWidthIsAligned(renderedWidth, host.clientWidth)) return false
+      host.dataset.terminalCols = String(term.cols)
+      host.dataset.terminalRows = String(term.rows)
       return true
     }
-    fitToWidth()
 
     const ws = new WebSocket(terminalWsUrl(command, sessionId))
     ws.binaryType = 'arraybuffer'
-    wsRef.current = ws
 
     const send = (msg: unknown) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -215,6 +292,97 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
       if (!termRef.current) return
       send({ type: 'resize', cols: term.cols, rows: term.rows })
     }
+
+    let refitFrame = 0
+    let refitAttempts = 0
+    let previousLayout: Pick<HTMLElement, 'clientWidth' | 'clientHeight'> | null = null
+    let disposed = false
+    let refitRetryTimer = 0
+    let refit: () => void = () => {}
+    let requestRefit: () => void = () => {}
+
+    const clearRefitRetry = () => {
+      if (refitRetryTimer !== 0) {
+        window.clearTimeout(refitRetryTimer)
+        refitRetryTimer = 0
+      }
+    }
+
+    const scheduleRefitRetry = () => {
+      if (refitAttempts < TERMINAL_REFIT_MAX_FRAMES) {
+        refitAttempts += 1
+        refitFrame = window.requestAnimationFrame(refit)
+        return
+      }
+      previousLayout = null
+      refitAttempts = 0
+      const currentLayout = {
+        clientWidth: host.clientWidth,
+        clientHeight: host.clientHeight,
+      }
+      if (refitRetryTimer === 0 && !disposed && terminalRefitRetryAllowed(currentLayout, activeRef.current, !document.hidden)) {
+        refitRetryTimer = window.setTimeout(() => {
+          refitRetryTimer = 0
+          requestRefit()
+        }, TERMINAL_REFIT_RETRY_DELAY_MS)
+      }
+    }
+
+    refit = () => {
+      refitFrame = 0
+      const currentLayout = {
+        clientWidth: host.clientWidth,
+        clientHeight: host.clientHeight,
+      }
+      if (document.hidden || !activeRef.current) {
+        clearRefitRetry()
+        previousLayout = null
+        refitAttempts = 0
+        return
+      }
+      const decision = terminalLayoutRefitDecision(previousLayout, currentLayout, refitAttempts)
+      previousLayout = currentLayout
+      refitAttempts = decision.attempts
+      if (decision.retry) {
+        refitFrame = window.requestAnimationFrame(refit)
+        return
+      }
+      if (!decision.fit) {
+        scheduleRefitRetry()
+        return
+      }
+      if (!fitToWidth()) {
+        scheduleRefitRetry()
+        return
+      }
+      clearRefitRetry()
+      sendResize()
+      previousLayout = null
+      refitAttempts = 0
+    }
+
+    requestRefit = () => {
+      if (document.hidden || !activeRef.current || refitFrame !== 0) return
+      clearRefitRetry()
+      previousLayout = null
+      refitAttempts = 0
+      refitFrame = window.requestAnimationFrame(refit)
+    }
+
+    const cancelRefit = () => {
+      clearRefitRetry()
+      if (refitFrame !== 0) {
+        window.cancelAnimationFrame(refitFrame)
+        refitFrame = 0
+      }
+      previousLayout = null
+      refitAttempts = 0
+    }
+    refitRequestRef.current = requestRefit
+    cancelRefitRef.current = cancelRefit
+    void document.fonts?.ready.then(() => {
+      if (!disposed) requestRefit()
+    })
 
     term.onData((data) => send({ type: 'input', data }))
 
@@ -253,9 +421,7 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
 
     ws.onopen = () => {
       setStatus('connected')
-      if (fitToWidth()) {
-        sendResize()
-      }
+      requestRefit()
     }
     ws.onmessage = (ev) => {
       if (ev.data instanceof ArrayBuffer) {
@@ -268,62 +434,51 @@ const TerminalView = forwardRef<TerminalViewHandle, { active: boolean; command?:
     ws.onerror = () => setStatus('error')
 
     const ro = new ResizeObserver(() => {
-      if (!termRef.current) return
-      if (fitToWidth()) sendResize()
+      requestRefit()
     })
     ro.observe(host)
+    if (panel && panel !== host) ro.observe(panel)
+    const screen = term.element?.querySelector<HTMLElement>('.xterm-screen')
+    if (screen) ro.observe(screen)
+    const onWindowResize = () => requestRefit()
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        cancelRefit()
+      } else {
+        requestRefit()
+      }
+    }
+    window.addEventListener('resize', onWindowResize)
+    window.visualViewport?.addEventListener('resize', onWindowResize)
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
+      disposed = true
       window.clearTimeout(selectionTimer)
       ro.disconnect()
+      window.removeEventListener('resize', onWindowResize)
+      window.visualViewport?.removeEventListener('resize', onWindowResize)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       ws.close()
       term.dispose()
+      cancelRefit()
+      if (refitRequestRef.current === requestRefit) refitRequestRef.current = null
+      if (cancelRefitRef.current === cancelRefit) cancelRefitRef.current = null
       termRef.current = null
-      fitRef.current = null
-      wsRef.current = null
     }
   }, [command, sessionId])
   // Re-fit when the tab becomes visible again.
   useEffect(() => {
-    if (!active) return
-    let frame = 0
-    let attempts = 0
-    let previousLayout: Pick<HTMLElement, 'clientWidth' | 'clientHeight'> | null = null
-    const refit = () => {
-      const term = termRef.current
-      const host = hostRef.current
-      const fit = fitRef.current
-      if (!term || !host || !fit) return
-      const currentLayout = {
-        clientWidth: host.clientWidth,
-        clientHeight: host.clientHeight,
-      }
-      const stable = terminalHostLayoutIsStable(previousLayout, currentLayout)
-      previousLayout = currentLayout
-      if (!terminalHostHasLayout(currentLayout)) {
-        if (attempts < TERMINAL_REFIT_MAX_FRAMES) {
-          attempts += 1
-          frame = window.requestAnimationFrame(refit)
-        }
-        return
-      }
-      if (!stable && attempts < TERMINAL_REFIT_MAX_FRAMES) {
-        attempts += 1
-        frame = window.requestAnimationFrame(refit)
-        return
-      }
-      fit.fit()
-      const ws = wsRef.current
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
-      }
+    if (!active) {
+      cancelRefitRef.current?.()
+      return
     }
-    frame = window.requestAnimationFrame(refit)
-    return () => window.cancelAnimationFrame(frame)
+    refitRequestRef.current?.()
+    return () => cancelRefitRef.current?.()
   }, [active])
 
   return (
-    <div className="relative h-full">
+    <div className="relative h-full min-w-0 w-full">
       <textarea
         ref={hiddenInputRef}
         tabIndex={-1}
@@ -507,7 +662,7 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
   return (
     <div
       className={cn(
-        'terminal-panel flex h-full flex-col overflow-hidden rounded-md border border-border bg-[#0a0e17]',
+        'terminal-panel flex h-full min-w-0 w-full flex-col overflow-hidden rounded-md border border-border bg-[#0a0e17]',
         maximized ? 'max-lg:mt-0' : 'mt-3',
         'max-lg:h-full max-lg:flex-1 max-lg:rounded-none max-lg:border-0 max-lg:mt-0',
       )}
@@ -585,15 +740,17 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
       </div>
       <div
         className={cn(
-          'terminal-body flex min-h-0 flex-1 flex-col',
+          'terminal-body relative flex min-h-0 w-full min-w-0 flex-1 flex-col',
           collapsed && 'hidden',
         )}
       >
         {tabs.map((t) => (
           <div
             key={t.id}
+            aria-hidden={t.id !== activeId}
             className={cn(
-              t.id === activeId ? 'block min-h-0 flex-1' : 'hidden',
+              'absolute inset-0 min-w-0',
+              t.id === activeId ? 'block' : 'hidden',
             )}
           >
             <TerminalView
@@ -604,7 +761,7 @@ export function TerminalTabs({ tabs, activeId, maximized, collapsed, onAdd, onCl
                   termRefs.current.delete(t.id)
                 }
               }}
-              active={t.id === activeId}
+              active={t.id === activeId && !collapsed}
               command={t.command}
               sessionId={t.sessionId}
             />

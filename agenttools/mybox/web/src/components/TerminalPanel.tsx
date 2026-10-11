@@ -306,7 +306,7 @@ export function TerminalPanel({ className }: { className?: string }) {
   const content = (
     <div
       className={cn(
-        'flex flex-col',
+        'flex min-w-0 flex-col',
         fullscreen
           ? isMobile
             ? 'fixed inset-0 z-50 h-svh bg-background'
@@ -330,7 +330,7 @@ export function TerminalPanel({ className }: { className?: string }) {
       />
       <div
         className={cn(
-          'flex flex-col max-lg:min-h-0 max-lg:flex-1',
+          'flex min-w-0 w-full flex-col max-lg:min-h-0 max-lg:flex-1',
           !fullscreen ? 'shrink-0 bg-card' : 'min-h-0 flex-1',
         )}
         style={!fullscreen ? { height } : undefined}

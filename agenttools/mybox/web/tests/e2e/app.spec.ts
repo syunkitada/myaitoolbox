@@ -86,6 +86,75 @@ async function closeAgentSidebar(page: import('@playwright/test').Page) {
   }
 }
 
+async function expectPtySizeToMatchTerminal(page: import('@playwright/test').Page) {
+  const terminal = page.locator('.terminal-xterm:visible')
+  await expect(terminal).toBeVisible()
+  const marker = `MYBOX_SIZE_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const outputPattern = new RegExp(`${marker}:(\\d+)\\s+(\\d+):${marker}_END`)
+
+  await terminal.click()
+  await page.keyboard.type(`printf '\\n${marker}:'; stty size; printf ':${marker}_END\\n'`)
+  await page.keyboard.press('Enter')
+  await expect.poll(async () => terminal.textContent()).toMatch(outputPattern)
+
+  const output = await terminal.textContent()
+  const match = output?.match(outputPattern)
+  expect(match).not.toBeNull()
+  const ptyRows = Number(match![1])
+  const ptyCols = Number(match![2])
+
+  await expect
+    .poll(async () => terminal.evaluate((host) => ({
+      cols: Number(host.getAttribute('data-terminal-cols')),
+      rows: Number(host.getAttribute('data-terminal-rows')),
+      proposedCols: Number(host.getAttribute('data-terminal-proposed-cols')),
+      proposedRows: Number(host.getAttribute('data-terminal-proposed-rows')),
+    })))
+    .toEqual({
+      cols: ptyCols,
+      rows: ptyRows,
+      proposedCols: ptyCols,
+      proposedRows: ptyRows,
+    })
+}
+
+const encodePrintf = (value: string) => Array.from(value)
+  .map((char) => `\\x${char.charCodeAt(0).toString(16).padStart(2, '0')}`)
+  .join('')
+
+async function expectTerminalOutputLineNotWrapped(page: import('@playwright/test').Page) {
+  const terminal = page.locator('.terminal-xterm:visible')
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const start = `MYBOX_S_${suffix}:`
+  const end = `:MYBOX_E_${suffix}`
+  const lineWidth = start.length + end.length + 1
+  const command = [
+    `cols=$(stty size | awk '{print $2}')`,
+    `payload=$(printf '%*s' "$((cols-${lineWidth}))" '' | tr ' ' X)`,
+    "printf '\\n'",
+    `printf '${encodePrintf(start)}'`,
+    `printf '%s' "$payload"`,
+    `printf '${encodePrintf(end)}\\n'`,
+  ].join('; ')
+
+  await terminal.click()
+  await page.keyboard.type(command)
+  await page.keyboard.press('Enter')
+  await expect(terminal).toContainText(start)
+
+  const lineRows = () => terminal.locator('.xterm-rows > div').evaluateAll(
+    (rows, markers: { start: string; end: string }) =>
+      rows
+        .map((row) => row.textContent ?? '')
+        .filter((text) => text.includes(markers.start) || text.includes(markers.end)),
+    { start, end },
+  )
+  await expect.poll(lineRows).toHaveLength(1)
+  const matchingRows = await lineRows()
+  expect(matchingRows[0]).toContain(start)
+  expect(matchingRows[0]).toContain(end)
+}
+
 async function removeProjectGitRepo(page: import('@playwright/test').Page) {
   const projectsRes = await page.request.get('/api/projects')
   const projects = (await projectsRes.json()) as Array<{ name: string; path: string }>
@@ -511,6 +580,7 @@ test('terminal tabs refit after tab and project switches', async ({ page }) => {
     }
   })
 
+  let expectBanner = true
   const expectHealthyTerminalLayout = async () => {
     await expect
       .poll(async () => {
@@ -520,7 +590,12 @@ test('terminal tabs refit after tab and project switches', async ({ page }) => {
         return layout.hostWidth > 0 && layout.screenWidth >= layout.hostWidth - 12
       })
       .toBe(true)
-    await expect(page.locator('.terminal-xterm:visible')).toContainText('mybox terminal')
+    if (expectBanner) {
+      await expect(page.locator('.terminal-xterm:visible')).toContainText('mybox terminal')
+      expectBanner = false
+    }
+    await expectPtySizeToMatchTerminal(page)
+    await expectTerminalOutputLineNotWrapped(page)
   }
 
   const activateAndExpectHealthyLayout = async (id: number) => {
@@ -538,6 +613,287 @@ test('terminal tabs refit after tab and project switches', async ({ page }) => {
 
   await page.goto('/projects/proj/dashboard')
   await expectHealthyTerminalLayout()
+})
+
+test('terminal tabs fit a tab that was initially hidden after reload', async ({ page }) => {
+  const suffix = await page.evaluate(() => crypto.randomUUID())
+  const sessionIds = [`hidden-tab-1-${suffix}`, `hidden-tab-2-${suffix}`]
+  try {
+    await page.evaluate((ids) => {
+      window.localStorage.setItem('mybox_terminals_v1', JSON.stringify({
+        proj: {
+          tabs: [
+            { id: 1, title: 'Terminal 1', sessionId: ids[0] },
+            { id: 2, title: 'Terminal 2', sessionId: ids[1] },
+          ],
+          activeId: 1,
+          collapsed: false,
+          visible: true,
+        },
+      }))
+    }, sessionIds)
+    await page.reload()
+
+    const terminalLayout = () => page.locator('.terminal-xterm:visible').evaluate((host) => {
+      const screen = host.querySelector('.xterm-screen')
+      return {
+        hostWidth: host.clientWidth,
+        screenWidth: screen?.clientWidth ?? 0,
+      }
+    })
+
+    await page.getByRole('button', { name: 'Activate terminal 2' }).click()
+    await expect
+      .poll(async () => {
+        const layout = await terminalLayout()
+        return layout.hostWidth > 0 && layout.screenWidth >= layout.hostWidth - 12
+      })
+      .toBe(true)
+    await expectPtySizeToMatchTerminal(page)
+    await expectTerminalOutputLineNotWrapped(page)
+  } finally {
+    await Promise.all(sessionIds.map((session) =>
+      page.request.delete(`/api/terminal/destroy?session=${encodeURIComponent(session)}`, {
+        headers: { 'X-Project': 'proj' },
+      }),
+    ))
+  }
+})
+
+test('terminal tabs refit each xterm when it becomes active', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  await page.getByRole('button', { name: 'New terminal' }).click()
+
+  const activeLayout = () => page.locator('.terminal-xterm:visible').evaluate((host) => {
+    const screen = host.querySelector<HTMLElement>('.xterm-screen')
+    return {
+      hostWidth: host.clientWidth,
+      hostHeight: host.clientHeight,
+      screenWidth: screen?.clientWidth ?? 0,
+    }
+  })
+  await expect.poll(activeLayout).toEqual({
+    hostWidth: expect.any(Number),
+    hostHeight: expect.any(Number),
+    screenWidth: expect.any(Number),
+  })
+  await expect.poll(async () => {
+    const layout = await activeLayout()
+    return layout.hostWidth > 0 && layout.hostHeight > 0 && layout.screenWidth >= layout.hostWidth - 12
+  }).toBe(true)
+
+  await page.getByRole('button', { name: 'Activate terminal 2' }).click()
+  await expect.poll(async () => {
+    const layout = await activeLayout()
+    return layout.hostWidth > 0 && layout.hostHeight > 0 && layout.screenWidth >= layout.hostWidth - 12
+  }).toBe(true)
+})
+
+test('terminal tabs refit when the rendered screen changes without host resize', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  const terminal = page.locator('.terminal-xterm:visible')
+  await expect
+    .poll(async () => terminal.evaluate((host) => {
+      const screen = host.querySelector<HTMLElement>('.xterm-screen')
+      return screen !== null && screen.clientWidth >= host.clientWidth - 12
+    }))
+    .toBe(true)
+
+  await terminal.evaluate((host) => {
+    const screen = host.querySelector<HTMLElement>('.xterm-screen')
+    if (!screen) throw new Error('xterm screen was not rendered')
+    screen.style.width = `${Math.floor(host.clientWidth / 2)}px`
+  })
+
+  await expect
+    .poll(async () => terminal.evaluate((host) => {
+      const screen = host.querySelector<HTMLElement>('.xterm-screen')
+      return screen !== null && screen.clientWidth >= host.clientWidth - 12
+    }))
+    .toBe(true)
+  await expectPtySizeToMatchTerminal(page)
+})
+
+test('terminal tabs remain aligned after repeated tab-only switches', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  await page.getByRole('button', { name: 'New terminal' }).click()
+
+  for (let i = 0; i < 40; i += 1) {
+    await page.getByRole('button', { name: 'Activate terminal 1' }).click({ noWaitAfter: true })
+    await page.getByRole('button', { name: 'Activate terminal 2' }).click({ noWaitAfter: true })
+  }
+
+  await expectTerminalOutputLineNotWrapped(page)
+})
+
+test('terminal tabs refit after rapid tab and project switches', async ({ page }) => {
+  const suffix = await page.evaluate(() => crypto.randomUUID())
+  const sessions = [
+    `rapid-proj-1-${suffix}`,
+    `rapid-proj-2-${suffix}`,
+    `rapid-other-1-${suffix}`,
+    `rapid-other-2-${suffix}`,
+  ]
+  try {
+    await page.evaluate((ids) => {
+      window.localStorage.setItem('mybox_terminals_v1', JSON.stringify({
+        proj: {
+          tabs: [
+            { id: 1, title: 'Terminal 1', sessionId: ids[0] },
+            { id: 2, title: 'Terminal 2', sessionId: ids[1] },
+          ],
+          activeId: 1,
+          collapsed: false,
+          visible: true,
+        },
+        other: {
+          tabs: [
+            { id: 1, title: 'Terminal 1', sessionId: ids[2] },
+            { id: 2, title: 'Terminal 2', sessionId: ids[3] },
+          ],
+          activeId: 1,
+          collapsed: false,
+          visible: true,
+        },
+      }))
+    }, sessions)
+    await page.reload()
+
+    const project = (name: string) => page.locator('.sidebar-projects').getByRole('button', { name: new RegExp(`^${name}\\b`) })
+    await expect(project('other')).toBeVisible()
+    for (let i = 0; i < 12; i += 1) {
+      await page.getByRole('button', { name: 'Activate terminal 1' }).click({ noWaitAfter: true })
+      await page.getByRole('button', { name: 'Activate terminal 2' }).click({ noWaitAfter: true })
+      await project('other').click({ noWaitAfter: true })
+      await project('proj').click({ noWaitAfter: true })
+    }
+
+    const terminal = page.locator('.terminal-xterm:visible')
+    await expect
+      .poll(async () => terminal.evaluate((host) => {
+        const cols = Number(host.getAttribute('data-terminal-cols'))
+        const rows = Number(host.getAttribute('data-terminal-rows'))
+        return host.clientWidth > 0
+          && host.clientHeight > 0
+          && cols > 0
+          && rows > 0
+          && cols === Number(host.getAttribute('data-terminal-proposed-cols'))
+          && rows === Number(host.getAttribute('data-terminal-proposed-rows'))
+      }))
+      .toBe(true)
+    await expectPtySizeToMatchTerminal(page)
+    await expectTerminalOutputLineNotWrapped(page)
+  } finally {
+    await Promise.all(sessions.map((session) =>
+      page.request.delete(`/api/terminal/destroy?session=${encodeURIComponent(session)}`, {
+        headers: { 'X-Project': session.includes('other') ? 'other' : 'proj' },
+      }),
+    ))
+  }
+})
+
+test('terminal tabs stay aligned after returning to a two-tab project', async ({ page }) => {
+  const suffix = await page.evaluate(() => crypto.randomUUID())
+  const sessions = [`return-proj-1-${suffix}`, `return-proj-2-${suffix}`, `return-other-1-${suffix}`]
+  try {
+    await page.evaluate((ids) => {
+      window.localStorage.setItem('mybox_terminals_v1', JSON.stringify({
+        proj: {
+          tabs: [
+            { id: 1, title: 'Terminal 1', sessionId: ids[0] },
+            { id: 2, title: 'Terminal 2', sessionId: ids[1] },
+          ],
+          activeId: 1,
+          collapsed: false,
+          visible: true,
+        },
+        other: {
+          tabs: [{ id: 1, title: 'Terminal 1', sessionId: ids[2] }],
+          activeId: 1,
+          collapsed: false,
+          visible: true,
+        },
+      }))
+    }, sessions)
+    await page.reload()
+
+    const project = (name: string) => page.locator('.sidebar-projects').getByRole('button', { name: new RegExp(`^${name}\\b`) })
+    await project('other').click()
+    await expect(page).toHaveURL(/\/projects\/other\/dashboard(?:\/files\/.*)?$/)
+    await project('proj').click()
+    await expect(page).toHaveURL(/\/projects\/proj\/dashboard(?:\/files\/.*)?$/)
+    await page.getByRole('button', { name: 'Activate terminal 2' }).click()
+
+    const terminal = page.locator('.terminal-xterm:visible')
+    await expect
+      .poll(async () => terminal.evaluate((host) => {
+        const screen = host.querySelector<HTMLElement>('.xterm-screen')
+        return screen !== null && host.clientWidth > 0 && screen.clientWidth >= host.clientWidth - 12
+      }))
+      .toBe(true)
+    await expectPtySizeToMatchTerminal(page)
+    await expectTerminalOutputLineNotWrapped(page)
+  } finally {
+    await Promise.all(sessions.map((session) =>
+      page.request.delete(`/api/terminal/destroy?session=${encodeURIComponent(session)}`, {
+        headers: { 'X-Project': session.includes('other') ? 'other' : 'proj' },
+      }),
+    ))
+  }
+})
+
+test('terminal tab selection is saved before an immediate project switch', async ({ page }) => {
+  const suffix = await page.evaluate(() => crypto.randomUUID())
+  const sessions = [`persist-proj-1-${suffix}`, `persist-proj-2-${suffix}`, `persist-other-1-${suffix}`]
+  try {
+    await page.evaluate((ids) => {
+      window.localStorage.setItem('mybox_terminals_v1', JSON.stringify({
+        proj: {
+          tabs: [
+            { id: 1, title: 'Terminal 1', sessionId: ids[0] },
+            { id: 2, title: 'Terminal 2', sessionId: ids[1] },
+          ],
+          activeId: 1,
+          collapsed: false,
+          visible: true,
+        },
+        other: {
+          tabs: [{ id: 1, title: 'Terminal 1', sessionId: ids[2] }],
+          activeId: 1,
+          collapsed: false,
+          visible: true,
+        },
+      }))
+    }, sessions)
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'Activate terminal 2' })).toBeVisible()
+
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('button[aria-label="Activate terminal 2"]')?.click()
+      const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.sidebar-projects button'))
+        .find((candidate) => candidate.textContent?.trim().startsWith('other'))
+      button?.click()
+    })
+    await expect(page).toHaveURL(/\/projects\/other\/dashboard(?:\/files\/.*)?$/)
+    await page.evaluate(() => {
+      const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.sidebar-projects button'))
+        .find((candidate) => candidate.textContent?.trim().startsWith('proj'))
+      button?.click()
+    })
+    await expect(page).toHaveURL(/\/projects\/proj\/dashboard(?:\/files\/.*)?$/)
+    await expect.poll(async () => page.evaluate(() => {
+      const map = JSON.parse(window.localStorage.getItem('mybox_terminals_v1') || '{}') as {
+        proj?: { activeId?: number }
+      }
+      return map.proj?.activeId
+    })).toBe(2)
+  } finally {
+    await Promise.all(sessions.map((session) =>
+      page.request.delete(`/api/terminal/destroy?session=${encodeURIComponent(session)}`, {
+        headers: { 'X-Project': session.includes('other') ? 'other' : 'proj' },
+      }),
+    ))
+  }
 })
 
 test('New file menu creates files and folders from the Files tab', async ({ page }) => {

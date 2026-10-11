@@ -1,6 +1,7 @@
 package entrypoint
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -139,6 +140,82 @@ func TestTerminalPersistentSession(t *testing.T) {
 	got := readUntil(conn3, "R3:")
 	require.Contains(t, got, "R3:")
 	require.NotContains(t, got, "hello123")
+}
+
+func TestTerminalResizeUsesLatestAttachedClient(t *testing.T) {
+	s, app := newTestServer(t)
+
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/terminal?project=" + app.Project.Name + "&session=resize-owner"
+	dial := func() *websocket.Conn {
+		t.Helper()
+		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		require.NoError(t, err)
+		return conn
+	}
+	send := func(conn *websocket.Conn, message string) {
+		t.Helper()
+		require.NoError(t, conn.WriteMessage(websocket.TextMessage, []byte(message)))
+	}
+	readUntil := func(conn *websocket.Conn, marker string) string {
+		t.Helper()
+		var output strings.Builder
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(10*time.Second)))
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				t.Fatalf("reading %q: %v; got %q", marker, err, output.String())
+			}
+			output.Write(data)
+			if strings.Contains(output.String(), marker) {
+				return output.String()
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("timeout waiting for %q; got %q", marker, output.String())
+			}
+		}
+	}
+	resize := func(conn *websocket.Conn, cols, rows int) {
+		t.Helper()
+		send(conn, fmt.Sprintf(`{"type":"resize","cols":%d,"rows":%d}`, cols, rows))
+	}
+	checkSize := func(conn *websocket.Conn, marker, expected string) {
+		t.Helper()
+		send(conn, fmt.Sprintf(`{"type":"input","data":"echo %s; stty size; echo %s_END\r"}`, marker, marker))
+		output := readUntil(conn, marker+"\r\n"+expected+"\r\n"+marker+"_END")
+		require.Contains(t, output, marker+"\r\n"+expected+"\r\n"+marker+"_END")
+	}
+
+	conn1 := dial()
+	defer func() { _ = conn1.Close() }()
+	readUntil(conn1, "mybox terminal")
+	resize(conn1, 80, 24)
+
+	conn2 := dial()
+	defer func() { _ = conn2.Close() }()
+	readUntil(conn2, "mybox terminal")
+	resize(conn2, 100, 30)
+	checkSize(conn2, "RESIZE_OWNER_INITIAL", "30 100")
+
+	// The old connection can still be closing while the new project view is
+	// already attached. Its late resize must not overwrite the latest view.
+	resize(conn1, 200, 40)
+	checkSize(conn2, "RESIZE_OWNER_LATEST", "30 100")
+}
+
+func TestTerminalResizeOwnerFallsBackToLatestRemainingClient(t *testing.T) {
+	s := &terminalSession{clients: map[*terminalClient]struct{}{}}
+	first := &terminalClient{send: make(chan []byte, 1), stop: make(chan struct{})}
+	second := &terminalClient{send: make(chan []byte, 1), stop: make(chan struct{})}
+
+	s.addClient(first)
+	s.addClient(second)
+	s.removeClient(second)
+
+	require.Equal(t, first, s.resizeClient)
 }
 
 func TestTerminalUnknownProject(t *testing.T) {
