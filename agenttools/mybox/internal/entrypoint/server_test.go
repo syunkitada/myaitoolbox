@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"mime/multipart"
@@ -54,6 +56,8 @@ func newTestServer(t *testing.T) (*Server, *App) {
 		app.Tasks,
 		&testAgentDispatcher{},
 	)
+	app.Files.SetState(app.State, app.Project.Name)
+	app.Tasks.SetState(app.State)
 	s := NewServer(app.Config, "test", "")
 	s.scheduled.store = configinfra.NewScheduledPromptStoreAt(filepath.Join(root, "scheduled-prompts.yaml"))
 	s.apps["test"] = app
@@ -138,7 +142,19 @@ func (f *fakeConfigStore) Update(ctx context.Context, fn func(*domain.Config) er
 }
 
 type fakeStateStore struct {
-	state domain.State
+	state     domain.State
+	updateErr error
+}
+
+func cloneRecentFilesByProjectForServerTest(values map[string][]string) map[string][]string {
+	if values == nil {
+		return nil
+	}
+	clone := make(map[string][]string, len(values))
+	for project, paths := range values {
+		clone[project] = append([]string(nil), paths...)
+	}
+	return clone
 }
 
 func (f *fakeStateStore) Load(ctx context.Context) (*domain.State, error) {
@@ -151,12 +167,36 @@ func (f *fakeStateStore) Save(ctx context.Context, st *domain.State) error {
 }
 
 func (f *fakeStateStore) Update(ctx context.Context, fn func(*domain.State) error) error {
-	st := &domain.State{Favorites: append([]domain.Favorite(nil), f.state.Favorites...), RecentFiles: append([]string(nil), f.state.RecentFiles...)}
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	st := &domain.State{
+		Favorites:            append([]domain.Favorite(nil), f.state.Favorites...),
+		RecentFilesByProject: cloneRecentFilesByProjectForServerTest(f.state.RecentFilesByProject),
+	}
 	if err := fn(st); err != nil {
 		return err
 	}
 	f.state = *st
 	return nil
+}
+
+func TestMoveFileRollsBackWhenStateUpdateFails(t *testing.T) {
+	s, app := newTestServer(t)
+	root := app.Project.Path
+	oldPath := filepath.Join(root, "old.md")
+	newPath := filepath.Join(root, "new.md")
+	require.NoError(t, os.WriteFile(oldPath, []byte("old"), 0o644))
+	stateStore := app.State.State.(*fakeStateStore)
+	stateStore.updateErr = errors.New("state update failed")
+
+	rec := do(t, s, http.MethodPost, "/api/files/move",
+		api.MoveFileRequest{OldPath: "old.md", NewPath: "new.md"})
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	_, err := os.Stat(oldPath)
+	assert.NoError(t, err)
+	_, err = os.Stat(newPath)
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func do(t *testing.T, s *Server, method, target string, body any, headers ...string) *httptest.ResponseRecorder {
@@ -200,7 +240,7 @@ func TestMetaAndLifecycle(t *testing.T) {
 	rec = do(t, s, http.MethodPost, "/api/tasks", map[string]any{"name": "from api"})
 	assert.Equal(t, http.StatusCreated, rec.Code)
 	task := decode[api.Task](t, rec)
-	assert.Equal(t, "from api", task.Title)
+	assert.Equal(t, task.Id, task.Title)
 	require.NotNil(t, task.Project)
 	assert.Equal(t, "test", *task.Project)
 
@@ -222,7 +262,7 @@ func TestMetaAndLifecycle(t *testing.T) {
 	rec = do(t, s, http.MethodGet, "/api/task-template?name=Template%20task", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	templateResponse := decode[map[string]string](t, rec)
-	assert.Contains(t, templateResponse["content"], "title: Template task")
+	assert.NotContains(t, templateResponse["content"], "title:")
 	assert.Contains(t, templateResponse["content"], "## TODO")
 
 	rec = do(t, s, http.MethodPost, "/api/tasks", map[string]any{"name": ""})
@@ -311,7 +351,9 @@ func TestRunTaskTrigger(t *testing.T) {
 	assert.DirExists(t, taskDir)
 
 	rec = do(t, s, http.MethodPost, "/api/task-triggers/manual_report/run", nil)
-	assert.Equal(t, http.StatusConflict, rec.Code)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	secondResult := decode[map[string]any](t, rec)
+	assert.NotEqual(t, result["task_id"], secondResult["task_id"])
 
 	rec = do(t, s, http.MethodPost, "/api/task-triggers/missing/run", nil)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
@@ -337,7 +379,7 @@ func TestTaskAPILifecycle(t *testing.T) {
 	rec := do(t, s, http.MethodPost, "/api/tasks", map[string]any{"name": "review PR"})
 	assert.Equal(t, http.StatusCreated, rec.Code)
 	task := decode[api.Task](t, rec)
-	assert.Equal(t, "review PR", task.Title)
+	assert.Equal(t, task.Id, task.Title)
 
 	rec = do(t, s, http.MethodPatch, "/api/tasks/"+task.Id, map[string]any{
 		"tags": []string{"review"},
@@ -359,11 +401,83 @@ func TestTaskAPILifecycle(t *testing.T) {
 
 	rec = do(t, s, http.MethodPost, "/api/tasks/"+task.Id+"/archive", nil)
 	assert.Equal(t, http.StatusNoContent, rec.Code) // 完了・全タスクともアーカイブ可能
-	rec = do(t, s, http.MethodGet, "/api/tasks?all=true", nil)
+	rec = do(t, s, http.MethodGet, "/api/tasks", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	list = decode[[]api.Task](t, rec)
-	require.Len(t, list, 1)
-	assert.True(t, *list[0].Archived)
+	assert.Empty(t, list)
+}
+
+func TestTaskAPIRenameKeepsLinkedHerdrTaskSynchronized(t *testing.T) {
+	s, app := newTestServer(t)
+	task, err := app.Tasks.Create(context.Background(), application.TaskInput{Name: "old task"})
+	require.NoError(t, err)
+	oldAgentName := herdrTaskAgentName(task.ID)
+	newTaskID := task.ID[:9] + "new-task"
+	newAgentName := herdrTaskAgentName(newTaskID)
+
+	var calls [][]string
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "agent" && args[1] == "list":
+			return []byte(fmt.Sprintf(`{"result":{"agents":[{"agent":%q,"name":%q,"pane_id":"w1:p1","workspace_id":"w1"}]}}`, oldAgentName, oldAgentName)), nil
+		case args[0] == "pane" && args[1] == "list":
+			return []byte(`{"result":{"panes":[{"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1"}]}}`), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(`{"result":{"tabs":[{"tab_id":"w1:t1","label":"old task","workspace_id":"w1"}]}}`), nil
+		case args[0] == "agent" && args[1] == "rename" && args[2] == "w1:p1" && args[3] == newAgentName:
+			return []byte(`{"ok":true}`), nil
+		case args[0] == "tab" && args[1] == "rename":
+			return []byte(`{"ok":true}`), nil
+		default:
+			return nil, fmt.Errorf("unexpected herdr args: %v", args)
+		}
+	}
+
+	rec := do(t, s, http.MethodPatch, "/api/tasks/"+task.ID, map[string]any{"name": "new task"})
+	assert.Equal(t, http.StatusOK, rec.Code)
+	updated := decode[api.Task](t, rec)
+	assert.Equal(t, newTaskID, updated.Id)
+	assert.Contains(t, calls, []string{"agent", "rename", "w1:p1", newAgentName})
+	assert.Contains(t, calls, []string{"tab", "rename", "w1:t1", newTaskID})
+}
+
+func TestTaskAPIRenameRollsBackWhenHerdrTabRenameFails(t *testing.T) {
+	s, app := newTestServer(t)
+	task, err := app.Tasks.Create(context.Background(), application.TaskInput{Name: "old task"})
+	require.NoError(t, err)
+	oldAgentName := herdrTaskAgentName(task.ID)
+	newTaskID := task.ID[:9] + "new-task"
+	newAgentName := herdrTaskAgentName(newTaskID)
+
+	var calls [][]string
+	s.herdrRun = func(ctx context.Context, args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		switch {
+		case args[0] == "agent" && args[1] == "list":
+			return []byte(fmt.Sprintf(`{"result":{"agents":[{"agent":%q,"name":%q,"pane_id":"w1:p1","workspace_id":"w1"}]}}`, oldAgentName, oldAgentName)), nil
+		case args[0] == "pane" && args[1] == "list":
+			return []byte(`{"result":{"panes":[{"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1"}]}}`), nil
+		case args[0] == "tab" && args[1] == "list":
+			return []byte(`{"result":{"tabs":[{"tab_id":"w1:t1","label":"old task","workspace_id":"w1"}]}}`), nil
+		case args[0] == "agent" && args[1] == "rename" && args[2] == "w1:p1" && args[3] == newAgentName:
+			return []byte(`{"ok":true}`), nil
+		case args[0] == "agent" && args[1] == "rename" && args[2] == "w1:p1" && args[3] == oldAgentName:
+			return []byte(`{"ok":true}`), nil
+		case args[0] == "tab" && args[1] == "rename":
+			return nil, errors.New("tab rename failed")
+		default:
+			return nil, fmt.Errorf("unexpected herdr args: %v", args)
+		}
+	}
+
+	rec := do(t, s, http.MethodPatch, "/api/tasks/"+task.ID, map[string]any{"name": "new task"})
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	_, err = app.Tasks.Show(context.Background(), task.ID)
+	assert.NoError(t, err)
+	_, err = app.Tasks.Show(context.Background(), newTaskID)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	assert.Contains(t, calls, []string{"agent", "rename", "w1:p1", oldAgentName})
 }
 
 func TestTaskAPIDuplicateNameReturnsConflict(t *testing.T) {
@@ -502,6 +616,11 @@ func TestFilesUpload(t *testing.T) {
 func TestFiles(t *testing.T) {
 	s, app := newTestServer(t)
 	root := app.Project.Path
+	stateStore := app.State.State.(*fakeStateStore)
+	stateStore.state = domain.State{
+		Favorites:            []domain.Favorite{{Project: "test", Path: "docs/guide.md"}},
+		RecentFilesByProject: map[string][]string{"test": {"docs/guide.md"}},
+	}
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("# Project\n\nHello.\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "task.md"), []byte("---\nstatus: doing\n---\n\n# Task\n"), 0o644))
@@ -594,6 +713,10 @@ func TestFiles(t *testing.T) {
 	rec = do(t, s, http.MethodPost, "/api/files/move",
 		api.MoveFileRequest{OldPath: "docs/guide.md", NewPath: "notes/guide.md"})
 	assert.Equal(t, http.StatusNoContent, rec.Code)
+	assert.Contains(t, stateStore.state.Favorites, domain.Favorite{Project: "test", Path: "notes/guide.md"})
+	assert.NotContains(t, stateStore.state.Favorites, domain.Favorite{Project: "test", Path: "docs/guide.md"})
+	assert.Contains(t, stateStore.state.RecentFilesByProject["test"], "notes/guide.md")
+	assert.NotContains(t, stateStore.state.RecentFilesByProject["test"], "docs/guide.md")
 	_, err = os.Stat(filepath.Join(root, "docs", "guide.md"))
 	assert.True(t, os.IsNotExist(err))
 	got, err = os.ReadFile(filepath.Join(root, "notes", "guide.md"))
@@ -601,11 +724,17 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, "# Guide\n\nUpdated.\n", string(got))
 
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs", "sub"), 0o755))
+	stateStore.state.Favorites = append(stateStore.state.Favorites,
+		domain.Favorite{Project: "test", Path: "docs/new.md"})
+	stateStore.state.RecentFilesByProject["test"] = append(stateStore.state.RecentFilesByProject["test"], "docs/new.md")
 	rec = do(t, s, http.MethodPost, "/api/files/move",
 		api.MoveFileRequest{OldPath: "docs/new.md", NewPath: "docs/sub"})
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	_, err = os.Stat(filepath.Join(root, "docs", "sub", "new.md"))
 	require.NoError(t, err)
+	assert.Contains(t, stateStore.state.Favorites, domain.Favorite{Project: "test", Path: "docs/sub/new.md"})
+	assert.NotContains(t, stateStore.state.Favorites, domain.Favorite{Project: "test", Path: "docs/new.md"})
+	assert.Contains(t, stateStore.state.RecentFilesByProject["test"], "docs/sub/new.md")
 
 	rec = do(t, s, http.MethodPost, "/api/files/move",
 		api.MoveFileRequest{OldPath: "README.md", NewPath: "../../etc/passwd"})

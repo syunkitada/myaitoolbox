@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,7 +49,14 @@ func TestParseFrontMatterEmpty(t *testing.T) {
 }
 
 func TestTaskTemplateQuotesYamlValues(t *testing.T) {
-	r := NewTemplateRenderer(t.TempDir(), t.TempDir())
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "templates", "task"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "templates", "task", "task.md"),
+		[]byte("---\ncustom: {{.Name | yamlq}}\n---\n\nbody\n"),
+		0o644,
+	))
+	r := NewTemplateRenderer(root, t.TempDir())
 	out, err := r.RenderTask(domain.TaskTemplateData{
 		Name: "mcp: mysql: test",
 	})
@@ -57,9 +66,9 @@ func TestTaskTemplateQuotesYamlValues(t *testing.T) {
 	require.True(t, ok)
 	parsed, err := parseFrontMatter(fm)
 	require.NoError(t, err)
-	assert.Equal(t, "mcp: mysql: test", parsed["title"])
-	assert.Contains(t, fm, `title: "mcp: mysql: test"`)
-	assert.Contains(t, body, "## Overview")
+	assert.Equal(t, "mcp: mysql: test", parsed["custom"])
+	assert.Contains(t, fm, `custom: "mcp: mysql: test"`)
+	assert.Equal(t, "body\n", body)
 	assert.NotContains(t, fm, "id:")
 	assert.NotContains(t, fm, "project:")
 	assert.NotContains(t, fm, "created")

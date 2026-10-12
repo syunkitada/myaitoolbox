@@ -8,8 +8,8 @@ type Favorite struct {
 }
 
 type State struct {
-	Favorites   []Favorite
-	RecentFiles []string
+	Favorites            []Favorite
+	RecentFilesByProject map[string][]string
 }
 
 type StateStore interface {

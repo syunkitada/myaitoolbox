@@ -444,7 +444,7 @@ export const api = {
 
   deleteRecent: (path: string) => request<void>('POST', '/api/meta/recent/delete', { path }),
 
-  listTasks: (params: { status?: TaskStatus; tag?: string; all?: boolean } = {}) =>
+  listTasks: (params: { status?: TaskStatus; tag?: string } = {}) =>
     request<Task[]>('GET', '/api/tasks' + qs(params)),
 
   getTask: (id: string) => request<Task>('GET', `/api/tasks/${encodeURIComponent(id)}`),

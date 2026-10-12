@@ -1410,6 +1410,11 @@ test('sidebar board shows tasks across projects', async ({ page }) => {
     data: { name: taskName },
   })
   expect(created.ok()).toBeTruthy()
+  const task = (await created.json()) as { id: string }
+  const projectTasksResponse = await page.request.get('/api/tasks', { headers: { 'X-Project': 'proj' } })
+  const projectTasks = (await projectTasksResponse.json()) as Array<{ id: string }>
+  const shipTask = projectTasks.find((candidate) => candidate.id.endsWith('_ship-the-web-ui'))
+  expect(shipTask).toBeDefined()
 
   await page.goto('/projects/proj/dashboard')
   await page.locator('.project-tabs').getByRole('link', { name: 'Board', exact: true }).click()
@@ -1418,8 +1423,8 @@ test('sidebar board shows tasks across projects', async ({ page }) => {
   await expect(page).toHaveURL(/\/board$/)
   await expect(page.getByText('全プロジェクト横断ビュー')).toBeVisible()
   const cards = page.locator('.board-card')
-  await expect(cards.filter({ hasText: taskName })).toBeVisible()
-  await expect(cards.filter({ hasText: 'Ship the web UI' })).toBeVisible()
+  await expect(cards.filter({ hasText: task.id })).toBeVisible()
+  await expect(cards.filter({ hasText: shipTask!.id })).toBeVisible()
 })
 
 test('favicon mirrors the aggregated agent status and updates dynamically', async ({ page }) => {
@@ -1843,7 +1848,7 @@ test('board drag-and-drop changes task status and front matter', async ({ page }
 
   await expect(page.getByRole('button', { name: 'New task' })).toBeVisible()
 
-  const card = page.getByText('e2e-status-change-target')
+  const card = page.getByTestId('column-doing').getByText('e2e-status-change-target', { exact: true })
   await expect(card).toBeVisible()
   const doneColumn = page.getByTestId('column-done')
 
@@ -1875,8 +1880,8 @@ test('task without type is created and listed plainly, and can be archived', asy
 
   await page.goto('/projects/proj/dashboard')
   await page.locator('.project-tabs').getByRole('link', { name: 'Board', exact: true }).click()
-  await expect(page.getByText('Review PR #99')).toBeVisible()
-  const card = page.locator('.board-card').filter({ hasText: 'Review PR #99' })
+  await expect(page.getByText(task.id)).toBeVisible()
+  const card = page.locator('.board-card').filter({ hasText: task.id })
   await expect(card).not.toHaveClass(/adhoc-card/)
   await expect(card.locator('.badge', { hasText: 'adhoc' })).toHaveCount(0)
 

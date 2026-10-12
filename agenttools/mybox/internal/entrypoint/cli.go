@@ -130,7 +130,7 @@ func newTaskCommand(project *string) *cobra.Command {
 }
 
 func newTaskListCommand(project *string) *cobra.Command {
-	var all, jsonOut bool
+	var jsonOut bool
 	var status, tag string
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -140,16 +140,13 @@ func newTaskListCommand(project *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tasks, err := app.Tasks.List(cmd.Context(), application.TaskFilter{
-				All: all, Status: status, Tag: tag,
-			})
+			tasks, err := app.Tasks.List(cmd.Context(), application.TaskFilter{Status: status, Tag: tag})
 			if err != nil {
 				return err
 			}
 			return printTasks(cmd, tasks, jsonOut)
 		},
 	}
-	cmd.Flags().BoolVar(&all, "all", false, "include archived tasks")
 	cmd.Flags().StringVar(&status, "status", "", "filter by status")
 	cmd.Flags().StringVar(&tag, "tag", "", "filter by tag")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")

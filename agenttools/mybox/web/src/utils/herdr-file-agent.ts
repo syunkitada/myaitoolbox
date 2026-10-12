@@ -102,12 +102,7 @@ export function filePathForAgent(
   return best
 }
 
-/**
- * Resolves the canonical task file for a file agent. Newer API responses carry
- * the stable task ID explicitly because the tab label is the user-facing task
- * title and is no longer the task directory name. The label fallback keeps
- * older herdr responses linkable during an upgrade.
- */
+/** Resolves the canonical task file for a file agent. */
 export function taskFilePathForAgent(
   agent: Readonly<{ name: string; pane_id: string; task_id?: string | null }>,
   panes: ReadonlyArray<Readonly<{ pane_id: string; tab_id: string }>>,
@@ -233,18 +228,60 @@ function validTaskTabLabel(label: string): boolean {
   })
 }
 
+function slugifyTaskName(name: string): string {
+  let result = ''
+  let pendingDash = false
+  for (const ch of name.trim().toLowerCase()) {
+    if (/^[\p{L}\p{N}]$/u.test(ch)) {
+      result += ch
+      pendingDash = false
+    } else if (!pendingDash) {
+      result += '-'
+      pendingDash = true
+    }
+  }
+  return result.replace(/^-+|-+$/g, '')
+}
+
+function taskIDForRename(oldID: string, label: string): string | null {
+  const normalizedLabel = label.trim()
+  if (normalizedLabel === oldID) return oldID
+  const suffix = /^\d{8}_(.*)$/u.exec(normalizedLabel)?.[1] ?? normalizedLabel
+  const slug = slugifyTaskName(suffix)
+  if (!slug) return null
+  const datePrefix = /^\d{8}_/u.test(oldID) ? oldID.slice(0, 9) : ''
+  return `${datePrefix}${slug}`
+}
+
 export function linkedTaskRenameForLabel(link: LinkedTaskAgent, label: string): LinkedTaskRename | null {
   const normalizedLabel = label.trim()
   if (!validTaskTabLabel(normalizedLabel)) return null
   const taskId = link.agent.task_id?.trim() || link.taskDirectory.slice('_tasks/'.length)
   if (!taskId || taskDirFromPath(`_tasks/${taskId}/task.md`) !== taskId) return null
+  if (normalizedLabel === link.tab.label.trim()) {
+    return {
+      taskId,
+      oldTaskDirectory: link.taskDirectory,
+      newTaskDirectory: link.taskDirectory,
+      oldAgentName: link.agent.name,
+      newAgentName: link.agent.name,
+      label: normalizedLabel,
+    }
+  }
+  const newTaskID = taskIDForRename(taskId, normalizedLabel)
+  if (
+    !newTaskID ||
+    Array.from(newTaskID).length > TASK_DIR_MAX_LENGTH ||
+    taskDirFromPath(`_tasks/${newTaskID}/task.md`) !== newTaskID
+  ) return null
+  const newTaskDirectory = `_tasks/${newTaskID}`
   return {
     taskId,
     oldTaskDirectory: link.taskDirectory,
-    newTaskDirectory: link.taskDirectory,
+    newTaskDirectory,
     oldAgentName: link.agent.name,
-    newAgentName: link.agent.name,
-    label: normalizedLabel,
+    newAgentName: taskAgentName(`${newTaskDirectory}/task.md`),
+    label: newTaskID,
   }
 }
 
@@ -253,7 +290,7 @@ export function linkedTaskRenameForPathMove(link: LinkedTaskAgent, newPath: stri
   if (!dir) return null
   const newTaskDirectory = `_tasks/${dir}`
   const newAgentName = taskAgentName(`${newTaskDirectory}/task.md`)
-  const label = link.tab.label.trim()
+  const label = dir
   if (!newAgentName || !validTaskTabLabel(label)) return null
   return {
     taskId: dir,

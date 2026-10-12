@@ -35,7 +35,7 @@ case "$id" in *test-task*) ok "task created id";; *) fail "task created id";; es
 tasks="$("$BIN" task list --project proj)"
 case "$tasks" in *test-task*) ok "task listed";; *) fail "task listed";; esac
 show="$("$BIN" task show --project proj "$id")"
-case "$show" in *Test\ task*) ok "task shown";; *) fail "task shown";; esac
+case "$show" in *"$id"*) ok "task shown";; *) fail "task shown";; esac
 
 step "task set / archive"
 "$BIN" task set --project proj "$id" --status doing >/dev/null
@@ -43,8 +43,6 @@ front="$(cat "$PROJ/_tasks/$id/task.md")"
 case "$front" in *"status: doing"*) ok "task set wrote status";; *) fail "task set wrote status";; esac
 case "$front" in *"priority:"*) fail "task set did not write priority";; *) ok "task set did not write priority";; esac
 "$BIN" task archive --project proj "$id" >/dev/null
-archived="$("$BIN" task list --project proj --all)"
-case "$archived" in *test-task*) ok "archived task visible with --all";; *) fail "archived task visible with --all";; esac
 active="$("$BIN" task list --project proj)"
 case "$active" in *test-task*) fail "archived task hidden by default";; *) ok "archived task hidden by default";; esac
 
@@ -57,8 +55,8 @@ second_list="$("$BIN" task list --project proj)"
 case "$second_list" in *review-pr-123*) ok "task listed";; *) fail "task listed";; esac
 "$BIN" task archive --project proj "$second_id" >/dev/null
 [ -f "$PROJ/_archives/tasks/$second_id/task.md" ] && ok "task archived" || fail "task archived"
-archived_second="$("$BIN" task list --project proj --all)"
-case "$archived_second" in *review-pr-123*) ok "archived task listed with --all";; *) fail "archived task listed with --all";; esac
+active_second="$("$BIN" task list --project proj)"
+case "$active_second" in *review-pr-123*) fail "archived task hidden";; *) ok "archived task hidden";; esac
 
 step "files create / show / mkdir / move / rename"
 path="$("$BIN" files create --project proj 'notes/alpha.md' | tail -1)"

@@ -169,9 +169,10 @@ function ListField({ label, value, onChange, ariaLabel }: FieldProps) {
 interface FrontmatterFormProps {
   value: Record<string, unknown>
   onChange: (next: Record<string, unknown>) => void
+  hideTitle?: boolean
 }
 
-export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
+export function FrontmatterForm({ value, onChange, hideTitle = false }: FrontmatterFormProps) {
   const setField = (key: string, v: unknown) => onChange({ ...value, [key]: v })
   const removeField = (key: string) => {
     const next = { ...value }
@@ -195,12 +196,12 @@ export function FrontmatterForm({ value, onChange }: FrontmatterFormProps) {
     }
     onChange({ ...value, [key]: '' })
   }
-  const extraKeys = Object.keys(value).filter((k) => !KNOWN.has(k))
+  const extraKeys = Object.keys(value).filter((k) => !KNOWN.has(k) && !(hideTitle && k === 'title'))
 
   return (
     <div className="frontmatter-form flex flex-col gap-3">
       <div className="field-row flex flex-wrap gap-3">
-        <Field label="Title" value={value.title} onChange={(v) => setField('title', v)} ariaLabel="Metadata title" />
+        {!hideTitle && <Field label="Title" value={value.title} onChange={(v) => setField('title', v)} ariaLabel="Metadata title" />}
         <SelectField
           label="Status"
           value={value.status}

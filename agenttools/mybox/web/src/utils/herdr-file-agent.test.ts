@@ -142,26 +142,32 @@ describe('linked task agent helpers', () => {
     expect(link?.agent.pane_id).toBe('w1:p1')
   })
 
-  it('keeps title renames separate from directory moves', () => {
+  it('derives a renamed task directory from the tab label', () => {
     const link = linkedTaskAgentForTab('w1:t1', [agent], panes, tabs)
     expect(link).not.toBeNull()
     expect(linkedTaskRenameForLabel(link!, '20260920_bar')).toEqual({
       taskId: '20260919_foo',
       oldTaskDirectory: '_tasks/20260919_foo',
-      newTaskDirectory: '_tasks/20260919_foo',
+      newTaskDirectory: '_tasks/20260919_bar',
       oldAgentName: 'f20260919_foo',
-      newAgentName: 'f20260919_foo',
-      label: '20260920_bar',
+      newAgentName: 'f20260919_bar',
+      label: '20260919_bar',
     })
     expect(linkedTaskRenameForPathMove(link!, '_tasks/20260920_bar/task.md')).toMatchObject({
       taskId: '20260920_bar',
       newTaskDirectory: '_tasks/20260920_bar',
       newAgentName: 'f20260920_bar',
-      label: '20260919_foo',
+      label: '20260920_bar',
     })
   })
 
-  it('renames a task title without changing its directory or agent name', () => {
+  it('rejects a tab label that would make the full task directory exceed 80 characters', () => {
+    const link = linkedTaskAgentForTab('w1:t1', [agent], panes, tabs)
+    expect(link).not.toBeNull()
+    expect(linkedTaskRenameForLabel(link!, 'x'.repeat(80))).toBeNull()
+  })
+
+  it('preserves the existing date prefix for a renamed task', () => {
     const titledAgent = {
       ...agent,
       task_id: '20260919_foo',
@@ -174,10 +180,52 @@ describe('linked task agent helpers', () => {
     expect(linkedTaskRenameForLabel(link!, '日本語の新しいタスク')).toEqual({
       taskId: '20260919_foo',
       oldTaskDirectory: '_tasks/20260919_foo',
+      newTaskDirectory: '_tasks/20260919_日本語の新しいタスク',
+      oldAgentName: 'f20260919_foo',
+      newAgentName: taskAgentName('_tasks/20260919_日本語の新しいタスク/task.md'),
+      label: '20260919_日本語の新しいタスク',
+    })
+  })
+
+  it('keeps a legacy human tab label unchanged when it is confirmed as-is', () => {
+    const titledAgent = {
+      ...agent,
+      task_id: '20260919_foo',
+      task_title: '旧タイトル',
+    }
+    const link = linkedTaskAgentForTab('w1:t1', [titledAgent], panes, [
+      { tab_id: 'w1:t1', label: '旧タイトル' },
+    ])
+    expect(link).not.toBeNull()
+    expect(linkedTaskRenameForLabel(link!, '旧タイトル')).toEqual({
+      taskId: '20260919_foo',
+      oldTaskDirectory: '_tasks/20260919_foo',
       newTaskDirectory: '_tasks/20260919_foo',
       oldAgentName: 'f20260919_foo',
       newAgentName: 'f20260919_foo',
-      label: '日本語の新しいタスク',
+      label: '旧タイトル',
+    })
+  })
+
+  it('keeps an automation task ID when the tab label is unchanged', () => {
+    const automationID = '20260919_123456_manual_report_abcdef'
+    const automationAgent = {
+      ...agent,
+      name: taskAgentName(`_tasks/${automationID}/task.md`),
+      custom_name: taskAgentName(`_tasks/${automationID}/task.md`),
+      task_id: automationID,
+    }
+    const link = linkedTaskAgentForTab('w1:t1', [automationAgent], panes, [
+      { tab_id: 'w1:t1', label: automationID },
+    ])
+    expect(link).not.toBeNull()
+    expect(linkedTaskRenameForLabel(link!, automationID)).toEqual({
+      taskId: automationID,
+      oldTaskDirectory: `_tasks/${automationID}`,
+      newTaskDirectory: `_tasks/${automationID}`,
+      oldAgentName: taskAgentName(`_tasks/${automationID}/task.md`),
+      newAgentName: taskAgentName(`_tasks/${automationID}/task.md`),
+      label: automationID,
     })
   })
 })

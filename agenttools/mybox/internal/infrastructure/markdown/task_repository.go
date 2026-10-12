@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/goccy/go-yaml"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
@@ -23,7 +24,6 @@ func NewTaskRepository(root string) *TaskRepository {
 }
 
 type taskFields struct {
-	Title         string   `yaml:"title"`
 	Status        string   `yaml:"status"`
 	Due           string   `yaml:"due"`
 	PendingUntil  string   `yaml:"pending_until"`
@@ -31,17 +31,13 @@ type taskFields struct {
 	Tags          []string `yaml:"tags"`
 }
 
-var deprecatedTaskMetadataKeys = []string{"priority", "agent_kind", "assignee", "description"}
+var deprecatedTaskMetadataKeys = []string{"title", "priority", "agent_kind", "assignee", "description"}
 
 func (r *TaskRepository) List(ctx context.Context) ([]domain.Task, error) {
-	return r.list(filepath.Join(r.root, "_tasks"), false)
+	return r.list(filepath.Join(r.root, "_tasks"))
 }
 
-func (r *TaskRepository) ListArchived(ctx context.Context) ([]domain.Task, error) {
-	return r.list(filepath.Join(r.root, "_archives", "tasks"), true)
-}
-
-func (r *TaskRepository) list(dir string, archived bool) ([]domain.Task, error) {
+func (r *TaskRepository) list(dir string) ([]domain.Task, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -54,7 +50,7 @@ func (r *TaskRepository) list(dir string, archived bool) ([]domain.Task, error) 
 		if !e.IsDir() {
 			continue
 		}
-		t, err := r.readTask(filepath.Join(dir, e.Name()), e.Name(), archived)
+		t, err := r.readTask(filepath.Join(dir, e.Name()), e.Name(), false)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -82,15 +78,12 @@ func (r *TaskRepository) readTaskFile(path string, id string, archived bool) (*d
 			return nil, err
 		}
 	}
-	if f.Title == "" {
-		f.Title = id
-	}
 	if f.Status == "" {
 		f.Status = string(domain.TaskStatusTodo)
 	}
 	return &domain.Task{
 		ID:            id,
-		Title:         f.Title,
+		Title:         id,
 		Status:        domain.TaskStatus(f.Status),
 		Due:           f.Due,
 		PendingUntil:  f.PendingUntil,
@@ -138,6 +131,12 @@ func (r *TaskRepository) Create(ctx context.Context, id string, content string) 
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, id)
 	}
+	archivedDir := filepath.Join(r.root, "_archives", "tasks", id)
+	if _, err := os.Stat(archivedDir); err == nil {
+		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, id)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	content, err := removeDeprecatedTaskMetadata(content)
 	if err != nil {
 		return err
@@ -146,6 +145,59 @@ func (r *TaskRepository) Create(ctx context.Context, id string, content string) 
 		return err
 	}
 	return fsutil.WriteFileAtomic(filepath.Join(dir, "task.md"), []byte(content), 0o644)
+}
+
+// Rename moves a task directory without changing its contents. The task title
+// is derived from the directory name, so a rename is the task name change.
+func (r *TaskRepository) Rename(ctx context.Context, oldID string, newID string) error {
+	if err := validateTaskID(oldID); err != nil {
+		return err
+	}
+	if err := validateTaskID(newID); err != nil {
+		return err
+	}
+	if oldID == newID {
+		return nil
+	}
+
+	src := filepath.Join(r.root, "_tasks", oldID)
+	if _, err := os.Stat(src); os.IsNotExist(err) {
+		src = filepath.Join(r.root, "_archives", "tasks", oldID)
+	}
+	if _, err := os.Stat(src); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%w: task %s", domain.ErrNotFound, oldID)
+		}
+		return err
+	}
+
+	for _, parent := range []string{
+		filepath.Join(r.root, "_tasks"),
+		filepath.Join(r.root, "_archives", "tasks"),
+	} {
+		target := filepath.Join(parent, newID)
+		if _, err := os.Stat(target); err == nil {
+			return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, newID)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+
+	dst := filepath.Join(filepath.Dir(src), newID)
+	if err := os.Rename(src, dst); err != nil {
+		return err
+	}
+	if isGitRepo(r.root) {
+		// Stage both sides in one git invocation. If staging fails, restore the
+		// filesystem move so callers never observe a half-renamed task.
+		if err := stageGitPaths(ctx, r.root, dst, src); err != nil {
+			if rollbackErr := os.Rename(dst, src); rollbackErr != nil {
+				return fmt.Errorf("%w; rollback task rename: %v", err, rollbackErr)
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 func removeDeprecatedTaskMetadata(content string) (string, error) {
@@ -199,7 +251,7 @@ func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
 	delete(fm, "created_at")
 	delete(fm, "type")
 	delete(fm, "task_kind")
-	fm["title"] = task.Title
+	delete(fm, "title")
 	fm["status"] = string(task.Status)
 	fm["due"] = task.Due
 	if task.Tags == nil {
@@ -354,6 +406,9 @@ func relativeGitPaths(root string, paths ...string) ([]string, error) {
 func validateTaskID(id string) error {
 	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, `/\`) {
 		return fmt.Errorf("%w: %q", domain.ErrInvalidPath, id)
+	}
+	if utf8.RuneCountInString(id) > domain.MaxTaskDirectoryNameLength {
+		return fmt.Errorf("%w: task directory name must be at most %d characters", domain.ErrInvalidPath, domain.MaxTaskDirectoryNameLength)
 	}
 	return nil
 }

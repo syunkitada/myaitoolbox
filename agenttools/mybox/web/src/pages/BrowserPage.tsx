@@ -111,6 +111,27 @@ function taskIDFromPath(path: string): string | null {
   return parts[1]
 }
 
+function parseTaskFrontmatter(path: string, frontmatter: string): Record<string, unknown> {
+  const parsed = parseFrontmatter(frontmatter)
+  if (!parsed.ok || taskIDFromPath(path) === null || !Object.prototype.hasOwnProperty.call(parsed.data, 'title')) {
+    return parsed.data
+  }
+  const data = { ...parsed.data }
+  delete data.title
+  return data
+}
+
+function removeTaskTitle(path: string, text: string): string {
+  if (taskIDFromPath(path) === null) return text
+  const split = splitFrontmatter(text)
+  if (!split.has) return text
+  const parsed = parseFrontmatter(split.frontmatter)
+  if (!parsed.ok || !Object.prototype.hasOwnProperty.call(parsed.data, 'title')) return text
+  const data = { ...parsed.data }
+  delete data.title
+  return buildMarkdown(serializeFrontmatter(data), split.body)
+}
+
 function pathAfterMove(path: string, oldPath: string, newPath: string): string {
   if (path === oldPath) return newPath
   if (path.startsWith(`${oldPath}/`)) return `${newPath}${path.slice(oldPath.length)}`
@@ -1544,7 +1565,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
             setCrlf(hasCRLF(c.content))
             const split = splitFrontmatter(c.content)
             setDraftBody(split.body)
-            setDraftFm(parseFrontmatter(split.frontmatter).data)
+            setDraftFm(parseTaskFrontmatter(readmePath, split.frontmatter))
           })
           .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       } else {
@@ -1553,7 +1574,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
         setDraft(text)
         const split = splitFrontmatter(text)
         setDraftBody(split.body)
-        setDraftFm(parseFrontmatter(split.frontmatter).data)
+        setDraftFm(parseTaskFrontmatter(path, split.frontmatter))
       }
       return
     }
@@ -1565,7 +1586,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
         setCrlf(hasCRLF(c.content))
         const split = splitFrontmatter(c.content)
         setDraftBody(split.body)
-        setDraftFm(parseFrontmatter(split.frontmatter).data)
+        setDraftFm(parseTaskFrontmatter(path, split.frontmatter))
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
     void api.recordRecent(path).then(() => onRecentChanged?.(path)).catch(() => undefined)
@@ -1592,7 +1613,11 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     isDir || (entry?.markdown ?? /\.(md|markdown)$/i.test(path))
 
   const fmSplit = useMemo(() => splitFrontmatter(content), [content])
-  const fmParsed = useMemo(() => parseFrontmatter(fmSplit.frontmatter), [fmSplit])
+  const metadataPath = readmePath ?? path
+  const fmParsed = useMemo(() => {
+    const parsed = parseFrontmatter(fmSplit.frontmatter)
+    return { ...parsed, data: parseTaskFrontmatter(metadataPath, fmSplit.frontmatter) }
+  }, [fmSplit, metadataPath])
   const useForm = isMarkdown && fmParsed.ok
   const brokenFrontmatter = isMarkdown && fmSplit.has && !fmParsed.ok
 
@@ -1646,7 +1671,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }
 
-  const taskID = isDir ? null : taskIDFromPath(path)
+  const taskID = taskIDFromPath(metadataPath)
   const isTaskFile = taskID !== null
   const taskStatus = TASK_STATUS_OPTIONS.includes(fmParsed.data.status as TaskStatus)
     ? (fmParsed.data.status as TaskStatus)
@@ -1668,13 +1693,13 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
 
   const archiveTask = async () => {
     if (!taskID) return
-    let message = `「${String(fmParsed.data.title ?? taskID)}」をアーカイブしますか？`
+    let message = `「${taskID}」をアーカイブしますか？`
     try {
       const tmpFiles = await api.listFiles({ path: `_tasks/${taskID}/tmp` })
       if (tmpFiles.length > 0) {
         const names = tmpFiles.slice(0, 5).map((file) => file.name).join(', ')
         const more = tmpFiles.length > 5 ? ` ほか${tmpFiles.length - 5}件` : ''
-        message = `「${String(fmParsed.data.title ?? taskID)}」をアーカイブしますか？\nタスク内の tmp ディレクトリ（${tmpFiles.length}件: ${names}${more}）も削除されます。元に戻せません。`
+        message = `「${taskID}」をアーカイブしますか？\nタスク内の tmp ディレクトリ（${tmpFiles.length}件: ${names}${more}）も削除されます。元に戻せません。`
       }
     } catch {
       // tmp の確認に失敗してもアーカイブ確認自体は続行する
@@ -1799,7 +1824,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
 
   const persist = async (raw: string): Promise<boolean> => {
     setSaved(false)
-    const out = normalizeLineEndings(raw)
+    const out = normalizeLineEndings(removeTaskTitle(metadataPath, raw))
     try {
       await api.saveFileContent(readmePath ?? path, out)
       setContent(out)
@@ -1807,7 +1832,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       setCrlf(hasCRLF(out))
       const split = splitFrontmatter(out)
       setDraftBody(split.body)
-      setDraftFm(parseFrontmatter(split.frontmatter).data)
+      setDraftFm(parseTaskFrontmatter(metadataPath, split.frontmatter))
       setEditing(false)
       setShowDiff(false)
       setShowGitDiff(false)
@@ -1832,7 +1857,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     setDraft(content)
     const split = splitFrontmatter(content)
     setDraftBody(split.body)
-    setDraftFm(parseFrontmatter(split.frontmatter).data)
+    setDraftFm(parseTaskFrontmatter(metadataPath, split.frontmatter))
     setEditing(false)
     setShowDiff(false)
     setShowGitDiff(false)
@@ -2302,7 +2327,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                       </CollapsibleTrigger>
                       <CollapsibleContent>
                         <div className="mt-3">
-                          <FrontmatterForm value={draftFm} onChange={setDraftFm} />
+                          <FrontmatterForm value={draftFm} onChange={setDraftFm} hideTitle={isTaskFile} />
                         </div>
                       </CollapsibleContent>
                     </Collapsible>
@@ -2953,16 +2978,25 @@ export function BrowserPage({
       }
 
       let agentRenamed = false
+      let tabRenamed = false
       try {
         if (renamePlan.oldAgentName !== renamePlan.newAgentName) {
           await api.renameHerdrAgent(link.agent.pane_id, renamePlan.newAgentName)
           agentRenamed = true
         }
         await api.renameHerdrTab(link.tab.tab_id, renamePlan.label)
+        tabRenamed = true
         refreshHerdr?.()
         return { success: true, rolledBack: false }
       } catch (e) {
         const rollbackErrors: string[] = []
+        if (tabRenamed) {
+          try {
+            await api.renameHerdrTab(link.tab.tab_id, link.tab.label)
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError))
+          }
+        }
         if (agentRenamed) {
           try {
             await api.renameHerdrAgent(link.agent.pane_id, renamePlan.oldAgentName)
@@ -3002,9 +3036,10 @@ export function BrowserPage({
       setReferenceGitDiffOpen(false)
       setReferenceDirty(false)
       if (oldPath === selected) onSelect(path)
+      await refreshMeta()
       return true
     },
-    [onSelect, restoreMovedExplorer, selected, syncLinkedPathMove],
+    [onSelect, refreshMeta, restoreMovedExplorer, selected, syncLinkedPathMove],
   )
 
   const validateLinkedPathMove = useCallback(
@@ -3060,18 +3095,28 @@ export function BrowserPage({
     async (oldPath: string, newPath: string) => {
       const result = await syncLinkedPathMove(oldPath, newPath)
       if (!result.success) {
-        if (result.rolledBack) await restoreMovedExplorer(oldPath, newPath)
+        if (result.rolledBack) {
+          await restoreMovedExplorer(oldPath, newPath)
+        }
+        await refreshMeta()
         return false
       }
-      if (!referencePath) return true
+      if (!referencePath) {
+        await refreshMeta()
+        return true
+      }
       const nextPath = pathAfterMove(referencePath, oldPath, newPath)
-      if (nextPath === referencePath) return true
+      if (nextPath === referencePath) {
+        await refreshMeta()
+        return true
+      }
       setReferencePath(nextPath)
       setReferenceGitDiffOpen(false)
       setReferenceDirty(false)
+      await refreshMeta()
       return true
     },
-    [referencePath, restoreMovedExplorer, syncLinkedPathMove],
+    [referencePath, refreshMeta, restoreMovedExplorer, syncLinkedPathMove],
   )
 
   const handleMainPaneMoved = useCallback(
@@ -3080,9 +3125,10 @@ export function BrowserPage({
       const path = result.success || !result.rolledBack ? newPath : oldPath
       if (!result.success && result.rolledBack) await restoreMovedExplorer(oldPath, newPath)
       onSelect(path)
+      await refreshMeta()
       return true
     },
-    [onSelect, restoreMovedExplorer, syncLinkedPathMove],
+    [onSelect, refreshMeta, restoreMovedExplorer, syncLinkedPathMove],
   )
 
   const revealFile = useCallback(
@@ -3257,6 +3303,7 @@ export function BrowserPage({
             setReferenceDirty(false)
           }
           onSelect(filePath)
+          await refreshMeta()
           return
         }
         clearSubtree(filePath)
@@ -3270,6 +3317,7 @@ export function BrowserPage({
           setReferenceDirty(false)
         }
         onSelect(newPath)
+        await refreshMeta()
       })
       .catch((e) => setMoveError(e instanceof Error ? e.message : String(e)))
   }

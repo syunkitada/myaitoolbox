@@ -2,9 +2,12 @@ package application
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,6 +27,15 @@ func newTaskUC(t *testing.T) *TaskUseCase {
 	)
 }
 
+type failingUpdateTaskRepository struct {
+	domain.TaskRepository
+	err error
+}
+
+func (r *failingUpdateTaskRepository) Update(context.Context, domain.Task) error {
+	return r.err
+}
+
 func TestTaskCreateUpdateArchive(t *testing.T) {
 	uc := newTaskUC(t)
 	ctx := context.Background()
@@ -31,6 +43,7 @@ func TestTaskCreateUpdateArchive(t *testing.T) {
 	task, err := uc.Create(ctx, TaskInput{Name: "Fix Login Bug"})
 	require.NoError(t, err)
 	assert.Contains(t, task.ID, "fix-login-bug")
+	assert.Equal(t, task.ID, task.Title)
 	assert.Equal(t, domain.TaskStatusTodo, task.Status)
 	assert.Equal(t, "test", task.Project)
 
@@ -47,10 +60,9 @@ func TestTaskCreateUpdateArchive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, list)
 
-	all, err := uc.List(ctx, TaskFilter{All: true})
+	list, err = uc.List(ctx, TaskFilter{})
 	require.NoError(t, err)
-	require.Len(t, all, 1)
-	assert.True(t, all[0].Archived)
+	assert.Empty(t, list)
 }
 
 func TestTaskCreateOmitsDeprecatedMetadata(t *testing.T) {
@@ -65,6 +77,7 @@ func TestTaskCreateOmitsDeprecatedMetadata(t *testing.T) {
 	assert.NotContains(t, string(content), "agent_kind:")
 	assert.NotContains(t, string(content), "assignee:")
 	assert.NotContains(t, string(content), "description:")
+	assert.NotContains(t, string(content), "title:")
 }
 
 func TestTaskUpdatePreservesDeprecatedMetadataInExistingFile(t *testing.T) {
@@ -85,6 +98,7 @@ func TestTaskUpdatePreservesDeprecatedMetadataInExistingFile(t *testing.T) {
 	assert.Contains(t, string(updated), "agent_kind: opencode")
 	assert.Contains(t, string(updated), "assignee: owner")
 	assert.Contains(t, string(updated), "description: legacy summary")
+	assert.NotContains(t, string(updated), "title:")
 }
 
 func TestTaskCreateFromContent(t *testing.T) {
@@ -95,7 +109,7 @@ func TestTaskCreateFromContent(t *testing.T) {
 	task, err := uc.CreateFromContent(ctx, "20260927_daily-report", content, []string{"scheduled"})
 	require.NoError(t, err)
 	assert.Equal(t, "20260927_daily-report", task.ID)
-	assert.Equal(t, "Daily report", task.Title)
+	assert.Equal(t, "20260927_daily-report", task.Title)
 	assert.Equal(t, domain.TaskStatusTodo, task.Status)
 	assert.Equal(t, []string{"scheduled"}, task.Tags)
 
@@ -105,22 +119,22 @@ func TestTaskCreateFromContent(t *testing.T) {
 	assert.NotContains(t, string(data), "agent_kind:")
 	assert.NotContains(t, string(data), "assignee:")
 	assert.NotContains(t, string(data), "description:")
+	assert.NotContains(t, string(data), "title:")
 	assert.Contains(t, string(data), "custom: preserve")
 	assert.Contains(t, string(data), "Prepare the report.")
 }
 
-func TestTaskCreateFromContentRejectsDuplicateName(t *testing.T) {
+func TestTaskCreateFromContentUsesDirectoryAsTitle(t *testing.T) {
 	uc := newTaskUC(t)
 	ctx := context.Background()
-	_, err := uc.Create(ctx, TaskInput{Name: "Daily report"})
-	require.NoError(t, err)
-
 	content := "---\ntitle: Daily report\n---\n\nGenerated report."
-	_, err = uc.CreateFromContent(ctx, "20260927_daily-report-2", content, nil)
-	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
+	task, err := uc.CreateFromContent(ctx, "20260927_daily-report-2", content, nil)
+	require.NoError(t, err)
+	assert.Equal(t, task.ID, task.Title)
 
-	_, err = uc.Show(ctx, "20260927_daily-report-2")
-	assert.ErrorIs(t, err, domain.ErrNotFound)
+	data, err := os.ReadFile(filepath.Join(uc.ProjectPath, "_tasks", task.ID, "task.md"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "title:")
 }
 
 func TestTaskCreateUsesProvidedContent(t *testing.T) {
@@ -136,6 +150,7 @@ func TestTaskCreateUsesProvidedContent(t *testing.T) {
 	assert.NotContains(t, string(data), "agent_kind:")
 	assert.NotContains(t, string(data), "assignee:")
 	assert.NotContains(t, string(data), "description:")
+	assert.NotContains(t, string(data), "title:")
 	assert.Contains(t, string(data), "## Custom body")
 	assert.Contains(t, string(data), "- supplied by the user")
 }
@@ -155,6 +170,7 @@ func TestTaskCreateStripsDeprecatedMetadataFromProjectTemplate(t *testing.T) {
 	assert.NotContains(t, string(data), "agent_kind:")
 	assert.NotContains(t, string(data), "assignee:")
 	assert.NotContains(t, string(data), "description:")
+	assert.NotContains(t, string(data), "title:")
 	assert.Contains(t, string(data), "Project template body")
 }
 
@@ -163,7 +179,7 @@ func TestRenderTaskTemplate(t *testing.T) {
 
 	content, err := uc.RenderTaskTemplate("Template task")
 	require.NoError(t, err)
-	assert.Contains(t, content, "title: Template task")
+	assert.NotContains(t, content, "title:")
 	assert.Contains(t, content, "## TODO")
 }
 
@@ -179,7 +195,7 @@ func TestTaskListFilter(t *testing.T) {
 	list, err := uc.List(ctx, TaskFilter{Tag: "web"})
 	require.NoError(t, err)
 	require.Len(t, list, 1)
-	assert.Equal(t, "alpha", list[0].Title)
+	assert.Equal(t, list[0].ID, list[0].Title)
 
 	list, err = uc.List(ctx, TaskFilter{Status: "todo"})
 	require.NoError(t, err)
@@ -192,17 +208,31 @@ func TestTaskCreateEmptyName(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
 }
 
+func TestTaskCreateRejectsTaskDirectoryOverMaxLength(t *testing.T) {
+	uc := newTaskUC(t)
+
+	created, err := uc.Create(context.Background(), TaskInput{Name: strings.Repeat("a", 71)})
+	require.NoError(t, err)
+	assert.Len(t, created.ID, domain.MaxTaskDirectoryNameLength)
+
+	_, err = uc.Create(context.Background(), TaskInput{Name: strings.Repeat("b", 72)})
+	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+}
+
+func TestTaskCreateCountsUnicodeCharactersInTaskDirectoryLength(t *testing.T) {
+	uc := newTaskUC(t)
+
+	created, err := uc.Create(context.Background(), TaskInput{Name: strings.Repeat("あ", 71)})
+	require.NoError(t, err)
+	assert.Equal(t, domain.MaxTaskDirectoryNameLength, utf8.RuneCountInString(created.ID))
+}
+
 func TestTaskCreateRejectsDuplicateName(t *testing.T) {
 	uc := newTaskUC(t)
 	ctx := context.Background()
 
-	content := "---\ntitle: Existing task\n---\n"
-	require.NoError(t, uc.Tasks.Create(ctx, "20260101_existing", content))
-	existing, err := uc.Tasks.Find(ctx, "20260101_existing")
+	_, err := uc.Create(ctx, TaskInput{Name: " 日本語のタスク "})
 	require.NoError(t, err)
-	existing.Title = "日本語のタスク"
-	require.NoError(t, uc.Tasks.Update(ctx, *existing))
-
 	_, err = uc.Create(ctx, TaskInput{Name: " 日本語のタスク "})
 	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
 }
@@ -221,7 +251,7 @@ func TestTaskCreateAllowsNameUsedByArchivedTask(t *testing.T) {
 
 	created, err := uc.Create(ctx, TaskInput{Name: " 日本語のタスク "})
 	require.NoError(t, err)
-	assert.Equal(t, "日本語のタスク", created.Title)
+	assert.Equal(t, created.ID, created.Title)
 	assert.False(t, created.Archived)
 }
 
@@ -239,8 +269,154 @@ func TestTaskUpdateRejectsDuplicateName(t *testing.T) {
 
 	got, err := uc.Show(ctx, second.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "second", got.Title)
+	assert.Equal(t, second.ID, got.Title)
 	assert.NotEqual(t, first.ID, second.ID)
+}
+
+func TestTaskRenameMovesDirectoryAndUsesNewIDAsTitle(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+
+	created, err := uc.Create(ctx, TaskInput{Name: "old task"})
+	require.NoError(t, err)
+	newName := "new task"
+	updated, err := uc.Patch(ctx, created.ID, TaskPatch{Name: &newName})
+	require.NoError(t, err)
+
+	expectedID := created.ID[:9] + "new-task"
+	assert.Equal(t, expectedID, updated.ID)
+	assert.Equal(t, expectedID, updated.Title)
+	_, err = uc.Show(ctx, created.ID)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	got, err := uc.Show(ctx, expectedID)
+	require.NoError(t, err)
+	assert.Equal(t, expectedID, got.Title)
+	_, err = os.Stat(filepath.Join(uc.ProjectPath, "_tasks", expectedID, "task.md"))
+	assert.NoError(t, err)
+}
+
+func TestTaskRenameUpdatesPathState(t *testing.T) {
+	root := t.TempDir()
+	store := &stateStoreStub{}
+	state := NewStateUseCase(store)
+	uc := NewTaskUseCase(
+		markdown.NewTaskRepository(root),
+		markdown.NewTemplateRenderer(root, ""),
+		markdown.NewPromptRepository(root, ""),
+		"demo",
+		root,
+	)
+	uc.SetState(state)
+
+	ctx := context.Background()
+	created, err := uc.Create(ctx, TaskInput{Name: "old task"})
+	require.NoError(t, err)
+	store.state = domain.State{
+		Favorites:            []domain.Favorite{{Project: "demo", Path: uc.RelativePathFor(created)}},
+		RecentFilesByProject: map[string][]string{"demo": {uc.RelativePathFor(created)}},
+	}
+
+	newName := "new task"
+	updated, err := uc.Patch(ctx, created.ID, TaskPatch{Name: &newName})
+	require.NoError(t, err)
+
+	expectedPath := uc.RelativePathFor(updated)
+	assert.Equal(t, []domain.Favorite{{Project: "demo", Path: expectedPath}}, store.state.Favorites)
+	assert.Equal(t, []string{expectedPath}, store.state.RecentFilesByProject["demo"])
+}
+
+func TestTaskRenameKeepsAutomationIDWhenNameIsUnchanged(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+	const id = "20260927_123456_manual_report_abcdef"
+
+	require.NoError(t, uc.Tasks.Create(ctx, id, "---\nstatus: todo\n---\n\nbody"))
+	name := id
+	updated, err := uc.Patch(ctx, id, TaskPatch{Name: &name})
+	require.NoError(t, err)
+
+	assert.Equal(t, id, updated.ID)
+	assert.Equal(t, id, updated.Title)
+	_, err = uc.Show(ctx, id)
+	assert.NoError(t, err)
+}
+
+func TestTaskRenameRollsBackWhenMetadataUpdateFails(t *testing.T) {
+	root := t.TempDir()
+	base := markdown.NewTaskRepository(root)
+	ctx := context.Background()
+	const oldID = "20260927_old-task"
+	const newID = "20260927_new-task"
+	updateErr := errors.New("metadata update failed")
+
+	require.NoError(t, base.Create(ctx, oldID, "---\nstatus: todo\n---\n\nbody"))
+	uc := NewTaskUseCase(
+		&failingUpdateTaskRepository{TaskRepository: base, err: updateErr},
+		markdown.NewTemplateRenderer(root, ""),
+		markdown.NewPromptRepository(root, ""),
+		"test",
+		root,
+	)
+	name := "new task"
+
+	_, err := uc.Patch(ctx, oldID, TaskPatch{Name: &name})
+	require.ErrorIs(t, err, updateErr)
+
+	oldTask, err := base.Find(ctx, oldID)
+	require.NoError(t, err)
+	assert.Equal(t, oldID, oldTask.Title)
+	_, err = base.Find(ctx, newID)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestTaskUpdateRenameRollsBackWhenMetadataUpdateFails(t *testing.T) {
+	root := t.TempDir()
+	base := markdown.NewTaskRepository(root)
+	ctx := context.Background()
+	const oldID = "20260927_old-task"
+	const newID = "20260927_new-task"
+	updateErr := errors.New("metadata update failed")
+
+	require.NoError(t, base.Create(ctx, oldID, "---\nstatus: todo\n---\n\nbody"))
+	uc := NewTaskUseCase(
+		&failingUpdateTaskRepository{TaskRepository: base, err: updateErr},
+		markdown.NewTemplateRenderer(root, ""),
+		markdown.NewPromptRepository(root, ""),
+		"test",
+		root,
+	)
+
+	_, err := uc.Update(ctx, oldID, TaskInput{Name: "new task"})
+	require.ErrorIs(t, err, updateErr)
+
+	_, err = base.Find(ctx, oldID)
+	assert.NoError(t, err)
+	_, err = base.Find(ctx, newID)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestTaskRenameRejectsEmptySlug(t *testing.T) {
+	uc := newTaskUC(t)
+	created, err := uc.Create(context.Background(), TaskInput{Name: "old task"})
+	require.NoError(t, err)
+	newName := "!!!"
+	_, err = uc.Patch(context.Background(), created.ID, TaskPatch{Name: &newName})
+	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+	_, err = uc.Show(context.Background(), created.ID)
+	assert.NoError(t, err)
+}
+
+func TestTaskRenameRejectsTaskDirectoryOverMaxLength(t *testing.T) {
+	uc := newTaskUC(t)
+	ctx := context.Background()
+	created, err := uc.Create(ctx, TaskInput{Name: "old task"})
+	require.NoError(t, err)
+	newName := strings.Repeat("b", 72)
+
+	_, err = uc.Patch(ctx, created.ID, TaskPatch{Name: &newName})
+	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+	_, err = uc.Show(ctx, created.ID)
+	assert.NoError(t, err)
 }
 
 func TestTaskPatchRejectsDuplicateNameIncludingArchivedTasks(t *testing.T) {

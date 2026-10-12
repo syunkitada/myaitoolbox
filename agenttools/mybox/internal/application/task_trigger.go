@@ -50,6 +50,10 @@ func (u *TaskTriggerUseCase) Create(ctx context.Context, input TaskTriggerInput)
 	if agentKind == "" {
 		return fmt.Errorf("%w: task agent kind is required", domain.ErrInvalidArgument)
 	}
+	triggerID := strings.TrimSpace(input.ID)
+	if err := validateAutomationTriggerID(triggerID); err != nil {
+		return err
+	}
 	content := ""
 	if input.Content != nil {
 		content = *input.Content
@@ -65,7 +69,7 @@ func (u *TaskTriggerUseCase) Create(ctx context.Context, input TaskTriggerInput)
 		prompt = DefaultTaskTriggerPrompt
 	}
 	return u.Triggers.Create(ctx, domain.TriggerDefinitionInput{
-		ID:        strings.TrimSpace(input.ID),
+		ID:        triggerID,
 		Enabled:   true,
 		Type:      input.Type,
 		Cron:      strings.TrimSpace(input.Cron),

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -11,7 +12,9 @@ import (
 )
 
 type FileUseCase struct {
-	Files domain.FileRepository
+	Files   domain.FileRepository
+	State   *StateUseCase
+	Project string
 }
 
 const maxFileSearchResults = 100
@@ -22,6 +25,14 @@ type limitedFileSearcher interface {
 
 func NewFileUseCase(files domain.FileRepository) *FileUseCase {
 	return &FileUseCase{Files: files}
+}
+
+// SetState connects file moves to project-scoped favorites and recent files.
+// It is optional so repository-only use cases remain independent of persisted
+// UI state.
+func (u *FileUseCase) SetState(state *StateUseCase, project string) {
+	u.State = state
+	u.Project = project
 }
 
 func (u *FileUseCase) Tree(ctx context.Context, showHidden bool) ([]domain.FileEntry, error) {
@@ -120,13 +131,44 @@ func (u *FileUseCase) CreateDir(ctx context.Context, path string) error {
 }
 
 func (u *FileUseCase) Move(ctx context.Context, oldPath string, newPath string) error {
+	_, err := u.MoveWithTarget(ctx, oldPath, newPath)
+	return err
+}
+
+type moveTargetResolver interface {
+	MoveTarget(ctx context.Context, oldPath string, newPath string) (string, error)
+}
+
+func (u *FileUseCase) MoveWithTarget(ctx context.Context, oldPath string, newPath string) (string, error) {
 	if err := validatePath(oldPath); err != nil {
-		return err
+		return "", err
 	}
 	if err := validatePath(newPath); err != nil {
-		return err
+		return "", err
 	}
-	return u.Files.Move(ctx, oldPath, newPath)
+	effectivePath := newPath
+	if resolver, ok := u.Files.(moveTargetResolver); ok {
+		var err error
+		effectivePath, err = resolver.MoveTarget(ctx, oldPath, newPath)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		if err := u.Files.Move(ctx, oldPath, newPath); err != nil {
+			return "", err
+		}
+	}
+	if u.State == nil {
+		return effectivePath, nil
+	}
+	if err := u.State.MovePath(ctx, oldPath, effectivePath, u.Project); err != nil {
+		rollbackErr := u.Files.Move(context.WithoutCancel(ctx), effectivePath, oldPath)
+		if rollbackErr != nil {
+			return "", errors.Join(err, fmt.Errorf("rollback file move: %w", rollbackErr))
+		}
+		return "", err
+	}
+	return effectivePath, nil
 }
 
 func (u *FileUseCase) Copy(ctx context.Context, oldPath string, newPath string) error {

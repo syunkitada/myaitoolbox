@@ -2,6 +2,9 @@ package domain
 
 import "time"
 
+// MaxTaskDirectoryNameLength is the maximum number of Unicode characters in a task directory name.
+const MaxTaskDirectoryNameLength = 80
+
 type TaskStatus string
 
 const (

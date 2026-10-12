@@ -29,6 +29,7 @@ interface HerdrPageProps {
   error: string | null
   loading: boolean
   refresh: () => Promise<void>
+  refreshMeta?: () => Promise<void>
 }
 
 const AGENT_QUICK_KEYS: { label: string; key: string }[] = [
@@ -379,13 +380,14 @@ function PaneRow({ pane, focused, onFocus, autoReload, onChanged, onError, onFil
   )
 }
 
-function TabRow({ tab, panes, active, linkedTask, onSelect, onChanged, onError }: {
+function TabRow({ tab, panes, active, linkedTask, onSelect, onChanged, onTaskPathChanged, onError }: {
   tab: HerdrTab
   panes: HerdrPane[]
   active: boolean
   linkedTask?: LinkedTaskAgent
   onSelect: () => void
   onChanged: OnChanged
+  onTaskPathChanged?: OnChanged
   onError: OnError
 }) {
   const { prompt, confirm } = useDialogs()
@@ -406,35 +408,21 @@ function TabRow({ tab, panes, active, linkedTask, onSelect, onChanged, onError }
       return
     }
     void runOp(async () => {
-      let taskUpdated = false
-      let tabRenamed = false
-      const oldTaskTitle = linkedTask.agent.task_title?.trim() || tab.label.trim()
-      try {
-        await api.updateTask(renamePlan.taskId, { name: renamePlan.label })
-        taskUpdated = true
+      if (renamePlan.oldTaskDirectory === renamePlan.newTaskDirectory) {
         await api.renameHerdrTab(tab.tab_id, renamePlan.label)
-        tabRenamed = true
-      } catch (error) {
-        const rollbackErrors: string[] = []
-        if (tabRenamed) {
-          try {
-            await api.renameHerdrTab(tab.tab_id, oldTaskTitle)
-          } catch (rollbackError) {
-            rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError))
-          }
-        }
-        if (taskUpdated) {
-          try {
-            await api.updateTask(renamePlan.taskId, { name: oldTaskTitle })
-          } catch (rollbackError) {
-            rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError))
-          }
-        }
-        const message = error instanceof Error ? error.message : String(error)
-        if (rollbackErrors.length > 0) throw new Error(`${message}; rollback failed: ${rollbackErrors.join('; ')}`)
-        throw error
+        return
       }
-    }, onError, onChanged)
+      const task = await api.updateTask(renamePlan.taskId, { name: nextLabel })
+      const newTaskID = renamePlan.newTaskDirectory.slice(renamePlan.newTaskDirectory.lastIndexOf('/') + 1)
+      if (task.id && task.id !== newTaskID) {
+        throw new Error(`Task rename returned an unexpected directory: ${task.id}`)
+      }
+    }, onError, async () => {
+      await onChanged()
+      if (renamePlan.oldTaskDirectory !== renamePlan.newTaskDirectory) {
+        await onTaskPathChanged?.()
+      }
+    })
   }
 
   const closeTab = async (e: React.MouseEvent) => {
@@ -513,6 +501,7 @@ interface WorkspaceSectionProps {
   autoReload: boolean
   linkedTasks: ReadonlyMap<string, LinkedTaskAgent>
   onChanged: OnChanged
+  onTaskPathChanged?: OnChanged
   onError: OnError
   onFilePathClick?: (path: string) => void
 }
@@ -530,6 +519,7 @@ function WorkspaceSection({
   autoReload,
   linkedTasks,
   onChanged,
+  onTaskPathChanged,
   onError,
   onFilePathClick,
 }: WorkspaceSectionProps) {
@@ -679,6 +669,7 @@ function WorkspaceSection({
                 linkedTask={linkedTasks.get(t.tab_id)}
                 onSelect={() => onSelectTab(t.tab_id)}
                 onChanged={onChanged}
+                onTaskPathChanged={onTaskPathChanged}
                 onError={onError}
               />
             ))}
@@ -797,6 +788,7 @@ export function HerdrPage({
   error,
   loading,
   refresh,
+  refreshMeta,
 }: HerdrPageProps) {
   const project = getProject()
   const { prompt } = useDialogs()
@@ -1004,6 +996,7 @@ export function HerdrPage({
                         autoReload={autoReload}
                         linkedTasks={linkedTasks}
                         onChanged={refreshAll}
+                        onTaskPathChanged={refreshMeta}
                         onError={onError}
                         onFilePathClick={openFile}
                       />

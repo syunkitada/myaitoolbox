@@ -760,6 +760,7 @@ describe('Explorer reference actions', () => {
       content: `# ${filePath}`,
     }))
     vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    const refreshMeta = vi.fn().mockResolvedValue(undefined)
 
     function SelectionHarness() {
       const [selected, setSelected] = useState(path)
@@ -771,7 +772,7 @@ describe('Explorer reference actions', () => {
           onBack={() => setSelected('')}
           favorites={[]}
           recentFiles={[]}
-          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+          refreshMeta={refreshMeta}
         />
       )
     }
@@ -797,6 +798,7 @@ describe('Explorer reference actions', () => {
     fireEvent.click(screen.getByTestId('app-dialog-ok'))
 
     await waitFor(() => expect(moveFile).toHaveBeenCalledWith(path, renamedPath))
+    await waitFor(() => expect(refreshMeta).toHaveBeenCalled())
     await waitFor(() => expect(within(screen.getByTestId('main-file-viewer-pane')).getByTitle(renamedPath)).toBeInTheDocument())
     expect(within(screen.getByTestId('reference-file-viewer-pane')).getByTitle(renamedPath)).toBeInTheDocument()
   })

@@ -327,6 +327,7 @@ export default function App() {
                         error={herdr.error}
                         loading={herdr.loading}
                         refresh={herdr.refresh}
+                        refreshMeta={refreshMeta}
                       />
                     }
                   />

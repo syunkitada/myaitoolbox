@@ -1440,6 +1440,125 @@ func (s *Server) findHerdrAgent(ctx context.Context, name string) *api.HerdrAgen
 	return nil
 }
 
+type herdrTaskLink struct {
+	agentName string
+	paneID    string
+	tabID     string
+	tabLabel  string
+}
+
+// findHerdrTaskLink resolves the live Herdr objects associated with a task's
+// derived agent name. An unavailable Herdr instance is treated as no link so
+// task operations remain usable without Herdr; once an agent is found, an
+// incomplete topology is an error because renaming only part of the link
+// would leave the task inconsistent.
+func (s *Server) findHerdrTaskLink(ctx context.Context, taskID string) (*herdrTaskLink, error) {
+	agentName := herdrTaskAgentName(taskID)
+	if agentName == "" {
+		return nil, nil
+	}
+	agent := s.findHerdrAgent(ctx, agentName)
+	if agent == nil {
+		return nil, nil
+	}
+	if !herdrTargetPattern.MatchString(agent.PaneId) {
+		return nil, fmt.Errorf("linked Herdr agent %q has no valid pane", agentName)
+	}
+
+	paneOut, err := s.runHerdr(ctx, "pane", "list")
+	if err != nil {
+		return nil, fmt.Errorf("list Herdr panes for task %s: %w", taskID, err)
+	}
+	var paneEnv herdrEnvelope
+	if err := json.Unmarshal(paneOut, &paneEnv); err != nil {
+		return nil, fmt.Errorf("decode Herdr panes for task %s: %w", taskID, err)
+	}
+	var panes herdrPaneListResult
+	if err := json.Unmarshal(paneEnv.Result, &panes); err != nil {
+		return nil, fmt.Errorf("decode Herdr pane list for task %s: %w", taskID, err)
+	}
+	tabID := ""
+	for _, pane := range panes.Panes {
+		if pane.PaneID == agent.PaneId {
+			tabID = pane.TabID
+			break
+		}
+	}
+	if !herdrTargetPattern.MatchString(tabID) {
+		return nil, fmt.Errorf("linked Herdr agent %q has no valid tab", agentName)
+	}
+
+	tabOut, err := s.runHerdr(ctx, "tab", "list")
+	if err != nil {
+		return nil, fmt.Errorf("list Herdr tabs for task %s: %w", taskID, err)
+	}
+	var tabEnv herdrEnvelope
+	if err := json.Unmarshal(tabOut, &tabEnv); err != nil {
+		return nil, fmt.Errorf("decode Herdr tabs for task %s: %w", taskID, err)
+	}
+	var tabs herdrTabListResult
+	if err := json.Unmarshal(tabEnv.Result, &tabs); err != nil {
+		return nil, fmt.Errorf("decode Herdr tab list for task %s: %w", taskID, err)
+	}
+	for _, tab := range tabs.Tabs {
+		if tab.TabID == tabID {
+			return &herdrTaskLink{
+				agentName: agentName,
+				paneID:    agent.PaneId,
+				tabID:     tabID,
+				tabLabel:  tab.Label,
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("linked Herdr agent %q has no matching tab", agentName)
+}
+
+func (s *Server) renameLinkedHerdrTask(ctx context.Context, link *herdrTaskLink, newTaskID string) error {
+	if link == nil {
+		return nil
+	}
+	newAgentName := herdrTaskAgentName(newTaskID)
+	if newAgentName == "" {
+		return fmt.Errorf("task %q does not produce a valid Herdr agent name", newTaskID)
+	}
+
+	agentRenamed := false
+	tabRenamed := false
+	tryErr := func(err error) error {
+		rollbackErrors := []string{}
+		if tabRenamed {
+			label := strings.TrimSpace(link.tabLabel)
+			if label == "" {
+				label = link.agentName
+			}
+			if _, rollbackErr := s.runHerdr(ctx, "tab", "rename", link.tabID, label); rollbackErr != nil {
+				rollbackErrors = append(rollbackErrors, rollbackErr.Error())
+			}
+		}
+		if agentRenamed {
+			if _, rollbackErr := s.runHerdr(ctx, "agent", "rename", link.paneID, link.agentName); rollbackErr != nil {
+				rollbackErrors = append(rollbackErrors, rollbackErr.Error())
+			}
+		}
+		if len(rollbackErrors) > 0 {
+			return errors.Join(err, fmt.Errorf("rollback Herdr task rename: %s", strings.Join(rollbackErrors, "; ")))
+		}
+		return err
+	}
+
+	if link.agentName != newAgentName {
+		if _, err := s.runHerdr(ctx, "agent", "rename", link.paneID, newAgentName); err != nil {
+			return err
+		}
+		agentRenamed = true
+	}
+	if _, err := s.runHerdr(ctx, "tab", "rename", link.tabID, newTaskID); err != nil {
+		return tryErr(err)
+	}
+	tabRenamed = true
+	return nil
+}
+
 // registerHerdrRoutes registers herdr endpoints wired outside the generated
 // oapi-codegen router (manual echoes, mirroring registerGitRoutes).
 func (s *Server) registerHerdrRoutes(e *echo.Echo, basePath string) {

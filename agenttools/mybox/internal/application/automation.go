@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/infrastructure/fsutil"
@@ -247,6 +248,14 @@ func automationRunID(triggerID, eventID string, when time.Time) string {
 
 func automationTaskID(triggerID, eventID string, when time.Time) string {
 	return automationRunID(triggerID, eventID, when)
+}
+
+func validateAutomationTriggerID(triggerID string) error {
+	generatedID := automationTaskID(triggerID, "", time.Time{})
+	if utf8.RuneCountInString(generatedID) > domain.MaxTaskDirectoryNameLength {
+		return fmt.Errorf("%w: trigger id produces a task directory name longer than %d characters", domain.ErrInvalidArgument, domain.MaxTaskDirectoryNameLength)
+	}
+	return nil
 }
 
 func safeID(value string) string {

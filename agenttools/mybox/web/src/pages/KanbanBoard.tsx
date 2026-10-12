@@ -290,7 +290,7 @@ export function KanbanBoard({ herdrOverview }: { herdrOverview?: HerdrOverview |
 
   const load = useCallback(() => {
     void api
-      .listTasks({ all: true })
+      .listTasks({})
       .then(setTasks)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [])

@@ -54,6 +54,9 @@ func NewApp(ctx context.Context, projectName string) (*App, error) {
 	}
 	taskRepository := markdown.NewTaskRepository(project.Path)
 	templateRenderer := markdown.NewTemplateRenderer(project.Path, defaultPath)
+	state := application.NewStateUseCase(config.NewStateStore())
+	files := application.NewFileUseCase(markdown.NewFileRepository(project.Path))
+	files.SetState(state, project.Name)
 	app := &App{
 		Config:   cfg,
 		Project:  project,
@@ -69,9 +72,10 @@ func NewApp(ctx context.Context, projectName string) (*App, error) {
 			automationinfra.NewDefinitionRepository(project.Path),
 			templateRenderer,
 		),
-		Files: application.NewFileUseCase(markdown.NewFileRepository(project.Path)),
-		State: application.NewStateUseCase(config.NewStateStore()),
+		Files: files,
+		State: state,
 	}
+	app.Tasks.SetState(state)
 	app.Automation = application.NewAutomationUseCase(
 		app.Project.Name,
 		app.Project.Path,

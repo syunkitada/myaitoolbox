@@ -47,22 +47,116 @@ func (u *StateUseCase) ResolveFavoriteProjects(ctx context.Context, projects map
 	})
 }
 
-func (u *StateUseCase) RecordRecent(ctx context.Context, path string) error {
+func (u *StateUseCase) RecordRecent(ctx context.Context, path, project string) error {
 	return u.State.Update(ctx, func(state *domain.State) error {
-		state.RecentFiles = removeString(state.RecentFiles, path)
-		state.RecentFiles = append([]string{path}, state.RecentFiles...)
-		if len(state.RecentFiles) > maxRecentFiles {
-			state.RecentFiles = state.RecentFiles[:maxRecentFiles]
+		recentFiles := recentFilesForProject(state, project)
+		recentFiles = removeString(recentFiles, path)
+		recentFiles = append([]string{path}, recentFiles...)
+		if len(recentFiles) > maxRecentFiles {
+			recentFiles = recentFiles[:maxRecentFiles]
 		}
+		state.RecentFilesByProject[strings.TrimSpace(project)] = recentFiles
 		return nil
 	})
 }
 
-func (u *StateUseCase) RemoveRecent(ctx context.Context, path string) error {
-	return u.State.Update(ctx, func(state *domain.State) error {
-		state.RecentFiles = removeString(state.RecentFiles, path)
+// RecentFiles returns recent files for one project. The empty project key is
+// reserved for state written by older versions, whose recent files were not
+// project-scoped. On first access, legacy entries are assigned to the current
+// project and persisted as project-scoped state.
+func (u *StateUseCase) RecentFiles(ctx context.Context, project string) ([]string, error) {
+	project = strings.TrimSpace(project)
+	var recentFiles []string
+	err := u.State.Update(ctx, func(state *domain.State) error {
+		migrateLegacyRecentFiles(state, project)
+		recentFiles = append([]string(nil), state.RecentFilesByProject[project]...)
 		return nil
 	})
+	return recentFiles, err
+}
+
+// MovePath rewrites favorite and recent-file paths after a project-relative
+// path is moved. Project-scoped favorites are only rewritten for the moved
+// project; legacy favorites without a project remain eligible for migration.
+func (u *StateUseCase) MovePath(ctx context.Context, oldPath, newPath, project string) error {
+	oldPath = pathpkg.Clean(oldPath)
+	newPath = pathpkg.Clean(newPath)
+	if oldPath == newPath {
+		return nil
+	}
+	return u.State.Update(ctx, func(state *domain.State) error {
+		for i := range state.Favorites {
+			favorite := &state.Favorites[i]
+			if !pathIsUnder(favorite.Path, oldPath) {
+				continue
+			}
+			if favorite.Project != "" && favorite.Project != project {
+				continue
+			}
+			favorite.Path = movedPath(favorite.Path, oldPath, newPath)
+		}
+		project = strings.TrimSpace(project)
+		migrateLegacyRecentFiles(state, project)
+		recentFiles := recentFilesForProject(state, project)
+		for i, recent := range recentFiles {
+			if pathIsUnder(recent, oldPath) {
+				recentFiles[i] = movedPath(recent, oldPath, newPath)
+			}
+		}
+		state.RecentFilesByProject[strings.TrimSpace(project)] = recentFiles
+		return nil
+	})
+}
+
+func (u *StateUseCase) RemoveRecent(ctx context.Context, path, project string) error {
+	return u.State.Update(ctx, func(state *domain.State) error {
+		project = strings.TrimSpace(project)
+		state.RecentFilesByProject[project] = removeString(recentFilesForProject(state, project), path)
+		return nil
+	})
+}
+
+func recentFilesForProject(state *domain.State, project string) []string {
+	if state.RecentFilesByProject == nil {
+		state.RecentFilesByProject = map[string][]string{}
+	}
+	project = strings.TrimSpace(project)
+	return state.RecentFilesByProject[project]
+}
+
+func mergeRecentFiles(current, legacy []string) []string {
+	merged := append([]string(nil), current...)
+	for _, path := range legacy {
+		if !containsString(merged, path) {
+			merged = append(merged, path)
+		}
+	}
+	if len(merged) > maxRecentFiles {
+		merged = merged[:maxRecentFiles]
+	}
+	return merged
+}
+
+func migrateLegacyRecentFiles(state *domain.State, project string) {
+	if project == "" {
+		return
+	}
+	recentFilesForProject(state, "")
+	legacy := state.RecentFilesByProject[""]
+	if len(legacy) == 0 {
+		return
+	}
+	state.RecentFilesByProject[project] = mergeRecentFiles(state.RecentFilesByProject[project], legacy)
+	delete(state.RecentFilesByProject, "")
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (u *StateUseCase) RemoveFavorites(ctx context.Context, project, path string) error {
@@ -113,4 +207,14 @@ func removeFavoritesUnderPath(values []domain.Favorite, project, path string) []
 		}
 	}
 	return out
+}
+
+func pathIsUnder(candidate, parent string) bool {
+	candidate = pathpkg.Clean(candidate)
+	return candidate == parent || strings.HasPrefix(candidate, parent+"/")
+}
+
+func movedPath(path, oldPath, newPath string) string {
+	suffix := strings.TrimPrefix(pathpkg.Clean(path), oldPath)
+	return pathpkg.Join(newPath, suffix)
 }

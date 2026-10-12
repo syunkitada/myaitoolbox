@@ -26,11 +26,11 @@ CLI と Web UI の両方から操作でき、タスクは Markdown ファイル�
 
 ## 機能
 
-- **タスク管理** — `_tasks/` 配下の Markdown ファイル（1 タスク＝1 ディレクトリ）で管理。タイトル・ステータス（todo / doing / blocked / review / done）・期限・保留情報・タグをフロントマターで保持。優先度・担当者・説明・Agent種別はTaskの正式メタデータとして扱わない。新規作成時は雛形や入力に残る旧キーも除去し、既存タスクの更新時はファイル上の旧キーを保持する
-  - CLI: 作成・一覧（フィルタ / JSON 出力）・表示・編集・フィールド更新・アーカイブ
+- **タスク管理** — `_tasks/` 配下の Markdown ファイル（1 タスク＝1 ディレクトリ）で管理。タイトルはディレクトリ名（`YYYYMMDD_<slug>`）を使用し、ディレクトリ名全体をUnicode文字数で80文字以内に制限します。フロントマターにはステータス（todo / doing / blocked / review / done）・期限・保留情報・タグを保持。優先度・担当者・説明・Agent種別はTaskの正式メタデータとして扱わない。新規作成時は雛形や入力に残る旧キーを除去し、既存タスクの読み取り・更新時も `title` は使用・保存しない
+  - CLI: 作成・一覧（アクティブタスクのみ。フィルタ / JSON 出力）・表示・編集・フィールド更新・アーカイブ
   - Web UI: GTD ボード（Todo / Doing / Blocked / Review / Done）とドラッグ＆ドロップ
-  - 同じプロジェクト内では、アクティブ・アーカイブ済みを含めて、前後の空白を除いたタスク名を一意に管理
-- **自動タスク実行** — `_task_triggers/<id>/trigger.yaml` と `task.md` で定義したcron・ファイル作成・manualトリガーから、`_tasks/` に実行タスクを生成
+  - 同じプロジェクト内では、アクティブ・アーカイブ済みを含めてタスクディレクトリ名を一意に管理
+- **自動タスク実行** — `_task_triggers/<id>/trigger.yaml` と `task.md` で定義したcron・ファイル作成・manualトリガーから、`_tasks/` に実行タスクを生成。Trigger IDは生成されるタスクディレクトリ名が80文字以内に収まる長さに制限
   - CLI: `automation validate`、`list`、`run-once`、`daemon`、`runs`
   - Web UI: 新規タスクモーダルからtriggerを作成し、triggerディレクトリの右クリックから即時実行
 - **ファイル管理** — プロジェクトルート起点で任意のファイル / ディレクトリを操作。実行権限のあるファイルはFilesタブから実行でき、標準出力と標準エラーを実行中から逐次確認できます
@@ -79,7 +79,6 @@ mybox project remove myproject
 mybox task create --project proj --name "Design the login flow"
 mybox task list --project proj
 mybox task list --project proj --status doing --tag web
-mybox task list --project proj --all          # アーカイブ済みも含める
 mybox task show --project proj 20260802_design-the-login-flow
 mybox task set --project proj <task-id> --status review --tags web,ux
 mybox task edit --project proj <task-id>      # $EDITOR で編集
@@ -205,7 +204,7 @@ myproject/
 │   └── tasks/
 ├── _tasks/
 │   └── 20260802_design-the-login-flow/
-│       └── task.md          # フロントマターで title / status / due / pending_* / tags 等を保持
+│       └── task.md          # フロントマターで status / due / pending_* / tags 等を保持。title はディレクトリ名から導出
 ├── _task_triggers/
 │   └── daily_report/
 │       ├── trigger.yaml     # 自動タスクの発動条件と実行設定
@@ -221,7 +220,7 @@ myproject/
 
 - タスク ID は `YYYYMMDD_<slug>` 形式（例: `20260802_design-the-login-flow`）で、常に `_tasks/<id>/task.md` に保存されます。
 - タスク名には日本語などのUnicode文字を使用できます。タスクAgentの内部名はHerdrの制約に合わせてASCII化し、日本語を含むタスク同士の衝突を避ける決定的な識別子を使います。
-- Herdrのタブ名にはタスクタイトルを表示します。タブ名を変更するとタスクタイトルも更新され、タスクIDとAgent内部名は維持されます。
+- Herdrのタブ名にはタスクディレクトリ名を表示します。タブ名を変更するとタスクディレクトリ（タスクID）とAgent内部名も変更されます。
 - タスクのメタデータはフロントマター、Markdown ファイル同士の関連付けは通常の Markdown リンクで記述します。
 - myboxが管理する領域であることを示すため、タスクは `_tasks/`、アーカイブは `_archives/tasks/` に保存されます。
 - 完了後はアーカイブして `_archives/tasks/<id>/` へ移動できます（`task archive`）。
@@ -233,7 +232,7 @@ myproject/
 ### 設定ファイル
 
 - `$XDG_CONFIG_HOME/mybox/config.yaml`（デフォルト `~/.config/mybox/config.yaml`）にプロジェクト一覧とデフォルトプロジェクトを保存します。`MYBOX_CONFIG` 環境変数でパスを変更できます。
-- お気に入り・最近開いたファイルなどの状態は同じディレクトリの `state.yaml` に保存されます。ファイルまたはディレクトリを削除すると、対応するお気に入りも自動的に削除されます。
+- お気に入り・最近開いたファイルなどの状態は同じディレクトリの `state.yaml` に保存され、最近開いたファイルはプロジェクト単位で分離されます。ファイルまたはディレクトリを削除すると、対応するお気に入りも自動的に削除されます。
 - 自動化の実行台帳と排他ロックは同じ設定ディレクトリの `automation/` に保存され、プロジェクトには生成されません。
 
 ## 開発

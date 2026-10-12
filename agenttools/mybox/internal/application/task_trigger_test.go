@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -105,4 +106,30 @@ func TestTaskTriggerUseCaseRequiresTaskNameAndAgentKind(t *testing.T) {
 
 	err = uc.Create(context.Background(), TaskTriggerInput{ID: "trigger", Name: "Task"})
 	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+}
+
+func TestTaskTriggerUseCaseRejectsIDsThatOverflowGeneratedTaskDirectoryName(t *testing.T) {
+	uc := NewTaskTriggerUseCase(&fakeTriggerRepository{}, fakeTaskTemplateRenderer{})
+
+	err := uc.Create(context.Background(), TaskTriggerInput{
+		ID:        strings.Repeat("a", 54),
+		Name:      "Long trigger",
+		AgentKind: "opencode",
+	})
+
+	assert.ErrorIs(t, err, domain.ErrInvalidArgument)
+}
+
+func TestTaskTriggerUseCaseAcceptsMaximumGeneratedTaskDirectoryName(t *testing.T) {
+	repo := &fakeTriggerRepository{}
+	uc := NewTaskTriggerUseCase(repo, fakeTaskTemplateRenderer{})
+
+	err := uc.Create(context.Background(), TaskTriggerInput{
+		ID:        strings.Repeat("a", 53),
+		Name:      "Maximum trigger",
+		AgentKind: "opencode",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, strings.Repeat("a", 53), repo.input.ID)
 }

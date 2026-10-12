@@ -84,11 +84,13 @@ type CreateProjectRequest struct {
 
 // CreateTaskRequest defines model for CreateTaskRequest.
 type CreateTaskRequest struct {
-	Content *string     `json:"content,omitempty"`
-	Due     *string     `json:"due,omitempty"`
-	Name    string      `json:"name"`
-	Status  *TaskStatus `json:"status,omitempty"`
-	Tags    *[]string   `json:"tags,omitempty"`
+	Content *string `json:"content,omitempty"`
+	Due     *string `json:"due,omitempty"`
+
+	// Name Task name used to generate the task directory/ID. The resulting directory basename must be at most 80 Unicode characters.
+	Name   string      `json:"name"`
+	Status *TaskStatus `json:"status,omitempty"`
+	Tags   *[]string   `json:"tags,omitempty"`
 }
 
 // Favorite defines model for Favorite.
@@ -396,7 +398,9 @@ type Task struct {
 	Project       *string    `json:"project,omitempty"`
 	Status        TaskStatus `json:"status"`
 	Tags          *[]string  `json:"tags,omitempty"`
-	Title         string     `json:"title"`
+
+	// Title Task directory basename (at most 80 Unicode characters). It is derived from id and is not stored in task.md frontmatter.
+	Title string `json:"title"`
 }
 
 // TaskStatus defines model for TaskStatus.
@@ -413,7 +417,9 @@ type UpdateFavoriteRequest struct {
 
 // UpdateTaskRequest defines model for UpdateTaskRequest.
 type UpdateTaskRequest struct {
-	Due    *string     `json:"due,omitempty"`
+	Due *string `json:"due,omitempty"`
+
+	// Name New task name. Renames the task directory/ID, which must be at most 80 Unicode characters, and the returned title is the new directory basename.
 	Name   *string     `json:"name,omitempty"`
 	Status *TaskStatus `json:"status,omitempty"`
 	Tags   *[]string   `json:"tags,omitempty"`
@@ -449,7 +455,6 @@ type GetProjectPathsParams struct {
 
 // ListTasksParams defines parameters for ListTasks.
 type ListTasksParams struct {
-	All    *bool   `form:"all,omitempty" json:"all,omitempty"`
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 	Tag    *string `form:"tag,omitempty" json:"tag,omitempty"`
 }

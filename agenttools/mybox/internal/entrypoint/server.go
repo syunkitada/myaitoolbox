@@ -446,6 +446,11 @@ func (s *Server) GetMeta(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	recentFiles, err := app.State.RecentFiles(r.Context(), app.Project.Name)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	tags, err := s.collectTags(r.Context(), app)
 	if err != nil {
 		writeError(w, err)
@@ -457,7 +462,7 @@ func (s *Server) GetMeta(w http.ResponseWriter, r *http.Request) {
 		DefaultProject: defaultProject,
 		Tags:           tags,
 		Favorites:      toAPIFavorites(favorites),
-		RecentFiles:    state.RecentFiles,
+		RecentFiles:    recentFiles,
 	})
 }
 
@@ -576,7 +581,7 @@ func (s *Server) RecordRecent(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := app.State.RecordRecent(r.Context(), req.Path); err != nil {
+	if err := app.State.RecordRecent(r.Context(), req.Path, app.Project.Name); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -593,7 +598,7 @@ func (s *Server) DeleteRecent(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := app.State.RemoveRecent(r.Context(), req.Path); err != nil {
+	if err := app.State.RemoveRecent(r.Context(), req.Path, app.Project.Name); err != nil {
 		writeError(w, err)
 		return
 	}
@@ -603,9 +608,6 @@ func (s *Server) DeleteRecent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ListTasks(w http.ResponseWriter, r *http.Request, params api.ListTasksParams) {
 	project := r.Header.Get("X-Project")
 	filter := application.TaskFilter{}
-	if params.All != nil {
-		filter.All = *params.All
-	}
 	if params.Status != nil {
 		filter.Status = string(*params.Status)
 	}
@@ -870,6 +872,14 @@ func (s *Server) UpdateTask(w http.ResponseWriter, r *http.Request, id string) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
+	var originalTask *domain.Task
+	if req.Name != nil {
+		originalTask, err = app.Tasks.Show(r.Context(), id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 	patch := application.TaskPatch{}
 	if req.Name != nil {
 		patch.Name = req.Name
@@ -888,6 +898,21 @@ func (s *Server) UpdateTask(w http.ResponseWriter, r *http.Request, id string) {
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if originalTask != nil && task.ID != originalTask.ID {
+		herdrLink, linkErr := s.findHerdrTaskLink(r.Context(), originalTask.ID)
+		if linkErr == nil {
+			linkErr = s.renameLinkedHerdrTask(r.Context(), herdrLink, task.ID)
+		}
+		if linkErr != nil {
+			rollbackName := originalTask.ID
+			_, rollbackErr := app.Tasks.Patch(r.Context(), task.ID, application.TaskPatch{Name: &rollbackName})
+			if rollbackErr != nil {
+				linkErr = errors.Join(linkErr, fmt.Errorf("rollback task rename: %w", rollbackErr))
+			}
+			writeError(w, linkErr)
+			return
+		}
 	}
 	writeJSONResponse(w, http.StatusOK, toAPITask(*task))
 }
@@ -1190,7 +1215,7 @@ func (s *Server) MoveFile(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := app.Files.Move(r.Context(), req.OldPath, req.NewPath); err != nil {
+	if _, err := app.Files.MoveWithTarget(r.Context(), req.OldPath, req.NewPath); err != nil {
 		writeError(w, err)
 		return
 	}

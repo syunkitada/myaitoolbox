@@ -91,6 +91,9 @@ func (r *FileRepository) safePath(path string) (string, error) {
 	if err := validateFilePath(path); err != nil {
 		return "", err
 	}
+	if err := validateTaskDirectoryPath(path); err != nil {
+		return "", err
+	}
 	return r.safeAbsolutePath(filepath.Join(r.root, filepath.FromSlash(path)))
 }
 
@@ -630,41 +633,60 @@ func (r *FileRepository) CreateDir(ctx context.Context, path string) error {
 }
 
 func (r *FileRepository) Move(ctx context.Context, oldPath string, newPath string) error {
+	_, err := r.MoveTarget(ctx, oldPath, newPath)
+	return err
+}
+
+// MoveTarget moves a path and returns its effective destination. When newPath
+// names an existing directory, the source basename is appended just as the
+// regular Move operation does.
+func (r *FileRepository) MoveTarget(ctx context.Context, oldPath string, newPath string) (string, error) {
 	oldFile, err := r.safePath(oldPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if _, err := os.Stat(oldFile); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%w: %s", domain.ErrNotFound, oldPath)
+			return "", fmt.Errorf("%w: %s", domain.ErrNotFound, oldPath)
 		}
-		return err
+		return "", err
 	}
 	target, err := r.safePath(newPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if info, err := os.Stat(target); err == nil && info.IsDir() {
 		target = filepath.Join(target, filepath.Base(oldFile))
 		if target, err = r.safeAbsolutePath(target); err != nil {
-			return err
+			return "", err
 		}
 	}
+	effectiveTarget, err := filepath.Rel(r.root, target)
+	if err != nil {
+		return "", err
+	}
+	effectiveTarget = filepath.ToSlash(effectiveTarget)
+	if err := validateTaskDirectoryPath(effectiveTarget); err != nil {
+		return "", err
+	}
 	if target == oldFile {
-		return nil
+		return effectiveTarget, nil
 	}
 	if _, err := os.Stat(target); err == nil {
-		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, newPath)
+		return "", fmt.Errorf("%w: %s", domain.ErrAlreadyExists, newPath)
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
+		return "", err
 	}
 	if isGitRepo(r.root) {
 		if err := runGit(ctx, r.root, "mv", oldFile, target); err == nil {
-			return nil
+			return effectiveTarget, nil
 		}
 	}
-	return os.Rename(oldFile, target)
+	if err := os.Rename(oldFile, target); err != nil {
+		return "", err
+	}
+	return effectiveTarget, nil
 }
 
 func (r *FileRepository) Copy(ctx context.Context, oldPath string, newPath string) error {
@@ -688,6 +710,13 @@ func (r *FileRepository) Copy(ctx context.Context, oldPath string, newPath strin
 		if target, err = r.safeAbsolutePath(target); err != nil {
 			return err
 		}
+	}
+	effectiveTarget, err := filepath.Rel(r.root, target)
+	if err != nil {
+		return err
+	}
+	if err := validateTaskDirectoryPath(filepath.ToSlash(effectiveTarget)); err != nil {
+		return err
 	}
 	if target == oldFile {
 		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, newPath)
@@ -854,6 +883,15 @@ func validateFilePath(path string) error {
 		strings.HasPrefix(path, "/") || strings.Contains(path, "..") ||
 		strings.ContainsAny(path, `\`) {
 		return fmt.Errorf("%w: %q", domain.ErrInvalidPath, path)
+	}
+	return nil
+}
+
+func validateTaskDirectoryPath(path string) error {
+	path = filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
+	parts := strings.Split(path, "/")
+	if len(parts) >= 2 && parts[0] == "_tasks" && utf8.RuneCountInString(parts[1]) > domain.MaxTaskDirectoryNameLength {
+		return fmt.Errorf("%w: task directory name must be at most %d characters", domain.ErrInvalidPath, domain.MaxTaskDirectoryNameLength)
 	}
 	return nil
 }

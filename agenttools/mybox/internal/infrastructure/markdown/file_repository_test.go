@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -309,6 +310,22 @@ func TestFileRepositoryCreateDir(t *testing.T) {
 
 	err = repo.CreateDir(context.Background(), "../escape")
 	assert.ErrorIs(t, err, domain.ErrInvalidPath)
+}
+
+func TestFileRepositoryRejectsOverlongTaskDirectoryPath(t *testing.T) {
+	root := t.TempDir()
+	repo := NewFileRepository(root)
+	longPath := "_tasks/" + strings.Repeat("x", domain.MaxTaskDirectoryNameLength+1)
+
+	assert.ErrorIs(t, repo.CreateDir(context.Background(), longPath), domain.ErrInvalidPath)
+	assert.ErrorIs(t, repo.CreateDir(context.Background(), "_tasks/./"+strings.Repeat("x", domain.MaxTaskDirectoryNameLength+1)), domain.ErrInvalidPath)
+	require.NoError(t, repo.CreateDir(context.Background(), "_tasks/source"))
+	assert.ErrorIs(t, repo.Move(context.Background(), "_tasks/source", longPath), domain.ErrInvalidPath)
+	assert.ErrorIs(t, repo.Copy(context.Background(), "_tasks/source", longPath), domain.ErrInvalidPath)
+
+	require.NoError(t, repo.CreateDir(context.Background(), "docs"))
+	require.NoError(t, repo.CreateDir(context.Background(), "docs/"+strings.Repeat("y", domain.MaxTaskDirectoryNameLength+1)))
+	assert.ErrorIs(t, repo.Move(context.Background(), "docs/"+strings.Repeat("y", domain.MaxTaskDirectoryNameLength+1), "_tasks"), domain.ErrInvalidPath)
 }
 
 func TestFileRepositorySaveReader(t *testing.T) {

@@ -19,8 +19,9 @@ func NewStateStore() *StateStore {
 }
 
 type fileState struct {
-	Favorites   []fileFavorite `yaml:"favorites"`
-	RecentFiles []string       `yaml:"recent_files"`
+	Favorites            []fileFavorite      `yaml:"favorites"`
+	RecentFilesByProject map[string][]string `yaml:"recent_files_by_project,omitempty"`
+	LegacyRecentFiles    []string            `yaml:"recent_files,omitempty"`
 }
 
 type fileFavorite struct {
@@ -68,7 +69,14 @@ func (s *StateStore) loadLocked(ctx context.Context) (*domain.State, error) {
 	for _, favorite := range fs.Favorites {
 		favorites = append(favorites, domain.Favorite{Project: favorite.Project, Path: favorite.Path})
 	}
-	return &domain.State{Favorites: favorites, RecentFiles: fs.RecentFiles}, nil
+	recentFilesByProject := cloneRecentFilesByProject(fs.RecentFilesByProject)
+	if len(fs.LegacyRecentFiles) > 0 {
+		if recentFilesByProject == nil {
+			recentFilesByProject = map[string][]string{}
+		}
+		recentFilesByProject[""] = append([]string(nil), fs.LegacyRecentFiles...)
+	}
+	return &domain.State{Favorites: favorites, RecentFilesByProject: recentFilesByProject}, nil
 }
 
 // Update applies fn to the persisted state under a global lock, so concurrent
@@ -92,18 +100,26 @@ func (s *StateStore) saveLocked(ctx context.Context, state *domain.State) error 
 	for _, favorite := range state.Favorites {
 		favorites = append(favorites, fileFavorite{Project: favorite.Project, Path: favorite.Path})
 	}
-	fs := fileState{Favorites: favorites, RecentFiles: state.RecentFiles}
+	fs := fileState{Favorites: favorites, RecentFilesByProject: cloneRecentFilesByProject(state.RecentFilesByProject)}
 	if fs.Favorites == nil {
 		fs.Favorites = []fileFavorite{}
-	}
-	if fs.RecentFiles == nil {
-		fs.RecentFiles = []string{}
 	}
 	data, err := yaml.Marshal(fs)
 	if err != nil {
 		return err
 	}
 	return fsutil.WriteFileAtomic(s.path, data, 0o644)
+}
+
+func cloneRecentFilesByProject(values map[string][]string) map[string][]string {
+	if values == nil {
+		return nil
+	}
+	clone := make(map[string][]string, len(values))
+	for project, paths := range values {
+		clone[project] = append([]string(nil), paths...)
+	}
+	return clone
 }
 
 func (s *StateStore) Save(ctx context.Context, state *domain.State) error {

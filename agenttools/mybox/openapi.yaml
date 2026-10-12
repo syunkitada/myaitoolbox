@@ -456,10 +456,6 @@ paths:
       operationId: listTasks
       summary: List tasks
       parameters:
-        - name: all
-          in: query
-          schema:
-            type: boolean
         - name: status
           in: query
           schema:
@@ -1054,6 +1050,7 @@ components:
           type: string
         title:
           type: string
+          description: Task directory basename (at most 80 Unicode characters). It is derived from id and is not stored in task.md frontmatter.
         status:
           $ref: "#/components/schemas/TaskStatus"
         due:
@@ -1084,6 +1081,7 @@ components:
       properties:
         name:
           type: string
+          description: Task name used to generate the task directory/ID. The resulting directory basename must be at most 80 Unicode characters.
         content:
           type: string
         status:
@@ -1100,6 +1098,8 @@ components:
       properties:
         id:
           type: string
+          maxLength: 53
+          description: Must be short enough that generated task directory IDs stay within 80 characters.
         task:
           $ref: "#/components/schemas/TaskTriggerTask"
         trigger:
@@ -1184,6 +1184,7 @@ components:
       properties:
         name:
           type: string
+          description: New task name. Renames the task directory/ID, which must be at most 80 Unicode characters, and the returned title is the new directory basename.
         status:
           $ref: "#/components/schemas/TaskStatus"
         due:

@@ -42,12 +42,12 @@ func TestTaskRepositoryLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	assert.Equal(t, "20260801_0900_fix-login", list[0].ID)
-	assert.Equal(t, "fix-login", list[0].Title)
+	assert.Equal(t, "20260801_0900_fix-login", list[0].Title)
 	assert.Equal(t, domain.TaskStatusTodo, list[0].Status)
 
 	task, err := repo.Find(ctx, "20260801_0900_fix-login")
 	require.NoError(t, err)
-	assert.Equal(t, "fix-login", task.Title)
+	assert.Equal(t, "20260801_0900_fix-login", task.Title)
 
 	task.Status = domain.TaskStatusDoing
 	err = repo.Update(ctx, *task)
@@ -57,6 +57,9 @@ func TestTaskRepositoryLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.TaskStatusDoing, got.Status)
 	assert.Equal(t, "body", got.Body)
+	data, err := os.ReadFile(filepath.Join(root, "_tasks", "20260801_0900_fix-login", "task.md"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "title:")
 
 	err = repo.Archive(ctx, "20260801_0900_fix-login")
 	require.NoError(t, err)
@@ -65,14 +68,73 @@ func TestTaskRepositoryLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, active)
 
-	archived, err := repo.ListArchived(ctx)
-	require.NoError(t, err)
-	require.Len(t, archived, 1)
-	assert.True(t, archived[0].Archived)
-
 	found, err := repo.Find(ctx, "20260801_0900_fix-login")
 	require.NoError(t, err)
 	assert.True(t, found.Archived)
+}
+
+func TestTaskRepositoryRejectsTaskDirectoryOverMaxLength(t *testing.T) {
+	repo := NewTaskRepository(t.TempDir())
+
+	err := repo.Create(context.Background(), strings.Repeat("a", domain.MaxTaskDirectoryNameLength+1), "---\nstatus: todo\n---\n\nbody")
+	assert.ErrorIs(t, err, domain.ErrInvalidPath)
+}
+
+func TestTaskRepositoryRenameUsesDirectoryAsTitle(t *testing.T) {
+	root := t.TempDir()
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+	const oldID = "20260801_old-name"
+	const newID = "20260801_new-name"
+
+	require.NoError(t, repo.Create(ctx, oldID, "---\ntitle: legacy name\nstatus: doing\ncustom: keep\n---\n\nbody"))
+	require.NoError(t, repo.Rename(ctx, oldID, newID))
+
+	_, err := repo.Find(ctx, oldID)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+	got, err := repo.Find(ctx, newID)
+	require.NoError(t, err)
+	assert.Equal(t, newID, got.Title)
+	assert.Equal(t, domain.TaskStatusDoing, got.Status)
+	assert.Equal(t, "body", got.Body)
+
+	data, err := os.ReadFile(filepath.Join(root, "_tasks", newID, "task.md"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "title:")
+	assert.Contains(t, string(data), "custom: keep")
+}
+
+func TestTaskRepositoryRenameRejectsExistingTarget(t *testing.T) {
+	root := t.TempDir()
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+	require.NoError(t, repo.Create(ctx, "20260801_old", "body"))
+	require.NoError(t, repo.Create(ctx, "20260801_new", "body"))
+
+	err := repo.Rename(ctx, "20260801_old", "20260801_new")
+	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
+	_, err = repo.Find(ctx, "20260801_old")
+	assert.NoError(t, err)
+}
+
+func TestTaskRepositoryRenameRollsBackWhenGitStagingFails(t *testing.T) {
+	root := t.TempDir()
+	initGitRepoForTest(t, root)
+	repo := NewTaskRepository(root)
+	ctx := context.Background()
+	const oldID = "20260801_old-name"
+	const newID = "20260801_new-name"
+
+	require.NoError(t, repo.Create(ctx, oldID, "body"))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".git", "index.lock"), nil, 0o644))
+
+	err := repo.Rename(ctx, oldID, newID)
+
+	require.Error(t, err)
+	_, err = repo.Find(ctx, oldID)
+	assert.NoError(t, err)
+	_, err = repo.Find(ctx, newID)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
 func TestTaskRepositoryArchiveRemovesTmpDir(t *testing.T) {
@@ -183,6 +245,16 @@ func TestTaskRepositoryCreateDuplicate(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
 }
 
+func TestTaskRepositoryCreateRejectsArchivedDuplicate(t *testing.T) {
+	repo := NewTaskRepository(t.TempDir())
+	ctx := context.Background()
+	require.NoError(t, repo.Create(ctx, "task1", "content"))
+	require.NoError(t, repo.Archive(ctx, "task1"))
+
+	err := repo.Create(ctx, "task1", "content")
+	assert.ErrorIs(t, err, domain.ErrAlreadyExists)
+}
+
 func TestTaskRepositoryRejectInvalidID(t *testing.T) {
 	repo := NewTaskRepository(t.TempDir())
 	_, err := repo.Find(context.Background(), "../escape")
@@ -254,10 +326,6 @@ func TestTaskRepositoryIgnoresLegacyLayout(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, list)
 
-	archived, err := repo.ListArchived(ctx)
-	require.NoError(t, err)
-	assert.Empty(t, archived)
-
 	_, err = repo.Find(ctx, "20260902_legacy")
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 	_, err = repo.Find(ctx, "20260903_legacy")
@@ -273,7 +341,7 @@ func TestTaskRepositoryLegacyMetadataIgnored(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, "20260904_legacy", "---\ntitle: legacy\ntype: adhoc\ntask_kind: adhoc\n---\n\n"))
 	task, err := repo.Find(ctx, "20260904_legacy")
 	require.NoError(t, err)
-	assert.Equal(t, "legacy", task.Title)
+	assert.Equal(t, "20260904_legacy", task.Title)
 	assert.Equal(t, domain.TaskStatusTodo, task.Status)
 
 	// Update で task_kind / type キーはフロントマターから除去される。
@@ -283,4 +351,5 @@ func TestTaskRepositoryLegacyMetadataIgnored(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "task_kind")
 	assert.NotContains(t, string(data), "adhoc")
+	assert.NotContains(t, string(data), "title:")
 }

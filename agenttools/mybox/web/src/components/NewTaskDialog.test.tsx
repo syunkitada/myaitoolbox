@@ -12,7 +12,7 @@ vi.mock('../api/client', () => ({
   },
 }))
 
-const DEFAULT_TASK_TEMPLATE = '---\ntitle: Task\nstatus: todo\n---\n\n## TODO\n\n- [ ]\n'
+const DEFAULT_TASK_TEMPLATE = '---\nstatus: todo\n---\n\n## TODO\n\n- [ ]\n'
 const DEFAULT_TASK_BODY = '\n## TODO\n\n- [ ]\n'
 
 describe('NewTaskDialog', () => {
@@ -20,7 +20,7 @@ describe('NewTaskDialog', () => {
     vi.clearAllMocks()
     vi.mocked(api.createTask).mockResolvedValue({
       id: '20260927_task',
-      title: 'Task',
+      title: '20260927_task',
       status: 'todo',
     })
     vi.mocked(api.createTaskTrigger).mockResolvedValue({

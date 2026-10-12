@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 )
@@ -17,12 +18,12 @@ type TaskUseCase struct {
 	Tasks       domain.TaskRepository
 	Template    domain.TemplateRenderer
 	Prompts     domain.PromptTemplateRepository
+	State       *StateUseCase
 	Project     string
 	ProjectPath string
 }
 
 type TaskFilter struct {
-	All    bool
 	Status string
 	Tag    string
 }
@@ -55,17 +56,17 @@ func NewTaskUseCase(tasks domain.TaskRepository, template domain.TemplateRendere
 		ProjectPath: projectPath,
 	}
 }
+
+// SetState connects task renames to the project-scoped favorites and recent
+// file state. It is optional so the use case remains easy to unit test with a
+// repository-only setup.
+func (u *TaskUseCase) SetState(state *StateUseCase) {
+	u.State = state
+}
 func (u *TaskUseCase) List(ctx context.Context, filter TaskFilter) ([]domain.Task, error) {
 	tasks, err := u.Tasks.List(ctx)
 	if err != nil {
 		return nil, err
-	}
-	if filter.All {
-		archived, err := u.Tasks.ListArchived(ctx)
-		if err != nil {
-			return nil, err
-		}
-		tasks = append(tasks, archived...)
 	}
 	var out []domain.Task
 	for _, t := range tasks {
@@ -115,47 +116,37 @@ func (u *TaskUseCase) RenderTaskTemplate(name string) (string, error) {
 	return u.Template.RenderTask(domain.TaskTemplateData{Name: strings.TrimSpace(name)})
 }
 
-func (u *TaskUseCase) ensureUniqueTaskTitle(ctx context.Context, title, excludeID string, includeArchived bool) error {
-	tasks, err := u.List(ctx, TaskFilter{All: includeArchived})
-	if err != nil {
-		return err
-	}
-	normalized := strings.TrimSpace(title)
-	for _, task := range tasks {
-		if task.ID != excludeID && strings.TrimSpace(task.Title) == normalized {
-			return fmt.Errorf("%w: task name %q already exists", domain.ErrAlreadyExists, normalized)
-		}
-	}
-	return nil
-}
-
 func (u *TaskUseCase) Create(ctx context.Context, input TaskInput) (*domain.Task, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidArgument)
 	}
+	slug := slugify(name)
+	if slug == "" {
+		return nil, fmt.Errorf("%w: name must contain at least one letter or digit", domain.ErrInvalidArgument)
+	}
 	status, err := parseStatus(input.Status)
 	if err != nil {
 		return nil, err
 	}
-	if err := u.ensureUniqueTaskTitle(ctx, name, "", false); err != nil {
-		return nil, err
-	}
 	now := time.Now()
 	task := &domain.Task{
-		Title:   name,
 		Status:  status,
 		Due:     input.Due,
 		Tags:    input.Tags,
 		Project: u.Project,
 		Created: now,
 	}
-	task.ID = now.Format("20060102") + "_" + slugify(name)
+	task.ID = now.Format("20060102") + "_" + slug
+	if err := validateTaskDirectoryName(task.ID); err != nil {
+		return nil, err
+	}
+	task.Title = task.ID
 	content := ""
 	if input.Content != nil {
 		content = *input.Content
 	} else {
-		content, err = u.RenderTaskTemplate(task.Title)
+		content, err = u.RenderTaskTemplate(name)
 		if err != nil {
 			return nil, err
 		}
@@ -176,6 +167,9 @@ func (u *TaskUseCase) CreateFromContent(ctx context.Context, id, content string,
 	if strings.TrimSpace(id) == "" {
 		return nil, fmt.Errorf("%w: task id is required", domain.ErrInvalidArgument)
 	}
+	if err := validateTaskDirectoryName(id); err != nil {
+		return nil, err
+	}
 	if err := u.Tasks.Create(ctx, id, content); err != nil {
 		return nil, err
 	}
@@ -189,10 +183,6 @@ func (u *TaskUseCase) CreateFromContent(ctx context.Context, id, content string,
 	if tags != nil {
 		task.Tags = append([]string(nil), tags...)
 	}
-	if err := u.ensureUniqueTaskTitle(ctx, task.Title, task.ID, false); err != nil {
-		_ = u.Tasks.Delete(ctx, id)
-		return nil, err
-	}
 	if err := u.Tasks.Update(ctx, *task); err != nil {
 		_ = u.Tasks.Delete(ctx, id)
 		return nil, err
@@ -205,20 +195,18 @@ func (u *TaskUseCase) Update(ctx context.Context, id string, input TaskInput) (*
 	if err != nil {
 		return nil, err
 	}
-	if name := strings.TrimSpace(input.Name); name != "" {
-		if name != task.Title {
-			if err := u.ensureUniqueTaskTitle(ctx, name, id, true); err != nil {
-				return nil, err
-			}
-		}
-		task.Title = name
-	}
+	originalID := task.ID
 	if input.Status != "" {
-		status, err := parseStatus(input.Status)
-		if err != nil {
-			return nil, err
+		status, parseErr := parseStatus(input.Status)
+		if parseErr != nil {
+			return nil, parseErr
 		}
 		task.Status = status
+	}
+	if name := strings.TrimSpace(input.Name); name != "" {
+		if err := u.renameTask(ctx, task, name); err != nil {
+			return nil, err
+		}
 	}
 	if input.Due != "" {
 		task.Due = input.Due
@@ -226,7 +214,7 @@ func (u *TaskUseCase) Update(ctx context.Context, id string, input TaskInput) (*
 	if len(input.Tags) > 0 {
 		task.Tags = input.Tags
 	}
-	if err := u.Tasks.Update(ctx, *task); err != nil {
+	if err := u.persistTask(ctx, task, originalID); err != nil {
 		return nil, err
 	}
 	return task, nil
@@ -237,18 +225,7 @@ func (u *TaskUseCase) Patch(ctx context.Context, id string, patch TaskPatch) (*d
 	if err != nil {
 		return nil, err
 	}
-	if patch.Name != nil {
-		name := strings.TrimSpace(*patch.Name)
-		if name == "" {
-			return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidArgument)
-		}
-		if name != task.Title {
-			if err := u.ensureUniqueTaskTitle(ctx, name, id, true); err != nil {
-				return nil, err
-			}
-		}
-		task.Title = name
-	}
+	originalID := task.ID
 	if patch.Status != nil {
 		if *patch.Status == "" {
 			return nil, fmt.Errorf("%w: invalid status %q", domain.ErrInvalidArgument, *patch.Status)
@@ -259,16 +236,47 @@ func (u *TaskUseCase) Patch(ctx context.Context, id string, patch TaskPatch) (*d
 		}
 		task.Status = status
 	}
+	if patch.Name != nil {
+		name := strings.TrimSpace(*patch.Name)
+		if name == "" {
+			return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidArgument)
+		}
+		if err := u.renameTask(ctx, task, name); err != nil {
+			return nil, err
+		}
+	}
 	if patch.Due != nil {
 		task.Due = *patch.Due
 	}
 	if patch.Tags != nil {
 		task.Tags = append([]string(nil), (*patch.Tags)...)
 	}
-	if err := u.Tasks.Update(ctx, *task); err != nil {
+	if err := u.persistTask(ctx, task, originalID); err != nil {
 		return nil, err
 	}
 	return task, nil
+}
+
+func (u *TaskUseCase) persistTask(ctx context.Context, task *domain.Task, originalID string) error {
+	if err := u.Tasks.Update(ctx, *task); err != nil {
+		if task.ID == originalID {
+			return err
+		}
+		rollbackErr := u.Tasks.Rename(ctx, task.ID, originalID)
+		stateRollbackErr := u.moveTaskPath(ctx, task.ID, originalID, task.Archived)
+		task.ID = originalID
+		task.Title = originalID
+		if rollbackErr != nil || stateRollbackErr != nil {
+			if rollbackErr != nil {
+				err = errors.Join(err, fmt.Errorf("rollback task rename: %w", rollbackErr))
+			}
+			if stateRollbackErr != nil {
+				err = errors.Join(err, fmt.Errorf("rollback task path state: %w", stateRollbackErr))
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func (u *TaskUseCase) Archive(ctx context.Context, id string) error {
@@ -277,6 +285,79 @@ func (u *TaskUseCase) Archive(ctx context.Context, id string) error {
 
 func (u *TaskUseCase) Delete(ctx context.Context, id string) error {
 	return u.Tasks.Delete(ctx, id)
+}
+
+func (u *TaskUseCase) renameTask(ctx context.Context, task *domain.Task, name string) error {
+	originalID := task.ID
+	newID, err := taskIDForName(task.ID, name)
+	if err != nil {
+		return err
+	}
+	if err := u.Tasks.Rename(ctx, originalID, newID); err != nil {
+		return err
+	}
+	if err := u.moveTaskPath(ctx, originalID, newID, task.Archived); err != nil {
+		rollbackErr := u.Tasks.Rename(ctx, newID, originalID)
+		if rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("rollback task rename: %w", rollbackErr))
+		}
+		return err
+	}
+	task.ID = newID
+	task.Title = newID
+	return nil
+}
+
+func (u *TaskUseCase) moveTaskPath(ctx context.Context, oldID, newID string, archived bool) error {
+	if u.State == nil || oldID == newID {
+		return nil
+	}
+	base := "_tasks"
+	if archived {
+		base = "_archives/tasks"
+	}
+	return u.State.MovePath(ctx, base+"/"+oldID, base+"/"+newID, u.Project)
+}
+
+func taskIDForName(oldID, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == oldID {
+		if err := validateTaskDirectoryName(oldID); err != nil {
+			return "", err
+		}
+		return oldID, nil
+	}
+	if len(name) >= 9 && name[8] == '_' && allASCIIDigits(name[:8]) {
+		name = name[9:]
+	}
+	slug := slugify(name)
+	if slug == "" {
+		return "", fmt.Errorf("%w: name must contain at least one letter or digit", domain.ErrInvalidArgument)
+	}
+	if len(oldID) >= 9 && oldID[8] == '_' && allASCIIDigits(oldID[:8]) {
+		id := oldID[:9] + slug
+		return id, validateTaskDirectoryName(id)
+	}
+	return slug, validateTaskDirectoryName(slug)
+}
+
+func validateTaskDirectoryName(id string) error {
+	if utf8.RuneCountInString(id) > domain.MaxTaskDirectoryNameLength {
+		return fmt.Errorf("%w: task directory name must be at most %d characters", domain.ErrInvalidArgument, domain.MaxTaskDirectoryNameLength)
+	}
+	return nil
+}
+
+func allASCIIDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // FilePath resolves the absolute path of a task's markdown file.

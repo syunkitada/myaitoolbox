@@ -192,7 +192,7 @@ describe('HerdrPage agent commands', () => {
     expect(api.readHerdrPane).toHaveBeenCalledWith('w1:p2')
   })
 
-  it('renames a linked task title and tab together', async () => {
+  it('renames a linked task directory, agent, and tab together', async () => {
     render(
       <MemoryRouter initialEntries={['/projects/demo/herdr']}>
         <DialogsProvider>
@@ -213,10 +213,37 @@ describe('HerdrPage agent commands', () => {
 
     await waitFor(() => {
       expect(api.updateTask).toHaveBeenCalledWith('20260919_foo', { name: '日本語の新しいタスク' })
-      expect(api.renameHerdrTab).toHaveBeenCalledWith('w1:t1', '日本語の新しいタスク')
     })
     expect(api.moveFile).not.toHaveBeenCalled()
     expect(api.renameHerdrAgent).not.toHaveBeenCalled()
+    expect(api.renameHerdrTab).not.toHaveBeenCalled()
+  })
+
+  it('does not move a legacy task when its existing human tab label is confirmed', async () => {
+    const refreshMeta = vi.fn().mockResolvedValue(undefined)
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/herdr']}>
+        <DialogsProvider>
+          <HerdrPage
+            overview={linkedOverview}
+            error={null}
+            loading={false}
+            refresh={() => Promise.resolve()}
+            refreshMeta={refreshMeta}
+          />
+        </DialogsProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename tab w1:t1' }))
+    const input = await screen.findByTestId('app-dialog-input')
+    fireEvent.change(input, { target: { value: '旧タイトル' } })
+    fireEvent.click(screen.getByTestId('app-dialog-ok'))
+
+    await waitFor(() => expect(api.renameHerdrTab).toHaveBeenCalledWith('w1:t1', '旧タイトル'))
+    expect(api.moveFile).not.toHaveBeenCalled()
+    expect(api.renameHerdrAgent).not.toHaveBeenCalled()
+    expect(refreshMeta).not.toHaveBeenCalled()
   })
 
 })
