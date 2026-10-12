@@ -308,6 +308,7 @@ export interface CodexRuntime {
   sandbox_mode?: string | null
   approval_policy?: string | null
   feature_flags: string[]
+  status_reasons: string[]
 }
 
 export interface CodexConfigFile {

@@ -59,6 +59,86 @@ func TestParseCodexDoctorUsesAllowlistedDetails(t *testing.T) {
 	assert.NotContains(t, string(mustJSON(t, runtime)), "secret")
 }
 
+func TestParseCodexDoctorReportsSafeStatusReasons(t *testing.T) {
+	out := []byte(`{
+  "overallStatus":"warning",
+  "codexVersion":"0.162.1",
+  "checks": {
+    "state.rollout_db_parity": {"status":"warning","details": {
+      "rollout DB missing active rows":"4",
+      "rollout DB missing active sample":["/home/example/.codex/sessions/secret.jsonl"],
+      "rollout DB archive mismatches":"0"
+    }}
+  }
+}`)
+
+	runtime, err := codexRuntimeFromDoctor(out)
+	require.NoError(t, err)
+	require.Len(t, runtime.StatusReasons, 1)
+	assert.Contains(t, runtime.StatusReasons[0], "state.rollout_db_parity")
+	assert.Contains(t, runtime.StatusReasons[0], "missing active rows=4")
+	assert.Contains(t, runtime.StatusReasons[0], "missing active sample (1 item)")
+	assert.NotContains(t, runtime.StatusReasons[0], "secret.jsonl")
+	assert.NotContains(t, runtime.StatusReasons[0], "archive mismatches")
+}
+
+func TestParseCodexDoctorExplainsUnattributedOverallWarning(t *testing.T) {
+	out := []byte(`{
+  "overallStatus":"warning",
+  "codexVersion":"0.162.1",
+  "checks": {"config.load":{"status":"ok","details":{}}}
+}`)
+
+	runtime, err := codexRuntimeFromDoctor(out)
+	require.NoError(t, err)
+	require.Len(t, runtime.StatusReasons, 1)
+	assert.Contains(t, runtime.StatusReasons[0], "no check-level reason")
+}
+
+func TestParseCodexDoctorReportsGenericSafeStatusDetails(t *testing.T) {
+	out := []byte(`{
+  "overallStatus":"warning",
+  "codexVersion":"0.162.1",
+  "checks": {
+    "terminal.env": {"status":"warning","details": {
+      "effective locale":"ja_JP.UTF-8",
+      "terminal size":"80x24",
+      "SSH_CLIENT":"192.0.2.1 12345",
+      "auth token":"must not escape"
+    }}
+  }
+}`)
+
+	runtime, err := codexRuntimeFromDoctor(out)
+	require.NoError(t, err)
+	require.Len(t, runtime.StatusReasons, 1)
+	assert.Contains(t, runtime.StatusReasons[0], "terminal.env")
+	assert.Contains(t, runtime.StatusReasons[0], "effective locale")
+	assert.Contains(t, runtime.StatusReasons[0], "terminal size")
+	assert.NotContains(t, runtime.StatusReasons[0], "ja_JP.UTF-8")
+	assert.NotContains(t, runtime.StatusReasons[0], "192.0.2.1")
+	assert.NotContains(t, runtime.StatusReasons[0], "must not escape")
+}
+
+func TestParseCodexDoctorDoesNotTreatModelAsModeReason(t *testing.T) {
+	out := []byte(`{
+  "overallStatus":"warning",
+  "codexVersion":"0.162.1",
+  "checks": {
+    "state.rollout_db_parity": {"status":"warning","details": {
+      "default model provider":"openai",
+      "rollout DB missing active rows":"4"
+    }}
+  }
+}`)
+
+	runtime, err := codexRuntimeFromDoctor(out)
+	require.NoError(t, err)
+	require.Len(t, runtime.StatusReasons, 1)
+	assert.Contains(t, runtime.StatusReasons[0], "missing active rows=4")
+	assert.NotContains(t, runtime.StatusReasons[0], "model provider")
+}
+
 func TestParseCodexMCPListDoesNotExposeArguments(t *testing.T) {
 	out := []byte("Name        Command  Args                    Env  Cwd  Status   Auth\n" +
 		"demo        node     --token=top-secret     -    -    enabled  Unsupported\n")

@@ -43,6 +43,7 @@ var (
 	codexCLIFlagCredentialPattern  = regexp.MustCompile(`(?i)((?:--?|/)` + codexCredentialKeyPattern + `(?:=|:|\s+))("[^"]*"|'[^']*'|[^,\]\}\s"']+)`)
 	codexBareCredentialPattern     = regexp.MustCompile(`(?i)(` + codexCredentialKeyPattern + `(?:=|:))("[^"]*"|'[^']*'|[^,\]\}\s"']+)`)
 	codexHeaderCredentialPattern   = regexp.MustCompile(`(?i)(` + codexCredentialKeyPattern + `\s*[:=]\s*)([^,\]\}\r\n\s"'][^,\]\}\r\n"']*)`)
+	codexStatusReasonKeyMarkers    = []string{"reason", "missing", "mismatch", "mismatches", "stale", "duplicate", "duplicates", "malformed", "scan", "failure", "failures", "failed", "warning", "warnings", "error", "errors", "status", "mode", "reachable", "available", "unavailable", "configured", "parse", "locale", "terminal", "stdin", "stdout", "stderr", "color"}
 )
 
 // codexRunFunc is kept injectable so diagnostics can be tested without
@@ -118,9 +119,10 @@ func codexRuntimeFromDoctor(out []byte) (api.CodexRuntime, error) {
 	}
 	status := normalizeCodexStatus(report.OverallStatus)
 	runtime := api.CodexRuntime{
-		Status:       status,
-		Available:    true,
-		FeatureFlags: splitCodexFeatureFlags(codexDetail(report, "config.load", "enabled feature flags")),
+		Status:        status,
+		Available:     true,
+		FeatureFlags:  splitCodexFeatureFlags(codexDetail(report, "config.load", "enabled feature flags")),
+		StatusReasons: codexStatusReasons(report),
 	}
 	setCodexString(&runtime.Version, report.CodexVersion)
 	setCodexString(&runtime.AppServerVersion, codexDetail(report, "app_server.status", "app-server version"))
@@ -147,6 +149,108 @@ func normalizeCodexStatus(status string) string {
 	default:
 		return "warning"
 	}
+}
+
+func codexStatusReasons(report rawCodexDoctor) []string {
+	checkIDs := make([]string, 0, len(report.Checks))
+	for checkID := range report.Checks {
+		checkIDs = append(checkIDs, checkID)
+	}
+	sort.Strings(checkIDs)
+
+	reasons := make([]string, 0)
+	for _, checkID := range checkIDs {
+		check := report.Checks[checkID]
+		status := normalizeCodexStatus(check.Status)
+		if status == "ok" {
+			continue
+		}
+		reason := safeCodexDisplayValue(checkID) + " (" + status + ")"
+		if details := codexStatusReasonDetails(check.Details); len(details) > 0 {
+			reason += ": " + strings.Join(details, ", ")
+		}
+		reasons = append(reasons, safeCodexDisplayValue(reason))
+	}
+	if len(reasons) == 0 {
+		overallStatus := normalizeCodexStatus(report.OverallStatus)
+		if overallStatus != "ok" {
+			reasons = append(reasons, "Codex doctor reported an overall "+overallStatus+" status but provided no check-level reason")
+		}
+	}
+	return reasons
+}
+
+func codexStatusReasonDetails(details map[string]json.RawMessage) []string {
+	keys := make([]string, 0, len(details))
+	for key := range details {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	result := make([]string, 0, 4)
+	for _, key := range keys {
+		isReasonKey := false
+		for _, marker := range codexStatusReasonKeyMarkers {
+			if codexStatusReasonKeyHasMarker(key, marker) {
+				isReasonKey = true
+				break
+			}
+		}
+		if !isReasonKey {
+			continue
+		}
+
+		var values []json.RawMessage
+		if err := json.Unmarshal(details[key], &values); err == nil {
+			if len(values) == 0 {
+				continue
+			}
+			label := safeCodexDisplayValue(key)
+			suffix := "items"
+			if len(values) == 1 {
+				suffix = "item"
+			}
+			result = append(result, label+" ("+strconv.Itoa(len(values))+" "+suffix+")")
+		} else {
+			var value string
+			if json.Unmarshal(details[key], &value) != nil {
+				continue
+			}
+			value = strings.TrimSpace(value)
+			if value == "" || value == "false" || strings.EqualFold(value, "none") {
+				continue
+			}
+			if number, err := strconv.ParseInt(value, 10, 64); err == nil && number == 0 {
+				continue
+			}
+			// Keep the key and safe scalar counts, but never expose arbitrary
+			// diagnostic values that may contain paths or credentials.
+			if number, err := strconv.ParseInt(value, 10, 64); err == nil {
+				result = append(result, safeCodexDisplayValue(key)+"="+strconv.FormatInt(number, 10))
+			} else {
+				result = append(result, safeCodexDisplayValue(key))
+			}
+		}
+		if len(result) == 4 {
+			break
+		}
+	}
+	return result
+}
+
+func codexStatusReasonKeyHasMarker(key, marker string) bool {
+	words := strings.FieldsFunc(strings.ToLower(key), func(r rune) bool {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			return false
+		}
+		return true
+	})
+	for _, word := range words {
+		if word == marker {
+			return true
+		}
+	}
+	return false
 }
 
 func codexDetail(report rawCodexDoctor, checkID, key string) string {
@@ -1180,8 +1284,9 @@ func (s *Server) GetCodexDiagnostics(w http.ResponseWriter, r *http.Request) {
 		McpServers:   []api.CodexMCPServer{},
 		Errors:       []api.CodexDiagnosticError{},
 		Codex: api.CodexRuntime{
-			Status:       "unavailable",
-			FeatureFlags: []string{},
+			Status:        "unavailable",
+			FeatureFlags:  []string{},
+			StatusReasons: []string{},
 		},
 	}
 	skillsTruncated := false

@@ -24,6 +24,7 @@ const diagnostics = {
     model_provider: 'openai',
     authenticated: true,
     feature_flags: ['hooks'],
+    status_reasons: [],
   },
   config_files: [{ scope: 'user', path: '/tmp/config.toml', exists: true, readable: true, status: 'loaded', is_symlink: true }],
   instructions: [{ scope: 'project', path: '/tmp/AGENTS.md', exists: true, status: 'present', is_symlink: true }],
@@ -66,6 +67,37 @@ describe('CodexDiagnosticsPage', () => {
     await userEvent.setup().click(screen.getByRole('tab', { name: /MCP/ }))
     expect(await screen.findByText('not checked')).toBeInTheDocument()
     expect(await screen.findByText(/not launched or health-checked/)).toBeInTheDocument()
+  })
+
+  it('shows why Codex runtime is warning', async () => {
+    vi.mocked(api.getCodexDiagnostics).mockResolvedValue({
+      ...diagnostics,
+      codex: {
+        ...diagnostics.codex,
+        status: 'warning',
+        status_reasons: ['state.rollout_db_parity (warning): missing active rows=4'],
+      },
+    })
+    render(<MemoryRouter initialEntries={['/projects/demo/agent']}><CodexDiagnosticsPage /></MemoryRouter>)
+
+    expect(await screen.findByText('Why this is warning')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('missing active rows=4')
+  })
+
+  it('styles Codex runtime error reasons as destructive', async () => {
+    vi.mocked(api.getCodexDiagnostics).mockResolvedValue({
+      ...diagnostics,
+      codex: {
+        ...diagnostics.codex,
+        status: 'error',
+        status_reasons: ['auth.credentials (error): auth configuration failed'],
+      },
+    })
+    render(<MemoryRouter initialEntries={['/projects/demo/agent']}><CodexDiagnosticsPage /></MemoryRouter>)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Why this is error')
+    expect(alert).toHaveClass('border-red-200', 'bg-red-50', 'text-red-900')
   })
 
   it('allows manual refresh', async () => {

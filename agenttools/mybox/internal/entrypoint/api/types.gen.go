@@ -201,7 +201,10 @@ type CodexRuntime struct {
 	ReasoningEffort  *string  `json:"reasoning_effort,omitempty"`
 	SandboxMode      *string  `json:"sandbox_mode,omitempty"`
 	Status           string   `json:"status"`
-	Version          *string  `json:"version,omitempty"`
+
+	// StatusReasons Safe summaries of the non-OK Codex doctor checks that explain the runtime status
+	StatusReasons []string `json:"status_reasons"`
+	Version       *string  `json:"version,omitempty"`
 }
 
 // CodexSkill defines model for CodexSkill.

@@ -471,6 +471,22 @@ export function CodexDiagnosticsPage() {
               <StatusBadge status={diagnostics.codex.status} />
             </CardHeader>
             <CardContent className="space-y-4">
+              {diagnostics.codex.status_reasons.length > 0 && (
+                <div
+                  role="alert"
+                  className={cn(
+                    'rounded-md border px-3.5 py-3 text-sm',
+                    diagnostics.codex.status === 'error'
+                      ? 'border-red-200 bg-red-50 text-red-900'
+                      : 'border-amber-200 bg-amber-50 text-amber-900',
+                  )}
+                >
+                  <div className="font-medium">Why this is {diagnostics.codex.status}</div>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {diagnostics.codex.status_reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                  </ul>
+                </div>
+              )}
               <DetailList values={[
                 ['Available', diagnostics.codex.available ? 'Yes' : 'No'],
                 ['Version', diagnostics.codex.version],

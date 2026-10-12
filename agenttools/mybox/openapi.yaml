@@ -1508,7 +1508,7 @@ components:
           description: Resolved or raw symbolic-link target; empty for regular entries
     CodexRuntime:
       type: object
-      required: [status, available, feature_flags]
+      required: [status, available, feature_flags, status_reasons]
       properties:
         status:
           type: string
@@ -1538,6 +1538,11 @@ components:
           type: string
         feature_flags:
           type: array
+          items:
+            type: string
+        status_reasons:
+          type: array
+          description: Safe summaries of the non-OK Codex doctor checks that explain the runtime status
           items:
             type: string
     CodexConfigFile:
