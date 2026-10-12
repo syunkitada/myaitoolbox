@@ -41,7 +41,7 @@ mymcpserve monitoring --transport http --host localhost --port 8080
 | [`delete_dashboard`](#delete_dashboard) | Grafana | `uid` | ダッシュボードを削除する。 |
 | [`list_folders`](#list_folders) | Grafana | なし | ダッシュボードフォルダを取得する。 |
 
-成功時の応答は、共通形式の`structuredContent`（`meta`と`data`）で返ります。
+応答は、成功・エラーとも共通形式の`structuredContent`（`data`、`meta`、`error`）で返ります。成功時は`error: null`、エラー時は`data: null`です。標準フィールドの詳細は[レスポンスフォーマット](../response-format.md)を参照してください。
 
 ## Alertmanagerツール
 

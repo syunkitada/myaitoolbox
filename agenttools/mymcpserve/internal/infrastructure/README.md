@@ -6,5 +6,6 @@ MCP SDKのサーバーをドメインの`Server`インターフェースとし�
 
 | パス | 役割 |
 | --- | --- |
-| [`server.go`](./server.go) | MCPサーバの生成、ツール登録、`meta`・`data`形式の応答整形。 |
+| [`server.go`](./server.go) | MCPサーバの生成、ツール登録、共通レスポンスへの変換。 |
+| [`response.go`](./response.go) | `{data, meta, error}`エンベロープ、出力スキーマ、エラー情報の整形。 |
 | [`server_test.go`](./server_test.go) | サーバー生成とツール呼び出しのテスト。 |

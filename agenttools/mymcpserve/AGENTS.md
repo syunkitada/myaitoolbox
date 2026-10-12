@@ -156,23 +156,22 @@ func (r *database1Repository) Save(user *User) error {
 
 ## Provider Response Format Rules
 
-全てのツールは成功時に `structuredContent` を返すこと。形式は以下の通り:
+全てのツールは、成功・エラーにかかわらず、次の共通エンベロープを`structuredContent`で返すこと:
 
 ```json
 {
-  "structuredContent": {
-    "meta": { /* クエリパラメータ、件数、メタ情報 */ },
-    "data": { /* または配列 */ }
-  }
+  "data": { /* または配列。エラー時は null */ },
+  "meta": { /* 標準メタ情報とツール固有のメタ情報 */ },
+  "error": null
 }
 ```
 
-- `meta`: リクエストパラメータ、件数、フィルタ条件などのメタ情報
-- `data`: ツールの実行結果本体（オブジェクトまたは配列）
+- 成功時の`error`は`null`、エラー時の`data`は`null`とする。
+- `meta`には少なくとも`schema_version`、`tool`、`requested_at`、`data_status`、`execution_status`、`warnings`を含める。`data_status`はデータの鮮度・性質、`execution_status`は処理結果を表す。入力値を含める場合は、秘密情報を除いた正規化済みの値だけを入れる。
+- エラー時の`error`は`{"code":"...","message":"...","retryable":false}`形式とし、`IsError: true`および短いテキスト`Content`も設定する。
+- `Server.AddTool`が共通形式への変換と`OutputSchema`の設定を行うため、各モジュールは`(data, meta, err)`を返し、`CallToolResult`を直接組み立てない。
 
-エラー時は `IsError: true` を設定し `structuredContent` は省略すること。
-
-ヘルパー: `newStructuredResult(text, meta, data)` を使用すること。
+詳細は[`docs/response-format.md`](./docs/response-format.md)を参照すること。
 
 ## 開発完了時の必須確認
 

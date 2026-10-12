@@ -123,6 +123,7 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
 ## 注意事項
 
-- **レスポンスフォーマット**: 全てのツールは成功時に `structuredContent` を返すこと。形式は `{"structuredContent": {"meta": {...}, "data": {...}}}` です。
-- **エラーハンドリング**: エラー時は `IsError: true` を設定し `structuredContent` は省略すること。
+- **レスポンスフォーマット**: 成功・エラーとも`structuredContent`は`{"data": ..., "meta": {...}, "error": ...}`の共通形式です。`data_status`はデータの鮮度・性質、`execution_status`は処理結果を表します。詳細は[レスポンスフォーマット](./response-format.md)を参照してください。
+- **エラーハンドリング**: エラー時は`IsError: true`と短いテキスト`Content`を設定し、同時に`data: null`とエラーオブジェクトを含む`structuredContent`を返します。`Server.AddTool`が自動変換するため、各ハンドラはエラーを返してください。
+- **入力情報**: `meta.input`を用意する場合は、秘密情報を含まない正規化済み入力だけを設定してください。共通ラッパーはMCP引数を自動的に`meta.input`へコピーしません。
 - **ドキュメント更新**: 機能追加・変更時には、対応するREADME.md、docs/* 内のファイルを参照し、必要に応じて更新すること。

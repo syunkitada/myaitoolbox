@@ -23,6 +23,7 @@ mymcpserve/
 │   │   └── bootstrap.go              # DIとサーバー起動
 │   ├── infrastructure/
 │   │   ├── server.go                 # Server インターフェース実装
+│   │   └── response.go               # 共通レスポンスエンベロープ
 │   └── modules/
 │       └── monitoring/               # monitoring モジュール
 │           ├── provider.go           # Provider インターフェース実装
@@ -100,42 +101,39 @@ main.go
 
 ## レスポンスフォーマット
 
-全てのツールは成功時に以下の `StructuredContent` を返します。
+全てのツールは、成功・エラーにかかわらず、以下の共通エンベロープを`StructuredContent`で返します。MCPの`Content`は、成功時は空配列、エラー時は人間向けの短いエラーテキストです。
 
 ```json
 {
-  "structuredContent": {
-    "meta": { "count": 10, "query": "...", "from": "...", "to": "..." },
-    "data": [ { ... }, { ... } ]
-  }
+  "data": [ { "...": "..." } ],
+  "meta": {
+    "schema_version": "1",
+    "tool": "list_items",
+    "requested_at": "2026-10-12T09:00:00Z",
+    "data_status": "unknown",
+    "execution_status": "success",
+    "warnings": [],
+    "count": 10
+  },
+  "error": null
 }
 ```
 
-- `meta`: リクエストパラメータ、件数、フィルタ条件などのメタ情報
-- `data`: ツールの実行結果本体（オブジェクトまたは配列）
+- `data`: ツールの実行結果本体（オブジェクトまたは配列）。エラー時は`null`
+- `meta`: 標準メタ情報とツール固有のメタ情報。`input`を含める場合は秘密情報を除いた正規化済みの値だけを入れる
+- `data_status`: データの鮮度・性質。`live`、`historical`、`reference`、`degraded`、`unknown`などを使用する
+- `execution_status`: 処理結果。`success`または`error`
+- `error`: 成功時は`null`、エラー時は`code`、`message`、`retryable`を持つオブジェクト
 
-エラー時は `IsError: true` を設定し `StructuredContent` は省略します。
+エラー時は`IsError: true`、短いテキスト`Content`、共通の`StructuredContent`を返します。クライアントは成功とエラーで異なるJSON形状を判定する必要がありません。
 
 ### 変換処理 (`internal/infrastructure/server.go`)
 
-`serverImpl.AddTool` がハンドラの `(data, meta, err)` を自動で変換します:
+`serverImpl.AddTool`がハンドラの`(data, meta, err)`を自動で変換します。各モジュールはMCP SDKの`CallToolResult`を直接生成しません。
 
-```go
-// 成功時
-&mcp.CallToolResult{
-    Content: []mcp.Content{&mcp.TextContent{Text: jsonData}},
-    StructuredContent: map[string]interface{}{
-        "meta": meta,
-        "data": data,
-    },
-}
+成功時は`data`と`meta`を包み、`error: null`を設定します。ハンドラが返すメタ情報がオブジェクトでない場合は`meta.details`へ格納します。エラー時は`data: null`とエラーオブジェクトを設定します。標準以外のエラーコードと再試行可否が必要な場合は、`Code() string`と`Retryable() bool`を実装したエラーを返します。
 
-// エラー時
-&mcp.CallToolResult{
-    IsError: true,
-    Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
-}
-```
+詳細なフィールド定義と利用例は[レスポンスフォーマット](./response-format.md)を参照してください。
 
 ## Monitoring プロバイダー
 

@@ -15,8 +15,8 @@ type Provider interface {
 
 // Server defines an MCP server with standardized response formatting.
 type Server interface {
-	// AddTool adds a tool. The handler returns (data, meta, err) which is
-	// automatically formatted into {meta, data} StructuredContent.
+	// AddTool adds a tool. The handler returns (data, meta, err), which is
+	// automatically formatted into the common {data, meta, error} envelope.
 	AddTool(tool *mcp.Tool, handler func(ctx context.Context, req *mcp.CallToolRequest) (data, meta interface{}, err error))
 	// Run starts the server with the given transport.
 	Run(ctx context.Context, transport mcp.Transport) error
