@@ -2327,7 +2327,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                       </CollapsibleTrigger>
                       <CollapsibleContent>
                         <div className="mt-3">
-                          <FrontmatterForm value={draftFm} onChange={setDraftFm} hideTitle={isTaskFile} />
+                          <FrontmatterForm value={draftFm} onChange={setDraftFm} taskMode={isTaskFile} />
                         </div>
                       </CollapsibleContent>
                     </Collapsible>

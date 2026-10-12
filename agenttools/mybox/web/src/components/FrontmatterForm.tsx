@@ -9,7 +9,6 @@ const FIELD_ORDER = [
   'title',
   'status',
   'tags',
-  'aliases',
   'due',
   'pending_until',
   'pending_reason',
@@ -169,10 +168,10 @@ function ListField({ label, value, onChange, ariaLabel }: FieldProps) {
 interface FrontmatterFormProps {
   value: Record<string, unknown>
   onChange: (next: Record<string, unknown>) => void
-  hideTitle?: boolean
+  taskMode?: boolean
 }
 
-export function FrontmatterForm({ value, onChange, hideTitle = false }: FrontmatterFormProps) {
+export function FrontmatterForm({ value, onChange, taskMode = false }: FrontmatterFormProps) {
   const setField = (key: string, v: unknown) => onChange({ ...value, [key]: v })
   const removeField = (key: string) => {
     const next = { ...value }
@@ -196,49 +195,44 @@ export function FrontmatterForm({ value, onChange, hideTitle = false }: Frontmat
     }
     onChange({ ...value, [key]: '' })
   }
-  const extraKeys = Object.keys(value).filter((k) => !KNOWN.has(k) && !(hideTitle && k === 'title'))
+  const extraKeys = taskMode ? Object.keys(value).filter((k) => !KNOWN.has(k)) : []
 
   return (
     <div className="frontmatter-form flex flex-col gap-3">
-      <div className="field-row flex flex-wrap gap-3">
-        {!hideTitle && <Field label="Title" value={value.title} onChange={(v) => setField('title', v)} ariaLabel="Metadata title" />}
-        <SelectField
-          label="Status"
-          value={value.status}
-          onChange={(v) => setField('status', v)}
-          ariaLabel="Metadata status"
-          options={STATUS_OPTIONS}
-        />
-      </div>
+      {taskMode && (
+        <>
+          <div className="field-row flex flex-wrap gap-3">
+            <SelectField
+              label="Status"
+              value={value.status}
+              onChange={(v) => setField('status', v)}
+              ariaLabel="Metadata status"
+              options={STATUS_OPTIONS}
+            />
+            <DateField label="Due" value={value.due} onChange={(v) => setField('due', v)} ariaLabel="Metadata due" />
+          </div>
+          <div className="field-row flex flex-wrap gap-3">
+            <DateField
+              compact
+              label="Pending until"
+              value={value.pending_until}
+              onChange={(v) => setField('pending_until', v)}
+              ariaLabel="Metadata pending until"
+            />
+            <Field
+              label="Pending reason"
+              value={value.pending_reason}
+              onChange={(v) => setField('pending_reason', v)}
+              ariaLabel="Metadata pending reason"
+            />
+          </div>
+        </>
+      )}
       <div className="field-row flex flex-wrap gap-3">
         <ListField label="Tags" value={value.tags} onChange={(v) => setField('tags', v)} ariaLabel="Metadata tags" />
-        <ListField
-          label="Aliases"
-          value={value.aliases}
-          onChange={(v) => setField('aliases', v)}
-          ariaLabel="Metadata aliases"
-        />
-      </div>
-      <div className="field-row flex flex-wrap gap-3">
-        <DateField label="Due" value={value.due} onChange={(v) => setField('due', v)} ariaLabel="Metadata due" />
-      </div>
-      <div className="field-row flex flex-wrap gap-3">
-        <DateField
-          compact
-          label="Pending until"
-          value={value.pending_until}
-          onChange={(v) => setField('pending_until', v)}
-          ariaLabel="Metadata pending until"
-        />
-        <Field
-          label="Pending reason"
-          value={value.pending_reason}
-          onChange={(v) => setField('pending_reason', v)}
-          ariaLabel="Metadata pending reason"
-        />
       </div>
 
-      {extraKeys.length > 0 && (
+      {taskMode && extraKeys.length > 0 && (
         <div className="extra-fields mb-2.5 mt-1">
           <h4 className="mb-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
             Other metadata
@@ -273,9 +267,11 @@ export function FrontmatterForm({ value, onChange, hideTitle = false }: Frontmat
           ))}
         </div>
       )}
-      <Button type="button" variant="ghost" size="sm" className="justify-start" onClick={addField}>
-        + Add metadata
-      </Button>
+      {taskMode && (
+        <Button type="button" variant="ghost" size="sm" className="justify-start" onClick={addField}>
+          + Add metadata
+        </Button>
+      )}
     </div>
   )
 }

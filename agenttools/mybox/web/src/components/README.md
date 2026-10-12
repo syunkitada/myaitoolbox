@@ -17,7 +17,7 @@
 | [`DiffView.tsx`](./DiffView.tsx) / [`DiffView.test.tsx`](./DiffView.test.tsx) | unified diff表示とそのテスト。 |
 | [`FileExecutionModal.tsx`](./FileExecutionModal.tsx) / [`FileExecutionModal.test.tsx`](./FileExecutionModal.test.tsx) | スクリプト実行中の出力、終了結果、停止、Dismissを表示するモーダルとテスト。 |
 | [`FileTabs.tsx`](./FileTabs.tsx) / [`FileTabs.test.tsx`](./FileTabs.test.tsx) | 最近開いたファイルのタブと、プロジェクト付きお気に入りの追加・削除および横断遷移モーダルとテスト。 |
-| [`FrontmatterForm.tsx`](./FrontmatterForm.tsx) | タスクフロントマターの編集フォーム。 |
+| [`FrontmatterForm.tsx`](./FrontmatterForm.tsx) / [`FrontmatterForm.test.tsx`](./FrontmatterForm.test.tsx) | タスクと通常のMarkdownのフロントマター編集フォームとテスト。 |
 | [`GitViewer.tsx`](./GitViewer.tsx) | Git状態・差分画面を埋め込むビュー。 |
 | [`Markdown.tsx`](./Markdown.tsx) / [`Markdown.test.tsx`](./Markdown.test.tsx) | サニタイズ済みMarkdown表示とテスト。 |
 | [`Mermaid.tsx`](./Mermaid.tsx) | Mermaidダイアグラム描画。 |
