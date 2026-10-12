@@ -23,7 +23,7 @@ import { StatusDot } from './components/herdr-status'
 import { DialogsProvider } from './components/AppDialogs'
 import { FileExecutionProvider } from './state/fileExecution'
 import { HerdrPage } from './pages/HerdrPage'
-import { Bot, Folder, GitBranch, Network, PanelRightClose, PanelRightOpen, SquareKanban, TerminalSquare } from 'lucide-react'
+import { Folder, GitBranch, Network, PanelRightClose, PanelRightOpen, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
@@ -175,7 +175,7 @@ export default function App() {
     { to: projectUrl('/board'), label: 'Board', icon: SquareKanban, active: pathname === projectUrl('/board') },
     { to: projectUrl('/graph'), label: 'Graph', icon: Network, active: pathname === projectUrl('/graph') },
     { to: projectUrl('/git'), label: 'Git', icon: GitBranch, active: pathname === projectUrl('/git') },
-    { to: projectUrl('/herdr'), label: 'Herdr', icon: Bot, active: pathname === projectUrl('/herdr') },
+    { to: projectUrl('/herdr'), label: 'Herdr', icon: PanelsTopLeft, active: pathname === projectUrl('/herdr') },
   ]
 
   return (
