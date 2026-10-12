@@ -706,7 +706,7 @@ agenttools/aiteam/
 
 ### 10.2 技術スタック
 
-- Go（リポジトリ内の mymcp / mcpserve と同じ構成慣習に従う）
+- Go（リポジトリ内の mymcp / mymcpserve と同じ構成慣習に従う）
 - Herdr との連携は `herdr` バイナリをサブプロセスで呼び出し、JSON をパース
 - YAML front matter は既存の Go YAML ライブラリでパース
 - テスト: `tests/` に CLI 統合テスト（`herdr --no-session` のヘッドレス利用を想定）
