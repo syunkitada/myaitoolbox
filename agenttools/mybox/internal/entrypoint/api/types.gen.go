@@ -7,6 +7,27 @@ import (
 	"time"
 )
 
+// Defines values for CodexDiagnosticContentKind.
+const (
+	CodexDiagnosticContentKindConfig      CodexDiagnosticContentKind = "config"
+	CodexDiagnosticContentKindInstruction CodexDiagnosticContentKind = "instruction"
+	CodexDiagnosticContentKindSkill       CodexDiagnosticContentKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the CodexDiagnosticContentKind enum.
+func (e CodexDiagnosticContentKind) Valid() bool {
+	switch e {
+	case CodexDiagnosticContentKindConfig:
+		return true
+	case CodexDiagnosticContentKindInstruction:
+		return true
+	case CodexDiagnosticContentKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FileEntryKind.
 const (
 	Dir  FileEntryKind = "dir"
@@ -68,6 +89,153 @@ func (e TaskStatus) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Defines values for GetCodexDiagnosticContentParamsKind.
+const (
+	GetCodexDiagnosticContentParamsKindConfig      GetCodexDiagnosticContentParamsKind = "config"
+	GetCodexDiagnosticContentParamsKindInstruction GetCodexDiagnosticContentParamsKind = "instruction"
+	GetCodexDiagnosticContentParamsKindSkill       GetCodexDiagnosticContentParamsKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the GetCodexDiagnosticContentParamsKind enum.
+func (e GetCodexDiagnosticContentParamsKind) Valid() bool {
+	switch e {
+	case GetCodexDiagnosticContentParamsKindConfig:
+		return true
+	case GetCodexDiagnosticContentParamsKindInstruction:
+		return true
+	case GetCodexDiagnosticContentParamsKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// CodexConfigFile defines model for CodexConfigFile.
+type CodexConfigFile struct {
+	Exists    bool   `json:"exists"`
+	IsSymlink bool   `json:"is_symlink"`
+	Path      string `json:"path"`
+	Readable  bool   `json:"readable"`
+	Scope     string `json:"scope"`
+	Status    string `json:"status"`
+}
+
+// CodexDiagnosticContent defines model for CodexDiagnosticContent.
+type CodexDiagnosticContent struct {
+	Content   string                     `json:"content"`
+	FetchedAt time.Time                  `json:"fetched_at"`
+	IsSymlink bool                       `json:"is_symlink"`
+	Kind      CodexDiagnosticContentKind `json:"kind"`
+	Path      string                     `json:"path"`
+	Redacted  bool                       `json:"redacted"`
+	Scope     string                     `json:"scope"`
+	SizeBytes int64                      `json:"size_bytes"`
+	Truncated bool                       `json:"truncated"`
+}
+
+// CodexDiagnosticContentKind defines model for CodexDiagnosticContent.Kind.
+type CodexDiagnosticContentKind string
+
+// CodexDiagnosticError defines model for CodexDiagnosticError.
+type CodexDiagnosticError struct {
+	Message string `json:"message"`
+	Section string `json:"section"`
+}
+
+// CodexDiagnostics defines model for CodexDiagnostics.
+type CodexDiagnostics struct {
+	Codex        CodexRuntime           `json:"codex"`
+	ConfigFiles  []CodexConfigFile      `json:"config_files"`
+	Errors       []CodexDiagnosticError `json:"errors"`
+	FetchedAt    time.Time              `json:"fetched_at"`
+	Instructions []CodexInstructionFile `json:"instructions"`
+	McpServers   []CodexMCPServer       `json:"mcp_servers"`
+	Project      string                 `json:"project"`
+	Skills       []CodexSkill           `json:"skills"`
+
+	// SkillsTruncated Whether one or more standard Skill roots contained more entries than the response limit
+	SkillsTruncated bool `json:"skills_truncated"`
+}
+
+// CodexInstructionFile defines model for CodexInstructionFile.
+type CodexInstructionFile struct {
+	Exists    bool   `json:"exists"`
+	IsSymlink bool   `json:"is_symlink"`
+	Path      string `json:"path"`
+	Scope     string `json:"scope"`
+	Status    string `json:"status"`
+}
+
+// CodexMCPServer defines model for CodexMCPServer.
+type CodexMCPServer struct {
+	AuthStatus string `json:"auth_status"`
+	Command    string `json:"command"`
+
+	// HealthStatus MCP server health is intentionally not checked; configuration state only.
+	HealthStatus string `json:"health_status"`
+	Name         string `json:"name"`
+
+	// Scope Effective merged configuration scope reported by Codex
+	Scope string `json:"scope"`
+
+	// Source Command or source used to collect the MCP configuration
+	Source    string `json:"source"`
+	Status    string `json:"status"`
+	Transport string `json:"transport"`
+}
+
+// CodexRuntime defines model for CodexRuntime.
+type CodexRuntime struct {
+	AppServerStatus  *string  `json:"app_server_status,omitempty"`
+	AppServerVersion *string  `json:"app_server_version,omitempty"`
+	ApprovalPolicy   *string  `json:"approval_policy,omitempty"`
+	AuthMode         *string  `json:"auth_mode,omitempty"`
+	Authenticated    *bool    `json:"authenticated,omitempty"`
+	Available        bool     `json:"available"`
+	ExecutablePath   *string  `json:"executable_path,omitempty"`
+	FeatureFlags     []string `json:"feature_flags"`
+	Model            *string  `json:"model,omitempty"`
+	ModelProvider    *string  `json:"model_provider,omitempty"`
+	ReasoningEffort  *string  `json:"reasoning_effort,omitempty"`
+	SandboxMode      *string  `json:"sandbox_mode,omitempty"`
+	Status           string   `json:"status"`
+	Version          *string  `json:"version,omitempty"`
+}
+
+// CodexSkill defines model for CodexSkill.
+type CodexSkill struct {
+	Description string `json:"description"`
+	IsSymlink   bool   `json:"is_symlink"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Scope       string `json:"scope"`
+	Status      string `json:"status"`
+}
+
+// CodexSkillFile defines model for CodexSkillFile.
+type CodexSkillFile struct {
+	IsSymlink bool `json:"is_symlink"`
+
+	// Kind file, directory, other, or unavailable
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+
+	// Target Resolved or raw symbolic-link target; empty for regular entries
+	Target string `json:"target"`
+}
+
+// CodexSkillFileList defines model for CodexSkillFileList.
+type CodexSkillFileList struct {
+	Entries   []CodexSkillFile `json:"entries"`
+	FetchedAt time.Time        `json:"fetched_at"`
+	Path      string           `json:"path"`
+
+	// Truncated Whether the directory contains more entries than the response limit
+	Truncated bool `json:"truncated"`
 }
 
 // CreateHerdrScheduledPromptRequest defines model for CreateHerdrScheduledPromptRequest.
@@ -423,6 +591,23 @@ type UpdateTaskRequest struct {
 	Name   *string     `json:"name,omitempty"`
 	Status *TaskStatus `json:"status,omitempty"`
 	Tags   *[]string   `json:"tags,omitempty"`
+}
+
+// GetCodexDiagnosticContentParams defines parameters for GetCodexDiagnosticContent.
+type GetCodexDiagnosticContentParams struct {
+	Kind GetCodexDiagnosticContentParamsKind `form:"kind" json:"kind"`
+
+	// Path Absolute path returned by the Codex diagnostics endpoint
+	Path string `form:"path" json:"path"`
+}
+
+// GetCodexDiagnosticContentParamsKind defines parameters for GetCodexDiagnosticContent.
+type GetCodexDiagnosticContentParamsKind string
+
+// GetCodexSkillFilesParams defines parameters for GetCodexSkillFiles.
+type GetCodexSkillFilesParams struct {
+	// Path Absolute skill directory path returned by the Codex diagnostics endpoint
+	Path string `form:"path" json:"path"`
 }
 
 // ListFilesParams defines parameters for ListFiles.

@@ -648,6 +648,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HerdrOverview"
+  /api/codex/diagnostics:
+    get:
+      operationId: getCodexDiagnostics
+      summary: Get read-only Codex CLI diagnostics for the current project
+      responses:
+        "200":
+          description: Codex diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodexDiagnostics"
+  /api/codex/diagnostics/content:
+    get:
+      operationId: getCodexDiagnosticContent
+      summary: Read a discovered Codex configuration, instruction, or skill file
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [config, instruction, skill]
+        - name: path
+          in: query
+          required: true
+          description: Absolute path returned by the Codex diagnostics endpoint
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sanitized or raw file content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodexDiagnosticContent"
+        "400":
+          description: Unsupported content kind or invalid request
+        "404":
+          description: The requested path is not a discovered readable file
+  /api/codex/diagnostics/skill-files:
+    get:
+      operationId: getCodexSkillFiles
+      summary: List files in a discovered Codex skill directory
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: Absolute skill directory path returned by the Codex diagnostics endpoint
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Direct children of the skill directory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodexSkillFileList"
+        "404":
+          description: The requested path is not a discovered skill directory
   /api/herdr/agents/start:
     post:
       operationId: startHerdrAgent
@@ -1353,6 +1412,211 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/HerdrPane"
+    CodexDiagnostics:
+      type: object
+      required: [project, fetched_at, codex, config_files, instructions, skills, skills_truncated, mcp_servers, errors]
+      properties:
+        project:
+          type: string
+        fetched_at:
+          type: string
+          format: date-time
+        codex:
+          $ref: "#/components/schemas/CodexRuntime"
+        config_files:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodexConfigFile"
+        instructions:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodexInstructionFile"
+        skills:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodexSkill"
+        skills_truncated:
+          type: boolean
+          description: Whether one or more standard Skill roots contained more entries than the response limit
+        mcp_servers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodexMCPServer"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodexDiagnosticError"
+    CodexDiagnosticContent:
+      type: object
+      required: [kind, scope, path, content, is_symlink, redacted, truncated, size_bytes, fetched_at]
+      properties:
+        kind:
+          type: string
+          enum: [config, instruction, skill]
+        scope:
+          type: string
+        path:
+          type: string
+        is_symlink:
+          type: boolean
+        content:
+          type: string
+        redacted:
+          type: boolean
+        truncated:
+          type: boolean
+        size_bytes:
+          type: integer
+          format: int64
+        fetched_at:
+          type: string
+          format: date-time
+    CodexSkillFileList:
+      type: object
+      required: [path, entries, truncated, fetched_at]
+      properties:
+        path:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodexSkillFile"
+        truncated:
+          type: boolean
+          description: Whether the directory contains more entries than the response limit
+        fetched_at:
+          type: string
+          format: date-time
+    CodexSkillFile:
+      type: object
+      required: [name, path, kind, size_bytes, is_symlink, target]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        kind:
+          type: string
+          description: file, directory, other, or unavailable
+        size_bytes:
+          type: integer
+          format: int64
+        is_symlink:
+          type: boolean
+        target:
+          type: string
+          description: Resolved or raw symbolic-link target; empty for regular entries
+    CodexRuntime:
+      type: object
+      required: [status, available, feature_flags]
+      properties:
+        status:
+          type: string
+        available:
+          type: boolean
+        executable_path:
+          type: string
+        version:
+          type: string
+        app_server_version:
+          type: string
+        app_server_status:
+          type: string
+        auth_mode:
+          type: string
+        authenticated:
+          type: boolean
+        model:
+          type: string
+        model_provider:
+          type: string
+        reasoning_effort:
+          type: string
+        sandbox_mode:
+          type: string
+        approval_policy:
+          type: string
+        feature_flags:
+          type: array
+          items:
+            type: string
+    CodexConfigFile:
+      type: object
+      required: [scope, path, exists, readable, status, is_symlink]
+      properties:
+        scope:
+          type: string
+        path:
+          type: string
+        exists:
+          type: boolean
+        readable:
+          type: boolean
+        is_symlink:
+          type: boolean
+        status:
+          type: string
+    CodexInstructionFile:
+      type: object
+      required: [scope, path, exists, status, is_symlink]
+      properties:
+        scope:
+          type: string
+        path:
+          type: string
+        exists:
+          type: boolean
+        is_symlink:
+          type: boolean
+        status:
+          type: string
+    CodexSkill:
+      type: object
+      required: [name, description, scope, path, status, is_symlink]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        scope:
+          type: string
+        path:
+          type: string
+        is_symlink:
+          type: boolean
+        status:
+          type: string
+    CodexMCPServer:
+      type: object
+      required: [name, scope, source, transport, command, status, auth_status, health_status]
+      properties:
+        name:
+          type: string
+        scope:
+          type: string
+          description: Effective merged configuration scope reported by Codex
+        source:
+          type: string
+          description: Command or source used to collect the MCP configuration
+        transport:
+          type: string
+        command:
+          type: string
+        status:
+          type: string
+        auth_status:
+          type: string
+        health_status:
+          type: string
+          description: MCP server health is intentionally not checked; configuration state only.
+    CodexDiagnosticError:
+      type: object
+      required: [section, message]
+      properties:
+        section:
+          type: string
+        message:
+          type: string
     HerdrWorkspace:
       type: object
       required: [workspace_id, label, agent_status]

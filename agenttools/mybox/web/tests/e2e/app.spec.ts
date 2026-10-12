@@ -1108,8 +1108,9 @@ test('dashboard edits and saves a file', async ({ page }) => {
 })
 
 test('dashboard edits frontmatter metadata separately from the body', async ({ page }) => {
+  const taskPath = '_tasks/ship-the-web-ui/task.md'
+  await page.goto(`/projects/proj/dashboard/files/${taskPath}`)
   const explorer = page.locator('.knowledge-explorer')
-  await treeButton(explorer, 'tasks.md').click()
   await page.getByRole('button', { name: 'Edit' }).click()
   // the metadata form is collapsed by default; expand it first
   await page.getByRole('button', { name: /Metadata/ }).click()
@@ -1122,14 +1123,14 @@ test('dashboard edits frontmatter metadata separately from the body', async ({ p
   await expect(page.locator('.frontmatter-card .badge.tag').filter({ hasText: 'docs' })).toBeVisible()
   await expect(page.getByText('Metadata added.')).toBeVisible()
 
-  const res = await page.request.get('/api/files/content?path=tasks.md')
+  const res = await page.request.get(`/api/files/content?path=${encodeURIComponent(taskPath)}`)
   const body = (await res.json()) as { content: string }
   expect(body.content).toContain('status: done')
   expect(body.content).toContain('tags')
   expect(body.content).toContain('docs')
   expect(body.content).toContain('Metadata added.')
 
-  const row = explorer.locator('.knowledge-tree-row', { hasText: 'tasks.md' })
+  const row = explorer.locator('.knowledge-tree-row', { hasText: 'ship-the-web-ui' })
   await expect(row.locator('.badge.status-done')).toBeVisible()
 })
 

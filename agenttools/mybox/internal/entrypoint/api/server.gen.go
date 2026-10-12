@@ -15,6 +15,15 @@ import (
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetCodexDiagnostics Get read-only Codex CLI diagnostics for the current project
+	// (GET /api/codex/diagnostics)
+	GetCodexDiagnostics(w http.ResponseWriter, r *http.Request)
+	// GetCodexDiagnosticContent Read a discovered Codex configuration, instruction, or skill file
+	// (GET /api/codex/diagnostics/content)
+	GetCodexDiagnosticContent(w http.ResponseWriter, r *http.Request, params GetCodexDiagnosticContentParams)
+	// GetCodexSkillFiles List files in a discovered Codex skill directory
+	// (GET /api/codex/diagnostics/skill-files)
+	GetCodexSkillFiles(w http.ResponseWriter, r *http.Request, params GetCodexSkillFilesParams)
 	// ListFiles List files in the project directory tree
 	// (GET /api/files)
 	ListFiles(w http.ResponseWriter, r *http.Request, params ListFilesParams)
@@ -160,6 +169,99 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetCodexDiagnostics operation middleware
+func (siw *ServerInterfaceWrapper) GetCodexDiagnostics(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCodexDiagnostics(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCodexDiagnosticContent operation middleware
+func (siw *ServerInterfaceWrapper) GetCodexDiagnosticContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCodexDiagnosticContentParams
+
+	// ------------- Required query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCodexDiagnosticContent(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCodexSkillFiles operation middleware
+func (siw *ServerInterfaceWrapper) GetCodexSkillFiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCodexSkillFilesParams
+
+	// ------------- Required query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCodexSkillFiles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListFiles operation middleware
 func (siw *ServerInterfaceWrapper) ListFiles(w http.ResponseWriter, r *http.Request) {
@@ -1145,6 +1247,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tasks/{id}", wrapper.UpdateTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/{id}/archive", wrapper.ArchiveTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/herdr/overview", wrapper.GetHerdrOverview)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/diagnostics", wrapper.GetCodexDiagnostics)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/diagnostics/content", wrapper.GetCodexDiagnosticContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/diagnostics/skill-files", wrapper.GetCodexSkillFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/start", wrapper.StartHerdrAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/read", wrapper.ReadHerdrAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/prompt", wrapper.PromptHerdrAgent)

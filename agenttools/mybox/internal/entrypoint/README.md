@@ -11,6 +11,8 @@
 | [`bootstrap.go`](./bootstrap.go) | 設定・リポジトリ・ユースケースを組み立てる初期化処理。 |
 | [`cli.go`](./cli.go) | CobraベースのCLIコマンドとオプション。 |
 | [`cli_test.go`](./cli_test.go) | CLIコマンドのテスト。 |
+| [`codex.go`](./codex.go) | Codex CLIの読み取り専用診断、設定メタデータ、Config・AGENTS.md・Skills本文、Skillディレクトリ一覧、MCP設定の収集。本文取得時のパス検証、Config・AGENTS.md・Skillのシンボリックリンク対応、上限、Config秘匿値マスクも担当する。 |
+| [`codex_test.go`](./codex_test.go) | Codex診断のCLI出力解析、本文取得、Skillディレクトリ一覧、パス検証、秘匿値マスク、部分エラーのHTTPテスト。 |
 | [`file_execute.go`](./file_execute.go) | Filesタブからの実行可能ファイル実行とWebSocket出力ストリーム。 |
 | [`file_execute_test.go`](./file_execute_test.go) | Filesタブの実行ストリームの統合テスト。 |
 | [`file_execution.go`](./file_execution.go) | ブラウザ切断後も継続するサーバー管理のファイル実行ジョブ、履歴、再接続、停止API。 |

@@ -293,6 +293,107 @@ export interface HerdrOverview {
   panes: HerdrPane[]
 }
 
+export interface CodexRuntime {
+  status: string
+  available: boolean
+  executable_path?: string | null
+  version?: string | null
+  app_server_version?: string | null
+  app_server_status?: string | null
+  auth_mode?: string | null
+  authenticated?: boolean | null
+  model?: string | null
+  model_provider?: string | null
+  reasoning_effort?: string | null
+  sandbox_mode?: string | null
+  approval_policy?: string | null
+  feature_flags: string[]
+}
+
+export interface CodexConfigFile {
+  scope: string
+  path: string
+  exists: boolean
+  readable: boolean
+  status: string
+  is_symlink: boolean
+}
+
+export interface CodexInstructionFile {
+  scope: string
+  path: string
+  exists: boolean
+  status: string
+  is_symlink: boolean
+}
+
+export interface CodexSkill {
+  name: string
+  description: string
+  scope: string
+  path: string
+  status: string
+  is_symlink: boolean
+}
+
+export interface CodexMCPServer {
+  name: string
+  scope: string
+  source: string
+  transport: string
+  command: string
+  status: string
+  auth_status: string
+  health_status: string
+}
+
+export interface CodexDiagnosticError {
+  section: string
+  message: string
+}
+
+export interface CodexDiagnostics {
+  project: string
+  fetched_at: string
+  codex: CodexRuntime
+  config_files: CodexConfigFile[]
+  instructions: CodexInstructionFile[]
+  skills: CodexSkill[]
+  skills_truncated: boolean
+  mcp_servers: CodexMCPServer[]
+  errors: CodexDiagnosticError[]
+}
+
+export type CodexDiagnosticContentKind = 'config' | 'instruction' | 'skill'
+
+export interface CodexDiagnosticContent {
+  kind: CodexDiagnosticContentKind
+  scope: string
+  path: string
+  content: string
+  is_symlink: boolean
+  redacted: boolean
+  truncated: boolean
+  size_bytes: number
+  fetched_at: string
+}
+
+export interface CodexSkillFile {
+  name: string
+  path: string
+  kind: string
+  size_bytes: number
+  is_symlink: boolean
+  target: string
+}
+
+export interface CodexSkillFileList {
+  path: string
+  entries: CodexSkillFile[]
+  truncated: boolean
+  fetched_at: string
+}
+
 export interface StatsCPU {
   id: number
   model: string
@@ -493,6 +594,25 @@ export const api = {
 
   getHerdrOverview: (project?: string) =>
     request<HerdrOverview>('GET', '/api/herdr/overview', undefined, project),
+
+  getCodexDiagnostics: (project?: string) =>
+    request<CodexDiagnostics>('GET', '/api/codex/diagnostics', undefined, project),
+
+  getCodexDiagnosticContent: (kind: CodexDiagnosticContentKind, path: string, project?: string) =>
+    request<CodexDiagnosticContent>(
+      'GET',
+      '/api/codex/diagnostics/content' + qs({ kind, path }),
+      undefined,
+      project,
+    ),
+
+  getCodexSkillFiles: (path: string, project?: string) =>
+    request<CodexSkillFileList>(
+      'GET',
+      '/api/codex/diagnostics/skill-files' + qs({ path }),
+      undefined,
+      project,
+    ),
 
   getHerdrLayouts: () => request<{ layouts: HerdrLayout[] }>('GET', '/api/herdr/layouts'),
 

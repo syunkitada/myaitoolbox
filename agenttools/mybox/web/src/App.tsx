@@ -23,7 +23,7 @@ import { StatusDot } from './components/herdr-status'
 import { DialogsProvider } from './components/AppDialogs'
 import { FileExecutionProvider } from './state/fileExecution'
 import { HerdrPage } from './pages/HerdrPage'
-import { Folder, GitBranch, Network, PanelRightClose, PanelRightOpen, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
+import { Bot, Folder, GitBranch, Network, PanelRightClose, PanelRightOpen, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
@@ -40,9 +40,10 @@ const KanbanBoard = lazy(() => import('./pages/KanbanBoard').then((m) => ({ defa
 const StatsPage = lazy(() => import('./pages/StatsPage').then((m) => ({ default: m.StatsPage })))
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
 const GitPage = lazy(() => import('./pages/GitPage').then((m) => ({ default: m.GitPage })))
+const CodexDiagnosticsPage = lazy(() => import('./pages/CodexDiagnosticsPage').then((m) => ({ default: m.CodexDiagnosticsPage })))
 
 // Canonical project tab sections; position in this list is the tab index.
-const TAB_SECTIONS = ['dashboard', 'board', 'graph', 'git', 'herdr']
+const TAB_SECTIONS = ['dashboard', 'board', 'graph', 'git', 'herdr', 'agent']
 const GIT_STATUS_REFRESH_INTERVAL_MS = 5000
 
 export default function App() {
@@ -176,6 +177,7 @@ export default function App() {
     { to: projectUrl('/graph'), label: 'Graph', icon: Network, active: pathname === projectUrl('/graph') },
     { to: projectUrl('/git'), label: 'Git', icon: GitBranch, active: pathname === projectUrl('/git') },
     { to: projectUrl('/herdr'), label: 'Herdr', icon: PanelsTopLeft, active: pathname === projectUrl('/herdr') },
+    { to: projectUrl('/agent'), label: 'Agent', icon: Bot, active: pathname === projectUrl('/agent') },
   ]
 
   return (
@@ -330,6 +332,10 @@ export default function App() {
                         refreshMeta={refreshMeta}
                       />
                     }
+                  />
+                  <Route
+                    path="/projects/:project/agent"
+                    element={<CodexDiagnosticsPage key={project} />}
                   />
                   <Route
                     path="/projects/:project"

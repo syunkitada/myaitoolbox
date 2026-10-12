@@ -45,6 +45,7 @@ type Server struct {
 	basePath          string
 	newApp            func(context.Context, string) (*App, error)
 	herdrRun          herdrRunFunc
+	codexRun          codexRunFunc
 	herdrAgentStartMu sync.Mutex
 	terminals         *terminalHub
 	fileExecutions    *fileExecutionHub
