@@ -117,7 +117,7 @@ var listParamsHelperCmd = &cobra.Command{
 			}
 		}
 
-		fmt.Println("-o:output format (raw, tsv, table)")
+		fmt.Println("-o:output format (raw, json, tsv, table)")
 		fmt.Println("-p:profile to use")
 	},
 }

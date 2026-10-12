@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
@@ -19,7 +20,7 @@ func TestValidateOutputFormat(t *testing.T) {
 		{"raw", false},
 		{"tsv", false},
 		{"table", false},
-		{"json", true},
+		{"json", false},
 		{"yaml", true},
 		{"", true},
 	}
@@ -34,6 +35,39 @@ func TestValidateOutputFormat(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFormatJSONOutputDecodesSingleJSONTextContent(t *testing.T) {
+	result := &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: `{"source_id":"test","data":[{"symbol":"JP.7203"}]}`},
+		},
+	}
+
+	var output bytes.Buffer
+	err := formatJSONOutput(&output, result)
+	require.NoError(t, err)
+
+	var document map[string]interface{}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &document))
+	assert.Equal(t, "test", document["source_id"])
+	assert.Len(t, document["data"], 1)
+}
+
+func TestFormatJSONOutputUsesStructuredContent(t *testing.T) {
+	result := &mcp.CallToolResult{
+		StructuredContent: map[string]interface{}{
+			"status": "ready",
+		},
+	}
+
+	var output bytes.Buffer
+	err := formatJSONOutput(&output, result)
+	require.NoError(t, err)
+
+	var document map[string]interface{}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &document))
+	assert.Equal(t, "ready", document["status"])
 }
 
 func TestParseCallArgs(t *testing.T) {

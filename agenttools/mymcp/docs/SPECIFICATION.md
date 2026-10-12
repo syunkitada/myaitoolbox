@@ -51,7 +51,7 @@
 | フラグ | 短縮 | 型 | デフォルト | 説明 |
 |--------|------|----|-----------|------|
 | `--profile` | `-p` | string | `""` | プロファイル名 |
-| `--output` | `-o` | string | `config.yaml` の `output.format`（未指定時 `table`） | 出力形式（raw / tsv / table） |
+| `--output` | `-o` | string | `config.yaml` の `output.format`（未指定時 `table`） | 出力形式（raw / json / tsv / table） |
 | `--params` | | string | | パラメータJSON（インライン`{...}`またはファイルパス） |
 | `--<paramName>` | `-<s>` | varies | | ツールパラメータ（値なしで boolean true） |
 
@@ -62,6 +62,7 @@
 | 形式 | 説明 |
 |------|------|
 | `raw` | レスポンス全体を `json.MarshalIndent` で整形して出力 |
+| `json` | `StructuredContent`、またはJSON形式の`TextContent`をJSON値として出力。JSONでないテキストはJSON文字列として出力 |
 | `tsv` | JSONをパースしタブ区切りで出力 |
 | `table` | アラインメントされたテーブル形式で出力 |
 
@@ -70,6 +71,7 @@
 ```
 res (*mcp.CallToolResult)
 ├── raw → res 全体を JSON 出力
+├── json → StructuredContentまたはContent[]を機械処理用JSONとして出力
 ├── tsv/table + StructuredContent あり
 │   ├── StructuredContent を printTSV/printTable で出力（stdout）
 │   └── meta.outputs に対応するキーを出力（stderr）

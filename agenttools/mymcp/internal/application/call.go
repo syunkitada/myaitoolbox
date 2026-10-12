@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -35,12 +36,9 @@ func FormatOutput(res *mcp.CallToolResult, outputFormat string) error {
 	}
 
 	if outputFormat == "raw" {
-		b, err := json.MarshalIndent(res, "", "  ")
-		if err != nil {
-			return fmt.Errorf("formatting raw output: %w", err)
-		}
-		_, err = fmt.Println(string(b))
-		return err
+		return writeJSON(os.Stdout, res)
+	} else if outputFormat == "json" {
+		return formatJSONOutput(os.Stdout, res)
 	} else if res.StructuredContent != nil && (outputFormat == "tsv" || outputFormat == "table") {
 		switch outputFormat {
 		case "tsv":
@@ -65,6 +63,64 @@ func FormatOutput(res *mcp.CallToolResult, outputFormat string) error {
 		}
 	}
 	return nil
+}
+
+func writeJSON(writer io.Writer, value interface{}) error {
+	encoder := json.NewEncoder(writer)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(value); err != nil {
+		return fmt.Errorf("formatting JSON output: %w", err)
+	}
+	return nil
+}
+
+func formatJSONOutput(writer io.Writer, res *mcp.CallToolResult) error {
+	value, err := jsonOutputValue(res)
+	if err != nil {
+		return err
+	}
+	return writeJSON(writer, value)
+}
+
+func jsonOutputValue(res *mcp.CallToolResult) (interface{}, error) {
+	if res == nil {
+		return nil, fmt.Errorf("tool returned an empty result")
+	}
+	if res.StructuredContent != nil {
+		return res.StructuredContent, nil
+	}
+
+	values := make([]interface{}, 0, len(res.Content))
+	for _, content := range res.Content {
+		if text, ok := content.(*mcp.TextContent); ok {
+			if value, parsed := parseJSONText(text.Text); parsed {
+				values = append(values, value)
+			} else {
+				values = append(values, text.Text)
+			}
+			continue
+		}
+		values = append(values, content)
+	}
+	if len(values) == 1 {
+		return values[0], nil
+	}
+	return values, nil
+}
+
+func parseJSONText(text string) (interface{}, bool) {
+	decoder := json.NewDecoder(strings.NewReader(text))
+	decoder.UseNumber()
+
+	var value interface{}
+	if err := decoder.Decode(&value); err != nil {
+		return nil, false
+	}
+	var extra interface{}
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return nil, false
+	}
+	return value, true
 }
 
 type rawParamValue struct {
@@ -462,10 +518,10 @@ func objectValue(data interface{}, key string) (interface{}, bool) {
 
 func ValidateOutputFormat(format string) error {
 	switch format {
-	case "raw", "tsv", "table":
+	case "raw", "json", "tsv", "table":
 		return nil
 	default:
-		return fmt.Errorf("unsupported output format %q. Supported: raw, tsv, table", format)
+		return fmt.Errorf("unsupported output format %q. Supported: raw, json, tsv, table", format)
 	}
 }
 

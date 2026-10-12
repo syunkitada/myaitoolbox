@@ -22,6 +22,7 @@
 - **CLI Mode**: 人間向けにわかりやすいインターフェースを提供。
 - **MCP Client**: 複数のバックエンドMCPサーバーに接続し、ツールを統合的に操作。
 - **Unified Conceptual API**: List, Search, Info, Call といった操作を共通の概念モデルで提供。
+- **JSON Output**: `-o json`でツール結果を機械処理用のJSONとして標準出力へ出力。
 
 ## アーキテクチャ概要
 
@@ -88,3 +89,18 @@ echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
 ```
 
 `call` コマンドでは、ツール名の補完に続けて `--パラメータ名` の補完が効きます。`list` ではサーバ名の補完が可能です。
+
+### JSON結果の保存
+
+`-o json`は、`StructuredContent`またはJSON形式の`TextContent`をJSON値として標準出力へ出力します。JSONでないテキストはJSON文字列になります。`raw`はMCPの`CallToolResult`全体を確認するデバッグ用形式です。
+
+```bash
+mymcp --profile myinvest call moomoo/get_trading_days \
+  -o json \
+  --params '{"market":"JP","start":"2026-10-12","end":"2026-10-12"}' \
+  > trading-days.json
+
+jq '.data' trading-days.json
+```
+
+標準エラーには接続・ツールエラーが出力される場合があるため、JSONファイルへ保存するときは標準出力だけをリダイレクトします。`raw`はMCPレスポンスのenvelopeを含むため、プログラムでデータ本体を扱う用途では`json`を使用します。
