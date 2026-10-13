@@ -366,6 +366,41 @@ func TestHerdrOverview(t *testing.T) {
 	require.Len(t, calls, 4)
 }
 
+func TestHerdrOverviewEmptyKeepsArrays(t *testing.T) {
+	s := herdrTestServer(t, func(ctx context.Context, args ...string) ([]byte, error) {
+		switch args[0] {
+		case "workspace":
+			return []byte(`{"result":{"workspaces":[]}}`), nil
+		case "agent":
+			return []byte(`{"result":{"agents":[]}}`), nil
+		case "tab":
+			return []byte(`{"result":{"tabs":[]}}`), nil
+		case "pane":
+			return []byte(`{"result":{"panes":[]}}`), nil
+		default:
+			return nil, errors.New("unexpected herdr command")
+		}
+	})
+
+	rec := do(t, s, "GET", "/api/herdr/overview", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	res := decode[struct {
+		Workspaces []any `json:"workspaces"`
+		Agents     []any `json:"agents"`
+		Tabs       []any `json:"tabs"`
+		Panes      []any `json:"panes"`
+	}](t, rec)
+
+	assert.NotNil(t, res.Workspaces)
+	assert.NotNil(t, res.Agents)
+	assert.NotNil(t, res.Tabs)
+	assert.NotNil(t, res.Panes)
+	assert.Empty(t, res.Workspaces)
+	assert.Empty(t, res.Agents)
+	assert.Empty(t, res.Tabs)
+	assert.Empty(t, res.Panes)
+}
+
 func TestHerdrOverviewIncludesTaskMetadata(t *testing.T) {
 	s, app := newTestServer(t)
 	task, err := app.Tasks.Create(context.Background(), application.TaskInput{Name: "日本語のタスク"})

@@ -228,6 +228,8 @@ func (s *Server) GetHerdrOverview(w http.ResponseWriter, r *http.Request) {
 		Available:  false,
 		Workspaces: []api.HerdrWorkspace{},
 		Agents:     []api.HerdrAgent{},
+		Tabs:       []api.HerdrTab{},
+		Panes:      []api.HerdrPane{},
 	}
 	wsOut, err := s.runHerdr(r.Context(), "workspace", "list")
 	if err != nil {

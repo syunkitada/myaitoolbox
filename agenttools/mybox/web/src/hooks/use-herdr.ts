@@ -70,7 +70,15 @@ export function useHerdrOverview(intervalMs = 5000, myboxFocusedPaneId: string |
 
   const overview = useMemo(() => {
     if (!state.overview) return null
-    const agents = state.overview.agents.map((agent) => ({
+    // Older mybox responses can contain null for empty arrays. Normalize the
+    // API boundary here so an unavailable or empty Herdr session cannot crash
+    // the whole application during rendering.
+    const source = state.overview
+    const sourceAgents = source.agents ?? []
+    const sourceWorkspaces = source.workspaces ?? []
+    const sourceTabs = source.tabs ?? []
+    const sourcePanes = source.panes ?? []
+    const agents = sourceAgents.map((agent) => ({
       ...agent,
       status: displayedHerdrAgentStatus(agent, statusMemory.current, myboxFocusedPaneId),
     }))
@@ -81,26 +89,26 @@ export function useHerdrOverview(intervalMs = 5000, myboxFocusedPaneId: string |
       agents.filter((agent) => agent.status === 'done').map((agent) => agent.workspace_id),
     )
     const doneTabIds = new Set(
-      state.overview.panes
+      sourcePanes
         .filter((pane) => donePaneIds.has(pane.pane_id))
         .map((pane) => pane.tab_id),
     )
     return {
-      ...state.overview,
+      ...source,
       agents,
-      workspaces: state.overview.workspaces.map((workspace) => ({
+      workspaces: sourceWorkspaces.map((workspace) => ({
         ...workspace,
         agent_status:
           workspace.agent_status === 'idle' && doneWorkspaceIds.has(workspace.workspace_id)
             ? 'done'
             : workspace.agent_status,
       })),
-      tabs: state.overview.tabs.map((tab) => ({
+      tabs: sourceTabs.map((tab) => ({
         ...tab,
         agent_status:
           tab.agent_status === 'idle' && doneTabIds.has(tab.tab_id) ? 'done' : tab.agent_status,
       })),
-      panes: state.overview.panes.map((pane) => ({
+      panes: sourcePanes.map((pane) => ({
         ...pane,
         agent_status:
           pane.agent_status === 'idle' && donePaneIds.has(pane.pane_id) ? 'done' : pane.agent_status,
