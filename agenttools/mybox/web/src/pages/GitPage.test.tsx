@@ -1,7 +1,7 @@
 import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { api, type GitDetail } from '../api/client'
+import { ApiError, api, type GitDetail } from '../api/client'
 import { DialogsProvider } from '../components/AppDialogs'
 import { GitWorkspace } from './GitPage'
 
@@ -136,5 +136,27 @@ describe('GitWorkspace branch deletion', () => {
     await user.click(screen.getByTestId('app-dialog-ok'))
 
     await waitFor(() => expect(gitDeleteBranch).toHaveBeenCalledWith(undefined, 'feature'))
+  })
+})
+
+describe('GitWorkspace recovery guidance', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows restart guidance when the server detects a stuck Git operation', async () => {
+    vi.spyOn(api, 'getGitStatus').mockRejectedValue(
+      new ApiError(503, 'git operation appears to be stuck; restart mybox and try again'),
+    )
+    const refreshMeta = vi.fn().mockResolvedValue(undefined)
+
+    render(
+      <DialogsProvider>
+        <GitWorkspace refreshMeta={refreshMeta} />
+      </DialogsProvider>,
+    )
+
+    expect(await screen.findByText(/restart mybox/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'retry' })).toBeInTheDocument()
   })
 })

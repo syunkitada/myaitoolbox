@@ -1,11 +1,15 @@
 package entrypoint
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -150,6 +154,113 @@ func TestGitStatusCanDeferFileDiffs(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	diff := decode[gitFileDiffResult](t, rec)
 	assert.Contains(t, diff.Diff, "hello")
+}
+
+func TestGitOperationLockTimesOut(t *testing.T) {
+	lock := newGitOperationLock()
+	require.NoError(t, lock.acquire(context.Background(), time.Second))
+	defer lock.release()
+
+	err := lock.acquire(context.Background(), 10*time.Millisecond)
+	assert.ErrorIs(t, err, errGitOperationBusy)
+}
+
+func TestGitOperationLockReportsStuckAfterLongWait(t *testing.T) {
+	oldTimeout := gitOpsStuckTimeout
+	gitOpsStuckTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { gitOpsStuckTimeout = oldTimeout })
+
+	lock := newGitOperationLock()
+	require.NoError(t, lock.acquire(context.Background(), time.Second))
+	defer lock.release()
+	time.Sleep(20 * time.Millisecond)
+
+	err := lock.acquire(context.Background(), 10*time.Millisecond)
+	assert.ErrorIs(t, err, errGitOperationStuck)
+}
+
+func TestGitStatusReportsBusyGitOperation(t *testing.T) {
+	s, _ := newTestServer(t)
+	oldTimeout := gitOpsWaitTimeout
+	gitOpsWaitTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { gitOpsWaitTimeout = oldTimeout })
+	require.NoError(t, gitOpsMu.acquire(context.Background(), time.Second))
+	t.Cleanup(gitOpsMu.release)
+
+	rec := do(t, s, http.MethodGet, "/api/git/status?include_diff=false", nil, "X-Project", "test")
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Contains(t, rec.Body.String(), "wait a moment")
+	assert.NotContains(t, rec.Body.String(), "restart mybox")
+}
+
+func TestGitStatusReportsStuckGitOperation(t *testing.T) {
+	s, _ := newTestServer(t)
+	oldWaitTimeout := gitOpsWaitTimeout
+	oldStuckTimeout := gitOpsStuckTimeout
+	gitOpsWaitTimeout = 10 * time.Millisecond
+	gitOpsStuckTimeout = 10 * time.Millisecond
+	t.Cleanup(func() {
+		gitOpsWaitTimeout = oldWaitTimeout
+		gitOpsStuckTimeout = oldStuckTimeout
+	})
+	require.NoError(t, gitOpsMu.acquire(context.Background(), time.Second))
+	t.Cleanup(gitOpsMu.release)
+	time.Sleep(20 * time.Millisecond)
+
+	rec := do(t, s, http.MethodGet, "/api/git/status?include_diff=false", nil, "X-Project", "test")
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Contains(t, rec.Body.String(), "restart mybox")
+}
+
+func TestGitLogReportsBusyBeforeRepositoryCheck(t *testing.T) {
+	binDir := t.TempDir()
+	fakeGit := filepath.Join(binDir, "git")
+	require.NoError(t, os.WriteFile(fakeGit, []byte("#!/bin/sh\nif [ \"$3\" = \"rev-parse\" ]; then sleep 60; fi\n"), 0o755))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	s, _ := newTestServer(t)
+	oldWaitTimeout := gitOpsWaitTimeout
+	oldStuckTimeout := gitOpsStuckTimeout
+	oldCommandTimeout := gitCommandTimeout
+	gitOpsWaitTimeout = 10 * time.Millisecond
+	gitOpsStuckTimeout = time.Hour
+	gitCommandTimeout = 25 * time.Millisecond
+	t.Cleanup(func() {
+		gitOpsWaitTimeout = oldWaitTimeout
+		gitOpsStuckTimeout = oldStuckTimeout
+		gitCommandTimeout = oldCommandTimeout
+	})
+	require.NoError(t, gitOpsMu.acquire(context.Background(), time.Second))
+	t.Cleanup(gitOpsMu.release)
+
+	rec := do(t, s, http.MethodGet, "/api/git/log", nil, "X-Project", "test")
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Contains(t, rec.Body.String(), "wait a moment")
+}
+
+func TestRunGitRawKillsGitProcessGroupOnTimeout(t *testing.T) {
+	binDir := t.TempDir()
+	childPIDFile := filepath.Join(binDir, "child.pid")
+	fakeGit := filepath.Join(binDir, "git")
+	require.NoError(t, os.WriteFile(fakeGit, []byte("#!/bin/sh\nsleep 60 &\necho $! > \"$MYBOX_TEST_CHILD_PID_FILE\"\nwait\n"), 0o755))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("MYBOX_TEST_CHILD_PID_FILE", childPIDFile)
+
+	oldTimeout := gitCommandTimeout
+	gitCommandTimeout = 25 * time.Millisecond
+	t.Cleanup(func() { gitCommandTimeout = oldTimeout })
+
+	started := time.Now()
+	_, err := runGitRaw(binDir, "status")
+	require.Error(t, err)
+	assert.Less(t, time.Since(started), time.Second)
+	childPIDBytes, readErr := os.ReadFile(childPIDFile)
+	require.NoError(t, readErr)
+	childPID, parseErr := strconv.Atoi(strings.TrimSpace(string(childPIDBytes)))
+	require.NoError(t, parseErr)
+	assert.Eventually(t, func() bool {
+		return syscall.Kill(childPID, 0) == syscall.ESRCH
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestGitRemoteSyncStatusAndFetch(t *testing.T) {

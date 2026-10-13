@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -18,8 +19,69 @@ import (
 )
 
 // gitOpsMu serializes git commands so concurrent UI operations (for example a
-// push racing a commit) do not corrupt the repository state.
-var gitOpsMu sync.Mutex
+// push racing a commit) do not corrupt the repository state. A channel is used
+// instead of sync.Mutex so handlers can report a stuck operation instead of
+// waiting forever for the lock.
+type gitOperationLock struct {
+	token      chan struct{}
+	stateMu    sync.Mutex
+	acquiredAt time.Time
+}
+
+func newGitOperationLock() *gitOperationLock {
+	token := make(chan struct{}, 1)
+	token <- struct{}{}
+	return &gitOperationLock{token: token}
+}
+
+var (
+	gitOpsMu             = newGitOperationLock()
+	gitOpsWaitTimeout    = 10 * time.Second
+	gitOpsStuckTimeout   = 5 * time.Minute
+	gitCommandTimeout    = 5 * time.Minute
+	errGitOperationBusy  = errors.New("git operation is still running; wait a moment and try again")
+	errGitOperationStuck = errors.New("git operation appears to be stuck; restart mybox and try again")
+)
+
+func (l *gitOperationLock) acquire(ctx context.Context, timeout time.Duration) error {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-l.token:
+		l.stateMu.Lock()
+		l.acquiredAt = time.Now()
+		l.stateMu.Unlock()
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		l.stateMu.Lock()
+		acquiredAt := l.acquiredAt
+		l.stateMu.Unlock()
+		if !acquiredAt.IsZero() && time.Since(acquiredAt) >= gitOpsStuckTimeout {
+			return errGitOperationStuck
+		}
+		return errGitOperationBusy
+	}
+}
+
+func (l *gitOperationLock) release() {
+	l.stateMu.Lock()
+	l.acquiredAt = time.Time{}
+	l.stateMu.Unlock()
+	l.token <- struct{}{}
+}
+
+func lockGitOperations(w http.ResponseWriter, r *http.Request) bool {
+	if err := gitOpsMu.acquire(r.Context(), gitOpsWaitTimeout); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return false
+		}
+		writeError(w, &httpError{status: http.StatusServiceUnavailable, err: err})
+		return false
+	}
+	return true
+}
 
 // gitFile describes a single changed file in the detail response.
 type gitFile struct {
@@ -52,11 +114,23 @@ type gitDetail struct {
 // output is sent to the web UI as UTF-8, so disable that presentation behavior
 // for all commands handled by mybox.
 func runGitRaw(dir string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), gitCommandTimeout)
 	defer cancel()
 	gitArgs := append([]string{"-c", "core.quotePath=false"}, args...)
 	cmd := exec.CommandContext(ctx, "git", gitArgs...)
 	cmd.Dir = dir
+	// CommandContext normally kills only the top-level git process. Git
+	// transports such as git-remote-https are child processes; leave them in
+	// the same process group so a timeout cannot leave them holding the output
+	// pipe and the global Git-operation lock forever.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = time.Second
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -355,10 +429,12 @@ func (s *Server) GetGitStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	gitOpsMu.Lock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	includeDiff := r.URL.Query().Get("include_diff") != "false"
 	detail := gitRepoDetail(dir, includeDiff)
-	gitOpsMu.Unlock()
 	writeJSONResponse(w, http.StatusOK, detail)
 }
 
@@ -383,19 +459,20 @@ func (s *Server) GetGitFileDiff(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fmt.Errorf("%w: invalid git file status", domain.ErrInvalidArgument))
 		return
 	}
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	if !isInsideWorkTree(dir) {
 		writeJSONResponse(w, http.StatusOK, gitFileDiffResult{})
 		return
 	}
-
-	gitOpsMu.Lock()
 	var diff string
 	if status == "untracked" {
 		diff = untrackedDiff(dir, path)
 	} else {
 		diff = gitFileDiff(dir, path, status == "staged")
 	}
-	gitOpsMu.Unlock()
 	writeJSONResponse(w, http.StatusOK, gitFileDiffResult{Diff: diff})
 }
 
@@ -450,10 +527,6 @@ func (s *Server) GetGitLog(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if !isInsideWorkTree(dir) {
-		writeJSONResponse(w, http.StatusOK, gitLogResult{Commits: []*gitLogEntry{}})
-		return
-	}
 	offset := 0
 	if v := r.URL.Query().Get("offset"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
@@ -466,9 +539,15 @@ func (s *Server) GetGitLog(w http.ResponseWriter, r *http.Request) {
 			count = n
 		}
 	}
-	gitOpsMu.Lock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
+	if !isInsideWorkTree(dir) {
+		writeJSONResponse(w, http.StatusOK, gitLogResult{Commits: []*gitLogEntry{}})
+		return
+	}
 	commits, logErr := gitLogParseEntries(dir, offset, count)
-	gitOpsMu.Unlock()
 	if logErr != nil {
 		writeError(w, logErr)
 		return
@@ -492,8 +571,10 @@ func (s *Server) GetGitCommitDiff(w http.ResponseWriter, r *http.Request) {
 		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("ref parameter is required")})
 		return
 	}
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 
 	// Check if this is the root commit (no parent).
 	isRoot := false
@@ -547,12 +628,14 @@ func (s *Server) GetGitBranches(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	if !isInsideWorkTree(dir) {
 		writeJSONResponse(w, http.StatusOK, gitBranchesResult{Branches: []*gitBranchInfo{}})
 		return
 	}
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
 
 	// Obtain the current branch (empty when HEAD is detached).
 	current, _ := runGit(dir, "symbolic-ref", "--short", "-q", "HEAD")
@@ -617,8 +700,10 @@ func (s *Server) PostGitCheckout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("start_point must not start with '-'")})
 		return
 	}
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	var args []string
 	if req.Create {
 		args = []string{"checkout", "-b", req.Branch}
@@ -660,8 +745,10 @@ func (s *Server) PostGitDeleteBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	current, _ := runGit(dir, "symbolic-ref", "--short", "-q", "HEAD")
 	if strings.TrimSpace(current) == req.Branch {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: "cannot delete the current branch"})
@@ -694,8 +781,10 @@ func (s *Server) PostGitCommit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("commit message is required")})
 		return
 	}
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	if !req.StagedOnly {
 		// `git add -A` from a subdirectory stages changes across the whole
 		// repository, so a scoped commit limits staging to the scope dir with
@@ -747,8 +836,10 @@ func (s *Server) PostGitFetch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	out, err := runGit(dir, "fetch", "--all", "--prune")
 	if err != nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
@@ -768,8 +859,10 @@ func (s *Server) PostGitPull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	out, err := runGit(dir, "pull")
 	if err != nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
@@ -789,8 +882,10 @@ func (s *Server) PostGitPush(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	out, err := runGit(dir, "push")
 	if err != nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: false, Output: out})
@@ -810,8 +905,10 @@ func (s *Server) PostGitInit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	if _, err := runGit(dir, "rev-parse", "--is-inside-work-tree"); err == nil {
 		writeGitResult(w, http.StatusOK, gitResult{Ok: true, Output: "already a git repository"})
 		return
@@ -865,8 +962,10 @@ func (s *Server) gitPathsOp(w http.ResponseWriter, r *http.Request, op string) {
 			return
 		}
 	}
-	gitOpsMu.Lock()
-	defer gitOpsMu.Unlock()
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
 	var (
 		opOut string
 		opErr error
