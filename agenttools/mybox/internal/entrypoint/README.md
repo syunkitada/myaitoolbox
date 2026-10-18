@@ -8,6 +8,8 @@
 | --- | --- |
 | [`api/README.md`](./api/README.md) | `openapi.yaml` から生成されたAPI型・サーバーコード。 |
 | [`automation.go`](./automation.go) | 自動タスクトリガーのCLI、manual実行、デーモン、Herdrディスパッチ接続。 |
+| [`browser_audit.go`](./browser_audit.go) | 内部ブラウザの秘匿値を含まない監査ログのプロジェクトスコープ付き検索API。 |
+| [`browser.go`](./browser.go) | Playwright browser workerの起動、プロジェクト単位セッション、worker同時数上限、アイドルタイムアウト、制御権、ユーザー専用のセッション承認モード、秘匿値を除いた監査イベント、プロファイル、最新映像フレームの保持とWebSocket再接続時の再送、worker異常終了時のエラー保持と明示的再起動。 |
 | [`bootstrap.go`](./bootstrap.go) | 設定・リポジトリ・ユースケースを組み立てる初期化処理。 |
 | [`cli.go`](./cli.go) | CobraベースのCLIコマンドとオプション。 |
 | [`cli_test.go`](./cli_test.go) | CLIコマンドのテスト。 |

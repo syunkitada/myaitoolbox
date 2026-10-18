@@ -325,6 +325,15 @@ export STUB_DIR="$STUB"
 export PATH="$STUB:$PATH"
 
 export MYBOX_CONFIG="$TMP/config.yaml"
+export MYBOX_BROWSER_WORKER="$ROOT/browser-worker/src/index.mjs"
+export MYBOX_BROWSER_TEST_WORKER_PID_FILE="$ROOT/web/tests/e2e/browser-worker.pid"
+# The worker intercepts this exact HTTPS URL in-process, so browser E2E tests
+# do not depend on DNS or an external site. This setting is test-only.
+export MYBOX_BROWSER_TEST_FIXTURE_URL="https://mybox.test/"
+export MYBOX_BROWSER_TEST_FIXTURE_FILE="$ROOT/web/tests/e2e/browser-fixture.html"
+# Keep this below the fixture wait duration so the E2E suite exercises the
+# per-session timeout cancellation path. Production keeps the 30s default.
+export MYBOX_BROWSER_COMMAND_TIMEOUT="5s"
 
 if [ ! -x "$ROOT/mybox" ] || find "$ROOT"/internal "$ROOT"/cmd -name '*.go' -newer "$ROOT/mybox" | grep -q .; then
   make -C "$ROOT" build
@@ -332,8 +341,8 @@ fi
 
 # The binary embeds internal/webui/dist, produced by `make web-build` from the
 # Vite build in web/. Rebuild it whenever the web sources are newer.
-if [ ! -d "$ROOT/internal/webui/dist/assets" ] \
-  || find "$ROOT/web/src" "$ROOT/web/index.html" -newer "$ROOT/internal/webui/dist" 2>/dev/null | grep -q .; then
+if [ ! -f "$ROOT/internal/webui/dist/index.html" ] \
+  || find "$ROOT/web/src" "$ROOT/web/index.html" -newer "$ROOT/internal/webui/dist/index.html" 2>/dev/null | grep -q .; then
   make -C "$ROOT" web-build
   make -C "$ROOT" build
 fi
@@ -346,6 +355,18 @@ OTHER="$TMP/other"
 mkdir -p "$OTHER"
 printf '# Other\n\nA second project.\n' >"$OTHER/README.md"
 "$ROOT/mybox" project add "$OTHER"
+BROWSER_PROJECT="$TMP/browser-e2e"
+mkdir -p "$BROWSER_PROJECT"
+printf '# Browser E2E\n\nDedicated project for embedded browser tests.\n' >"$BROWSER_PROJECT/README.md"
+"$ROOT/mybox" project add "$BROWSER_PROJECT"
+BROWSER_SECONDARY_PROJECT="$TMP/browser-e2e-secondary"
+mkdir -p "$BROWSER_SECONDARY_PROJECT"
+printf '# Browser E2E Secondary\n\nSecondary project for browser isolation tests.\n' >"$BROWSER_SECONDARY_PROJECT/README.md"
+"$ROOT/mybox" project add "$BROWSER_SECONDARY_PROJECT"
+MCP_PROJECT="$TMP/browser-mcp-e2e"
+mkdir -p "$MCP_PROJECT"
+printf '# Browser MCP E2E\n\nProject for MCP browser integration tests.\n' >"$MCP_PROJECT/README.md"
+"$ROOT/mybox" project add "$MCP_PROJECT"
 "$ROOT/mybox" task create --project proj --name "Ship the web UI"
 "$ROOT/mybox" task create --project proj --name "Write E2E tests"
 "$ROOT/mybox" task create --project proj --name "E2E status change target"

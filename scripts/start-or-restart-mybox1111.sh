@@ -4,7 +4,7 @@ PORT=1111
 
 echo "==> Checking existing mybox serve..."
 
-PIDS=$(pgrep -f "mybox serve --host 0.0.0.0 --port $PORT" || true)
+PIDS=$(pgrep -f "mybox serve --host 127.0.0.1 --port $PORT" || true)
 
 if [ -n "$PIDS" ]; then
     echo "==> Killing existing mybox serve: $PIDS"
@@ -12,7 +12,7 @@ if [ -n "$PIDS" ]; then
 
     sleep 1
 
-    PIDS=$(pgrep -f "mybox serve --host 0.0.0.0 --port $PORT" || true)
+    PIDS=$(pgrep -f "mybox serve --host 127.0.0.1 --port $PORT" || true)
     if [ -n "$PIDS" ]; then
         echo "==> Force killing: $PIDS"
         kill -9 $PIDS
@@ -22,7 +22,7 @@ fi
 
 while true; do
     echo "==> Starting mybox..."
-    mybox serve --host 0.0.0.0 --port "$PORT"
+    mybox serve --host 127.0.0.1 --port "$PORT"
 
     echo "==> mybox stopped, restarting..."
     sleep 1

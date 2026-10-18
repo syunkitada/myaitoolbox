@@ -46,6 +46,34 @@ describe('api client', () => {
     )
   })
 
+  it('gets browser audit events with redacted-log filters', async () => {
+    mockFetch(200, { events: [], total: 0, offset: 20, limit: 20, has_more: false })
+    await api.getBrowserAudit({
+      sessionId: 'session-1',
+      result: 'blocked',
+      from: '2026-01-02T00:00:00Z',
+      limit: 20,
+      offset: 20,
+    })
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/browser/audit?session_id=session-1&result=blocked&from=2026-01-02T00%3A00%3A00Z&limit=20&offset=20',
+      expect.any(Object),
+    )
+  })
+
+  it('sets the approval mode for a browser session', async () => {
+    mockFetch(200, { id: 'session-1', approval_mode: 'auto_safe' })
+    await api.setBrowserApprovalMode('session-1', 'auto_safe')
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/browser/sessions/session-1/approval-mode',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'auto_safe' }),
+      }),
+    )
+  })
+
   it('attaches to a server-owned file execution stream', () => {
     class FakeWebSocket {
       static latest: FakeWebSocket

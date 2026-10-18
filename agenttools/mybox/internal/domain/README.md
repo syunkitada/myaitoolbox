@@ -7,6 +7,7 @@
 | パス | 役割 |
 | --- | --- |
 | [`automation.go`](./automation.go) | 自動タスクトリガー、イベント、実行記録、外部実装の契約。 |
+| [`browser_audit.go`](./browser_audit.go) | 内部ブラウザの秘匿値を含まない監査イベントモデルと追記・検索契約。 |
 | [`config_store.go`](./config_store.go) | プロジェクト設定を保存・読み込みする契約。 |
 | [`errors.go`](./errors.go) | ドメイン共通エラー。 |
 | [`file_repository.go`](./file_repository.go) | プロジェクトファイルを操作する契約。 |

@@ -12,11 +12,8 @@ fi
 echo "==> Pulling latest changes..."
 git -C "$PROJECT_ROOT" pull
 
-echo "==> Building web..."
-cd "$PROJECT_ROOT/agenttools/mybox"
-make web-build
-
 echo "==> Installing mybox..."
-go install ./cmd/mybox
+cd "$PROJECT_ROOT/agenttools/mybox"
+make install
 
 echo "mybox has been re-installed."

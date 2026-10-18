@@ -151,6 +151,75 @@ export interface ProjectGitStatus {
   untracked: number
 }
 
+export interface BrowserSession {
+  id: string
+  project: string
+  state: string
+  owner: 'user' | 'agent' | string
+  approval_mode: 'manual' | 'auto_safe'
+  url: string
+  title: string
+  pending_approval?: BrowserApproval | null
+  error?: string | null
+}
+
+export interface BrowserApproval {
+  approval_id: string
+  action: string
+  target: string
+}
+
+export interface BrowserObservationRef {
+  ref: string
+  tag: string
+  type: string
+  text: string
+  role: string
+  requires_approval: boolean
+  auto_approvable: boolean
+}
+
+export interface BrowserObservation {
+  observation_id: string
+  revision: number
+  url: string
+  title: string
+  aria_snapshot: string
+  text: string
+  refs: BrowserObservationRef[]
+}
+
+export interface BrowserAuditEvent {
+  timestamp: string
+  event: string
+  project: string
+  session_id?: string
+  actor?: string
+  command?: string
+  result: string
+  reason?: string
+}
+
+export interface BrowserAuditResponse {
+  events: BrowserAuditEvent[]
+  total: number
+  offset: number
+  limit: number
+  has_more: boolean
+}
+
+export interface BrowserAuditFilters {
+  sessionId?: string
+  event?: string
+  actor?: string
+  command?: string
+  result?: string
+  from?: string
+  to?: string
+  limit?: number
+  offset?: number
+}
+
 export type GitFileStatus = 'staged' | 'unstaged' | 'untracked'
 
 export interface GitFile {
@@ -483,11 +552,15 @@ async function request<T>(
   url: string,
   body?: unknown,
   projectOverride?: string,
+  browserActor?: 'user' | 'agent',
 ): Promise<T> {
   const init: RequestInit = { method, headers: {}, cache: 'no-store' }
   const currentProject = projectOverride ?? getProject()
   if (currentProject) {
     (init.headers as Record<string, string>)['X-Project'] = currentProject
+  }
+  if (browserActor) {
+    (init.headers as Record<string, string>)['X-Browser-Actor'] = browserActor
   }
   if (body !== undefined) {
     if (typeof FormData !== 'undefined' && body instanceof FormData) {
@@ -538,6 +611,51 @@ export const api = {
 
   getProjectGitStatus: () =>
     request<Record<string, ProjectGitStatus>>('GET', '/api/projects/git-status'),
+
+  getBrowserSession: () =>
+    request<{ session: BrowserSession | null }>('GET', '/api/browser/sessions'),
+
+  getBrowserAudit: (filters: BrowserAuditFilters = {}) =>
+    request<BrowserAuditResponse>('GET', '/api/browser/audit' + qs({
+      session_id: filters.sessionId,
+      event: filters.event,
+      actor: filters.actor,
+      command: filters.command,
+      result: filters.result,
+      from: filters.from,
+      to: filters.to,
+      limit: filters.limit,
+      offset: filters.offset,
+    })),
+
+  createBrowserSession: (url?: string) =>
+    request<BrowserSession>('POST', '/api/browser/sessions', { url: url || undefined }),
+
+  browserCommand: <T = unknown>(sessionId: string, command: string, payload?: unknown, actor?: 'user' | 'agent') =>
+    request<T>('POST', `/api/browser/sessions/${encodeURIComponent(sessionId)}/commands`, { command, payload }, undefined, actor),
+
+  setBrowserApprovalMode: (sessionId: string, mode: BrowserSession['approval_mode']) =>
+    request<BrowserSession>('POST', `/api/browser/sessions/${encodeURIComponent(sessionId)}/approval-mode`, { mode }),
+
+  takeoverBrowser: (sessionId: string) =>
+    request<BrowserSession>('POST', `/api/browser/sessions/${encodeURIComponent(sessionId)}/control/takeover`),
+
+  returnBrowserControl: (sessionId: string) =>
+    request<BrowserSession>('POST', `/api/browser/sessions/${encodeURIComponent(sessionId)}/control/return`),
+
+  approveBrowserAction: (sessionId: string, approvalId: string) =>
+    request<unknown>('POST', `/api/browser/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}/approve`),
+
+  rejectBrowserAction: (sessionId: string, approvalId: string) =>
+    request<unknown>('POST', `/api/browser/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}/reject`),
+
+  closeBrowserSession: (sessionId: string) =>
+    request<void>('POST', `/api/browser/sessions/${encodeURIComponent(sessionId)}/close`),
+
+  restartBrowserSession: (sessionId: string) =>
+    request<BrowserSession>('POST', `/api/browser/sessions/${encodeURIComponent(sessionId)}/restart`),
+
+  resetBrowserProfile: () => request<void>('POST', '/api/browser/profiles/reset', {}),
 
   setFavorite: (path: string, enabled: boolean, project = getProject()) =>
     request<void>('PUT', '/api/meta/favorites', { path, enabled, project }),

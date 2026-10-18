@@ -48,6 +48,12 @@ mymcpserve -h
 # monitoringサーバーをstdioで起動
 mymcpserve monitoring --transport stdio
 
+# mybox browserサーバーをstdioで起動（同一ホストのloopback）
+MYBOX_URL=http://127.0.0.1:8080 mymcpserve browser --transport stdio
+
+# remote myboxへ接続する場合はHTTPSと共通agent tokenが必要
+MYBOX_URL=https://mybox.example MYBOX_BROWSER_AGENT_TOKEN=... mymcpserve browser --transport stdio
+
 # monitoring MCP Server をHTTPで起動
 mymcpserve monitoring --transport http --host localhost --port 8080
 ```

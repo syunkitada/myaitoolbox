@@ -558,7 +558,7 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			server := NewServer(cfg, project, basePath)
+			server := NewServerWithBrowserAuditStore(cfg, project, basePath, config.NewBrowserAuditStore())
 			defer server.Shutdown()
 			basePath = normalizeBasePath(basePath)
 			addr := net.JoinHostPort(host, strconv.Itoa(port))

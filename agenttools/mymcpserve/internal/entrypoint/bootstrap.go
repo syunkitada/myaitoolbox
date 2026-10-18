@@ -9,11 +9,13 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/syunkitada/myaitoolbox/mymcpserve/internal/infrastructure"
+	"github.com/syunkitada/myaitoolbox/mymcpserve/internal/modules/browser"
 	"github.com/syunkitada/myaitoolbox/mymcpserve/internal/modules/monitoring"
 )
 
 func NewRegistryWithProviders() *Registry {
 	registry := NewRegistry()
+	registry.Register(browser.New())
 	registry.Register(monitoring.New())
 	return registry
 }

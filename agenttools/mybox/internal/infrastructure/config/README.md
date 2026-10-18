@@ -11,4 +11,7 @@
 | [`scheduled_prompts.go`](./scheduled_prompts.go) | Herdr予約プロンプトを `scheduled-prompts.yaml` に永続化する実装。 |
 | [`scheduled_prompts_test.go`](./scheduled_prompts_test.go) | 予約プロンプトの永続化、プロジェクト絞り込み、削除のテスト。 |
 | [`store.go`](./store.go) | プロジェクト一覧と既定プロジェクトを `config.yaml` に保存し、自動化状態ディレクトリを解決する実装。 |
+| [`browser.go`](./browser.go) | プロジェクト名から永続Playwright browser profileの安全な保存先を解決する実装。 |
+| [`browser_audit.go`](./browser_audit.go) | 内部ブラウザの秘匿値を除いた監査イベントをowner-only JSONLへ追記・世代管理し、プロセス間ロックで全世代を安全に検索する実装。 |
+| [`browser_audit_test.go`](./browser_audit_test.go) | 監査JSONLの追記、権限、入力検証、ページングと絞り込みのテスト。 |
 | [`store_test.go`](./store_test.go) | 設定の読み書きと親ディレクトリ作成のテスト。 |

@@ -7,6 +7,7 @@
 | パス | 役割 |
 | --- | --- |
 | [`BrowserPage.tsx`](./BrowserPage.tsx) / [`BrowserPage.test.tsx`](./BrowserPage.test.tsx) | ドラッグで幅を調整・保存できるファイルエクスプローラー、最近開いたファイルタブとプロジェクトをまたいで移動できるお気に入りの追加・削除モーダル、ヘッダーからのファイル / ディレクトリ作成、メイン選択を切り替えても維持され同じファイルも表示できる参照ペイン付き2ペインビュー、task triggerの右クリック実行、`_tasks/<id>/task.md` のステータス変更と確認付きアーカイブ、作成・実行後の生成ファイル再読込と選択表示、ファイル名・本文検索、最大1GiBのファイルアップロード、実行中も継続して右サイドバーから再表示できるスクリプト実行状態と結果ダイアログ、エディタ、Markdownの形式選択コピーと非Markdownテキストの生コピーに対応したファイルプレビュー、タスクディレクトリ自身と配下のファイルに紐づくAgentの起動モーダルおよびパネルを右サイドバーで開くアイコンボタン、未起動・起動済み・パネル表示中の色・形状とAgentステータスの色付きドット表示、各ペインを独立スクロールできるGit差分の左右比較表示とそのテスト。 |
+| [`WebBrowserPage.tsx`](./WebBrowserPage.tsx) | Playwright browser sessionの開始、JPEGライブ映像、WebSocket切断時の自動再接続と最新フレームの再表示、ユーザーのTake over、AIへの制御返却、semantic観測、手動・安全操作自動承認のセッション設定、side-effect承認、worker異常終了時の状態表示と再起動、セッション終了、プロファイルリセット、プロジェクト内の秘匿値を含まない監査ログの期間・セッション・結果フィルタとページング。 |
 | [`CodexDiagnosticsPage.tsx`](./CodexDiagnosticsPage.tsx) / [`CodexDiagnosticsPage.test.tsx`](./CodexDiagnosticsPage.test.tsx) | Codex CLIの読み取り専用診断画面。runtimeのwarning/error理由、設定・AGENTS.md・Skills・MCPの状態表示、Config・Instructions本文の選択表示、Skill一覧・ディレクトリツリー・配下ファイル本文の3ペイン表示、Config・Instructions・Skillのシンボリックリンク明示、Skills一覧の切り詰め表示、手動更新を担当する。 |
 | [`Dashboard.tsx`](./Dashboard.tsx) | プロジェクトダッシュボード。 |
 | [`GitPage.tsx`](./GitPage.tsx) / [`GitPage.test.tsx`](./GitPage.test.tsx) | Git状態、remote同期判定、fetch、差分、ログ、ブランチ操作。選択した変更ファイルのdiffを確認しながら編集・保存でき、コミットメッセージ入力中の `Ctrl+Enter` 確定とそのテストを含む。 |

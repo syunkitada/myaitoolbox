@@ -112,6 +112,27 @@ func (e GetCodexDiagnosticContentParamsKind) Valid() bool {
 	}
 }
 
+// BrowserAuditEvent defines model for BrowserAuditEvent.
+type BrowserAuditEvent struct {
+	Actor     *string   `json:"actor,omitempty"`
+	Command   *string   `json:"command,omitempty"`
+	Event     string    `json:"event"`
+	Project   string    `json:"project"`
+	Reason    *string   `json:"reason,omitempty"`
+	Result    string    `json:"result"`
+	SessionId *string   `json:"session_id,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// BrowserAuditResponse defines model for BrowserAuditResponse.
+type BrowserAuditResponse struct {
+	Events  []BrowserAuditEvent `json:"events"`
+	HasMore bool                `json:"has_more"`
+	Limit   int                 `json:"limit"`
+	Offset  int                 `json:"offset"`
+	Total   int                 `json:"total"`
+}
+
 // CodexConfigFile defines model for CodexConfigFile.
 type CodexConfigFile struct {
 	Exists    bool   `json:"exists"`
@@ -594,6 +615,27 @@ type UpdateTaskRequest struct {
 	Name   *string     `json:"name,omitempty"`
 	Status *TaskStatus `json:"status,omitempty"`
 	Tags   *[]string   `json:"tags,omitempty"`
+}
+
+// GetBrowserAuditParams defines parameters for GetBrowserAudit.
+type GetBrowserAuditParams struct {
+	// Project Required unless the X-Project header identifies the project.
+	Project   *string `form:"project,omitempty" json:"project,omitempty"`
+	SessionId *string `form:"session_id,omitempty" json:"session_id,omitempty"`
+	Event     *string `form:"event,omitempty" json:"event,omitempty"`
+	Actor     *string `form:"actor,omitempty" json:"actor,omitempty"`
+	Command   *string `form:"command,omitempty" json:"command,omitempty"`
+	Result    *string `form:"result,omitempty" json:"result,omitempty"`
+
+	// From Inclusive RFC3339 timestamp lower bound.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive RFC3339 timestamp upper bound.
+	To    *time.Time `form:"to,omitempty" json:"to,omitempty"`
+	Limit *int       `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of newest matching events to skip.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetCodexDiagnosticContentParams defines parameters for GetCodexDiagnosticContent.

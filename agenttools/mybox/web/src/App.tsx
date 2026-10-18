@@ -23,7 +23,7 @@ import { StatusDot } from './components/herdr-status'
 import { DialogsProvider } from './components/AppDialogs'
 import { FileExecutionProvider } from './state/fileExecution'
 import { HerdrPage } from './pages/HerdrPage'
-import { Bot, Folder, GitBranch, Network, PanelRightClose, PanelRightOpen, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
+import { Bot, Folder, GitBranch, Globe, Network, PanelRightClose, PanelRightOpen, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
@@ -41,9 +41,10 @@ const StatsPage = lazy(() => import('./pages/StatsPage').then((m) => ({ default:
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
 const GitPage = lazy(() => import('./pages/GitPage').then((m) => ({ default: m.GitPage })))
 const CodexDiagnosticsPage = lazy(() => import('./pages/CodexDiagnosticsPage').then((m) => ({ default: m.CodexDiagnosticsPage })))
+const WebBrowserPage = lazy(() => import('./pages/WebBrowserPage').then((m) => ({ default: m.WebBrowserPage })))
 
 // Canonical project tab sections; position in this list is the tab index.
-const TAB_SECTIONS = ['dashboard', 'board', 'graph', 'git', 'herdr', 'agent']
+const TAB_SECTIONS = ['dashboard', 'browser', 'board', 'graph', 'git', 'herdr', 'agent']
 const GIT_STATUS_REFRESH_INTERVAL_MS = 5000
 
 export default function App() {
@@ -173,6 +174,7 @@ export default function App() {
       icon: Folder,
       active: pathname.includes('/dashboard'),
     },
+    { to: projectUrl('/browser'), label: 'Browser', icon: Globe, active: pathname === projectUrl('/browser') },
     { to: projectUrl('/board'), label: 'Board', icon: SquareKanban, active: pathname === projectUrl('/board') },
     { to: projectUrl('/graph'), label: 'Graph', icon: Network, active: pathname === projectUrl('/graph') },
     { to: projectUrl('/git'), label: 'Git', icon: GitBranch, active: pathname === projectUrl('/git') },
@@ -201,7 +203,7 @@ export default function App() {
       />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
-          <div className="flex flex-1 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <SidebarTrigger />
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
             {project && (
@@ -311,6 +313,7 @@ export default function App() {
                       />
                     }
                   />
+                  <Route path="/projects/:project/browser" element={<WebBrowserPage key={project} />} />
                   <Route
                     path="/projects/:project/board"
                     element={<KanbanBoard key={project} herdrOverview={herdr.overview} />}

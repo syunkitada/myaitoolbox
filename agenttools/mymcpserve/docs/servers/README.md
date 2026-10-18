@@ -7,5 +7,6 @@
 | パス | 役割 |
 | --- | --- |
 | [`monitoring.md`](./monitoring.md) | Alertmanager、Prometheus、Grafanaと連携する`monitoring`サーバーの利用ガイドとツール一覧。 |
+| [`browser.md`](./browser.md) | myboxのPlaywright browser sessionを操作する`browser`サーバーの利用ガイドとツール一覧。 |
 
 新しいサーバーを追加した場合は、対応する`<server-name>.md`を追加し、このIndexにも掲載してください。

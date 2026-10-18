@@ -1,9 +1,11 @@
 /mybox
 ./bin
 /web/node_modules
+/browser-worker/node_modules
 /web/dist
 /test-results/
 /web/test-results/
+/web/tests/e2e/browser-worker.pid*
 *.log
 # TypeScriptの増分ビルドキャッシュ
 *.tsbuildinfo

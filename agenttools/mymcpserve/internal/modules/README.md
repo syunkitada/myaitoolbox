@@ -7,3 +7,4 @@
 | パス | 役割 |
 | --- | --- |
 | [`monitoring/README.md`](./monitoring/README.md) | Alertmanager、Prometheus、Grafanaを扱う監視モジュール。 |
+| [`browser/README.md`](./browser/README.md) | myboxのPlaywright browser APIをMCP toolとして公開するブラウザモジュール。 |

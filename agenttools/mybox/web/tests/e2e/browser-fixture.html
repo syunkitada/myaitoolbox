@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Mybox browser fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>Deterministic browser fixture</h1>
+      <p>This page is served from the Playwright worker for deterministic E2E tests.</p>
+      <p id="status">Fixture action pending</p>
+      <button type="button" aria-expanded="false" onclick="document.getElementById('status').textContent = 'Fixture action completed'">Fixture action</button>
+      <a>No destination</a>
+      <p id="message-status">No message</p>
+      <form id="fixture-form" style="position: absolute; top: 220px; left: 20px">
+        <label>Message <input id="fixture-message" aria-label="Fixture message" type="text"></label>
+        <label>One time code <input id="fixture-otp" aria-label="One time code" autocomplete="one-time-code" type="text"></label>
+        <button type="submit">Submit message</button>
+      </form>
+    </main>
+    <script>
+      const fixtureForm = document.getElementById('fixture-form')
+      const fixtureMessage = document.getElementById('fixture-message')
+      const messageStatus = document.getElementById('message-status')
+      fixtureMessage.addEventListener('input', () => { messageStatus.textContent = `Message: ${fixtureMessage.value}` })
+      fixtureForm.addEventListener('submit', (event) => {
+        event.preventDefault()
+        messageStatus.textContent = `Submitted: ${fixtureMessage.value}`
+      })
+    </script>
+  </body>
+</html>

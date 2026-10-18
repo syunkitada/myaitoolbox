@@ -49,12 +49,24 @@ type Server struct {
 	herdrAgentStartMu sync.Mutex
 	terminals         *terminalHub
 	fileExecutions    *fileExecutionHub
+	browser           *browserSessionHub
 	scheduled         *promptScheduler
 }
 
 const maxJSONBodySize = 16 << 20
 
 func NewServer(cfg *domain.Config, defaultProject string, basePath string) *Server {
+	return newServer(cfg, defaultProject, basePath, nil)
+}
+
+// NewServerWithBrowserAuditStore wires the persistent browser audit sink used
+// by the CLI. Tests and embedded callers can continue to use NewServer without
+// writing audit data to the user's configuration directory.
+func NewServerWithBrowserAuditStore(cfg *domain.Config, defaultProject string, basePath string, auditStore domain.BrowserAuditStore) *Server {
+	return newServer(cfg, defaultProject, basePath, auditStore)
+}
+
+func newServer(cfg *domain.Config, defaultProject string, basePath string, auditStore domain.BrowserAuditStore) *Server {
 	if defaultProject == "" {
 		defaultProject = cfg.DefaultProject
 	}
@@ -68,6 +80,7 @@ func NewServer(cfg *domain.Config, defaultProject string, basePath string) *Serv
 		newApp:         NewApp,
 		terminals:      newTerminalHub(),
 		fileExecutions: newFileExecutionHub(),
+		browser:        newBrowserSessionHubWithAudit(browserSessionPolicyFromEnvironment(), auditStore),
 	}
 	s.scheduled = newPromptScheduler(config.NewScheduledPromptStore(), s.runScheduledPrompt)
 	return s
@@ -83,6 +96,9 @@ func (s *Server) StartPromptScheduler(ctx context.Context) {
 
 // Shutdown stops server-owned file executions before the HTTP server exits.
 func (s *Server) Shutdown() {
+	if s.browser != nil {
+		s.browser.stop()
+	}
 	if s.fileExecutions != nil {
 		s.fileExecutions.stopAll()
 	}
@@ -160,6 +176,7 @@ func (s *Server) Handler() http.Handler {
 		return nil
 	}
 	if s.basePath == "" {
+		s.registerBrowserRoutes(e, "")
 		e.GET("/api/files/raw", rawFile)
 		e.POST("/api/files/upload", uploadFiles)
 		e.GET("/api/task-template", getTaskTemplate)
@@ -181,6 +198,7 @@ func (s *Server) Handler() http.Handler {
 		return e
 	}
 	g := e.Group(s.basePath)
+	s.registerBrowserRoutes(e, s.basePath)
 	g.GET("/api/files/raw", rawFile)
 	g.POST("/api/files/upload", uploadFiles)
 	g.GET("/api/task-template", getTaskTemplate)
