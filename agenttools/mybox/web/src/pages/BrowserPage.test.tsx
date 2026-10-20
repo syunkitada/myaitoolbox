@@ -1107,6 +1107,70 @@ describe('file viewer Git diff', () => {
     expect(screen.queryByRole('button', { name: 'Show Git diff' })).not.toBeInTheDocument()
   })
 
+  it('previews PDF files in the browser viewer without loading them as text', async () => {
+    const recordRecent = vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    const getFileContent = vi.spyOn(api, 'getFileContent').mockResolvedValue({
+      path: 'report.PDF',
+      content: 'binary data must not be loaded as text',
+    })
+    renderFileViewer({}, 'binary data must not be loaded as text', 'report.PDF')
+
+    const preview = await screen.findByTitle('PDF preview: report.PDF')
+    expect(preview.tagName).toBe('IFRAME')
+    const source = new URL(preview.getAttribute('src')!, window.location.origin)
+    expect(source.pathname).toBe('/api/files/raw')
+    expect(source.searchParams.get('path')).toBe('report.PDF')
+    expect(getFileContent).not.toHaveBeenCalled()
+    await waitFor(() => expect(recordRecent).toHaveBeenCalledWith('report.PDF'))
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy file contents' })).not.toBeInTheDocument()
+  })
+
+  it('shows PDF files in the reference pane', async () => {
+    const mainPath = 'notes.md'
+    const pdfPath = 'report.pdf'
+    vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path: mainPath, name: mainPath, kind: 'file' },
+      { path: pdfPath, name: pdfPath, kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    const getFileContent = vi.spyOn(api, 'getFileContent').mockResolvedValue({
+      path: mainPath,
+      content: '# Main document',
+    })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    const router = createMemoryRouter(
+      [{ path: '*', element: (
+        <BrowserPage
+          title="Files"
+          selected={mainPath}
+          onSelect={vi.fn()}
+          onBack={vi.fn()}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+        />
+      ) }],
+      { initialEntries: [`/projects/proj/dashboard/files/${mainPath}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    await screen.findAllByText('Main document')
+    fireEvent.contextMenu(screen.getByText(pdfPath).closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+
+    const referencePane = await screen.findByTestId('reference-file-viewer-pane')
+    const preview = within(referencePane).getByTitle('PDF preview: report.pdf')
+    expect(preview.tagName).toBe('IFRAME')
+    expect(getFileContent).toHaveBeenCalledWith(mainPath)
+    expect(getFileContent).not.toHaveBeenCalledWith(pdfPath)
+  })
+
   it('copies non-Markdown file contents as-is', async () => {
     const originalClipboard = navigator.clipboard
     const writeText = vi.fn().mockResolvedValue(undefined)

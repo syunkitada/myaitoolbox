@@ -682,6 +682,13 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, "image/png", rec.Header().Get("Content-Type"))
 	assert.Equal(t, "\x89PNG\r\n\x1a\nfakepng", rec.Body.String())
 
+	pdfBytes := []byte("%PDF-1.4\nminimal test document\n%%EOF")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "assets", "report.pdf"), pdfBytes, 0o644))
+	rec = do(t, s, http.MethodGet, "/api/files/raw?path=assets%2Freport.pdf", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "application/pdf", rec.Header().Get("Content-Type"))
+	assert.Equal(t, pdfBytes, rec.Body.Bytes())
+
 	rec = do(t, s, http.MethodGet, "/api/files/raw?path=assets%2Fmissing.png", nil)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 

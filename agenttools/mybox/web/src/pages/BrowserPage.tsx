@@ -1525,6 +1525,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
 
   const isImage =
     !isDir && /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(path)
+  const isPdf = !isDir && /\.pdf$/i.test(path)
 
   const readmePath = useMemo(() => {
     if (!isDir) return null
@@ -1554,6 +1555,14 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     setCopyDialogOpen(false)
     setFileCopied(false)
     editStartLine.current = null
+    if (isPdf) {
+      setContent('')
+      setDraft('')
+      setDraftFm({})
+      setDraftBody('')
+      void api.recordRecent(path).then(() => onRecentChanged?.(path)).catch(() => undefined)
+      return
+    }
     if (isImage) return
     if (isDir) {
       if (readmePath) {
@@ -1591,7 +1600,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
     void api.recordRecent(path).then(() => onRecentChanged?.(path)).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, isDir, isImage, readmePath, listing, refreshKey])
+  }, [path, isDir, isImage, isPdf, readmePath, listing, refreshKey])
 
   useEffect(() => {
     const project = getProject()
@@ -2234,7 +2243,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                     </div>
                   )}
                 </div>
-              {!isDir && !isImage && (
+              {!isDir && !isImage && !isPdf && (
                 editing ? (
                   <>
                     <Button
@@ -2411,7 +2420,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                         <TagBadge key={t}>{t}</TagBadge>
                       ))}
                     </div>
-                    {(isMarkdown || (!isDir && !isImage)) && (
+                    {(isMarkdown || (!isDir && !isImage && !isPdf)) && (
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -2449,6 +2458,15 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                       sourceLineOffset={viewSourceLineOffset}
                       onOpenFile={onOpen}
                     />
+                  ) : isPdf ? (
+                    <div className="file-pdf my-2 w-full">
+                      <iframe
+                        src={rawFileUrl(path)}
+                        title={`PDF preview: ${baseOf(path)}`}
+                        className="w-full rounded-md border bg-muted"
+                        style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
+                      />
+                    </div>
                   ) : isImage ? (
                     <div className="file-image flex justify-center py-3">
                       <img src={rawFileUrl(path)} alt={baseOf(path)} className="max-w-full rounded-md" />

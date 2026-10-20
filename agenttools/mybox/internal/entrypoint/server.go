@@ -1066,8 +1066,8 @@ func (s *Server) GetFileContent(w http.ResponseWriter, r *http.Request, params a
 	writeJSONResponse(w, http.StatusOK, api.FileContent{Path: params.Path, Content: content})
 }
 
-// GetFileRaw streams a project file as raw bytes (used for image embeds in
-// markdown, where the browser cannot send the X-Project header).
+// GetFileRaw streams project files as raw bytes for image embeds, PDF
+// previews, and Markdown data sources that cannot send the X-Project header.
 func (s *Server) GetFileRaw(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	path := q.Get("path")
