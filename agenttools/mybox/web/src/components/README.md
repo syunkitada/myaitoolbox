@@ -34,4 +34,4 @@
 | [`TerminalTabs.tsx`](./TerminalTabs.tsx) / [`TerminalTabs.test.tsx`](./TerminalTabs.test.tsx) | ターミナルセッションのタブ操作、表示復帰時のサイズ調整、ドラッグによる並び替えとテスト。 |
 | [`badges.tsx`](./badges.tsx) | ステータス、優先度、タグなどのバッジ。 |
 | [`herdr-status.tsx`](./herdr-status.tsx) | Herdrエージェント状態の表示部品。 |
-| [`HerdrAgentDetail.tsx`](./HerdrAgentDetail.tsx) | Agentの端末出力（自動補正／Herdr準拠の表示切り替え）、キー送信、クイックコマンド、prompt送信、予約送信を表示する共通部品。入力途中Promptは親からcontrolled stateとして受け取り、モバイルのprompt入力は内容に応じて自動拡張し、Enter以外のキーとコマンドは一覧パレットに集約する。 |
+| [`HerdrAgentDetail.tsx`](./HerdrAgentDetail.tsx) | Agentの端末出力（直近200行から表示し、必要に応じて最大5,000行まで追加読込、自動補正／Herdr準拠の表示切り替え）、キー送信、クイックコマンド、prompt送信、予約送信を表示する共通部品。入力途中Promptは親からcontrolled stateとして受け取り、モバイルのprompt入力は内容に応じて自動拡張し、Enter以外のキーとコマンドは一覧パレットに集約する。 |

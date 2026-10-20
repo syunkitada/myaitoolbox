@@ -760,8 +760,8 @@ export const api = {
       },
     ),
 
-  readHerdrAgent: (target: string) =>
-    request<{ output: string }>('POST', '/api/herdr/agents/read', { target }),
+  readHerdrAgent: (target: string, lines?: number) =>
+    request<{ output: string }>('POST', '/api/herdr/agents/read', { target, lines }),
 
   focusHerdrAgent: (target: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/agents/focus', { target }),
@@ -815,8 +815,8 @@ export const api = {
   renameHerdrPane: (paneId: string, label: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/panes/rename', { pane_id: paneId, label }),
 
-  readHerdrPane: (paneId: string) =>
-    request<{ output: string }>('POST', '/api/herdr/panes/read', { target: paneId }),
+  readHerdrPane: (paneId: string, lines?: number) =>
+    request<{ output: string }>('POST', '/api/herdr/panes/read', { target: paneId, lines }),
 
   closeHerdrPane: (paneId: string) =>
     request<{ ok: boolean }>('POST', '/api/herdr/panes/close', { pane_id: paneId }),

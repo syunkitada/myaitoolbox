@@ -45,6 +45,16 @@ const AGENT_QUICK_KEYS: { label: string; key: string }[] = [
 
 const MOBILE_INLINE_QUICK_KEYS = new Set(['enter', 'Up', 'Down'])
 const MOBILE_PROMPT_MIN_HEIGHT = 48
+const INITIAL_AGENT_OUTPUT_LINES = 200
+const OLDER_AGENT_OUTPUT_LINES = 200
+const MAX_AGENT_OUTPUT_LINES = 5000
+
+function terminalOutputLineCount(output: string | null): number {
+  if (!output) return 0
+  const lines = output.split(/\r?\n/)
+  if (lines.at(-1) === '') lines.pop()
+  return lines.length
+}
 
 export function HerdrAgentDetail({
   agent,
@@ -59,6 +69,8 @@ export function HerdrAgentDetail({
 }: HerdrAgentDetailProps) {
   const isMobile = useIsMobile()
   const [output, setOutput] = useState<string | null>(null)
+  const [outputLineLimit, setOutputLineLimit] = useState(INITIAL_AGENT_OUTPUT_LINES)
+  const [loadingOlderOutput, setLoadingOlderOutput] = useState(false)
   const [outputError, setOutputError] = useState<string | null>(null)
   const [scheduleAt, setScheduleAt] = useState('')
   const [scheduledPrompts, setScheduledPrompts] = useState<ScheduledPrompt[]>([])
@@ -75,6 +87,8 @@ export function HerdrAgentDetail({
   const preRef = useRef<HTMLDivElement | null>(null)
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null)
   const pinnedRef = useRef(true)
+  const preserveOutputScrollRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null)
+  const pendingOlderOutputLinesRef = useRef<number | null>(null)
   const outputSize = useResizableHeight<HTMLDivElement>({
     storageKey: HERDR_AGENT_OUTPUT_HEIGHT_STORAGE_KEY,
     defaultHeight: 256,
@@ -117,6 +131,7 @@ export function HerdrAgentDetail({
   )
   const paletteQuickKeys = AGENT_QUICK_KEYS.filter((key) => !MOBILE_INLINE_QUICK_KEYS.has(key.key))
   const paletteCommands = AGENT_COMMANDS
+  const hasOlderOutput = output !== null && terminalOutputLineCount(output) >= outputLineLimit
 
   const handlePreScroll = useCallback(() => {
     const element = preRef.current
@@ -124,25 +139,59 @@ export function HerdrAgentDetail({
     pinnedRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 32
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = preRef.current
-    if (!element || !pinnedRef.current) return
+    if (!element) return
+    const preservedPosition = preserveOutputScrollRef.current
+    if (preservedPosition) {
+      element.scrollTop = preservedPosition.scrollTop + element.scrollHeight - preservedPosition.scrollHeight
+      preserveOutputScrollRef.current = null
+      return
+    }
+    if (!pinnedRef.current) return
     element.scrollTop = element.scrollHeight
-  }, [output])
+  }, [output, outputLineLimit])
 
-  const loadOutput = useCallback(async (reportError = true) => {
+  const loadOutput = useCallback(async function loadOutput(reportError = true, lines = outputLineLimit, preservePosition = false) {
     if (loadingRef.current) return
     loadingRef.current = true
     try {
-      const response = await api.readHerdrAgent(agent.pane_id)
+      const response = await api.readHerdrAgent(agent.pane_id, lines)
+      if (preservePosition && preRef.current) {
+        preserveOutputScrollRef.current = {
+          scrollTop: preRef.current.scrollTop,
+          scrollHeight: preRef.current.scrollHeight,
+        }
+      }
       setOutput(response.output)
+      setOutputLineLimit(lines)
       setOutputError(null)
     } catch (error) {
       if (reportError) setOutputError(error instanceof Error ? error.message : String(error))
     } finally {
       loadingRef.current = false
+      const pendingLines = pendingOlderOutputLinesRef.current
+      if (pendingLines !== null) {
+        pendingOlderOutputLinesRef.current = null
+        void loadOutput(true, pendingLines, true).finally(() => setLoadingOlderOutput(false))
+      }
     }
-  }, [agent.pane_id])
+  }, [agent.pane_id, outputLineLimit])
+
+  const loadOlderOutput = useCallback(async () => {
+    if (loadingOlderOutput || outputLineLimit >= MAX_AGENT_OUTPUT_LINES) return
+    const nextLineLimit = Math.min(outputLineLimit + OLDER_AGENT_OUTPUT_LINES, MAX_AGENT_OUTPUT_LINES)
+    setLoadingOlderOutput(true)
+    if (loadingRef.current) {
+      pendingOlderOutputLinesRef.current = nextLineLimit
+      return
+    }
+    try {
+      await loadOutput(true, nextLineLimit, true)
+    } finally {
+      setLoadingOlderOutput(false)
+    }
+  }, [loadOutput, loadingOlderOutput, outputLineLimit])
 
   useEffect(() => {
     void loadOutput()
@@ -307,6 +356,19 @@ export function HerdrAgentDetail({
       <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
         <span className="min-w-0 flex-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Terminal output</span>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
+          {hasOlderOutput && outputLineLimit < MAX_AGENT_OUTPUT_LINES && (
+            <Button
+              variant="outline"
+              size="xs"
+              className="cursor-pointer"
+              onClick={() => void loadOlderOutput()}
+              disabled={loadingOlderOutput}
+              aria-label="Load older agent output"
+              data-testid="load-older-agent-output"
+            >
+              {loadingOlderOutput ? 'Loading…' : 'Load 200 older lines'}
+            </Button>
+          )}
           <label className="flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground">
             <span className="sr-only">Agent output display mode</span>
             <select

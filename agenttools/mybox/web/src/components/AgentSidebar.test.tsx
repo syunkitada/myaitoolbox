@@ -483,7 +483,7 @@ describe('AgentSidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh agents' }))
 
     await waitFor(() => expect(refresh).toHaveBeenCalled())
-    await waitFor(() => expect(api.readHerdrAgent).toHaveBeenCalledWith('w1:p1'))
+    await waitFor(() => expect(api.readHerdrAgent).toHaveBeenCalledWith('w1:p1', 200))
   })
 
   it('auto-grows the prompt input on mobile as its content needs more lines', async () => {

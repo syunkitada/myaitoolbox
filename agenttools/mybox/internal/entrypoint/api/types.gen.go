@@ -472,6 +472,8 @@ type HerdrPromptResponse struct {
 
 // HerdrReadRequest defines model for HerdrReadRequest.
 type HerdrReadRequest struct {
+	// Lines Maximum number of terminal output lines to return. Omit to use Herdr's default.
+	Lines  *int   `json:"lines,omitempty"`
 	Target string `json:"target"`
 }
 

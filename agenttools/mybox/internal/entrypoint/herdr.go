@@ -25,7 +25,10 @@ import (
 	"github.com/syunkitada/myaitoolbox/mybox/internal/entrypoint/api"
 )
 
-const herdrTimeout = 6 * time.Second
+const (
+	herdrTimeout      = 6 * time.Second
+	herdrMaxReadLines = 5000
+)
 
 // herdrRunFunc executes the herdr CLI and returns raw stdout.
 type herdrRunFunc func(ctx context.Context, args ...string) ([]byte, error)
@@ -348,7 +351,12 @@ func (s *Server) ReadHerdrAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fmt.Errorf("invalid agent target"))
 		return
 	}
-	out, err := s.runHerdr(r.Context(), "agent", "read", req.Target)
+	args, err := herdrReadArgs("agent", req.Target, req.Lines)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out, err := s.runHerdr(r.Context(), args...)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -745,12 +753,28 @@ func (s *Server) ReadHerdrPane(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fmt.Errorf("invalid pane id"))
 		return
 	}
-	out, err := s.runHerdr(r.Context(), "pane", "read", req.Target)
+	args, err := herdrReadArgs("pane", req.Target, req.Lines)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out, err := s.runHerdr(r.Context(), args...)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSONResponse(w, http.StatusOK, api.HerdrReadResponse{Output: string(out)})
+}
+
+func herdrReadArgs(kind, target string, lines *int) ([]string, error) {
+	args := []string{kind, "read", target}
+	if lines == nil {
+		return args, nil
+	}
+	if *lines < 1 || *lines > herdrMaxReadLines {
+		return nil, fmt.Errorf("%w: line count must be between 1 and %d", domain.ErrInvalidArgument, herdrMaxReadLines)
+	}
+	return append(args, "--lines", strconv.Itoa(*lines)), nil
 }
 
 // CloseHerdrPane closes a pane.

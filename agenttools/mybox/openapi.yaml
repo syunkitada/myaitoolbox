@@ -2163,6 +2163,11 @@ components:
       properties:
         target:
           type: string
+        lines:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          description: Maximum number of terminal output lines to return. Omit to use Herdr's default.
     HerdrReadResponse:
       type: object
       required: [output]
