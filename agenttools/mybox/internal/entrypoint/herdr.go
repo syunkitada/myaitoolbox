@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	herdrTimeout      = 6 * time.Second
-	herdrMaxReadLines = 5000
+	herdrTimeout                  = 6 * time.Second
+	herdrMaxReadLines             = 5000
+	herdrAlternateScreenReadError = "alternate-screen history can only be captured by scrolling while idle"
 )
 
 // herdrRunFunc executes the herdr CLI and returns raw stdout.
@@ -351,12 +352,7 @@ func (s *Server) ReadHerdrAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fmt.Errorf("invalid agent target"))
 		return
 	}
-	args, err := herdrReadArgs("agent", req.Target, req.Lines)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	out, err := s.runHerdr(r.Context(), args...)
+	out, err := s.readHerdrOutput(r.Context(), "agent", req.Target, req.Lines)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -753,12 +749,7 @@ func (s *Server) ReadHerdrPane(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fmt.Errorf("invalid pane id"))
 		return
 	}
-	args, err := herdrReadArgs("pane", req.Target, req.Lines)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	out, err := s.runHerdr(r.Context(), args...)
+	out, err := s.readHerdrOutput(r.Context(), "pane", req.Target, req.Lines)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -775,6 +766,19 @@ func herdrReadArgs(kind, target string, lines *int) ([]string, error) {
 		return nil, fmt.Errorf("%w: line count must be between 1 and %d", domain.ErrInvalidArgument, herdrMaxReadLines)
 	}
 	return append(args, "--lines", strconv.Itoa(*lines)), nil
+}
+
+func (s *Server) readHerdrOutput(ctx context.Context, kind, target string, lines *int) ([]byte, error) {
+	args, err := herdrReadArgs(kind, target, lines)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.runHerdr(ctx, args...)
+	if err == nil || !strings.Contains(err.Error(), herdrAlternateScreenReadError) {
+		return out, err
+	}
+	visibleArgs := append(args, "--source", "visible")
+	return s.runHerdr(ctx, visibleArgs...)
 }
 
 // CloseHerdrPane closes a pane.
