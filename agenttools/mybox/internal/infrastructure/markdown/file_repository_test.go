@@ -123,6 +123,27 @@ func TestFileRepositoryReadLimits(t *testing.T) {
 	assert.ErrorIs(t, err, domain.ErrResourceTooLarge)
 }
 
+func TestFileRepositoryContentRejectsBinaryFiles(t *testing.T) {
+	root := t.TempDir()
+	xlsxPath := filepath.Join(root, "report.xlsx")
+	require.NoError(t, os.WriteFile(xlsxPath, []byte("PK\x03\x04\x14\x00\x00\x00xlsx archive data"), 0o644))
+
+	_, err := NewFileRepository(root).Content(context.Background(), "report.xlsx")
+	assert.ErrorIs(t, err, domain.ErrUnsupportedMediaType)
+	assert.Contains(t, err.Error(), "not supported as text")
+
+	invalidUTF8Path := filepath.Join(root, "invalid.txt")
+	require.NoError(t, os.WriteFile(invalidUTF8Path, []byte{0xff, 0xfe, 0x00}, 0o644))
+	_, err = NewFileRepository(root).Content(context.Background(), "invalid.txt")
+	assert.ErrorIs(t, err, domain.ErrUnsupportedMediaType)
+
+	textPath := filepath.Join(root, "notes.txt")
+	require.NoError(t, os.WriteFile(textPath, []byte("こんにちは\n"), 0o644))
+	content, err := NewFileRepository(root).Content(context.Background(), "notes.txt")
+	require.NoError(t, err)
+	assert.Equal(t, "こんにちは\n", content)
+}
+
 func TestFileRepositoryTreeStatusInvalidFrontMatter(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "broken.md"),

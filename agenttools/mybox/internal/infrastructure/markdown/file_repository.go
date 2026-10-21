@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -541,6 +542,14 @@ func markdownStatus(path string) string {
 	return extractStatus(string(data))
 }
 
+func isTextContent(data []byte) bool {
+	if !utf8.Valid(data) {
+		return false
+	}
+	contentType := http.DetectContentType(data)
+	return strings.HasPrefix(contentType, "text/") || contentType == "image/svg+xml"
+}
+
 func (r *FileRepository) Content(ctx context.Context, path string) (string, error) {
 	file, err := r.safePath(path)
 	if err != nil {
@@ -562,6 +571,9 @@ func (r *FileRepository) Content(ctx context.Context, path string) (string, erro
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return "", err
+	}
+	if !isTextContent(data) {
+		return "", fmt.Errorf("%w: %s is not supported as text", domain.ErrUnsupportedMediaType, path)
 	}
 	return string(data), nil
 }
@@ -585,6 +597,34 @@ func (r *FileRepository) Raw(ctx context.Context, path string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: %s exceeds the %d MiB raw file limit", domain.ErrResourceTooLarge, path, maxRawFileBytes>>20)
 	}
 	return os.ReadFile(file)
+}
+
+func (r *FileRepository) OpenRaw(ctx context.Context, path string) (io.ReadSeekCloser, error) {
+	file, err := r.safePath(path)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := os.Open(file)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%w: %s", domain.ErrNotFound, path)
+		}
+		return nil, err
+	}
+	info, err := opened.Stat()
+	if err != nil {
+		_ = opened.Close()
+		return nil, err
+	}
+	if info.IsDir() {
+		_ = opened.Close()
+		return nil, fmt.Errorf("%w: %s is a directory", domain.ErrInvalidPath, path)
+	}
+	if !info.Mode().IsRegular() {
+		_ = opened.Close()
+		return nil, fmt.Errorf("%w: %s is not a regular file", domain.ErrInvalidPath, path)
+	}
+	return opened, nil
 }
 
 func (r *FileRepository) Save(ctx context.Context, path string, content string) error {

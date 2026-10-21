@@ -675,6 +675,15 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "assets"), 0o755))
+	xlsxBytes := []byte("PK\x03\x04\x14\x00\x00\x00xlsx archive data")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "assets", "report.xlsx"), xlsxBytes, 0o644))
+	rec = do(t, s, http.MethodGet, "/api/files/content?path=assets%2Freport.xlsx", nil)
+	assert.Equal(t, http.StatusUnsupportedMediaType, rec.Code)
+	assert.Contains(t, rec.Body.String(), "not supported as text")
+	rec = do(t, s, http.MethodGet, "/api/files/raw?path=assets%2Freport.xlsx", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, xlsxBytes, rec.Body.Bytes())
+
 	require.NoError(t, os.WriteFile(filepath.Join(root, "assets", "logo.png"),
 		[]byte("\x89PNG\r\n\x1a\nfakepng"), 0o644))
 	rec = do(t, s, http.MethodGet, "/api/files/raw?path=assets%2Flogo.png", nil)

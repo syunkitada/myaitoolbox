@@ -40,6 +40,7 @@ type FileRepository interface {
 	Search(ctx context.Context, query string, showHidden bool) ([]FileSearchResult, error)
 	Content(ctx context.Context, path string) (string, error)
 	Raw(ctx context.Context, path string) ([]byte, error)
+	OpenRaw(ctx context.Context, path string) (io.ReadSeekCloser, error)
 	Save(ctx context.Context, path string, content string) error
 	SaveBytes(ctx context.Context, path string, content []byte) error
 	SaveReader(ctx context.Context, path string, content io.Reader) error

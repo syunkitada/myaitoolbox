@@ -1,6 +1,6 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, RefObject, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useBlocker, useParams } from 'react-router-dom'
-import { Favorite, FileEntry, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
+import { ApiError, Favorite, FileEntry, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileTabs } from '../components/FileTabs'
 import { TASK_AGENT_KIND_STORAGE_KEY, TaskAgentLaunchDialog } from '../components/TaskAgentLaunchDialog'
@@ -1398,6 +1398,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   const { prompt, confirm } = useDialogs()
   const { start: startFileExecution } = useFileExecution()
   const [content, setContent] = useState('')
+  const [unsupportedMediaTypePath, setUnsupportedMediaTypePath] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [draftFm, setDraftFm] = useState<Record<string, unknown>>({})
   const [draftBody, setDraftBody] = useState('')
@@ -1526,6 +1527,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   const isImage =
     !isDir && /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(path)
   const isPdf = !isDir && /\.pdf$/i.test(path)
+  const isUnsupported = !isDir && !isImage && !isPdf && unsupportedMediaTypePath === path
 
   const readmePath = useMemo(() => {
     if (!isDir) return null
@@ -1542,6 +1544,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   )
 
   useEffect(() => {
+    setUnsupportedMediaTypePath(null)
     gitDiffRequest.current += 1
     setError(null)
     setEditing(false)
@@ -1587,8 +1590,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       }
       return
     }
-    const p = api.getFileContent(path)
-    void p
+    void api.getFileContent(path)
       .then((c) => {
         setContent(c.content)
         setDraft(c.content)
@@ -1597,7 +1599,18 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
         setDraftBody(split.body)
         setDraftFm(parseTaskFrontmatter(path, split.frontmatter))
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => {
+        if (e instanceof ApiError && (e.status === 415 || e.status === 413)) {
+          setUnsupportedMediaTypePath(path)
+          setContent('')
+          setDraft('')
+          setDraftFm({})
+          setDraftBody('')
+          setCrlf(false)
+          return
+        }
+        setError(e instanceof Error ? e.message : String(e))
+      })
     void api.recordRecent(path).then(() => onRecentChanged?.(path)).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, isDir, isImage, isPdf, readmePath, listing, refreshKey])
@@ -1619,7 +1632,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   }, [onGitDiffOpenChange, showGitDiff])
 
   const isMarkdown =
-    isDir || (entry?.markdown ?? /\.(md|markdown)$/i.test(path))
+    !isUnsupported && (isDir || (entry?.markdown ?? /\.(md|markdown)$/i.test(path)))
 
   const fmSplit = useMemo(() => splitFrontmatter(content), [content])
   const metadataPath = readmePath ?? path
@@ -2243,7 +2256,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                     </div>
                   )}
                 </div>
-              {!isDir && !isImage && !isPdf && (
+              {!isDir && !isImage && !isPdf && !isUnsupported && (
                 editing ? (
                   <>
                     <Button
@@ -2420,7 +2433,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                         <TagBadge key={t}>{t}</TagBadge>
                       ))}
                     </div>
-                    {(isMarkdown || (!isDir && !isImage && !isPdf)) && (
+                    {(isMarkdown || (!isDir && !isImage && !isPdf && !isUnsupported)) && (
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -2466,6 +2479,19 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                         className="w-full rounded-md border bg-muted"
                         style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
                       />
+                    </div>
+                  ) : isUnsupported ? (
+                    <div className="my-4 flex flex-col items-start gap-3" role="status">
+                      <p className="text-sm text-muted-foreground">
+                        Preview is not available for this file.
+                      </p>
+                      <a
+                        href={rawFileUrl(path)}
+                        download={baseOf(path)}
+                        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                      >
+                        Download file
+                      </a>
                     </div>
                   ) : isImage ? (
                     <div className="file-image flex justify-center py-3">

@@ -1,6 +1,6 @@
 # `web/`
 
-React + TypeScript + Viteで構成したWeb UIです。開発サーバー、Vitest、Playwrightをここから実行し、`npm run build` の成果物を `internal/webui/dist/` へコピーしてGoバイナリに同梱します。MarkdownプレビューではMermaidとVega-Liteのコードフェンスを描画でき、Files画面では選択したPDFをブラウザ標準ビューアで表示できます。
+React + TypeScript + Viteで構成したWeb UIです。開発サーバー、Vitest、Playwrightをここから実行し、`npm run build` の成果物を `internal/webui/dist/` へコピーしてGoバイナリに同梱します。MarkdownプレビューではMermaidとVega-Liteのコードフェンスを描画でき、Files画面では選択したPDFをブラウザ標準ビューアで表示し、テキストとして非対応の形式はプレビューせずダウンロードできます。
 
 ## 使い方
 

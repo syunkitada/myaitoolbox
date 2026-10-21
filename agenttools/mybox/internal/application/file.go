@@ -95,6 +95,13 @@ func (u *FileUseCase) Raw(ctx context.Context, path string) ([]byte, error) {
 	return u.Files.Raw(ctx, path)
 }
 
+func (u *FileUseCase) OpenRaw(ctx context.Context, path string) (io.ReadSeekCloser, error) {
+	if err := validatePath(path); err != nil {
+		return nil, err
+	}
+	return u.Files.OpenRaw(ctx, path)
+}
+
 func (u *FileUseCase) Save(ctx context.Context, path string, content string) error {
 	if err := validatePath(path); err != nil {
 		return err

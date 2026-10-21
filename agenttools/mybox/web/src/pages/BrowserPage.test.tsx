@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { useState } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api, GitDetail } from '../api/client'
+import { ApiError, api, GitDetail } from '../api/client'
 import { DialogsProvider } from '../components/AppDialogs'
 import { BrowserEntry, BrowserPage, Explorer, GitDiffPanel, gitFilesForPath } from './BrowserPage'
 
@@ -1010,12 +1010,18 @@ describe('file viewer Git diff', () => {
     status: Record<string, string>,
     fileContent = 'current body',
     path = 'notes.txt',
+    getFileContentImpl?: typeof api.getFileContent,
   ) => {
     vi.spyOn(api, 'listFiles').mockResolvedValue([
       { path, name: path.split('/').pop() ?? path, kind: 'file' },
     ])
     vi.spyOn(api, 'getFileGitStatus').mockResolvedValue(status)
-    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path, content: fileContent })
+    const getFileContent = vi.spyOn(api, 'getFileContent')
+    if (getFileContentImpl) {
+      getFileContent.mockImplementation(getFileContentImpl)
+    } else {
+      getFileContent.mockResolvedValue({ path, content: fileContent })
+    }
     vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
     const refreshMeta = vi.fn().mockResolvedValue(undefined)
     const router = createMemoryRouter(
@@ -1037,6 +1043,7 @@ describe('file viewer Git diff', () => {
         <RouterProvider router={router} />
       </DialogsProvider>,
     )
+    return getFileContent
   }
 
   it('keeps staged and unstaged diffs for the selected file', () => {
@@ -1171,10 +1178,62 @@ describe('file viewer Git diff', () => {
     expect(getFileContent).not.toHaveBeenCalledWith(pdfPath)
   })
 
+  it('offers a download when the server rejects a binary file as text', async () => {
+    const path = 'financial-report.xlsx'
+    const getFileContent = renderFileViewer({}, '', path, async () => {
+      throw new ApiError(415, 'unsupported media type: financial-report.xlsx is not supported as text')
+    })
+
+    expect(await screen.findByText('Preview is not available for this file.')).toBeInTheDocument()
+    const download = screen.getByRole('link', { name: 'Download file' })
+    expect(download).toHaveAttribute('download', path)
+    expect(new URL(download.getAttribute('href')!, window.location.origin).pathname).toBe('/api/files/raw')
+    expect(getFileContent).toHaveBeenCalledWith(path)
+    expect(screen.queryByText(/binary data/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy file contents' })).not.toBeInTheDocument()
+  })
+
+  it('previews text files with extensions outside the known list', async () => {
+    const path = '.env.local'
+    const text = 'APP_MODE=development'
+    const getFileContent = renderFileViewer({}, text, path, async (requestedPath) => ({
+      path: requestedPath,
+      content: text,
+    }))
+
+    expect(await screen.findByText(text)).toBeInTheDocument()
+    expect(getFileContent).toHaveBeenCalledWith(path)
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Download file' })).not.toBeInTheDocument()
+  })
+
+  it('offers a download when a Markdown-named file contains unsupported binary data', async () => {
+    const path = 'broken.md'
+    renderFileViewer({}, '', path, async () => {
+      throw new ApiError(415, 'unsupported media type: broken.md is not supported as text')
+    })
+
+    expect(await screen.findByText('Preview is not available for this file.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Download file' })).toHaveAttribute('download', path)
+    expect(screen.queryByRole('button', { name: 'Copy file contents' })).not.toBeInTheDocument()
+  })
+
+  it('offers a download when the file is too large for text preview', async () => {
+    const path = 'large-report.xlsx'
+    renderFileViewer({}, '', path, async () => {
+      throw new ApiError(413, 'resource too large: large-report.xlsx exceeds the content limit')
+    })
+
+    expect(await screen.findByText('Preview is not available for this file.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Download file' })).toHaveAttribute('download', path)
+  })
+
   it('copies non-Markdown file contents as-is', async () => {
     const originalClipboard = navigator.clipboard
     const writeText = vi.fn().mockResolvedValue(undefined)
     const fileContent = '## Keep this syntax\n\n**Do not convert this text.**'
+    const getFileContent = vi.spyOn(api, 'getFileContent').mockResolvedValue({ path: 'notes.txt', content: fileContent })
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText },
@@ -1182,6 +1241,7 @@ describe('file viewer Git diff', () => {
 
     try {
       renderFileViewer({}, fileContent)
+      await waitFor(() => expect(getFileContent).toHaveBeenCalledWith('notes.txt'))
 
       const button = await screen.findByRole('button', { name: 'Copy file contents' })
       fireEvent.click(button)

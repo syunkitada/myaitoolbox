@@ -69,7 +69,7 @@ export function filesUrl(resolved: string): string {
 }
 
 // rawFileUrl points at the API endpoint that streams raw project files for
-// previews and embedded assets without the X-Project header.
+// previews, downloads, and embedded assets without the X-Project header.
 export function rawFileUrl(resolved: string): string {
   const params = new URLSearchParams({ path: resolved })
   const project = getProject()

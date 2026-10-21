@@ -1066,8 +1066,8 @@ func (s *Server) GetFileContent(w http.ResponseWriter, r *http.Request, params a
 	writeJSONResponse(w, http.StatusOK, api.FileContent{Path: params.Path, Content: content})
 }
 
-// GetFileRaw streams project files as raw bytes for image embeds, PDF
-// previews, and Markdown data sources that cannot send the X-Project header.
+// GetFileRaw streams project files as raw bytes for previews, downloads,
+// image embeds, and Markdown data sources that cannot send the X-Project header.
 func (s *Server) GetFileRaw(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	path := q.Get("path")
@@ -1085,17 +1085,18 @@ func (s *Server) GetFileRaw(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	data, err := app.Files.Raw(r.Context(), path)
+	file, err := app.Files.OpenRaw(r.Context(), path)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+	defer file.Close()
 	ctype := mime.TypeByExtension(filepath.Ext(path))
 	if ctype == "" {
 		ctype = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", ctype)
-	_, _ = w.Write(data)
+	http.ServeContent(w, r, filepath.Base(path), time.Time{}, file)
 }
 
 func (s *Server) CreateFile(w http.ResponseWriter, r *http.Request) {
@@ -1367,6 +1368,8 @@ func writeError(w http.ResponseWriter, err error) {
 		status = http.StatusNotFound
 	case errors.Is(err, domain.ErrInvalidArgument), errors.Is(err, domain.ErrInvalidPath):
 		status = http.StatusBadRequest
+	case errors.Is(err, domain.ErrUnsupportedMediaType):
+		status = http.StatusUnsupportedMediaType
 	case errors.Is(err, domain.ErrResourceTooLarge):
 		status = http.StatusRequestEntityTooLarge
 	case errors.Is(err, domain.ErrAlreadyExists):

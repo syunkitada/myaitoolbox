@@ -654,6 +654,10 @@ paths:
           description: invalid path
         "404":
           description: not found
+        "413":
+          description: file exceeds the content preview size limit
+        "415":
+          description: file content is not supported as text
     put:
       operationId: saveFileContent
       summary: Save file content
