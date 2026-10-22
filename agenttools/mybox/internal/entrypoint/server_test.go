@@ -914,6 +914,12 @@ func TestBasePath(t *testing.T) {
 	rec = do(t, s, http.MethodGet, "/mybox/api/files/raw?path=assets%2Flogo.png", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "image/png", rec.Header().Get("Content-Type"))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "examples"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "examples", "index.html"), []byte("<main>base path</main>"), 0o644))
+	rec = do(t, s, http.MethodGet, "/mybox/api/projects/test/files/raw/examples/index.html", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html"))
+	assert.Equal(t, "<main>base path</main>", rec.Body.String())
 
 	rec = do(t, s, http.MethodGet, "/mybox/", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -942,6 +948,31 @@ func TestBasePath(t *testing.T) {
 
 	rec = do(t, s, http.MethodGet, "/api/meta", nil)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestRawFilePathRoutesPreserveProjectAndRelativePaths(t *testing.T) {
+	s, app := newTestServer(t)
+	root := app.Project.Path
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "examples", "assets"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "examples", "index.html"), []byte("<link rel=\"stylesheet\" href=\"assets/site.css\">"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "examples", "assets", "site.css"), []byte("body { color: red; }"), 0o644))
+
+	rec := do(t, s, http.MethodGet, "/api/projects/test/files/raw/examples/index.html", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html"))
+	assert.Equal(t, "<link rel=\"stylesheet\" href=\"assets/site.css\">", rec.Body.String())
+
+	rec = do(t, s, http.MethodGet, "/api/projects/test/files/raw/examples/assets/site.css", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, strings.HasPrefix(rec.Header().Get("Content-Type"), "text/css"))
+	assert.Equal(t, "body { color: red; }", rec.Body.String())
+
+	rec = do(t, s, http.MethodGet, "/api/files/raw/examples/index.html", nil)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "<link rel=\"stylesheet\" href=\"assets/site.css\">", rec.Body.String())
+
+	rec = do(t, s, http.MethodGet, "/api/projects/test/files/raw/..%2F..%2Foutside.html", nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestNormalizeBasePath(t *testing.T) {

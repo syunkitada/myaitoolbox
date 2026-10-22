@@ -201,6 +201,48 @@ test('dashboard opens a markdown file from the explorer', async ({ page }) => {
   ).toHaveClass(/active/)
 })
 
+test('HTML preview loads relative assets and runs scripts in an isolated iframe', async ({ page }) => {
+  const directory = `html-preview-${Date.now()}`
+  const htmlPath = `${directory}/index.html`
+  const cssPath = `${directory}/assets/site.css`
+  const scriptPath = `${directory}/assets/preview.js`
+
+  await page.request.post('/api/files/dir', { data: { path: directory } })
+  await page.request.post('/api/files/dir', { data: { path: `${directory}/assets` } })
+  await page.request.post('/api/files', { data: { path: htmlPath } })
+  await page.request.post('/api/files', { data: { path: cssPath } })
+  await page.request.post('/api/files', { data: { path: scriptPath } })
+  await page.request.put('/api/files/content', {
+    data: {
+      path: htmlPath,
+      content: '<!doctype html><html><head><link rel="stylesheet" href="assets/site.css"><script defer src="assets/preview.js"></script></head><body><main>waiting</main></body></html>',
+    },
+  })
+  await page.request.put('/api/files/content', {
+    data: {
+      path: cssPath,
+      content: 'main { color: rgb(255, 0, 0); }',
+    },
+  })
+  await page.request.put('/api/files/content', {
+    data: {
+      path: scriptPath,
+      content: "try { void parent.document.body; document.body.dataset.parentAccess = 'accessible'; } catch { document.body.dataset.parentAccess = 'blocked'; } document.querySelector('main').textContent = 'script executed';",
+    },
+  })
+
+  try {
+    await page.goto(`/projects/proj/dashboard/files/${htmlPath}`)
+    const preview = page.frameLocator('iframe[title="HTML preview: index.html"]')
+    await expect(preview.locator('main')).toHaveText('script executed')
+    await expect(preview.locator('body')).toHaveAttribute('data-parent-access', 'blocked')
+    await expect.poll(() => preview.locator('main').evaluate((element) => getComputedStyle(element).color))
+      .toBe('rgb(255, 0, 0)')
+  } finally {
+    await page.request.post('/api/files/delete', { data: { path: directory } })
+  }
+})
+
 test('dashboard opens a file in the reference pane from the explorer context menu', async ({ page }) => {
   await closeAgentSidebar(page)
   const explorer = page.locator('.knowledge-explorer')

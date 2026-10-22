@@ -77,6 +77,17 @@ export function rawFileUrl(resolved: string): string {
   return appUrl(`/api/files/raw?${params.toString()}`)
 }
 
+// htmlPreviewUrl uses a path-based endpoint so relative assets resolve beside
+// the HTML file while retaining the selected project in the URL.
+export function htmlPreviewUrl(resolved: string): string {
+  const path = encodePath(resolved)
+  const project = getProject()
+  if (project) {
+    return appUrl(`/api/projects/${encodeURIComponent(project)}/files/raw/${path}`)
+  }
+  return appUrl(`/api/files/raw/${path}`)
+}
+
 // terminalWsUrl points at the WebSocket endpoint that hosts a shell for the
 // current project. The project is passed as a query parameter because the
 // X-Project header cannot be set on a WebSocket handshake. A persistent

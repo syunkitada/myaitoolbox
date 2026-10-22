@@ -34,7 +34,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useDialogs } from '../components/AppDialogs'
 import { useEscapeKey } from '../hooks/use-escape-key'
 import { useFileExecution } from '../state/fileExecution'
-import { filesUrl, getProject, rawFileUrl } from '../utils/routes'
+import { filesUrl, getProject, htmlPreviewUrl, rawFileUrl } from '../utils/routes'
 import { copyToClipboard } from '../utils/clipboard'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { DiffView } from '../components/DiffView'
@@ -1527,6 +1527,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   const isImage =
     !isDir && /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(path)
   const isPdf = !isDir && /\.pdf$/i.test(path)
+  const isHtml = !isDir && /\.html?$/i.test(path)
   const isUnsupported = !isDir && !isImage && !isPdf && unsupportedMediaTypePath === path
 
   const readmePath = useMemo(() => {
@@ -2476,6 +2477,26 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                       <iframe
                         src={rawFileUrl(path)}
                         title={`PDF preview: ${baseOf(path)}`}
+                        className="w-full rounded-md border bg-muted"
+                        style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
+                      />
+                    </div>
+                  ) : isHtml ? (
+                    <div className="file-html my-2 w-full">
+                      <div className="mb-2 flex justify-end">
+                        <a
+                          href={htmlPreviewUrl(path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                        >
+                          Open in new tab
+                        </a>
+                      </div>
+                      <iframe
+                        src={htmlPreviewUrl(path)}
+                        title={`HTML preview: ${baseOf(path)}`}
+                        sandbox="allow-scripts"
                         className="w-full rounded-md border bg-muted"
                         style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
                       />

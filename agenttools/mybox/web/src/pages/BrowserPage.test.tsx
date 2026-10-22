@@ -992,6 +992,11 @@ describe('Explorer reference actions', () => {
 })
 
 describe('file viewer Git diff', () => {
+  afterEach(() => {
+    window.history.replaceState({}, '', '/')
+    vi.restoreAllMocks()
+  })
+
   const detail: GitDetail = {
     is_repo: true,
     branch: 'main',
@@ -1131,6 +1136,68 @@ describe('file viewer Git diff', () => {
     await waitFor(() => expect(recordRecent).toHaveBeenCalledWith('report.PDF'))
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy file contents' })).not.toBeInTheDocument()
+  })
+
+  it('previews HTML files in a script-enabled sandbox using a project-scoped path URL', async () => {
+    window.history.replaceState({}, '', '/projects/proj/dashboard')
+    const getFileContent = renderFileViewer({}, '<script>document.body.dataset.ready = "yes"</script>', 'examples/hello.HTML')
+
+    const preview = await screen.findByTitle('HTML preview: hello.HTML')
+    expect(preview.tagName).toBe('IFRAME')
+    expect(preview).toHaveAttribute('sandbox', 'allow-scripts')
+    const source = new URL(preview.getAttribute('src')!, window.location.origin)
+    expect(source.pathname).toBe('/api/projects/proj/files/raw/examples/hello.HTML')
+    expect(source.search).toBe('')
+    expect(getFileContent).toHaveBeenCalledWith('examples/hello.HTML')
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy file contents' })).toBeInTheDocument()
+  })
+
+  it('previews .htm files in the reference pane', async () => {
+    const mainPath = 'notes.md'
+    const htmlPath = 'report.htm'
+    vi.spyOn(api, 'listFiles').mockResolvedValue([
+      { path: mainPath, name: mainPath, kind: 'file' },
+      { path: htmlPath, name: 'report.htm', kind: 'file' },
+    ])
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    const getFileContent = vi.spyOn(api, 'getFileContent').mockImplementation(async (path) => ({
+      path,
+      content: path === mainPath ? '# Main document' : '<main>Reference HTML</main>',
+    }))
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+
+    const router = createMemoryRouter(
+      [{ path: '*', element: (
+        <BrowserPage
+          title="Files"
+          selected={mainPath}
+          onSelect={vi.fn()}
+          onBack={vi.fn()}
+          favorites={[]}
+          recentFiles={[]}
+          refreshMeta={vi.fn().mockResolvedValue(undefined)}
+        />
+      ) }],
+      { initialEntries: [`/projects/proj/dashboard/files/${mainPath}`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    await screen.findAllByText('Main document')
+    fireEvent.contextMenu(screen.getByText('report.htm').closest('li')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in reference pane' }))
+
+    const referencePane = await screen.findByTestId('reference-file-viewer-pane')
+    const preview = within(referencePane).getByTitle('HTML preview: report.htm')
+    expect(preview.tagName).toBe('IFRAME')
+    expect(preview).toHaveAttribute('sandbox', 'allow-scripts')
+    expect(new URL(preview.getAttribute('src')!, window.location.origin).pathname)
+      .toBe('/api/files/raw/report.htm')
+    expect(getFileContent).toHaveBeenCalledWith(htmlPath)
   })
 
   it('shows PDF files in the reference pane', async () => {

@@ -168,6 +168,14 @@ func (s *Server) Handler() http.Handler {
 
 	apiHandler := api.HandlerWithOptions(s, api.StdHTTPServerOptions{BaseURL: s.basePath})
 	rawFile := echo.WrapHandler(http.HandlerFunc(s.GetFileRaw))
+	rawFileByPath := func(c echo.Context) error {
+		s.getFileRawByPath(c.Response(), c.Request(), c.Param("*"), "")
+		return nil
+	}
+	projectRawFileByPath := func(c echo.Context) error {
+		s.getFileRawByPath(c.Response(), c.Request(), c.Param("*"), c.Param("project"))
+		return nil
+	}
 	uploadFiles := echo.WrapHandler(http.HandlerFunc(s.UploadFiles))
 	getTaskTemplate := echo.WrapHandler(http.HandlerFunc(s.GetTaskTemplate))
 	createTaskTrigger := echo.WrapHandler(http.HandlerFunc(s.CreateTaskTrigger))
@@ -178,6 +186,8 @@ func (s *Server) Handler() http.Handler {
 	if s.basePath == "" {
 		s.registerBrowserRoutes(e, "")
 		e.GET("/api/files/raw", rawFile)
+		e.GET("/api/files/raw/*", rawFileByPath)
+		e.GET("/api/projects/:project/files/raw/*", projectRawFileByPath)
 		e.POST("/api/files/upload", uploadFiles)
 		e.GET("/api/task-template", getTaskTemplate)
 		e.POST("/api/task-triggers", createTaskTrigger)
@@ -200,6 +210,8 @@ func (s *Server) Handler() http.Handler {
 	g := e.Group(s.basePath)
 	s.registerBrowserRoutes(e, s.basePath)
 	g.GET("/api/files/raw", rawFile)
+	g.GET("/api/files/raw/*", rawFileByPath)
+	g.GET("/api/projects/:project/files/raw/*", projectRawFileByPath)
 	g.POST("/api/files/upload", uploadFiles)
 	g.GET("/api/task-template", getTaskTemplate)
 	g.POST("/api/task-triggers", createTaskTrigger)
@@ -1070,8 +1082,14 @@ func (s *Server) GetFileContent(w http.ResponseWriter, r *http.Request, params a
 // image embeds, and Markdown data sources that cannot send the X-Project header.
 func (s *Server) GetFileRaw(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	path := q.Get("path")
-	project := q.Get("project")
+	s.serveFileRaw(w, r, q.Get("path"), q.Get("project"))
+}
+
+func (s *Server) getFileRawByPath(w http.ResponseWriter, r *http.Request, path, project string) {
+	s.serveFileRaw(w, r, strings.TrimPrefix(path, "/"), project)
+}
+
+func (s *Server) serveFileRaw(w http.ResponseWriter, r *http.Request, path, project string) {
 	var (
 		app *App
 		err error
@@ -1090,7 +1108,7 @@ func (s *Server) GetFileRaw(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	ctype := mime.TypeByExtension(filepath.Ext(path))
 	if ctype == "" {
 		ctype = "application/octet-stream"
