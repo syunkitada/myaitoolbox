@@ -15,5 +15,6 @@ export const AGENT_COMMANDS: AgentCommand[] = [
   { id: 'continue', label: '進めて', command: '進めて' },
   { id: 'next-step', label: '次は何をするとよいですか？', command: '次は何をするとよいですか？' },
   { id: 'self-review', label: 'セルフレビューして', command: 'セルフレビューして' },
+  { id: 'retrospective', label: '振り返りをして', command: '振り返りをして' },
   { id: 'commit', label: 'Commitして', command: 'Commitして' },
 ]

@@ -8,7 +8,7 @@
 | --- | --- |
 | [`clipboard.ts`](./clipboard.ts) | クリップボードへのコピー。 |
 | [`graphCollision.ts`](./graphCollision.ts) / [`graphCollision.test.ts`](./graphCollision.test.ts) | グラフノードの衝突計算とテスト。 |
-| [`herdr-agent-commands.ts`](./herdr-agent-commands.ts) | Herdrエージェント向けコマンド生成。 |
+| [`herdr-agent-commands.ts`](./herdr-agent-commands.ts) | Herdrエージェントのクイックコマンドと定型プロンプト。 |
 | [`herdr-file-agent.ts`](./herdr-file-agent.ts) / [`herdr-file-agent.test.ts`](./herdr-file-agent.test.ts) | ファイルからエージェントを起動する引数・表示名処理とテスト。 |
 | [`herdr-layout.ts`](./herdr-layout.ts) / [`herdr-layout.test.ts`](./herdr-layout.test.ts) | Herdrペイン分割・リサイズレイアウトとテスト。 |
 | [`herdr-status.ts`](./herdr-status.ts) / [`herdr-status.test.ts`](./herdr-status.test.ts) | Herdrで確認したworking状態と、mybox未確認の完了状態をlocalStorageへ保持する状態遷移とテスト。 |
