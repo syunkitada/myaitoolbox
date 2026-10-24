@@ -16,6 +16,7 @@
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
 | [`DiffView.tsx`](./DiffView.tsx) / [`DiffView.test.tsx`](./DiffView.test.tsx) | unified diff表示とそのテスト。 |
 | [`FileExecutionModal.tsx`](./FileExecutionModal.tsx) / [`FileExecutionModal.test.tsx`](./FileExecutionModal.test.tsx) | スクリプト実行中の出力、終了結果、停止、Dismissを表示するモーダルとテスト。 |
+| [`FileReviewComments.tsx`](./FileReviewComments.tsx) / [`FileReviewComments.test.tsx`](./FileReviewComments.test.tsx) | localStorageに保存するファイル・行範囲コメント、返信・解決、Agent下書きへの追記。選択範囲の操作は本文付近または狭い画面の下端に表示し、ファイルコメント操作と未解決件数はスクロール追従ヘッダーに表示する。 |
 | [`FileTabs.tsx`](./FileTabs.tsx) / [`FileTabs.test.tsx`](./FileTabs.test.tsx) | 最近開いたファイルのタブと、プロジェクト付きお気に入りの追加・削除および横断遷移モーダルとテスト。 |
 | [`FrontmatterForm.tsx`](./FrontmatterForm.tsx) / [`FrontmatterForm.test.tsx`](./FrontmatterForm.test.tsx) | タスクと通常のMarkdownのフロントマター編集フォームとテスト。 |
 | [`GitViewer.tsx`](./GitViewer.tsx) | Git状態・差分画面を埋め込むビュー。 |
@@ -26,7 +27,7 @@
 | [`RichMarkdown.tsx`](./RichMarkdown.tsx) / [`RichMarkdown.test.tsx`](./RichMarkdown.test.tsx) | ファイルリンク・アウトライン・コードブロック・操作可能なタスクリスト・Mermaid・Vega-Liteを表示し、表示中のファイルペインに応じて内部リンクを開き、モーダル内でText/Jira形式を切り替えられるMarkdownビューアとテスト。 |
 | [`SearchBar.tsx`](./SearchBar.tsx) / [`SearchBar.test.tsx`](./SearchBar.test.tsx) | ファイル検索入力とテスト。 |
 | [`Sidebar.tsx`](./Sidebar.tsx) / [`Sidebar.test.tsx`](./Sidebar.test.tsx) | ワークスペース全体のサイドバー、Agent遷移、Mybox/Herdrフォーカスの折りたたみデバッグ表示。 |
-| [`SyntaxHighlighter.tsx`](./SyntaxHighlighter.tsx) / [`SyntaxHighlighter.test.tsx`](./SyntaxHighlighter.test.tsx) | Prismベースのコード表示。agent出力では相対ファイルパスをFiles画面へリンクできる。 |
+| [`SyntaxHighlighter.tsx`](./SyntaxHighlighter.tsx) / [`SyntaxHighlighter.test.tsx`](./SyntaxHighlighter.test.tsx) | Prismベースのコード表示。ファイル本文ではレビュー用の元行番号を保持し、agent出力では相対ファイルパスをFiles画面へリンクできる。 |
 | [`TaskProgress.tsx`](./TaskProgress.tsx) / [`TaskProgress.test.tsx`](./TaskProgress.test.tsx) | Markdownタスクリストの進捗表示とテスト。 |
 | [`TaskAgentLaunchDialog.tsx`](./TaskAgentLaunchDialog.tsx) | FilesビューアからタスクAgentを起動する種類選択・エラー表示付きモーダル。 |
 | [`VegaLite.tsx`](./VegaLite.tsx) | Vega-Lite仕様の解析、相対データURL解決、グラフ描画。 |

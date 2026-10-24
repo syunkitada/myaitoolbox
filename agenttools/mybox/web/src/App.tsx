@@ -31,6 +31,7 @@ import { useAgentSidebarState } from './hooks/use-agent-sidebar'
 import { readResizableWidth } from './hooks/use-resizable-width'
 import { useIsMobile } from './hooks/use-mobile'
 import { projectAgentsFor, summarizeAgentStatuses } from './utils/agent-sidebar-status'
+import { appendReviewContextToDraft } from './utils/file-review-comments'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const KnowledgeGraphPage = lazy(() =>
@@ -88,6 +89,11 @@ export default function App() {
   const handleAgentDraftChange = useCallback((paneId: string, draft: string) => {
     agentSidebar.setDraft(paneId, draft)
   }, [agentSidebar.setDraft])
+
+  const handleAppendReviewContext = useCallback((paneId: string, context: string) => {
+    const draft = agentSidebar.drafts[paneId] ?? ''
+    agentSidebar.setDraft(paneId, appendReviewContextToDraft(draft, context))
+  }, [agentSidebar.drafts, agentSidebar.setDraft])
 
   useEffect(() => {
     if (!pendingOpenAgentPaneId) return
@@ -293,6 +299,7 @@ export default function App() {
                         agentSidebarOpen={agentSidebar.open}
                         openAgentPaneId={agentSidebar.paneId}
                         onOpenAgentPane={handleOpenAgentPane}
+                        onAppendReviewContext={handleAppendReviewContext}
                       />
                     }
                   />
@@ -310,6 +317,7 @@ export default function App() {
                         agentSidebarOpen={agentSidebar.open}
                         openAgentPaneId={agentSidebar.paneId}
                         onOpenAgentPane={handleOpenAgentPane}
+                        onAppendReviewContext={handleAppendReviewContext}
                       />
                     }
                   />

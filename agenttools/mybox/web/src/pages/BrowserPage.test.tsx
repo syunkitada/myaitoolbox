@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { useState } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
 import { ApiError, api, GitDetail } from '../api/client'
 import { DialogsProvider } from '../components/AppDialogs'
 import { BrowserEntry, BrowserPage, Explorer, GitDiffPanel, gitFilesForPath } from './BrowserPage'
@@ -1457,6 +1458,62 @@ describe('task progress in file viewer', () => {
 
     await screen.findByText('checklist item')
     expect(screen.queryByTestId('task-progress')).not.toBeInTheDocument()
+  })
+})
+
+describe('file review comments in the file viewer', () => {
+  afterEach(() => {
+    localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  it('adds a file comment and passes its context to the active agent pane', async () => {
+    const user = userEvent.setup()
+    const path = 'docs/guide.md'
+    const appendReviewContext = vi.fn()
+    vi.spyOn(api, 'listFiles').mockResolvedValue([{ path, name: 'guide.md', kind: 'file' }])
+    vi.spyOn(api, 'getFileContent').mockResolvedValue({ path, content: '# Guide\n\nReviewable content.' })
+    vi.spyOn(api, 'recordRecent').mockResolvedValue(undefined)
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+
+    const router = createMemoryRouter(
+      [{
+        path: '*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected={path}
+            onSelect={vi.fn()}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+            agentSidebarOpen
+            openAgentPaneId="pane-1"
+            onAppendReviewContext={appendReviewContext}
+          />
+        ),
+      }],
+      { initialEntries: [`/projects/proj/dashboard/files/${path}`] },
+    )
+
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+
+    await screen.findByText('Reviewable content.')
+    await user.click(screen.getByRole('button', { name: /add file comment/i }))
+    await user.type(screen.getByRole('textbox', { name: 'Review comment' }), 'Please clarify this section.')
+    await user.click(screen.getByRole('button', { name: 'Add comment' }))
+    await user.click(screen.getByRole('button', { name: 'Add to agent' }))
+
+    expect(appendReviewContext).toHaveBeenCalledWith(
+      'pane-1',
+      expect.stringContaining('File: docs/guide.md'),
+    )
+    expect(appendReviewContext.mock.calls[0][1]).toContain('Please clarify this section.')
   })
 })
 

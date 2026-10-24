@@ -3,6 +3,7 @@ import { useBlocker, useParams } from 'react-router-dom'
 import { ApiError, Favorite, FileEntry, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileTabs } from '../components/FileTabs'
+import { FileReviewComments } from '../components/FileReviewComments'
 import { TASK_AGENT_KIND_STORAGE_KEY, TaskAgentLaunchDialog } from '../components/TaskAgentLaunchDialog'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { TaskProgress } from '../components/TaskProgress'
@@ -171,6 +172,7 @@ interface BrowserPageProps {
   agentSidebarOpen?: boolean
   openAgentPaneId?: string | null
   onOpenAgentPane?: (paneId: string) => void
+  onAppendReviewContext?: (paneId: string, context: string) => void
   revealPath?: string
   onRevealPathHandled?: (path: string) => void
 }
@@ -1348,6 +1350,7 @@ interface PaneProps {
   onGitDiffOpenChange?: (open: boolean) => void
   agentSidebarOpen?: boolean
   openAgentPaneId?: string | null
+  onAppendReviewContext?: (paneId: string, context: string) => void
   taskAgentPaneId?: string
   taskAgentName?: string
   taskAgentStatus?: string
@@ -1383,6 +1386,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   onGitDiffOpenChange,
   agentSidebarOpen,
   openAgentPaneId,
+  onAppendReviewContext,
   taskAgentPaneId,
   taskAgentName: linkedAgentName,
   taskAgentStatus: linkedAgentStatus,
@@ -1895,6 +1899,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   const activeSearchHit = searchHit?.path === path ? searchHit : null
   const viewRelativeTo = isDir ? readmePath ?? `${path}/` : path
   const viewFileName = isDir && readmePath ? baseOf(readmePath) : null
+  const fileReviewPath = isDir ? readmePath : path
 
   const toggleTask = async (line: number, checked: boolean): Promise<boolean> => {
     const nextBody = setMarkdownTaskChecked(viewText, line, checked)
@@ -1902,6 +1907,93 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     const raw = useForm ? replaceMarkdownBody(content, nextBody) : nextBody
     return persist(raw)
   }
+
+  const filePreview = isMarkdown ? (
+    <RichMarkdown
+      text={viewText}
+      copyText={content}
+      relativeTo={viewRelativeTo}
+      linkUrl={filesUrl}
+      imageUrl={rawFileUrl}
+      dataUrl={rawFileUrl}
+      preserveExtension
+      onTaskToggle={!isDir || Boolean(readmePath) ? toggleTask : undefined}
+      copyDialogOpen={copyDialogOpen}
+      onCopyDialogClose={() => setCopyDialogOpen(false)}
+      focusLine={activeSearchHit?.line}
+      searchQuery={activeSearchHit?.query}
+      sourceLineOffset={viewSourceLineOffset}
+      onOpenFile={onOpen}
+    />
+  ) : isPdf ? (
+    <div className="file-pdf my-2 w-full">
+      <iframe
+        src={rawFileUrl(path)}
+        title={`PDF preview: ${baseOf(path)}`}
+        className="w-full rounded-md border bg-muted"
+        style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
+      />
+    </div>
+  ) : isHtml ? (
+    <div className="file-html my-2 w-full">
+      <div className="mb-2 flex justify-end">
+        <a
+          href={htmlPreviewUrl(path)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        >
+          Open in new tab
+        </a>
+      </div>
+      <iframe
+        src={htmlPreviewUrl(path)}
+        title={`HTML preview: ${baseOf(path)}`}
+        sandbox="allow-scripts"
+        className="w-full rounded-md border bg-muted"
+        style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
+      />
+    </div>
+  ) : isUnsupported ? (
+    <div className="my-4 flex flex-col items-start gap-3" role="status">
+      <p className="text-sm text-muted-foreground">
+        Preview is not available for this file.
+      </p>
+      <a
+        href={rawFileUrl(path)}
+        download={baseOf(path)}
+        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+      >
+        Download file
+      </a>
+    </div>
+  ) : isImage ? (
+    <div className="file-image flex justify-center py-3">
+      <img src={rawFileUrl(path)} alt={baseOf(path)} className="max-w-full rounded-md" />
+    </div>
+  ) : (
+    <SyntaxHighlighter
+      text={viewText}
+      language={languageFromPath(viewFileName ?? path)}
+      className="file-raw rounded-md bg-muted p-3"
+      focusLine={activeSearchHit?.line}
+      searchQuery={activeSearchHit?.query}
+      sourceLineOffset={viewSourceLineOffset}
+    />
+  )
+
+  const filePreviewWithComments = fileReviewPath ? (
+    <FileReviewComments
+      key={fileReviewPath}
+      project={getProject()}
+      path={fileReviewPath}
+      sourceText={content}
+      activeAgentPaneId={agentSidebarOpen ? openAgentPaneId ?? null : null}
+      onAppendToAgentDraft={onAppendReviewContext}
+    >
+      {filePreview}
+    </FileReviewComments>
+  ) : filePreview
 
   const diffModified = useMemo(
     () => (useForm ? buildMarkdown(serializeFrontmatter(draftFm), draftBody) : draft),
@@ -2455,78 +2547,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                   )}
                   {useForm && <FrontmatterSummary data={fmParsed.data} />}
                   {taskProgress && <TaskProgress {...taskProgress} className="my-3" />}
-                  {isMarkdown ? (
-                    <RichMarkdown
-                      text={viewText}
-                      copyText={content}
-                      relativeTo={viewRelativeTo}
-                      linkUrl={filesUrl}
-                      imageUrl={rawFileUrl}
-                      dataUrl={rawFileUrl}
-                      preserveExtension
-                      onTaskToggle={!isDir || Boolean(readmePath) ? toggleTask : undefined}
-                      copyDialogOpen={copyDialogOpen}
-                      onCopyDialogClose={() => setCopyDialogOpen(false)}
-                      focusLine={activeSearchHit?.line}
-                      searchQuery={activeSearchHit?.query}
-                      sourceLineOffset={viewSourceLineOffset}
-                      onOpenFile={onOpen}
-                    />
-                  ) : isPdf ? (
-                    <div className="file-pdf my-2 w-full">
-                      <iframe
-                        src={rawFileUrl(path)}
-                        title={`PDF preview: ${baseOf(path)}`}
-                        className="w-full rounded-md border bg-muted"
-                        style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
-                      />
-                    </div>
-                  ) : isHtml ? (
-                    <div className="file-html my-2 w-full">
-                      <div className="mb-2 flex justify-end">
-                        <a
-                          href={htmlPreviewUrl(path)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                        >
-                          Open in new tab
-                        </a>
-                      </div>
-                      <iframe
-                        src={htmlPreviewUrl(path)}
-                        title={`HTML preview: ${baseOf(path)}`}
-                        sandbox="allow-scripts"
-                        className="w-full rounded-md border bg-muted"
-                        style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
-                      />
-                    </div>
-                  ) : isUnsupported ? (
-                    <div className="my-4 flex flex-col items-start gap-3" role="status">
-                      <p className="text-sm text-muted-foreground">
-                        Preview is not available for this file.
-                      </p>
-                      <a
-                        href={rawFileUrl(path)}
-                        download={baseOf(path)}
-                        className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                      >
-                        Download file
-                      </a>
-                    </div>
-                  ) : isImage ? (
-                    <div className="file-image flex justify-center py-3">
-                      <img src={rawFileUrl(path)} alt={baseOf(path)} className="max-w-full rounded-md" />
-                    </div>
-                  ) : (
-                    <SyntaxHighlighter
-                      text={viewText}
-                      language={languageFromPath(viewFileName ?? path)}
-                      className="file-raw rounded-md bg-muted p-3"
-                      focusLine={activeSearchHit?.line}
-                      searchQuery={activeSearchHit?.query}
-                    />
-                  )}
+                  {filePreviewWithComments}
                 </CardContent>
               </Card>
               {showGitDiff && (
@@ -2720,6 +2741,7 @@ export function BrowserPage({
   refreshHerdr,
   agentSidebarOpen,
   openAgentPaneId,
+  onAppendReviewContext,
   onOpenAgentPane,
   revealPath,
   onRevealPathHandled,
@@ -3419,6 +3441,7 @@ export function BrowserPage({
         onGitDiffOpenChange={slot === 'main' ? setGitDiffOpen : setReferenceGitDiffOpen}
         agentSidebarOpen={agentSidebarOpen}
         openAgentPaneId={openAgentPaneId}
+        onAppendReviewContext={onAppendReviewContext}
         taskAgentPaneId={taskAgent?.agent?.pane_id}
         taskAgentName={taskAgent?.name}
         taskAgentStatus={taskAgent?.agent?.status}

@@ -17,6 +17,7 @@ interface DashboardProps {
   agentSidebarOpen?: boolean
   openAgentPaneId?: string | null
   onOpenAgentPane?: (paneId: string) => void
+  onAppendReviewContext?: (paneId: string, context: string) => void
 }
 
 export function Dashboard({
@@ -29,6 +30,7 @@ export function Dashboard({
   agentSidebarOpen,
   openAgentPaneId,
   onOpenAgentPane,
+  onAppendReviewContext,
 }: DashboardProps) {
   const params = useParams()
   const { pathname } = useLocation()
@@ -120,6 +122,7 @@ export function Dashboard({
         agentSidebarOpen={agentSidebarOpen}
         openAgentPaneId={openAgentPaneId}
         onOpenAgentPane={onOpenAgentPane}
+        onAppendReviewContext={onAppendReviewContext}
         defaultSelect={(entries) =>
           entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
         }

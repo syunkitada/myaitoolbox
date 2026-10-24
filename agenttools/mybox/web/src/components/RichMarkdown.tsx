@@ -38,7 +38,9 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => {
     : `<pre><code>${md.utils.escapeHtml(tokens[idx].content)}</code></pre>\n`
   const lineOffset = (env as MarkdownRenderEnv | undefined)?.lineOffset ?? 0
   const sourceLine = token.map?.[0] === undefined ? '' : ` data-source-line="${lineOffset + token.map[0] + 1}"`
-  return `<div class="markdown-code-block" data-code-block${sourceLine}><button type="button" class="markdown-code-copy" data-copy-code aria-label="Copy code" title="Copy code">Copy</button>${rendered}</div>\n`
+  const reviewCodeLine = token.map?.[0] === undefined ? '' : ` data-review-code-line="${lineOffset + token.map[0] + 2}"`
+  const sourceEndLine = token.map?.[1] === undefined ? '' : ` data-source-end-line="${lineOffset + token.map[1]}"`
+  return `<div class="markdown-code-block" data-code-block${sourceLine}${reviewCodeLine}${sourceEndLine}><button type="button" class="markdown-code-copy" data-copy-code aria-label="Copy code" title="Copy code">Copy</button>${rendered}</div>\n`
 }
 
 interface MarkdownSourceLineEnv {
@@ -47,7 +49,9 @@ interface MarkdownSourceLineEnv {
 
 function setSourceLine(token: { map?: [number, number] | null; attrSet: (name: string, value: string) => void }, env?: MarkdownSourceLineEnv) {
   if (token.map?.[0] === undefined) return
-  token.attrSet('data-source-line', String((env?.lineOffset ?? 0) + token.map[0] + 1))
+  const lineOffset = env?.lineOffset ?? 0
+  token.attrSet('data-source-line', String(lineOffset + token.map[0] + 1))
+  if (token.map[1] !== undefined) token.attrSet('data-source-end-line', String(lineOffset + token.map[1]))
 }
 
 md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
@@ -161,12 +165,24 @@ const defaultListItemOpen = md.renderer.rules.list_item_open
 const defaultRenderInline = md.renderer.renderInline.bind(md.renderer)
 
 md.renderer.rules.list_item_open = (tokens, idx, options, env, self) => {
+  setSourceLine(tokens[idx], env as MarkdownSourceLineEnv | undefined)
   const task = findTaskListItem(tokens, idx, env as MarkdownRenderEnv | undefined)
   if (task) tokens[idx].attrJoin('class', 'task-list-item')
   const rendered = defaultListItemOpen
     ? defaultListItemOpen(tokens, idx, options, env, self)
     : self.renderToken(tokens, idx, options)
   return rendered
+}
+
+const sourceLineContainerRules = ['blockquote_open', 'table_open', 'tr_open', 'th_open', 'td_open'] as const
+for (const ruleName of sourceLineContainerRules) {
+  const defaultRule = md.renderer.rules[ruleName]
+  md.renderer.rules[ruleName] = (tokens, idx, options, env, self) => {
+    setSourceLine(tokens[idx], env as MarkdownSourceLineEnv | undefined)
+    return defaultRule
+      ? defaultRule(tokens, idx, options, env, self)
+      : self.renderToken(tokens, idx, options)
+  }
 }
 
 md.renderer.renderInline = (tokens, options, env) => {
