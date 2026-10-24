@@ -213,7 +213,7 @@ export default function App() {
             <SidebarTrigger />
             <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
             {project && (
-              <nav aria-label="Project sections" className="project-tabs ml-4 flex min-w-0 items-center gap-1 overflow-x-auto">
+              <nav aria-label="Project sections" className="project-tabs flex min-w-0 items-center gap-1 overflow-x-auto">
                 {projectTabs.map((t) => (
                   <NavLink
                     key={t.label}
