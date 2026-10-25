@@ -23,7 +23,7 @@ import { StatusDot } from './components/herdr-status'
 import { DialogsProvider } from './components/AppDialogs'
 import { FileExecutionProvider } from './state/fileExecution'
 import { HerdrPage } from './pages/HerdrPage'
-import { Bot, Folder, GitBranch, Globe, Network, PanelRightClose, PanelRightOpen, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
+import { Bot, Folder, GitBranch, Globe, PanelRightClose, PanelRightOpen, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
@@ -34,9 +34,6 @@ import { projectAgentsFor, summarizeAgentStatuses } from './utils/agent-sidebar-
 import { appendReviewContextToDraft } from './utils/file-review-comments'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
-const KnowledgeGraphPage = lazy(() =>
-  import('./pages/KnowledgeGraphPage').then((m) => ({ default: m.KnowledgeGraphPage })),
-)
 const KanbanBoard = lazy(() => import('./pages/KanbanBoard').then((m) => ({ default: m.KanbanBoard })))
 const StatsPage = lazy(() => import('./pages/StatsPage').then((m) => ({ default: m.StatsPage })))
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
@@ -45,7 +42,7 @@ const CodexDiagnosticsPage = lazy(() => import('./pages/CodexDiagnosticsPage').t
 const WebBrowserPage = lazy(() => import('./pages/WebBrowserPage').then((m) => ({ default: m.WebBrowserPage })))
 
 // Canonical project tab sections; position in this list is the tab index.
-const TAB_SECTIONS = ['dashboard', 'browser', 'board', 'graph', 'git', 'herdr', 'agent']
+const TAB_SECTIONS = ['dashboard', 'browser', 'board', 'git', 'herdr', 'agent']
 const GIT_STATUS_REFRESH_INTERVAL_MS = 5000
 
 export default function App() {
@@ -182,7 +179,6 @@ export default function App() {
     },
     { to: projectUrl('/browser'), label: 'Browser', icon: Globe, active: pathname === projectUrl('/browser') },
     { to: projectUrl('/board'), label: 'Board', icon: SquareKanban, active: pathname === projectUrl('/board') },
-    { to: projectUrl('/graph'), label: 'Graph', icon: Network, active: pathname === projectUrl('/graph') },
     { to: projectUrl('/git'), label: 'Git', icon: GitBranch, active: pathname === projectUrl('/git') },
     { to: projectUrl('/herdr'), label: 'Herdr', icon: PanelsTopLeft, active: pathname === projectUrl('/herdr') },
     { to: projectUrl('/agent'), label: 'Agent', icon: Bot, active: pathname === projectUrl('/agent') },
@@ -326,7 +322,6 @@ export default function App() {
                     path="/projects/:project/board"
                     element={<KanbanBoard key={project} herdrOverview={herdr.overview} />}
                   />
-                  <Route path="/projects/:project/graph" element={<KnowledgeGraphPage key={project} />} />
                   <Route
                     path="/projects/:project/git"
                     element={<GitPage key={project} refreshMeta={refreshMeta} />}

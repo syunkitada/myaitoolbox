@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Star, X } from 'lucide-react'
+import { Network, Star, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useEscapeKey } from '../hooks/use-escape-key'
 import type { Favorite } from '../api/client'
@@ -8,6 +8,8 @@ interface FileTabsProps {
   tabs: string[]
   active: string
   favorites: Favorite[]
+  graphMode?: boolean
+  onToggleGraph?: () => void
   onSelect: (path: string) => void
   onClose: (path: string) => void
   onSelectFavorite: (favorite: Favorite) => void
@@ -18,6 +20,8 @@ export function FileTabs({
   tabs,
   active,
   favorites,
+  graphMode = false,
+  onToggleGraph,
   onSelect,
   onClose,
   onSelectFavorite,
@@ -43,6 +47,19 @@ export function FileTabs({
           data-testid="file-tabs-favorites"
         >
           <Star className="size-4" />
+        </button>
+        <button
+          className={cn(
+            'flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+            graphMode && 'bg-accent text-primary',
+          )}
+          onClick={onToggleGraph}
+          aria-label="Graph view"
+          aria-pressed={graphMode}
+          title={graphMode ? 'Show files' : 'Show graph'}
+          data-testid="file-tabs-graph-toggle"
+        >
+          <Network className="size-4" />
         </button>
         {tabs.map((p) => {
           const base = p.split('/').pop() ?? p

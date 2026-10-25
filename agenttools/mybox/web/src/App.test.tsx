@@ -110,7 +110,6 @@ vi.mock('./pages/HerdrPage', () => ({
   HerdrPage: () => <div data-testid="herdr-page" />,
 }))
 vi.mock('./pages/KanbanBoard', () => ({ KanbanBoard: () => null }))
-vi.mock('./pages/KnowledgeGraphPage', () => ({ KnowledgeGraphPage: () => null }))
 vi.mock('./pages/ProjectsPage', () => ({ ProjectsPage: () => null }))
 vi.mock('./pages/StatsPage', () => ({ StatsPage: () => null }))
 
@@ -177,6 +176,17 @@ describe('App project status refresh', () => {
 
     expect(api.getProjectGitStatus).toHaveBeenCalledTimes(2)
     expect(screen.getByTestId('app-sidebar-git-status')).toHaveTextContent('dirty')
+  })
+
+  it('removes the standalone Graph project section', () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: 'Files' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Graph' })).not.toBeInTheDocument()
   })
 
   it('uses the selected agent sidebar pane as the mybox focus', () => {

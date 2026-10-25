@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
@@ -17,6 +18,36 @@ vi.mock('../components/MonacoEditor', () => ({
   ),
 }))
 vi.mock('../hooks/use-mobile', () => ({ useIsMobile: () => false }))
+vi.mock('../components/GraphView/GraphWorkspace', () => ({
+  GraphWorkspace: ({
+    project,
+    expandedPaths,
+    onExpandedPathsChange,
+    onLoadDir,
+    onOpenFile,
+  }: {
+    project: string
+    expandedPaths: Set<string>
+    onExpandedPathsChange: Dispatch<SetStateAction<Set<string>>>
+    onLoadDir: (path: string) => void | Promise<void>
+    onOpenFile: (path: string) => void
+  }) => (
+    <div data-testid="graph-workspace" data-project={project} data-expanded={Array.from(expandedPaths).join(',')}>
+      <button
+        type="button"
+        onClick={() => {
+          onExpandedPathsChange((previous) => new Set([...previous, 'docs']))
+          void onLoadDir('docs')
+        }}
+      >
+        Expand docs in graph
+      </button>
+      <button type="button" onClick={() => onOpenFile('docs/guide.md')}>
+        Open guide from graph
+      </button>
+    </div>
+  ),
+}))
 
 describe('Explorer file upload', () => {
   afterEach(() => {
@@ -152,6 +183,92 @@ describe('Explorer navigation sections', () => {
 
     expect(screen.queryByText('Favorites', { exact: true })).not.toBeInTheDocument()
     expect(screen.queryByText('Recent', { exact: true })).not.toBeInTheDocument()
+  })
+})
+
+describe('Files graph view integration', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    localStorage.clear()
+  })
+
+  function renderFilesPage(project: string, onSelect = vi.fn()) {
+    vi.spyOn(api, 'listFiles').mockImplementation(async ({ path } = {}) => {
+      if (!path) return [{ path: 'docs', name: 'docs', kind: 'dir' }]
+      if (path === 'docs') return [{ path: 'docs/guide.md', name: 'guide.md', kind: 'file' }]
+      return []
+    })
+    vi.spyOn(api, 'getFileGitStatus').mockResolvedValue({})
+    const router = createMemoryRouter(
+      [{
+        path: '/projects/:project/dashboard/files/*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected=""
+            onSelect={onSelect}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+          />
+        ),
+      }],
+      { initialEntries: [`/projects/${project}/dashboard/files`] },
+    )
+    render(
+      <DialogsProvider>
+        <RouterProvider router={router} />
+      </DialogsProvider>,
+    )
+    return onSelect
+  }
+
+  it('opens and closes Graph from the Files tab row and remembers the mode per project', async () => {
+    renderFilesPage('graph-mode-test')
+
+    const toggle = screen.getByRole('button', { name: 'Graph view' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(toggle)
+
+    expect(await screen.findByTestId('graph-workspace')).toHaveAttribute('data-project', 'graph-mode-test')
+    expect(screen.getByTestId('files-viewer-region')).not.toBeVisible()
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem('mybox_graph_view_mode') ?? '{}')).toEqual({ 'graph-mode-test': true })
+    })
+
+    fireEvent.click(toggle)
+    expect(screen.getByTestId('files-viewer-region')).toBeVisible()
+    expect(screen.getByTestId('graph-view-region')).not.toBeVisible()
+  })
+
+  it('shares Graph folder expansion with the Files explorer and opens graph files in Files mode', async () => {
+    const onSelect = renderFilesPage('graph-share-test')
+    fireEvent.click(screen.getByRole('button', { name: 'Graph view' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Expand docs in graph' }))
+
+    expect(await screen.findByRole('button', { name: 'guide.md' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem('mybox_files_explorer_expanded') ?? '{}')).toEqual({
+        'graph-share-test': ['docs'],
+      })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open guide from graph' }))
+    expect(onSelect).toHaveBeenCalledWith('docs/guide.md')
+    expect(screen.getByTestId('files-viewer-region')).toBeVisible()
+    expect(screen.getByTestId('graph-view-region')).not.toBeVisible()
+  })
+
+  it('restores the Graph mode and expanded folders for the same project after reload', async () => {
+    localStorage.setItem('mybox_graph_view_mode', JSON.stringify({ 'graph-restore-test': true }))
+    localStorage.setItem('mybox_files_explorer_expanded', JSON.stringify({ 'graph-restore-test': ['docs'] }))
+
+    renderFilesPage('graph-restore-test')
+
+    expect(await screen.findByTestId('graph-workspace')).toHaveAttribute('data-expanded', 'docs')
+    expect(screen.getByTestId('files-viewer-region')).not.toBeVisible()
+    expect(await screen.findByRole('button', { name: 'guide.md' })).toBeInTheDocument()
   })
 })
 

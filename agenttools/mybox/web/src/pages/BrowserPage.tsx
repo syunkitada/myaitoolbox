@@ -1,8 +1,10 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, RefObject, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useBlocker, useParams } from 'react-router-dom'
 import { ApiError, Favorite, FileEntry, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileTabs } from '../components/FileTabs'
+import { GraphWorkspace } from '../components/GraphView/GraphWorkspace'
 import { FileReviewComments } from '../components/FileReviewComments'
 import { TASK_AGENT_KIND_STORAGE_KEY, TaskAgentLaunchDialog } from '../components/TaskAgentLaunchDialog'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
@@ -35,6 +37,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useDialogs } from '../components/AppDialogs'
 import { useEscapeKey } from '../hooks/use-escape-key'
 import { useFileExecution } from '../state/fileExecution'
+import { loadExplorerExpandedPaths, loadGraphMode, saveExplorerExpandedPaths, saveGraphMode } from '../state/graphViewState'
 import { filesUrl, getProject, htmlPreviewUrl, rawFileUrl } from '../utils/routes'
 import { copyToClipboard } from '../utils/clipboard'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
@@ -413,9 +416,11 @@ interface ExplorerProps {
   onBeforePathMove?: (oldPath: string, newPath: string) => Promise<boolean>
   onPathMoved?: (oldPath: string, newPath: string) => boolean | Promise<boolean> | void
   onSearchHit?: (hit: FileSearchHit) => void
+  expandedPaths?: Set<string>
+  onExpandedPathsChange?: Dispatch<SetStateAction<Set<string>>>
 }
 
-export function Explorer({ entries, selected, onSelect, title, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onBeforePathMove, onPathMoved, onSearchHit }: ExplorerProps) {
+export function Explorer({ entries, selected, onSelect, title, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onBeforePathMove, onPathMoved, onSearchHit, expandedPaths: controlledExpandedPaths, onExpandedPathsChange }: ExplorerProps) {
   const { prompt, confirm, alert, showProgress, hideProgress } = useDialogs()
   const { start: startFileExecution } = useFileExecution()
   const [q, setQ] = useState('')
@@ -427,7 +432,9 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
   const [textSearchLoading, setTextSearchLoading] = useState(false)
   const [textSearchError, setTextSearchError] = useState<string | null>(null)
   const searchRequest = useRef(0)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [internalExpandedPaths, setInternalExpandedPaths] = useState<Set<string>>(new Set())
+  const expanded = controlledExpandedPaths ?? internalExpandedPaths
+  const updateExpandedPaths = onExpandedPathsChange ?? setInternalExpandedPaths
   const [dragOverDir, setDragOverDir] = useState<string | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string; kind: 'file' | 'dir'; executable?: boolean } | null>(null)
   const [triggerRunState, setTriggerRunState] = useState<{ path: string; running: boolean; result?: TaskTriggerRun; error?: string } | null>(null)
@@ -791,7 +798,7 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
   const toggle = (dirPath: string) => {
     const open = expanded.has(dirPath)
     if (!open) onLoadDir?.(dirPath)
-    setExpanded((prev) => {
+    updateExpandedPaths((prev) => {
       const next = new Set(prev)
       if (next.has(dirPath)) next.delete(dirPath)
       else next.add(dirPath)
@@ -809,7 +816,7 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
       dirs.push(prefix)
     }
     if (dirs.length === 0) return
-    setExpanded((prev) => {
+    updateExpandedPaths((prev) => {
       const next = new Set(prev)
       for (const d of dirs) next.add(d)
       return next
@@ -2748,6 +2755,12 @@ export function BrowserPage({
 }: BrowserPageProps) {
   const { confirm3 } = useDialogs()
   const { project: routeProject } = useParams<{ project?: string }>()
+  const project = routeProject ? decodeURIComponent(routeProject) : getProject()
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
+    () => (project ? loadExplorerExpandedPaths(project) : null) ?? new Set(),
+  )
+  const [graphMode, setGraphMode] = useState(() => (project ? loadGraphMode(project) : false))
+  const [graphInitialized, setGraphInitialized] = useState(() => (project ? loadGraphMode(project) : false))
   const [childrenByDir, setChildrenByDir] = useState<Record<string, BrowserEntry[]>>({})
   const [gitStatus, setGitStatus] = useState<Record<string, string>>({})
   const [loaded, setLoaded] = useState(false)
@@ -2791,7 +2804,6 @@ export function BrowserPage({
   })
 
   const entries = useMemo(() => Object.values(childrenByDir).flat(), [childrenByDir])
-  const project = routeProject ? decodeURIComponent(routeProject) : getProject()
   const taskAgents = useMemo(
     () => (herdrOverview && project ? projectAgentsFor(herdrOverview, project) : []),
     [herdrOverview, project],
@@ -2852,6 +2864,21 @@ export function BrowserPage({
     if (!isMobile) window.localStorage.setItem(EXPLORER_STORAGE_KEY, explorerOpen ? '1' : '0')
   }, [explorerOpen, isMobile])
 
+  useEffect(() => {
+    if (!project) return
+    saveExplorerExpandedPaths(project, expandedPaths)
+  }, [expandedPaths, project])
+
+  useEffect(() => {
+    if (!project) return
+    saveGraphMode(project, graphMode)
+  }, [graphMode, project])
+
+  const handleToggleGraphMode = useCallback(() => {
+    const next = !graphMode
+    if (next) setGraphInitialized(true)
+    setGraphMode(next)
+  }, [graphMode])
 
   useEffect(() => {
     window.localStorage.setItem(SHOW_HIDDEN_STORAGE_KEY, showHidden ? '1' : '0')
@@ -2887,6 +2914,14 @@ export function BrowserPage({
       if (isMobile) setExplorerOpen(false)
     },
     [isMobile, onSelect],
+  )
+
+  const handleOpenGraphFile = useCallback(
+    (path: string) => {
+      setGraphMode(false)
+      handleSelect(path)
+    },
+    [handleSelect],
   )
 
   const changeReference = useCallback(
@@ -3247,6 +3282,11 @@ export function BrowserPage({
   }, [load])
 
   useEffect(() => {
+    if (!loaded) return
+    for (const path of expandedPaths) void loadDir(path)
+  }, [expandedPaths, loadDir, loaded])
+
+  useEffect(() => {
     if (!revealPath) return
     let cancelled = false
     void revealFile(revealPath).then(() => {
@@ -3518,6 +3558,8 @@ export function BrowserPage({
                     onBeforePathMove={handleBeforeExplorerMove}
                     onPathMoved={handleExplorerMoved}
                     onSearchHit={handleSearchHit}
+                    expandedPaths={expandedPaths}
+                    onExpandedPathsChange={setExpandedPaths}
                   />
                 </div>
               </div>
@@ -3566,6 +3608,8 @@ export function BrowserPage({
                     onBeforePathMove={handleBeforeExplorerMove}
                     onPathMoved={handleExplorerMoved}
                     onSearchHit={handleSearchHit}
+                    expandedPaths={expandedPaths}
+                    onExpandedPathsChange={setExpandedPaths}
                   />
               </SheetContent>
             </Sheet>
@@ -3580,11 +3624,18 @@ export function BrowserPage({
               tabs={visibleRecents}
               active={selected}
               favorites={favorites}
+              graphMode={graphMode}
+              onToggleGraph={handleToggleGraphMode}
               onSelect={handleSelect}
               onClose={handleCloseRecent}
               onSelectFavorite={(favorite) => handleSelect(favorite.path, null, favorite.project)}
               onRemoveFavorite={handleRemoveFavorite}
             />
+            <div
+              hidden={graphMode}
+              className={cn('flex min-h-0 min-w-0 flex-1 flex-col', graphMode && 'hidden')}
+              data-testid="files-viewer-region"
+            >
             {referencePath && (
               <div className="flex shrink-0 items-center gap-1 border-b border-border py-1 md:hidden" role="tablist" aria-label="File viewer pane">
                 <Button
@@ -3721,6 +3772,23 @@ export function BrowserPage({
                     </Button>
                   </Card>
                 )}
+              </div>
+            )}
+            </div>
+            {graphInitialized && project && (
+              <div
+                hidden={!graphMode}
+                className={cn('min-h-0 min-w-0 flex-1', !graphMode && 'hidden')}
+                data-testid="graph-view-region"
+              >
+                <GraphWorkspace
+                  project={project}
+                  refreshKey={refreshKey}
+                  expandedPaths={expandedPaths}
+                  onExpandedPathsChange={setExpandedPaths}
+                  onLoadDir={(path) => loadDir(path)}
+                  onOpenFile={handleOpenGraphFile}
+                />
               </div>
             )}
           </div>

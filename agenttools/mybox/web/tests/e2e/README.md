@@ -1,6 +1,6 @@
 # `web/tests/e2e/`
 
-Web UIの主要操作をブラウザ上で検証します。テストは開発用サーバーを起動し、Files、Board、Graph、Git、Herdr、Terminalなどの画面を確認します。
+Web UIの主要操作をブラウザ上で検証します。テストは開発用サーバーを起動し、Files（Graph表示を含む）、Board、Git、Herdr、Terminalなどの画面を確認します。
 
 ## Index
 

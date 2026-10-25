@@ -116,4 +116,43 @@ describe('FileTabs', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close a.md' }))
     expect(onClose).toHaveBeenCalledWith('notes/a.md')
   })
+
+  it('shows the graph view toggle beside Favorites and reports its pressed state', () => {
+    const onToggleGraph = vi.fn()
+    const { rerender } = render(
+      <FileTabs
+        tabs={[]}
+        active=""
+        favorites={[]}
+        graphMode={false}
+        onToggleGraph={onToggleGraph}
+        onSelect={() => undefined}
+        onClose={() => undefined}
+        onSelectFavorite={() => undefined}
+        onRemoveFavorite={() => undefined}
+      />,
+    )
+
+    const favorites = screen.getByRole('button', { name: 'Favorites' })
+    const graph = screen.getByRole('button', { name: 'Graph view' })
+    expect(favorites.compareDocumentPosition(graph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(graph).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(graph)
+    expect(onToggleGraph).toHaveBeenCalledOnce()
+
+    rerender(
+      <FileTabs
+        tabs={[]}
+        active=""
+        favorites={[]}
+        graphMode
+        onToggleGraph={onToggleGraph}
+        onSelect={() => undefined}
+        onClose={() => undefined}
+        onSelectFavorite={() => undefined}
+        onRemoveFavorite={() => undefined}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Graph view' })).toHaveAttribute('aria-pressed', 'true')
+  })
 })

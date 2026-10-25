@@ -1,13 +1,12 @@
 # `web/src/components/`
 
-複数のページから利用する画面部品です。UIプリミティブは [`ui/README.md`](./ui/README.md)、ファイルツリーとグラフ表示はそれぞれ [`Explorer/README.md`](./Explorer/README.md)、[`GraphView/README.md`](./GraphView/README.md) に分けています。
+複数のページから利用する画面部品です。UIプリミティブは [`ui/README.md`](./ui/README.md)、グラフ表示は [`GraphView/README.md`](./GraphView/README.md) に分けています。
 
 ## Index
 
 | パス | 役割 |
 | --- | --- |
 | [`ui/README.md`](./ui/README.md) | Radixベースの共通UIプリミティブ。 |
-| [`Explorer/README.md`](./Explorer/README.md) | ファイルツリー表示。 |
 | [`GraphView/README.md`](./GraphView/README.md) | ファイルリンクグラフのSigma表示。 |
 | [`AppDialogs.tsx`](./AppDialogs.tsx) | アプリ全体で使うダイアログ群。 |
 | [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通の右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信と、Tabを指定した一般Agentの起動、実行中・完了・失敗したスクリプトの状態表示・再表示・停止・Dismiss（完了済み履歴は直近20件）を提供し、Agentごとの入力途中Promptを保持し、モバイルではSheetとして表示する。 |

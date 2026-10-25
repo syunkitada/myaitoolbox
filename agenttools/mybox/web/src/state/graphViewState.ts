@@ -2,6 +2,9 @@ import type { NodeId } from '../graph/types'
 
 const GRAPH_CAMERA_KEY = 'mybox_graph_camera'
 const GRAPH_LAYOUT_KEY = 'mybox_graph_layout'
+const GRAPH_MODE_KEY = 'mybox_graph_view_mode'
+const EXPLORER_EXPANDED_PATHS_KEY = 'mybox_files_explorer_expanded'
+const LEGACY_GRAPH_EXPLORER_KEY = 'mybox_graph_explorer_state'
 
 export interface PersistedPosition {
   x: number
@@ -18,6 +21,8 @@ export interface CameraView {
 
 type CameraStore = Record<string, CameraView>
 type LayoutStore = Record<string, Record<NodeId, PersistedPosition>>
+type GraphModeStore = Record<string, boolean>
+type ExpandedPathsStore = Record<string, string[]>
 
 function read<T>(key: string): T | null {
   try {
@@ -70,4 +75,39 @@ export function saveLayout(
   const store = read<LayoutStore>(GRAPH_LAYOUT_KEY) ?? {}
   store[project] = layout
   write(GRAPH_LAYOUT_KEY, store)
+}
+
+export function loadGraphMode(project: string): boolean {
+  return read<GraphModeStore>(GRAPH_MODE_KEY)?.[project] === true
+}
+
+export function saveGraphMode(project: string, enabled: boolean): void {
+  const store = read<GraphModeStore>(GRAPH_MODE_KEY) ?? {}
+  store[project] = enabled
+  write(GRAPH_MODE_KEY, store)
+}
+
+export function loadExplorerExpandedPaths(project: string): Set<string> | null {
+  const store = read<ExpandedPathsStore>(EXPLORER_EXPANDED_PATHS_KEY)
+  if (store && Object.prototype.hasOwnProperty.call(store, project) && Array.isArray(store[project])) {
+    return new Set(store[project].filter((path) => typeof path === 'string'))
+  }
+
+  const legacy = read<Record<string, { expanded?: unknown }>>(LEGACY_GRAPH_EXPLORER_KEY)
+  const expanded = legacy?.[project]?.expanded
+  if (!Array.isArray(expanded)) return null
+
+  const paths = new Set(
+    expanded
+      .filter((id): id is string => typeof id === 'string' && id.startsWith('dir:'))
+      .map((id) => id.slice('dir:'.length)),
+  )
+  saveExplorerExpandedPaths(project, paths)
+  return paths
+}
+
+export function saveExplorerExpandedPaths(project: string, paths: ReadonlySet<string>): void {
+  const store = read<ExpandedPathsStore>(EXPLORER_EXPANDED_PATHS_KEY) ?? {}
+  store[project] = [...paths]
+  write(EXPLORER_EXPANDED_PATHS_KEY, store)
 }
