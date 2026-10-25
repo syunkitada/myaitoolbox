@@ -78,12 +78,85 @@ describe('FileReviewComments', () => {
 
     const toolbar = await screen.findByRole('toolbar', { name: 'Review selection actions' })
     expect(toolbar).toHaveAttribute('data-placement', 'floating')
-    expect(toolbar).toHaveStyle({ position: 'fixed' })
+    expect(toolbar).toHaveClass('fixed')
     await user.click(within(toolbar).getByRole('button', { name: /comment on selection/i }))
 
     const composerMount = line.nextElementSibling as HTMLElement
     expect(composerMount).toHaveAttribute('data-file-review-composer-mount', 'true')
     expect(within(composerMount).getByRole('textbox', { name: 'Review comment' })).toBeInTheDocument()
+  })
+
+  it('preserves a selection comment draft when the rendered file is refreshed', async () => {
+    const user = userEvent.setup()
+    const { container, rerender } = renderComments()
+    const line = container.querySelector('.file-review-content p')!
+    selectText(line.firstChild!)
+    fireEvent.mouseUp(line)
+
+    await user.click(await screen.findByRole('button', { name: /comment on selection/i }))
+    const originalMount = line.nextElementSibling
+    const editor = screen.getByRole('textbox', { name: 'Review comment' })
+    await user.type(editor, 'Draft in progress')
+
+    rerender(
+      <FileReviewComments project="work" path="docs/guide.md" sourceText="one\ntwo" activeAgentPaneId="pane-1">
+        <p data-source-line="1" data-source-end-line="1">one</p>
+      </FileReviewComments>,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'Review comment' })).toHaveValue('Draft in progress')
+    expect(screen.getByRole('textbox', { name: 'Review comment' })).toHaveFocus()
+    expect(container.querySelector('[data-file-review-composer-mount]')).toBe(originalMount)
+  })
+
+  it('preserves selection comment focus when an existing line thread is refreshed', async () => {
+    const user = userEvent.setup()
+    saveFileReviewThreads('work', 'docs/guide.md', [
+      createFileReviewThread(
+        'docs/guide.md',
+        { kind: 'lines', startLine: 1, endLine: 1, quote: 'one' },
+        'Existing line comment',
+        10,
+      ),
+    ])
+    const { container, rerender } = renderComments()
+    const line = container.querySelector('.file-review-content p')!
+    await screen.findByText('Existing line comment')
+    selectText(line.firstChild!)
+    fireEvent.mouseUp(line)
+
+    await user.click(await screen.findByRole('button', { name: /comment on selection/i }))
+    const editor = screen.getByRole('textbox', { name: 'Review comment' })
+    await user.type(editor, 'Draft in progress')
+
+    rerender(
+      <FileReviewComments project="work" path="docs/guide.md" sourceText="one\ntwo" activeAgentPaneId="pane-1">
+        <p data-source-line="1" data-source-end-line="1">one</p>
+      </FileReviewComments>,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'Review comment' })).toHaveValue('Draft in progress')
+    expect(screen.getByRole('textbox', { name: 'Review comment' })).toHaveFocus()
+  })
+
+  it('clears a selection comment draft after cancelling and reopening it', async () => {
+    const user = userEvent.setup()
+    const { container } = renderComments()
+    const selectLine = () => {
+      const line = container.querySelector('.file-review-content p')!
+      selectText(line.firstChild!)
+      fireEvent.mouseUp(line)
+    }
+
+    selectLine()
+    await user.click(await screen.findByRole('button', { name: /comment on selection/i }))
+    await user.type(screen.getByRole('textbox', { name: 'Review comment' }), 'Discard this draft')
+    await user.click(screen.getByRole('button', { name: 'Cancel comment' }))
+
+    selectLine()
+    await user.click(await screen.findByRole('button', { name: /comment on selection/i }))
+
+    expect(screen.getByRole('textbox', { name: 'Review comment' })).toHaveValue('')
   })
 
   it('pins the selection action to the bottom on narrow screens', async () => {

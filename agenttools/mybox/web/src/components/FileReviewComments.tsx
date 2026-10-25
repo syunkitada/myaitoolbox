@@ -400,6 +400,7 @@ export function FileReviewComments({
   const selectionRangeRef = useRef<Range | null>(null)
   const [portalMounts, setPortalMounts] = useState<PortalMount[]>([])
   const [lineComposerMount, setLineComposerMount] = useState<LineComposerMount | null>(null)
+  const lineComposerMountRef = useRef<LineComposerMount | null>(null)
 
   const current = snapshot.key === storageKey ? snapshot : { key: storageKey, threads: [], error: null }
 
@@ -486,26 +487,55 @@ export function FileReviewComments({
   }, [children, lineThreads, sourceText, storageKey])
 
   useLayoutEffect(() => {
+    const existingMount = lineComposerMountRef.current
     if (composerAnchor?.kind !== 'lines') {
+      existingMount?.element.remove()
+      lineComposerMountRef.current = null
       setLineComposerMount(null)
       return
     }
     const root = contentRef.current
     const target = root ? targetForLine(root, composerAnchor.startLine) : null
-    if (!target) {
+    if (!root || (!target && !existingMount)) {
+      existingMount?.element.remove()
+      lineComposerMountRef.current = null
       setLineComposerMount(null)
       return
     }
-    const element = document.createElement('div')
-    element.dataset.fileReviewComposerMount = 'true'
-    target.insertAdjacentElement('afterend', element)
-    setLineComposerMount({
-      key: `${storageKey}:composer:${composerAnchor.startLine}:${composerAnchor.endLine}`,
-      element,
-      anchor: composerAnchor,
-    })
-    return () => element.remove()
+    const key = `${storageKey}:composer:${composerAnchor.startLine}:${composerAnchor.endLine}`
+    // Reusing the portal host preserves the composer state across preview rerenders.
+    let nextMount = existingMount
+    if (!nextMount || nextMount.key !== key) {
+      nextMount?.element.remove()
+      const element = document.createElement('div')
+      element.dataset.fileReviewComposerMount = 'true'
+      nextMount = { key, element, anchor: composerAnchor }
+    } else if (nextMount.anchor !== composerAnchor) {
+      nextMount = { ...nextMount, anchor: composerAnchor }
+    }
+    lineComposerMountRef.current = nextMount
+    if (target) {
+      // Other portal mounts may sit between the anchor and composer host.
+      const hostFollowsTarget = target.parentElement === nextMount.element.parentElement
+        && Boolean(target.compareDocumentPosition(nextMount.element) & Node.DOCUMENT_POSITION_FOLLOWING)
+      // Moving an active host can blur its textarea, so only reposition when needed.
+      if (!hostFollowsTarget) {
+        target.insertAdjacentElement('afterend', nextMount.element)
+      }
+    } else if (root.lastElementChild !== nextMount.element) {
+      root.appendChild(nextMount.element)
+    }
+    setLineComposerMount((currentMount) => (
+      currentMount?.element === nextMount.element && currentMount.anchor === nextMount.anchor
+        ? currentMount
+        : nextMount
+    ))
   }, [children, composerAnchor, sourceText, storageKey])
+
+  useLayoutEffect(() => () => {
+    lineComposerMountRef.current?.element.remove()
+    lineComposerMountRef.current = null
+  }, [])
 
   useEffect(() => {
     if (!selectedAnchor) return
