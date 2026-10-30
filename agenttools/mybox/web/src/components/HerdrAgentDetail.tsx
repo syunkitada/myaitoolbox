@@ -223,6 +223,9 @@ export function HerdrAgentDetail({
     }
   }, [agent.pane_id, draft, loadOutput, onDraftChange, sending])
 
+  const promptCharacterCount = Array.from(draft).length
+  const promptTooLong = promptCharacterCount > 10000
+
   const loadScheduledPrompts = useCallback(async () => {
     const revision = scheduledRevisionRef.current
     try {
@@ -465,12 +468,15 @@ export function HerdrAgentDetail({
           className={`min-h-6 max-h-[40vh] w-full min-w-0 rounded-md border bg-background px-2 py-0 text-base leading-5 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm ${isMobile ? 'resize-none' : 'resize-y'}`}
           style={{ height: isMobile ? mobilePromptHeight : promptSize.height }}
         />
+        <p className={`text-xs ${promptTooLong ? 'text-destructive' : 'text-muted-foreground'}`} aria-live="polite">
+          {promptCharacterCount} / 10000 characters
+        </p>
         <div data-testid="herdr-prompt-actions" className="flex w-full min-w-0 flex-col items-stretch gap-2">
           <div className="flex w-full min-w-0">
             <Button
               size="sm"
               className="min-w-0 flex-1 cursor-pointer rounded-r-none"
-              disabled={sending || scheduling || !draft.trim()}
+              disabled={sending || scheduling || !draft.trim() || promptTooLong}
               onClick={() => void sendPrompt()}
             >
               <Send />
@@ -490,7 +496,7 @@ export function HerdrAgentDetail({
                 <ChevronDown />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem disabled={!draft.trim()} onSelect={() => setScheduleMode(true)}>
+                <DropdownMenuItem disabled={!draft.trim() || promptTooLong} onSelect={() => setScheduleMode(true)}>
                   <CalendarClock />
                   Schedule send
                 </DropdownMenuItem>
@@ -513,7 +519,7 @@ export function HerdrAgentDetail({
                   size="sm"
                   className="min-w-0 cursor-pointer px-2"
                   onClick={() => void schedulePrompt()}
-                  disabled={sending || scheduling || !draft.trim() || scheduleAt === ''}
+                  disabled={sending || scheduling || !draft.trim() || promptTooLong || scheduleAt === ''}
                   aria-label="Schedule send"
                 >
                   <CalendarClock />

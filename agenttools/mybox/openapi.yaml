@@ -2186,6 +2186,8 @@ components:
           type: string
         text:
           type: string
+          minLength: 1
+          maxLength: 10000
     HerdrPromptResponse:
       type: object
       required: [ok]
@@ -2203,7 +2205,7 @@ components:
         text:
           type: string
           minLength: 1
-          maxLength: 4096
+          maxLength: 10000
         scheduled_at:
           type: string
           format: date-time

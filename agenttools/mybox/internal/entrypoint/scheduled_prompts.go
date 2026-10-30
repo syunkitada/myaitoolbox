@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/syunkitada/myaitoolbox/mybox/internal/domain"
 	"github.com/syunkitada/myaitoolbox/mybox/internal/entrypoint/api"
@@ -127,8 +128,8 @@ func (s *Server) CreateHerdrScheduledPrompt(w http.ResponseWriter, r *http.Reque
 		writeError(w, fmt.Errorf("%w: invalid agent target", domain.ErrInvalidArgument))
 		return
 	}
-	if text == "" || len(text) > 4096 {
-		writeError(w, fmt.Errorf("%w: prompt text must be between 1 and 4096 characters", domain.ErrInvalidArgument))
+	if text == "" || utf8.RuneCountInString(text) > herdrMaxPromptCharacters {
+		writeError(w, fmt.Errorf("%w: prompt text must be between 1 and %d characters", domain.ErrInvalidArgument, herdrMaxPromptCharacters))
 		return
 	}
 	if req.ScheduledAt.IsZero() || !req.ScheduledAt.After(time.Now()) {

@@ -28,6 +28,7 @@ import (
 const (
 	herdrTimeout                  = 6 * time.Second
 	herdrMaxReadLines             = 5000
+	herdrMaxPromptCharacters      = 10000
 	herdrAlternateScreenReadError = "alternate-screen history can only be captured by scrolling while idle"
 )
 
@@ -390,8 +391,8 @@ func (s *Server) PromptHerdrAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fmt.Errorf("invalid agent target"))
 		return
 	}
-	if req.Text == "" || len(req.Text) > 4096 {
-		writeError(w, fmt.Errorf("prompt text must be between 1 and 4096 characters"))
+	if req.Text == "" || utf8.RuneCountInString(req.Text) > herdrMaxPromptCharacters {
+		writeError(w, fmt.Errorf("prompt text must be between 1 and %d characters", herdrMaxPromptCharacters))
 		return
 	}
 	if _, err := s.runHerdr(r.Context(), "agent", "prompt", req.Target, req.Text); err != nil {
