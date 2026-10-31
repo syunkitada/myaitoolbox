@@ -7,7 +7,7 @@
 | パス | 役割 |
 | --- | --- |
 | [`use-agent-sidebar.ts`](./use-agent-sidebar.ts) / [`use-agent-sidebar.test.tsx`](./use-agent-sidebar.test.tsx) | プロジェクトごとのデスクトップ / モバイル別Agentサイドバー開閉状態、Herdr/Codexモード、選択Agent、選択中Codex会話ID、出力表示モード、Agentごとの入力途中PromptのlocalStorage保存・復元。 |
-| [`use-agent-favicon.ts`](./use-agent-favicon.ts) / [`use-agent-favicon.test.ts`](./use-agent-favicon.test.ts) | Herdr状態に応じたfavicon更新とテスト。 |
+| [`use-agent-favicon.ts`](./use-agent-favicon.ts) / [`use-agent-favicon.test.ts`](./use-agent-favicon.test.ts) | Herdr全体とプロジェクト内Codexセッションの代表状態を集約したfavicon更新、および集約ロジックのテスト。 |
 | [`use-escape-key.ts`](./use-escape-key.ts) / [`use-escape-key.test.tsx`](./use-escape-key.test.tsx) | Escapeキー購読とテスト。 |
 | [`use-herdr.ts`](./use-herdr.ts) | Herdr概要の定期取得と、working後の未確認完了状態をlocalStorageで表示保持。 |
 | [`use-mobile.ts`](./use-mobile.ts) | モバイル表示判定。 |

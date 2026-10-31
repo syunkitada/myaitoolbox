@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { HerdrOverview } from '../api/client'
+import { normalizeAgentStatus } from '../utils/agent-sidebar-status'
 
 // Hex values mirror AGENT_STATUS_CLASSES in components/herdr-status.tsx.
 const STATUS_COLORS: Record<string, string> = {
@@ -17,9 +18,11 @@ const STATUS_PRIORITY = ['blocked', 'done', 'working', 'idle', 'unknown']
 const FAVICON_SELECTOR = 'link[rel="icon"]'
 
 // aggregateAgentStatus reduces the overview's agent statuses to a single
-// favicon-worthy status; unknown covers "no data" and unrecognized values.
-export function aggregateAgentStatus(overview: HerdrOverview | null | undefined): string {
-  const statuses = (overview?.available ? overview.agents : []).map((a) => a.status || 'unknown')
+// favicon-worthy status; the representative Codex status participates in the
+// same priority order. Unknown covers "no data" and unrecognized values.
+export function aggregateAgentStatus(overview: HerdrOverview | null | undefined, codexStatus?: string | null): string {
+  const statuses = (overview?.available ? overview.agents : []).map((a) => normalizeAgentStatus(a.status || 'unknown'))
+  if (codexStatus) statuses.push(normalizeAgentStatus(codexStatus))
   for (const status of STATUS_PRIORITY) {
     if (statuses.includes(status)) return status
   }
@@ -57,10 +60,10 @@ function setFavicon(href: string) {
   link.setAttribute('href', href)
 }
 
-// useAgentFavicon mirrors the herdr agents' aggregated status in the browser
-// tab icon. It re-renders whenever useHerdrOverview polls fresh data.
-export function useAgentFavicon(overview: HerdrOverview | null | undefined) {
-  const status = aggregateAgentStatus(overview)
+// useAgentFavicon mirrors the aggregated Herdr and selected Codex status in
+// the browser tab icon.
+export function useAgentFavicon(overview: HerdrOverview | null | undefined, codexStatus?: string | null) {
+  const status = aggregateAgentStatus(overview, codexStatus)
   useEffect(() => {
     const href = renderStatusIcon(status)
     if (href) setFavicon(href)

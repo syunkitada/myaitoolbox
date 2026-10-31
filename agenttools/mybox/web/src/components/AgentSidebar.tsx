@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
-import { Bot, CheckCircle2, CircleX, FileText, Loader2, PanelRightOpen, RefreshCw, Sparkles, Square, X } from 'lucide-react'
+import { Bot, CheckCircle2, CircleX, FileText, Loader2, RefreshCw, Sparkles, Square, X } from 'lucide-react'
 import type { HerdrAgent, HerdrOverview } from '../api/client'
 import { api } from '../api/client'
 import { StatusBadge, StatusDot } from './herdr-status'
@@ -20,7 +20,7 @@ import {
 } from '../utils/herdr-file-agent'
 import { useDialogs } from './AppDialogs'
 import type { AgentOutputDisplayMode } from '../utils/agent-output-display'
-import { projectAgentsFor } from '../utils/agent-sidebar-status'
+import { projectAgentsFor, summarizeAgentStatuses } from '../utils/agent-sidebar-status'
 import { useFileExecution, type FileExecutionRun } from '../state/fileExecution'
 import { CodexChat, CodexThreadStatus } from './CodexChat'
 import type { AgentSidebarMode } from '../hooks/use-agent-sidebar'
@@ -53,6 +53,7 @@ interface AgentSidebarProps {
   onModeChange: (mode: AgentSidebarMode) => void
   codexThreadId?: string | null
   onCodexThreadIdChange?: (threadId: string | null) => void
+  onCodexSessionStatusChange?: (session: { project: string; status: string } | null) => void
   onWidthChange?: (width: number) => void
   openAgentPaneId: string | null
   drafts: Record<string, string>
@@ -97,6 +98,7 @@ export function AgentSidebar({
   onModeChange,
   codexThreadId = null,
   onCodexThreadIdChange,
+  onCodexSessionStatusChange,
   onWidthChange,
   openAgentPaneId,
   drafts,
@@ -156,12 +158,17 @@ export function AgentSidebar({
   })
 
   const handleCodexSessionStatusChange = useCallback((status: string | null) => {
-    setCodexSessionStatus(status ? { project, status } : null)
-  }, [project])
+    const session = status ? { project, status } : null
+    setCodexSessionStatus(session)
+    onCodexSessionStatusChange?.(session)
+  }, [onCodexSessionStatusChange, project])
 
   useEffect(() => {
-    if (mode !== 'codex') setCodexSessionStatus(null)
-  }, [mode])
+    if (mode !== 'codex') {
+      setCodexSessionStatus(null)
+      onCodexSessionStatusChange?.(null)
+    }
+  }, [mode, onCodexSessionStatusChange])
 
   useEffect(() => {
     if (!requestedCodexThreadId) return
@@ -191,6 +198,7 @@ export function AgentSidebar({
   const tabs = overview?.tabs ?? []
   const panes = overview?.panes ?? []
   const projectAgents = useMemo(() => projectAgentsFor(overview, project), [overview, project])
+  const collapsedStatus = summarizeAgentStatuses(projectAgents, mode === 'codex' ? currentCodexSessionStatus : null)
   const selectedAgent = projectAgents.find((agent) => agent.pane_id === openAgentPaneId)
   const linkedTasks = useMemo(() => {
     const result = new Map<string, LinkedTaskAgent>()
@@ -626,11 +634,11 @@ export function AgentSidebar({
             size="icon-xs"
             className="shrink-0 cursor-pointer"
             onClick={() => onOpenChange(true)}
-            aria-label="Open agent sidebar"
-            title="Open agent sidebar"
+            aria-label={`${collapsedStatus.label}; Open agent sidebar`}
+            title={`${collapsedStatus.label}; Open agent sidebar`}
             data-testid="agent-sidebar-collapsed-toggle"
           >
-            <PanelRightOpen />
+            <StatusDot status={collapsedStatus.status} className="size-3.5 ring-2 ring-background" />
           </Button>
           {mode === 'codex' ? (
             currentCodexSessionStatus && (

@@ -529,10 +529,20 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
     const latestTurn = turns[turns.length - 1]
     return string(latestTurn?.status) || selectedThread.status
   }, [active, pendingRequests.length, selectedThread, turns])
+  const representativeStatus = useMemo(() => {
+    const statuses = new Map(threads.map((thread) => [thread.thread_id, thread.status] as const))
+    if (selectedThread) statuses.set(selectedThread.thread_id, sessionStatus || selectedThread.status)
+    const values = [...statuses.values()]
+    for (const kind of ['blocked', 'done', 'working', 'idle', 'unknown'] as const) {
+      const representative = values.find((status) => codexThreadStatus(status).kind === kind)
+      if (representative) return representative
+    }
+    return null
+  }, [selectedThread, sessionStatus, threads])
 
   useEffect(() => {
-    onSessionStatusChange?.(sessionStatus)
-  }, [onSessionStatusChange, sessionStatus])
+    onSessionStatusChange?.(representativeStatus)
+  }, [onSessionStatusChange, representativeStatus])
 
   const loadThreads = useCallback(async (silent = false) => {
     const requestId = ++threadListRequestRef.current

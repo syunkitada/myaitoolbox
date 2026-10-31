@@ -23,7 +23,7 @@ import { StatusDot } from './components/herdr-status'
 import { DialogsProvider } from './components/AppDialogs'
 import { FileExecutionProvider } from './state/fileExecution'
 import { HerdrPage } from './pages/HerdrPage'
-import { Bot, Folder, GitBranch, Globe, PanelRightClose, PanelRightOpen, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
+import { Bot, Folder, GitBranch, Globe, PanelsTopLeft, SquareKanban, TerminalSquare } from 'lucide-react'
 
 import { dispatchNavAction } from './lib/nav-actions'
 import { cn } from '@/lib/utils'
@@ -65,8 +65,12 @@ export default function App() {
   const myboxFocusedPaneId = agentSidebar.open ? agentSidebarFocusedPaneId : null
   const herdr = useHerdrOverview(5000, myboxFocusedPaneId)
   const [pendingOpenAgentPaneId, setPendingOpenAgentPaneId] = useState<string | null>(null)
-  const agentStatus = summarizeAgentStatuses(projectAgentsFor(herdr.overview, project))
-  useAgentFavicon(herdr.overview)
+  const [codexFaviconSession, setCodexFaviconSession] = useState<{ project: string; status: string } | null>(null)
+  const codexFaviconStatus = agentSidebar.mode === 'codex' && codexFaviconSession?.project === project
+    ? codexFaviconSession.status
+    : null
+  const agentStatus = summarizeAgentStatuses(projectAgentsFor(herdr.overview, project), codexFaviconStatus)
+  useAgentFavicon(herdr.overview, codexFaviconStatus)
 
   const handleAgentSidebarFocusChange = useCallback((paneId: string | null) => {
     setAgentSidebarFocusedPaneId(paneId)
@@ -258,17 +262,11 @@ export default function App() {
                 size="sm"
                 className="cursor-pointer"
                 onClick={() => agentSidebar.setOpen(!agentSidebar.open)}
-                aria-label={isMobile
-                  ? `${agentStatus.label}; ${agentSidebar.open ? 'Close' : 'Open'} agent sidebar`
-                  : agentSidebar.open ? 'Close agent sidebar' : 'Open agent sidebar'}
-                title={isMobile
-                  ? `${agentStatus.label}; ${agentSidebar.open ? 'Close' : 'Open'} agent sidebar`
-                  : agentSidebar.open ? 'Close agent sidebar' : 'Open agent sidebar'}
+                aria-label={`${agentStatus.label}; ${agentSidebar.open ? 'Close' : 'Open'} agent sidebar`}
+                title={`${agentStatus.label}; ${agentSidebar.open ? 'Close' : 'Open'} agent sidebar`}
                 data-testid="agent-sidebar-toggle"
               >
-                {isMobile
-                  ? <StatusDot status={agentStatus.status} className="size-3.5 ring-2 ring-background" />
-                  : agentSidebar.open ? <PanelRightClose /> : <PanelRightOpen />}
+                <StatusDot status={agentStatus.status} className="size-3.5 ring-2 ring-background" />
               </Button>
             )}
           </div>
@@ -388,6 +386,7 @@ export default function App() {
           onModeChange={agentSidebar.setMode}
           codexThreadId={agentSidebar.codexThreadId}
           onCodexThreadIdChange={agentSidebar.setCodexThreadId}
+          onCodexSessionStatusChange={setCodexFaviconSession}
           onWidthChange={setAgentSidebarWidth}
           openAgentPaneId={agentSidebar.paneId}
           drafts={agentSidebar.drafts}

@@ -9,8 +9,8 @@
 | [`ui/README.md`](./ui/README.md) | Radixベースの共通UIプリミティブ。 |
 | [`GraphView/README.md`](./GraphView/README.md) | ファイルリンクグラフのSigma表示。 |
 | [`AppDialogs.tsx`](./AppDialogs.tsx) | アプリ全体で使うダイアログ群。 |
-| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通の右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信と、Codexモードへの切り替えを提供する。スクリプト実行状態も表示し、モバイルではSheetとして表示する。 |
-| [`CodexChat.tsx`](./CodexChat.tsx) / [`CodexChat.test.tsx`](./CodexChat.test.tsx) | Codex CLI / IDEの会話履歴と状態表示、新規会話、Markdown応答、行番号ジャンプ付きプロジェクト内ファイルリンク、実行詳細、差分、Steer、停止、承認と質問回答、`/compact`を含むコマンドパレットを表示する。メッセージ送信済みの会話はURLとプロジェクトごとのAgentサイドバー状態に保持し、リロード後やプロジェクト切替後のAgentパネル再表示時に復元する。未送信の空会話は接続中だけ保持し、会話一覧には表示しない。初回送信後に選択状態を保存する。会話表示中は左側に同じプロジェクトのセッションをステータスアイコンだけで並べ、タイトルと状態はツールチップで示す。選択・更新できる。入力フォームのコマンドパレット・停止・送信ボタンは右側に縦に並べる。選択中会話の状態ドットを折りたたみサイドバーに表示する。スマートフォンでは会話本文の横はみ出しを抑え、入力欄のフォーカス時に自動拡大されないようにする。 |
+| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通の右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信と、Codexモードへの切り替えを提供する。スクリプト実行状態も表示し、モバイルではSheetとして表示する。開閉ボタンにはHerdrとCodexの代表状態を示すステータスアイコンを表示する。 |
+| [`CodexChat.tsx`](./CodexChat.tsx) / [`CodexChat.test.tsx`](./CodexChat.test.tsx) | Codex CLI / IDEの会話履歴と状態表示、新規会話、Markdown応答、行番号ジャンプ付きプロジェクト内ファイルリンク、実行詳細、差分、Steer、停止、承認と質問回答、`/compact`を含むコマンドパレットを表示する。メッセージ送信済みの会話はURLとプロジェクトごとのAgentサイドバー状態に保持し、リロード後やプロジェクト切替後のAgentパネル再表示時に復元する。未送信の空会話は接続中だけ保持し、会話一覧には表示しない。初回送信後に選択状態を保存する。会話表示中は左側に同じプロジェクトのセッションをステータスアイコンだけで並べ、タイトルと状態はツールチップで示す。選択・更新できる。セッション一覧の代表状態を開閉ボタンと折りたたみサイドバーに表示する。入力フォームのコマンドパレット・停止・送信ボタンは右側に縦に並べる。スマートフォンでは会話本文の横はみ出しを抑え、入力欄のフォーカス時に自動拡大されないようにする。 |
 | [`AgentLaunchDialog.tsx`](./AgentLaunchDialog.tsx) | Agent kindとHerdr Tabを指定して一般Agentを起動するモーダル。Tabは既存候補を表示しつつ自由入力できる。 |
 | [`CommitDiffView.tsx`](./CommitDiffView.tsx) / [`CommitDiffView.test.tsx`](./CommitDiffView.test.tsx) | コミット差分表示とそのテスト。 |
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
