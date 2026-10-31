@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Routes, Route, useLocation, useNavigate, Navigate, NavLink } from 'react-router-dom'
 import { api, Meta, ProjectGitStatus } from './api/client'
-import { encodePath, getProject, projectUrl, rememberCurrentTab, rememberedFilesUrl } from './utils/routes'
+import { encodePath, getProject, projectUrl, projectUrlFor, rememberCurrentTab, rememberedFilesUrl, setProject } from './utils/routes'
 import { AppSidebar } from './components/Sidebar'
 import { useHerdrOverview } from './hooks/use-herdr'
 import { useAgentFavicon } from './hooks/use-agent-favicon'
@@ -74,14 +74,26 @@ export default function App() {
 
   const handleOpenAgentPane = useCallback((paneId: string) => {
     setPendingOpenAgentPaneId(paneId)
+    agentSidebar.setMode('herdr')
     agentSidebar.setPaneId(paneId)
     agentSidebar.setOpen(true)
-  }, [agentSidebar.setOpen, agentSidebar.setPaneId])
+  }, [agentSidebar.setMode, agentSidebar.setOpen, agentSidebar.setPaneId])
+
+  const handleOpenCodexSession = useCallback((sessionProject: string, threadId: string) => {
+    let targetUrl = ''
+    setProject(sessionProject, (url) => { targetUrl = url })
+    if (!targetUrl) targetUrl = projectUrlFor(sessionProject, '/dashboard')
+    const [path, search = ''] = targetUrl.split('?')
+    const params = new URLSearchParams(search)
+    params.set('codex_thread', threadId)
+    navigate(`${path}?${params.toString()}`)
+  }, [navigate])
 
   const handleAgentPaneChange = useCallback((paneId: string | null) => {
     if (!paneId) setPendingOpenAgentPaneId(null)
+    if (paneId) agentSidebar.setMode('herdr')
     agentSidebar.setPaneId(paneId)
-  }, [agentSidebar.setPaneId])
+  }, [agentSidebar.setMode, agentSidebar.setPaneId])
 
   const handleAgentDraftChange = useCallback((paneId: string, draft: string) => {
     agentSidebar.setDraft(paneId, draft)
@@ -202,6 +214,7 @@ export default function App() {
         gitStatus={gitStatus}
         myboxFocusedPaneId={myboxFocusedPaneId}
         agentSidebarOpen={agentSidebar.open}
+        onOpenCodexSession={handleOpenCodexSession}
       />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
@@ -371,6 +384,10 @@ export default function App() {
           onOpenChange={agentSidebar.setOpen}
           displayMode={agentSidebar.displayMode}
           onDisplayModeChange={agentSidebar.setDisplayMode}
+          mode={agentSidebar.mode}
+          onModeChange={agentSidebar.setMode}
+          codexThreadId={agentSidebar.codexThreadId}
+          onCodexThreadIdChange={agentSidebar.setCodexThreadId}
           onWidthChange={setAgentSidebarWidth}
           openAgentPaneId={agentSidebar.paneId}
           drafts={agentSidebar.drafts}
@@ -380,7 +397,7 @@ export default function App() {
           onOpenAgentPane={handleOpenAgentPane}
           refresh={herdr.refresh}
           onFocusChange={handleAgentSidebarFocusChange}
-          onFilePathClick={(filePath) => navigate(projectUrl(`/dashboard/files/${encodePath(filePath)}`))}
+          onFilePathClick={(filePath, line) => navigate(`${projectUrl(`/dashboard/files/${encodePath(filePath)}`)}${line ? `?line=${line}` : ''}`)}
         />
       )}
         </SidebarProvider>

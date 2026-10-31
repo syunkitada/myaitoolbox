@@ -1,6 +1,6 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, RefObject, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { useBlocker, useParams } from 'react-router-dom'
+import { useBlocker, useLocation, useParams } from 'react-router-dom'
 import { ApiError, Favorite, FileEntry, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileTabs } from '../components/FileTabs'
@@ -1367,6 +1367,7 @@ interface PaneProps {
   searchHit?: FileSearchHit | null
   scrollRef?: RefObject<HTMLDivElement | null>
   paneLabel?: 'Main' | 'Reference'
+  focusLine?: number
   onDirtyChange?: (dirty: boolean) => void
   showExplorerToggle?: boolean
 }
@@ -1403,6 +1404,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   searchHit,
   scrollRef,
   paneLabel = 'Main',
+  focusLine,
   onDirtyChange,
   showExplorerToggle = true,
 }, ref) {
@@ -1904,6 +1906,8 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     ? content.slice(0, Math.max(0, content.length - fmSplit.body.length)).split(/\r?\n/).length - 1
     : 0
   const activeSearchHit = searchHit?.path === path ? searchHit : null
+  const navigationFocusLine = paneLabel === 'Main' ? focusLine : undefined
+  const focusedLine = navigationFocusLine ?? activeSearchHit?.line
   const viewRelativeTo = isDir ? readmePath ?? `${path}/` : path
   const viewFileName = isDir && readmePath ? baseOf(readmePath) : null
   const fileReviewPath = isDir ? readmePath : path
@@ -1927,7 +1931,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       onTaskToggle={!isDir || Boolean(readmePath) ? toggleTask : undefined}
       copyDialogOpen={copyDialogOpen}
       onCopyDialogClose={() => setCopyDialogOpen(false)}
-      focusLine={activeSearchHit?.line}
+      focusLine={focusedLine}
       searchQuery={activeSearchHit?.query}
       sourceLineOffset={viewSourceLineOffset}
       onOpenFile={onOpen}
@@ -1983,7 +1987,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       text={viewText}
       language={languageFromPath(viewFileName ?? path)}
       className="file-raw rounded-md bg-muted p-3"
-      focusLine={activeSearchHit?.line}
+      focusLine={focusedLine}
       searchQuery={activeSearchHit?.query}
       sourceLineOffset={viewSourceLineOffset}
     />
@@ -2754,8 +2758,11 @@ export function BrowserPage({
   onRevealPathHandled,
 }: BrowserPageProps) {
   const { confirm3 } = useDialogs()
+  const { search } = useLocation()
   const { project: routeProject } = useParams<{ project?: string }>()
   const project = routeProject ? decodeURIComponent(routeProject) : getProject()
+  const requestedLine = Number(new URLSearchParams(search).get('line'))
+  const focusLine = Number.isSafeInteger(requestedLine) && requestedLine > 0 ? requestedLine : undefined
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     () => (project ? loadExplorerExpandedPaths(project) : null) ?? new Set(),
   )
@@ -3489,6 +3496,7 @@ export function BrowserPage({
         refreshHerdr={refreshHerdr}
         onOpenGit={setOpenGitDir}
         searchHit={slot === 'main' ? searchHit : null}
+        focusLine={slot === 'main' ? focusLine : undefined}
         scrollRef={scrollRef}
         paneLabel={slot === 'main' ? 'Main' : 'Reference'}
         onDirtyChange={slot === 'main' ? setMainDirty : setReferenceDirty}

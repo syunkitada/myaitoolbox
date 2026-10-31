@@ -377,6 +377,28 @@ pre[class*='language-'] {
 }
 
 @media (max-width: 767px) {
+  /* Keep narrow Codex conversations within the mobile sheet and avoid iOS
+     Safari's automatic zoom when a form control receives focus. */
+  .codex-chat-conversation input,
+  .codex-chat-conversation textarea,
+  .codex-chat-conversation select {
+    font-size: 16px !important;
+  }
+
+  .codex-chat-conversation .markdown-body {
+    overflow-wrap: anywhere;
+  }
+
+  .codex-chat-conversation .markdown-body table {
+    table-layout: fixed;
+  }
+
+  .codex-chat-conversation .markdown-body pre {
+    overflow-x: hidden;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
   /* Monaco focuses this hidden textarea while editing. Keep its font size at
      iOS Safari's no-auto-zoom threshold without changing the editor text size. */
   .monaco-editor .inputarea,

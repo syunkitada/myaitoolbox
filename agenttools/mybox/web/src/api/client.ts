@@ -434,6 +434,45 @@ export interface CodexDiagnostics {
   errors: CodexDiagnosticError[]
 }
 
+export interface CodexThread {
+  thread_id: string
+  title: string
+  preview: string
+  created_at: number
+  updated_at: number
+  status: string
+  model: string
+}
+
+export interface CodexThreadList {
+  threads: CodexThread[]
+  truncated: boolean
+}
+
+export interface CodexActiveSession {
+  project: string
+  thread: CodexThread
+}
+
+export interface CodexActiveSessionList {
+  sessions: CodexActiveSession[]
+  truncated: boolean
+}
+
+export interface CodexThreadHistory {
+  thread: CodexThread
+  turns: Array<Record<string, unknown>>
+  next_cursor?: string | null
+}
+
+export interface CodexStreamEvent {
+  type: 'ready' | 'notification' | 'server_request' | 'error' | 'writer_conflict' | 'response' | 'empty_thread_unavailable' | 'prompt_started'
+  method?: string
+  params?: Record<string, unknown>
+  request_id?: string
+  error?: string
+}
+
 export type CodexDiagnosticContentKind = 'config' | 'instruction' | 'skill'
 
 export interface CodexDiagnosticContent {
@@ -716,6 +755,23 @@ export const api = {
 
   getCodexDiagnostics: (project?: string) =>
     request<CodexDiagnostics>('GET', '/api/codex/diagnostics', undefined, project),
+
+  listCodexThreads: (project?: string) =>
+    request<CodexThreadList>('GET', '/api/codex/threads', undefined, project),
+
+  listActiveCodexSessions: (since?: number) =>
+    request<CodexActiveSessionList>('GET', '/api/codex/active-sessions' + qs({ since })),
+
+  createCodexThread: (project?: string) =>
+    request<CodexThread>('POST', '/api/codex/threads', {}, project),
+
+  getCodexThreadHistory: (threadId: string, options: { cursor?: string; limit?: number } = {}, project?: string) =>
+    request<CodexThreadHistory>(
+      'GET',
+      `/api/codex/threads/${encodeURIComponent(threadId)}` + qs(options),
+      undefined,
+      project,
+    ),
 
   getCodexDiagnosticContent: (kind: CodexDiagnosticContentKind, path: string, project?: string) =>
     request<CodexDiagnosticContent>(

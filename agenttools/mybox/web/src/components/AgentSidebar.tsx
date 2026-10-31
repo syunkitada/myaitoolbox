@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
-import { Bot, CheckCircle2, CircleX, FileText, Loader2, PanelRightOpen, RefreshCw, Square, X } from 'lucide-react'
+import { Bot, CheckCircle2, CircleX, FileText, Loader2, PanelRightOpen, RefreshCw, Sparkles, Square, X } from 'lucide-react'
 import type { HerdrAgent, HerdrOverview } from '../api/client'
 import { api } from '../api/client'
 import { StatusBadge, StatusDot } from './herdr-status'
@@ -22,6 +22,8 @@ import { useDialogs } from './AppDialogs'
 import type { AgentOutputDisplayMode } from '../utils/agent-output-display'
 import { projectAgentsFor } from '../utils/agent-sidebar-status'
 import { useFileExecution, type FileExecutionRun } from '../state/fileExecution'
+import { CodexChat, CodexThreadStatus } from './CodexChat'
+import type { AgentSidebarMode } from '../hooks/use-agent-sidebar'
 
 export const AGENT_SIDEBAR_WIDTH_STORAGE_KEY = 'mybox_agent_sidebar_width'
 export const DEFAULT_AGENT_SIDEBAR_WIDTH = 400
@@ -47,6 +49,10 @@ interface AgentSidebarProps {
   onOpenChange: (open: boolean) => void
   displayMode: AgentOutputDisplayMode
   onDisplayModeChange: (mode: AgentOutputDisplayMode) => void
+  mode: AgentSidebarMode
+  onModeChange: (mode: AgentSidebarMode) => void
+  codexThreadId?: string | null
+  onCodexThreadIdChange?: (threadId: string | null) => void
   onWidthChange?: (width: number) => void
   openAgentPaneId: string | null
   drafts: Record<string, string>
@@ -56,7 +62,7 @@ interface AgentSidebarProps {
   onOpenAgentPane?: (paneId: string) => void
   refresh: () => Promise<void>
   onFocusChange?: (paneId: string | null) => void
-  onFilePathClick?: (path: string) => void
+  onFilePathClick?: (path: string, line?: number) => void
 }
 
 function runError(error: unknown): string {
@@ -87,6 +93,10 @@ export function AgentSidebar({
   onOpenChange,
   displayMode,
   onDisplayModeChange,
+  mode,
+  onModeChange,
+  codexThreadId = null,
+  onCodexThreadIdChange,
   onWidthChange,
   openAgentPaneId,
   drafts,
@@ -100,7 +110,7 @@ export function AgentSidebar({
 }: AgentSidebarProps) {
   const isMobile = useIsMobile()
   const { pathname } = useLocation()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { prompt } = useDialogs()
   const fileExecution = useFileExecution()
   const [autoReload, setAutoReload] = useState(true)
@@ -115,9 +125,23 @@ export function AgentSidebar({
   const [loadingAgentKinds, setLoadingAgentKinds] = useState(false)
   const [startingAgent, setStartingAgent] = useState(false)
   const [agentLaunchError, setAgentLaunchError] = useState<string | null>(null)
+  const [codexSessionStatus, setCodexSessionStatus] = useState<{ project: string; status: string } | null>(null)
   const requestedAgent = pathname.endsWith('/herdr') ? searchParams.get('agent') : null
+  const requestedCodexThreadId = searchParams.get('codex_thread')
+  const codexThreadToRestore = requestedCodexThreadId ?? codexThreadId
   const handledRequestRef = useRef<string | null>(null)
   const focusedPaneRef = useRef<string | null>(null)
+  const handleCodexThreadSelected = useCallback((threadId: string | null) => {
+    onCodexThreadIdChange?.(threadId)
+    setSearchParams((current) => {
+      const currentThreadId = current.get('codex_thread')
+      if (currentThreadId === threadId || (!threadId && currentThreadId === null)) return current
+      const next = new URLSearchParams(current)
+      if (threadId) next.set('codex_thread', threadId)
+      else next.delete('codex_thread')
+      return next
+    }, { replace: true })
+  }, [onCodexThreadIdChange, setSearchParams])
   const displayWidth = useCallback(
     (value: number) => agentSidebarDisplayedWidth(value, viewportWidth),
     [viewportWidth],
@@ -131,6 +155,20 @@ export function AgentSidebar({
     displayWidth,
   })
 
+  const handleCodexSessionStatusChange = useCallback((status: string | null) => {
+    setCodexSessionStatus(status ? { project, status } : null)
+  }, [project])
+
+  useEffect(() => {
+    if (mode !== 'codex') setCodexSessionStatus(null)
+  }, [mode])
+
+  useEffect(() => {
+    if (!requestedCodexThreadId) return
+    onModeChange('codex')
+    onOpenChange(true)
+  }, [onModeChange, onOpenChange, requestedCodexThreadId])
+
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth)
     window.addEventListener('resize', handleResize)
@@ -138,6 +176,7 @@ export function AgentSidebar({
   }, [])
 
   const displayedWidth = displayWidth(width.width)
+  const currentCodexSessionStatus = codexSessionStatus?.project === project ? codexSessionStatus.status : null
 
   const refreshAgents = useCallback(async () => {
     setReloadToken((current) => current + 1)
@@ -253,9 +292,10 @@ export function AgentSidebar({
     if (handledRequestRef.current === requestKey) return
     if (!projectAgents.some((agent) => agent.pane_id === requestedAgent)) return
     handledRequestRef.current = requestKey
+    onModeChange('herdr')
     onOpenAgentChange(requestedAgent)
     onOpenChange(true)
-  }, [onOpenAgentChange, onOpenChange, pathname, projectAgents, requestedAgent])
+  }, [onModeChange, onOpenAgentChange, onOpenChange, pathname, projectAgents, requestedAgent])
 
   const selectedPaneId = selectedAgent?.pane_id ?? null
   useEffect(() => {
@@ -327,6 +367,55 @@ export function AgentSidebar({
     }
   }, [onOpenAgentChange, openAgentPaneId, refresh, reportError, stoppingPaneId])
 
+  const executionRuns = fileExecution.runs.length > 0 && (
+    <section className="mb-3" aria-labelledby="script-executions-heading" data-testid="agent-sidebar-executions">
+      <h3 id="script-executions-heading" className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Script executions
+      </h3>
+      <div className="flex min-w-0 flex-col gap-2">
+        {fileExecution.runs.map((run) => (
+          <div key={run.id} className="min-w-0 rounded-lg border bg-background p-2.5" data-testid={`agent-sidebar-execution-${run.id}`}>
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                onClick={() => fileExecution.open(run.id)}
+                aria-label={`Open execution ${run.path} (${executionStatusLabel(run)})`}
+              >
+                <ExecutionStatusIcon run={run} />
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">{run.path}</span>
+                <span className="shrink-0 text-[11px] text-muted-foreground">{executionStatusLabel(run)}</span>
+              </button>
+              {run.status === 'running' ? (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="h-6 shrink-0 cursor-pointer px-1.5 text-[11px]"
+                  onClick={() => fileExecution.stop(run.id)}
+                  aria-label={`Stop execution ${run.path}`}
+                >
+                  <Square className="mr-1 size-3" />
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="shrink-0 cursor-pointer"
+                  onClick={() => fileExecution.dismiss(run.id)}
+                  aria-label={`Dismiss execution ${run.path}`}
+                  title="Dismiss execution"
+                >
+                  <X />
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+
   if (!project) return null
 
   const content = (
@@ -334,43 +423,62 @@ export function AgentSidebar({
       <div className="shrink-0 border-b px-3 py-2">
         <div className="flex items-center gap-2">
           <Bot className="size-4 shrink-0" />
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Agents</h2>
-          <Button
-            size="xs"
-            className="cursor-pointer px-1.5 text-[10px]"
-            onClick={() => setAgentLaunchOpen(true)}
-            aria-label="Start agent"
-            title="Start agent"
-          >
-            <Bot />
-            Start agent
-          </Button>
-          <Button
-            variant={autoReload ? 'secondary' : 'ghost'}
-            size="xs"
-            className="cursor-pointer px-1.5 text-[10px]"
-            onClick={() => setAutoReload((current) => !current)}
-            aria-pressed={autoReload}
-            title="Toggle auto reload of the selected agent output"
-          >
-            <RefreshCw className={cn(autoReload && loading && 'animate-spin')} />
-            Auto: {autoReload ? 'ON' : 'OFF'}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="cursor-pointer"
-            onClick={() => void refreshAgents()}
-            aria-label="Refresh agents"
-            title="Refresh agents and selected output"
-          >
-            <RefreshCw className={cn(loading && 'animate-spin')} />
-          </Button>
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Agent</h2>
+          <div className="flex shrink-0 items-center rounded-md border p-0.5" role="group" aria-label="Agent mode">
+            <Button size="xs" variant={mode === 'herdr' ? 'secondary' : 'ghost'} className="h-6 cursor-pointer px-2 text-[10px]" aria-pressed={mode === 'herdr'} onClick={() => onModeChange('herdr')}>Herdr</Button>
+            <Button size="xs" variant={mode === 'codex' ? 'secondary' : 'ghost'} className="h-6 cursor-pointer px-2 text-[10px]" aria-pressed={mode === 'codex'} onClick={() => onModeChange('codex')}><Sparkles className="mr-1 size-3" />Codex</Button>
+          </div>
         </div>
+        {mode === 'herdr' && <div className="mt-2 flex items-center justify-end gap-1.5">
+            <Button
+              size="xs"
+              className="cursor-pointer px-1.5 text-[10px]"
+              onClick={() => setAgentLaunchOpen(true)}
+              aria-label="Start agent"
+              title="Start agent"
+            >
+              <Bot />
+              Start agent
+            </Button>
+            <Button
+              variant={autoReload ? 'secondary' : 'ghost'}
+              size="xs"
+              className="cursor-pointer px-1.5 text-[10px]"
+              onClick={() => setAutoReload((current) => !current)}
+              aria-pressed={autoReload}
+              title="Toggle auto reload of the selected agent output"
+            >
+              <RefreshCw className={cn(autoReload && loading && 'animate-spin')} />
+              Auto: {autoReload ? 'ON' : 'OFF'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="cursor-pointer"
+              onClick={() => void refreshAgents()}
+              aria-label="Refresh agents"
+              title="Refresh agents and selected output"
+            >
+              <RefreshCw className={cn(loading && 'animate-spin')} />
+            </Button>
+        </div>}
         <p className="mt-1 truncate text-[11px] text-muted-foreground" title={project}>{project}</p>
       </div>
 
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3">
+      {mode === 'codex' ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <CodexChat
+            key={project}
+            project={project}
+            requestedThreadId={codexThreadToRestore}
+            onThreadSelected={handleCodexThreadSelected}
+            onFilePathClick={onFilePathClick}
+            onSessionStatusChange={handleCodexSessionStatusChange}
+          />
+          {executionRuns && <div className="max-h-48 shrink-0 overflow-y-auto border-t px-3 py-2">{executionRuns}</div>}
+        </div>
+      ) : <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3">
+        {executionRuns}
         {error && <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">{error}</div>}
         {operationError && <div role="alert" className="mb-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">{operationError}</div>}
         {overview && !overview.available && (
@@ -383,54 +491,6 @@ export function AgentSidebar({
           <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
             No herdr agents running for project "{project}".
           </p>
-        )}
-        {fileExecution.runs.length > 0 && (
-          <section className="mb-3" aria-labelledby="script-executions-heading" data-testid="agent-sidebar-executions">
-            <h3 id="script-executions-heading" className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Script executions
-            </h3>
-            <div className="flex min-w-0 flex-col gap-2">
-              {fileExecution.runs.map((run) => (
-                <div key={run.id} className="min-w-0 rounded-lg border bg-background p-2.5" data-testid={`agent-sidebar-execution-${run.id}`}>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
-                      onClick={() => fileExecution.open(run.id)}
-                      aria-label={`Open execution ${run.path} (${executionStatusLabel(run)})`}
-                    >
-                      <ExecutionStatusIcon run={run} />
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs">{run.path}</span>
-                      <span className="shrink-0 text-[11px] text-muted-foreground">{executionStatusLabel(run)}</span>
-                    </button>
-                    {run.status === 'running' ? (
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        className="h-6 shrink-0 cursor-pointer px-1.5 text-[11px]"
-                        onClick={() => fileExecution.stop(run.id)}
-                        aria-label={`Stop execution ${run.path}`}
-                      >
-                        <Square className="mr-1 size-3" />
-                        Stop
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        className="shrink-0 cursor-pointer"
-                        onClick={() => fileExecution.dismiss(run.id)}
-                        aria-label={`Dismiss execution ${run.path}`}
-                        title="Dismiss execution"
-                      >
-                        <X />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
         )}
         {overview?.available && projectAgents.length > 0 && (
           <div className="flex min-w-0 flex-col gap-2">
@@ -512,7 +572,7 @@ export function AgentSidebar({
             })}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 
@@ -572,43 +632,53 @@ export function AgentSidebar({
           >
             <PanelRightOpen />
           </Button>
-          <div className="flex min-h-0 flex-col items-center gap-3 overflow-y-auto" aria-label="Agent statuses">
-            {projectAgents.map((agent) => (
-              <button
-                key={agent.pane_id}
-                type="button"
-                className={cn(
-                  'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                  openAgentPaneId === agent.pane_id && 'bg-accent ring-2 ring-primary/30',
-                )}
-                onClick={() => {
-                  onOpenAgentChange(agent.pane_id)
-                  onOpenChange(true)
-                }}
-                aria-label={`Open ${agent.name} (${agent.status})`}
-                title={`${agent.name}: ${agent.status}`}
-                data-testid={`agent-sidebar-status-${agent.pane_id}`}
-              >
-                <StatusDot status={agent.status} className="size-3" />
-              </button>
-            ))}
-          </div>
-          {fileExecution.runs.length > 0 && (
-            <div className="flex min-h-0 flex-col items-center gap-3 overflow-y-auto" aria-label="Script executions">
-              {fileExecution.runs.map((run) => (
-                <button
-                  key={run.id}
-                  type="button"
-                  className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  onClick={() => fileExecution.open(run.id)}
-                  aria-label={`Open execution ${run.path} (${executionStatusLabel(run)})`}
-                  title={`${run.path}: ${executionStatusLabel(run)}`}
-                  data-testid={`agent-sidebar-execution-status-${run.id}`}
-                >
-                  <ExecutionStatusIcon run={run} />
-                </button>
-              ))}
-            </div>
+          {mode === 'codex' ? (
+            currentCodexSessionStatus && (
+              <div data-testid="agent-sidebar-codex-session-status" aria-label="Codex session status">
+                <CodexThreadStatus status={currentCodexSessionStatus} compact />
+              </div>
+            )
+          ) : (
+            <>
+              <div className="flex min-h-0 flex-col items-center gap-3 overflow-y-auto" aria-label="Agent statuses">
+                {projectAgents.map((agent) => (
+                  <button
+                    key={agent.pane_id}
+                    type="button"
+                    className={cn(
+                      'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                      openAgentPaneId === agent.pane_id && 'bg-accent ring-2 ring-primary/30',
+                    )}
+                    onClick={() => {
+                      onOpenAgentChange(agent.pane_id)
+                      onOpenChange(true)
+                    }}
+                    aria-label={`Open ${agent.name} (${agent.status})`}
+                    title={`${agent.name}: ${agent.status}`}
+                    data-testid={`agent-sidebar-status-${agent.pane_id}`}
+                  >
+                    <StatusDot status={agent.status} className="size-3" />
+                  </button>
+                ))}
+              </div>
+              {fileExecution.runs.length > 0 && (
+                <div className="flex min-h-0 flex-col items-center gap-3 overflow-y-auto" aria-label="Script executions">
+                  {fileExecution.runs.map((run) => (
+                    <button
+                      key={run.id}
+                      type="button"
+                      className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      onClick={() => fileExecution.open(run.id)}
+                      aria-label={`Open execution ${run.path} (${executionStatusLabel(run)})`}
+                      title={`${run.path}: ${executionStatusLabel(run)}`}
+                      data-testid={`agent-sidebar-execution-status-${run.id}`}
+                    >
+                      <ExecutionStatusIcon run={run} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </aside>

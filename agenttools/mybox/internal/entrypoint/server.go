@@ -50,6 +50,7 @@ type Server struct {
 	terminals         *terminalHub
 	fileExecutions    *fileExecutionHub
 	browser           *browserSessionHub
+	codexAppServer    *codexAppServerManager
 	scheduled         *promptScheduler
 }
 
@@ -81,6 +82,7 @@ func newServer(cfg *domain.Config, defaultProject string, basePath string, audit
 		terminals:      newTerminalHub(),
 		fileExecutions: newFileExecutionHub(),
 		browser:        newBrowserSessionHubWithAudit(browserSessionPolicyFromEnvironment(), auditStore),
+		codexAppServer: newCodexAppServerManager(),
 	}
 	s.scheduled = newPromptScheduler(config.NewScheduledPromptStore(), s.runScheduledPrompt)
 	return s
@@ -94,8 +96,11 @@ func (s *Server) StartPromptScheduler(ctx context.Context) {
 	}
 }
 
-// Shutdown stops server-owned file executions before the HTTP server exits.
+// Shutdown stops the app-server and other server-owned workers before HTTP exits.
 func (s *Server) Shutdown() {
+	if s.codexAppServer != nil {
+		s.codexAppServer.Close()
+	}
 	if s.browser != nil {
 		s.browser.stop()
 	}
@@ -202,6 +207,7 @@ func (s *Server) Handler() http.Handler {
 		e.GET("/api/stats", echo.WrapHandler(http.HandlerFunc(s.GetStats)))
 		s.registerGitRoutes(e, "")
 		s.registerHerdrRoutes(e, "")
+		s.registerCodexAppServerRoutes(e, "")
 		e.Any("/api/*", echo.WrapHandler(apiHandler))
 		e.Any("/api", echo.WrapHandler(apiHandler))
 		e.GET("/*", s.handleIndex)
@@ -226,6 +232,7 @@ func (s *Server) Handler() http.Handler {
 	g.GET("/api/stats", echo.WrapHandler(http.HandlerFunc(s.GetStats)))
 	s.registerGitRoutes(e, s.basePath)
 	s.registerHerdrRoutes(e, s.basePath)
+	s.registerCodexAppServerRoutes(e, s.basePath)
 	g.Any("/api/*", echo.WrapHandler(apiHandler))
 	g.Any("/api", echo.WrapHandler(apiHandler))
 	g.GET("", s.handleIndex)

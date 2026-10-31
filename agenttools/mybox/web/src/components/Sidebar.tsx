@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Activity, Bot, Box, Boxes, ChevronDown, Cpu, GitBranch, HardDrive, MemoryStick, SquareKanban } from 'lucide-react'
-import { api, Meta, Stats } from '../api/client'
+import { Activity, Bot, Box, Boxes, Check, ChevronDown, Cpu, GitBranch, HardDrive, MemoryStick, MessageSquareText, SquareKanban } from 'lucide-react'
+import { api, CodexActiveSession, Meta, Stats } from '../api/client'
 import { clearProject, dirName, encodePath, getProject, projectUrlFor, setProject } from '../utils/routes'
 import type { HerdrAgent, HerdrOverview, ProjectGitStatus } from '../api/client'
 import { hasTaskFile, taskDirectoryForFilePath, taskFilePathForAgent } from '../utils/herdr-file-agent'
@@ -11,6 +11,7 @@ import {
   SidebarHeader,
   SidebarContent,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
@@ -19,6 +20,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import { projectAgentsFor } from '../utils/agent-sidebar-status'
+import { CodexThreadStatus } from './CodexChat'
 
 interface SidebarProps {
   meta: Meta | null
@@ -27,9 +29,199 @@ interface SidebarProps {
   gitStatus: Record<string, ProjectGitStatus>
   myboxFocusedPaneId?: string | null
   agentSidebarOpen?: boolean
+  onOpenCodexSession?: (project: string, threadId: string) => void
 }
 
 const STATS_REFRESH_INTERVAL_MS = 5000
+const CODEX_SESSIONS_REFRESH_INTERVAL_MS = 15000
+const CODEX_SIDEBAR_STATE_KEY = 'mybox.codex.sidebar-sessions.v1'
+
+interface CodexSidebarState {
+  active: CodexActiveSession[]
+  pending: CodexActiveSession[]
+  acknowledged: CodexActiveSession[]
+  lastPolledAt: number
+}
+
+interface CodexSidebarSession extends CodexActiveSession {
+  unconfirmed: boolean
+}
+
+function codexSessionKey(session: CodexActiveSession): string {
+  return `${session.project}\0${session.thread.thread_id}`
+}
+
+function parseCodexSidebarSessions(value: unknown): CodexActiveSession[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((entry): entry is CodexActiveSession => {
+    if (entry === null || typeof entry !== 'object') return false
+    const session = entry as Partial<CodexActiveSession>
+    const thread = session.thread as Partial<CodexActiveSession['thread']> | null | undefined
+    return typeof session.project === 'string'
+      && thread !== null
+      && typeof thread === 'object'
+      && typeof thread.thread_id === 'string'
+      && typeof thread.status === 'string'
+      && typeof thread.updated_at === 'number'
+  })
+}
+
+function loadCodexSidebarState(): CodexSidebarState {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(CODEX_SIDEBAR_STATE_KEY) ?? 'null') as Record<string, unknown> | null
+    return {
+      active: parseCodexSidebarSessions(value?.active),
+      pending: parseCodexSidebarSessions(value?.pending),
+      acknowledged: parseCodexSidebarSessions(value?.acknowledged),
+      lastPolledAt: typeof value?.lastPolledAt === 'number' ? value.lastPolledAt : 0,
+    }
+  } catch {
+    return { active: [], pending: [], acknowledged: [], lastPolledAt: 0 }
+  }
+}
+
+function persistCodexSidebarState(state: CodexSidebarState): void {
+  try {
+    window.localStorage.setItem(CODEX_SIDEBAR_STATE_KEY, JSON.stringify(state))
+  } catch {
+    // Sidebar statuses still work for this page when browser storage is unavailable.
+  }
+}
+
+function isActiveCodexSession(status: string): boolean {
+  const normalized = status.trim().toLowerCase().replace(/[\s_-]/g, '')
+  return [
+    'active',
+    'inprogress',
+    'running',
+    'blocked',
+    'waitingonapproval',
+    'needsapproval',
+    'approvalrequired',
+  ].includes(normalized)
+}
+
+function useActiveCodexSessions(projects: string[]): {
+  sessions: CodexSidebarSession[]
+  acknowledge: (project: string, threadId: string) => void
+} {
+  const [sidebarState, setSidebarState] = useState<CodexSidebarState>(loadCodexSidebarState)
+  const sidebarStateRef = useRef(sidebarState)
+  const projectKey = projects.join('\0')
+
+  const updateSidebarState = useCallback((update: (current: CodexSidebarState) => CodexSidebarState) => {
+    const next = update(sidebarStateRef.current)
+    sidebarStateRef.current = next
+    setSidebarState(next)
+    persistCodexSidebarState(next)
+  }, [])
+
+  const acknowledge = useCallback((project: string, threadId: string) => {
+    const key = `${project}\0${threadId}`
+    updateSidebarState((current) => {
+      const confirmed = current.pending.find((session) => codexSessionKey(session) === key)
+      if (!confirmed) return current
+      const acknowledged = new Map(current.acknowledged.map((session) => [codexSessionKey(session), session]))
+      acknowledged.set(key, confirmed)
+      return {
+        ...current,
+        pending: current.pending.filter((session) => codexSessionKey(session) !== key),
+        acknowledged: [...acknowledged.values()],
+      }
+    })
+  }, [updateSidebarState])
+
+  useEffect(() => {
+    const projectNames = projectKey ? projectKey.split('\0') : []
+    let cancelled = false
+    let loading = false
+
+    if (projectNames.length === 0) return
+
+    const refresh = async () => {
+      if (loading) return
+      loading = true
+      try {
+        const requestStartedAt = Math.floor(Date.now() / 1000)
+        const current = sidebarStateRef.current
+        const since = Math.max(0, (current.lastPolledAt || requestStartedAt) - 2)
+        const result = await api.listActiveCodexSessions(since)
+        if (cancelled) return
+        const active = result.sessions.filter(({ thread }) => isActiveCodexSession(thread.status))
+        const activeKeys = new Set(active.map(codexSessionKey))
+        const terminal = result.sessions.filter(({ thread }) => !isActiveCodexSession(thread.status))
+        const terminalKeys = new Set(terminal.map(codexSessionKey))
+        updateSidebarState((current) => {
+          const previousActiveByKey = new Map(current.active.map((session) => [codexSessionKey(session), session]))
+          const pendingByKey = new Map(current.pending.map((session) => [codexSessionKey(session), session]))
+          const acknowledgedByKey = new Map(current.acknowledged.map((session) => [codexSessionKey(session), session]))
+
+          active.forEach((session) => {
+            const key = codexSessionKey(session)
+            pendingByKey.delete(key)
+            acknowledgedByKey.delete(key)
+          })
+          terminal.forEach((session) => {
+            const key = codexSessionKey(session)
+            if (acknowledgedByKey.has(key)) {
+              acknowledgedByKey.set(key, session)
+            } else {
+              pendingByKey.set(key, session)
+            }
+          })
+          if (!result.truncated) {
+            current.active.forEach((session) => {
+              const key = codexSessionKey(session)
+              if (!activeKeys.has(key) && !terminalKeys.has(key) && !acknowledgedByKey.has(key)) {
+                pendingByKey.set(key, {
+                  ...session,
+                  thread: { ...session.thread, status: 'completed' },
+                })
+              }
+            })
+          }
+
+          const nextActive = result.truncated
+            ? [...previousActiveByKey.values(), ...active]
+            : active
+          const uniqueActive = [...new Map(nextActive.map((session) => [codexSessionKey(session), session])).values()]
+          const recentAcknowledgements = [...acknowledgedByKey.values()]
+            .filter((session) => session.thread.updated_at >= since)
+          return {
+            active: uniqueActive,
+            pending: [...pendingByKey.values()],
+            acknowledged: recentAcknowledgements,
+            lastPolledAt: requestStartedAt,
+          }
+        })
+      } catch {
+        // Keep the latest known statuses when app-server polling is temporarily unavailable.
+      } finally {
+        loading = false
+      }
+    }
+
+    void refresh()
+    const interval = window.setInterval(() => {
+      if (!document.hidden) void refresh()
+    }, CODEX_SESSIONS_REFRESH_INTERVAL_MS)
+    const onVisible = () => {
+      if (!document.hidden) void refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [projectKey, updateSidebarState])
+
+  const sessions: CodexSidebarSession[] = [
+    ...sidebarState.active.map((session) => ({ ...session, unconfirmed: false })),
+    ...sidebarState.pending.map((session) => ({ ...session, unconfirmed: true })),
+  ]
+  return { sessions, acknowledge }
+}
 
 function clampUsage(value: number): number {
   if (!Number.isFinite(value)) return 0
@@ -256,12 +448,13 @@ function SidebarFocusDebug({
   )
 }
 
-export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId = null, agentSidebarOpen = false }: SidebarProps) {
+export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId = null, agentSidebarOpen = false, onOpenCodexSession }: SidebarProps) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { setOpenMobile, state } = useSidebar()
   const collapsed = state === 'collapsed'
   const sidebarStats = useSidebarStats()
+  const codexSidebarSessions = useActiveCodexSessions(meta?.projects ?? [])
   const agentNavigationRequestRef = useRef(0)
 
   const handleNav = () => {
@@ -379,6 +572,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
           {(meta?.projects ?? []).map((p) => {
             const status = workspaceStatus(p)
             const gs = gitStatus[p]
+            const codexSessions = codexSidebarSessions.sessions.filter((session) => session.project === p)
             return (
               <SidebarMenuItem key={p}>
                 <SidebarMenuButton
@@ -401,6 +595,11 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
                         title={`git: ${gs.staged} staged, ${gs.modified} modified, ${gs.untracked} untracked`}
                       >
                         <GitBranch className="size-3.5" />
+                      </span>
+                    )}
+                    {codexSessions.length > 0 && (
+                      <span className="flex items-center gap-0.5 text-[10px] text-blue-600 dark:text-blue-400" aria-label={`${codexSessions.length} active or unconfirmed Codex sessions`}>
+                        <MessageSquareText className="size-3" />{codexSessions.length}
                       </span>
                     )}
                     {status && (
@@ -460,7 +659,52 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
               </SidebarMenuItem>
             )
           })}
-          {herdr && herdr.available && herdr.agents.length === 0 && !collapsed ? (
+          {codexSidebarSessions.sessions.map(({ project: sessionProject, thread, unconfirmed }) => (
+            <SidebarMenuItem key={`${sessionProject}:${thread.thread_id}`}>
+              <SidebarMenuButton
+                onClick={(event) => {
+                  if (unconfirmed && event.target instanceof Element && event.target.closest('[data-codex-session-ack]')) {
+                    codexSidebarSessions.acknowledge(sessionProject, thread.thread_id)
+                    return
+                  }
+                  handleNav()
+                  onOpenCodexSession?.(sessionProject, thread.thread_id)
+                }}
+                tooltip={`${sessionProject} · ${thread.title || 'Codex conversation'} · ${unconfirmed ? '完了・未確認' : thread.status}`}
+                className={`sidebar-agent-row cursor-pointer ${collapsed ? 'group-data-[collapsible=icon]:p-0!' : ''}`}
+                data-testid={`sidebar-codex-agent-${sessionProject}-${thread.thread_id}`}
+              >
+                {collapsed ? (
+                  unconfirmed ? (
+                    <span data-codex-session-ack title="確認済みにする" className="cursor-pointer rounded">
+                      <CodexThreadStatus status={thread.status} compact />
+                    </span>
+                  ) : <CodexThreadStatus status={thread.status} compact />
+                ) : (
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <MessageSquareText className="size-4 shrink-0" />
+                    <span className="truncate text-[13px] font-medium">{sessionProject}: {thread.title || 'Codex conversation'}</span>
+                    {unconfirmed ? (
+                      <span data-codex-session-ack title="確認済みにする" className="flex shrink-0 cursor-pointer items-center gap-1 rounded">
+                        <CodexThreadStatus status={thread.status} />
+                        <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">未確認</span>
+                      </span>
+                    ) : <CodexThreadStatus status={thread.status} />}
+                  </span>
+                )}
+              </SidebarMenuButton>
+              {unconfirmed && (
+                <SidebarMenuAction
+                  onClick={() => codexSidebarSessions.acknowledge(sessionProject, thread.thread_id)}
+                  aria-label={`${sessionProject}: ${thread.title || 'Codex conversation'}を確認済みにする`}
+                  title="確認済みにする"
+                >
+                  <Check />
+                </SidebarMenuAction>
+              )}
+            </SidebarMenuItem>
+          ))}
+          {herdr && herdr.available && herdr.agents.length === 0 && codexSidebarSessions.sessions.length === 0 && !collapsed ? (
             <p className="px-2 text-xs text-sidebar-foreground/60">No agents running.</p>
           ) : null}
           {!collapsed && (

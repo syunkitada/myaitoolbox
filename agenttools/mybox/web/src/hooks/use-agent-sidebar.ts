@@ -4,11 +4,15 @@ import {
   type AgentOutputDisplayMode,
 } from '../utils/agent-output-display'
 
+export type AgentSidebarMode = 'herdr' | 'codex'
+
 export interface AgentSidebarProjectState {
   open: boolean
   mobileOpen: boolean
   paneId: string | null
   displayMode: AgentOutputDisplayMode
+  mode: AgentSidebarMode
+  codexThreadId: string | null
   drafts: Record<string, string>
 }
 
@@ -19,6 +23,8 @@ const DEFAULT_STATE: AgentSidebarProjectState = {
   mobileOpen: false,
   paneId: null,
   displayMode: 'auto',
+  mode: 'herdr',
+  codexThreadId: null,
   drafts: {},
 }
 
@@ -57,6 +63,8 @@ function loadStates(): Record<string, AgentSidebarProjectState> {
       mobileOpen: item.mobileOpen === true,
       paneId: typeof item.paneId === 'string' ? item.paneId : null,
       displayMode: isAgentOutputDisplayMode(item.displayMode) ? item.displayMode : DEFAULT_STATE.displayMode,
+      mode: item.mode === 'codex' ? 'codex' : 'herdr',
+      codexThreadId: typeof item.codexThreadId === 'string' ? item.codexThreadId : null,
       drafts: readDrafts(item.drafts),
     }
   }
@@ -115,6 +123,8 @@ export function useAgentSidebarState(project: string, isMobile = false) {
     })
   }, [project])
   const setDisplayMode = useCallback((displayMode: AgentOutputDisplayMode) => patch({ displayMode }), [patch])
+  const setMode = useCallback((mode: AgentSidebarMode) => patch({ mode }), [patch])
+  const setCodexThreadId = useCallback((codexThreadId: string | null) => patch({ codexThreadId }), [patch])
 
   return {
     ...state,
@@ -124,5 +134,7 @@ export function useAgentSidebarState(project: string, isMobile = false) {
     setPaneId,
     setDraft,
     setDisplayMode,
+    setMode,
+    setCodexThreadId,
   }
 }

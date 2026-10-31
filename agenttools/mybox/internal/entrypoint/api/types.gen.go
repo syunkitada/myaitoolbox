@@ -133,6 +133,18 @@ type BrowserAuditResponse struct {
 	Total   int                 `json:"total"`
 }
 
+// CodexActiveSession defines model for CodexActiveSession.
+type CodexActiveSession struct {
+	Project string      `json:"project"`
+	Thread  CodexThread `json:"thread"`
+}
+
+// CodexActiveSessionList defines model for CodexActiveSessionList.
+type CodexActiveSessionList struct {
+	Sessions  []CodexActiveSession `json:"sessions"`
+	Truncated bool                 `json:"truncated"`
+}
+
 // CodexConfigFile defines model for CodexConfigFile.
 type CodexConfigFile struct {
 	Exists    bool   `json:"exists"`
@@ -260,6 +272,30 @@ type CodexSkillFileList struct {
 
 	// Truncated Whether the directory contains more entries than the response limit
 	Truncated bool `json:"truncated"`
+}
+
+// CodexThread defines model for CodexThread.
+type CodexThread struct {
+	CreatedAt int64  `json:"created_at"`
+	Model     string `json:"model"`
+	Preview   string `json:"preview"`
+	Status    string `json:"status"`
+	ThreadId  string `json:"thread_id"`
+	Title     string `json:"title"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+// CodexThreadHistory defines model for CodexThreadHistory.
+type CodexThreadHistory struct {
+	NextCursor *string                  `json:"next_cursor"`
+	Thread     CodexThread              `json:"thread"`
+	Turns      []map[string]interface{} `json:"turns"`
+}
+
+// CodexThreadList defines model for CodexThreadList.
+type CodexThreadList struct {
+	Threads   []CodexThread `json:"threads"`
+	Truncated bool          `json:"truncated"`
 }
 
 // CreateHerdrScheduledPromptRequest defines model for CreateHerdrScheduledPromptRequest.
@@ -640,6 +676,12 @@ type GetBrowserAuditParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListCodexActiveSessionsParams defines parameters for ListCodexActiveSessions.
+type ListCodexActiveSessionsParams struct {
+	// Since Include inactive conversations updated at or after this Unix timestamp in seconds
+	Since *int64 `form:"since,omitempty" json:"since,omitempty"`
+}
+
 // GetCodexDiagnosticContentParams defines parameters for GetCodexDiagnosticContent.
 type GetCodexDiagnosticContentParams struct {
 	Kind GetCodexDiagnosticContentParamsKind `form:"kind" json:"kind"`
@@ -655,6 +697,12 @@ type GetCodexDiagnosticContentParamsKind string
 type GetCodexSkillFilesParams struct {
 	// Path Absolute skill directory path returned by the Codex diagnostics endpoint
 	Path string `form:"path" json:"path"`
+}
+
+// GetCodexThreadHistoryParams defines parameters for GetCodexThreadHistory.
+type GetCodexThreadHistoryParams struct {
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListFilesParams defines parameters for ListFiles.

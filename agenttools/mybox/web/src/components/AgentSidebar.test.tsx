@@ -13,6 +13,9 @@ import { FileExecutionProvider, useFileExecution } from '../state/fileExecution'
 vi.mock('../api/client', () => ({
   api: {
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
+    listCodexThreads: vi.fn().mockResolvedValue({ threads: [], truncated: false }),
+    createCodexThread: vi.fn().mockResolvedValue({ thread_id: 'new-codex-thread', title: 'New Codex conversation', preview: '', created_at: 1, updated_at: 1, status: 'idle', model: '' }),
+    getCodexThreadHistory: vi.fn().mockResolvedValue({ thread: {}, turns: [], next_cursor: null }),
     getHerdrAgentKinds: vi.fn().mockResolvedValue({ kinds: ['claude', 'codex', 'opencode'] }),
     focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     readHerdrAgent: vi.fn().mockResolvedValue({ output: 'hello' }),
@@ -87,6 +90,7 @@ function AgentSidebarHarness({
   initialEntries: string[]
 }) {
   const [drafts, setDrafts] = useState(options.drafts ?? {})
+  const [mode, setMode] = useState(options.mode ?? 'herdr')
   const onDraftChange = options.onDraftChange ?? ((paneId: string, draft: string) => {
     setDrafts((current) => {
       if (draft === '') {
@@ -114,6 +118,11 @@ function AgentSidebarHarness({
           onOpenAgentChange={vi.fn()}
           refresh={() => Promise.resolve()}
           {...options}
+          mode={mode}
+          onModeChange={(nextMode) => {
+            setMode(nextMode)
+            options.onModeChange?.(nextMode)
+          }}
           drafts={drafts}
           onDraftChange={onDraftChange}
         />
@@ -155,6 +164,20 @@ describe('AgentSidebar', () => {
   afterEach(() => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
     window.history.replaceState({}, '', '/')
+  })
+
+  it('switches between Herdr and Codex modes', async () => {
+    const onModeChange = vi.fn()
+    renderSidebar({ onModeChange })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Codex' }))
+    expect(onModeChange).toHaveBeenCalledWith('codex')
+    expect(await screen.findByTestId('codex-chat-history')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start agent' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Herdr' }))
+    expect(screen.queryByTestId('codex-chat-history')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start agent' })).toBeInTheDocument()
   })
 
   it('shows only agents belonging to the current project', () => {
@@ -593,6 +616,8 @@ describe('AgentSidebar', () => {
             onOpenChange={onOpenChange}
             displayMode="auto"
             onDisplayModeChange={vi.fn()}
+            mode="herdr"
+            onModeChange={vi.fn()}
             openAgentPaneId={null}
             drafts={{}}
             onDraftChange={vi.fn()}

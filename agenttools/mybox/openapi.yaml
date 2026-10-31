@@ -1033,6 +1033,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CodexDiagnostics"
+  /api/codex/threads:
+    get:
+      operationId: listCodexThreads
+      summary: List Codex conversations for the current project
+      responses:
+        "200":
+          description: Project conversations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodexThreadList"
+    post:
+      operationId: createCodexThread
+      summary: Start a Codex conversation for the current project
+      responses:
+        "201":
+          description: Conversation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodexThread"
+  /api/codex/active-sessions:
+    get:
+      operationId: listCodexActiveSessions
+      summary: List active Codex conversations and recently completed conversations across registered projects
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: Include inactive conversations updated at or after this Unix timestamp in seconds
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: Active and recently completed conversations grouped by their registered project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodexActiveSessionList"
+  /api/codex/threads/{id}:
+    get:
+      operationId: getCodexThreadHistory
+      summary: Read a page of Codex conversation history without resuming it
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Conversation history page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodexThreadHistory"
+        "404":
+          description: Conversation not found in the current project
+  /api/codex/threads/{id}/stream:
+    get:
+      operationId: streamCodexThread
+      summary: Stream Codex thread events and accept conversation controls over WebSocket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: project
+          in: query
+          required: false
+          description: Project selected for this WebSocket connection
+          schema:
+            type: string
+      responses:
+        "101":
+          description: WebSocket upgraded
   /api/codex/diagnostics/content:
     get:
       operationId: getCodexDiagnosticContent
@@ -1922,6 +2013,68 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CodexDiagnosticError"
+    CodexThread:
+      type: object
+      required: [thread_id, title, preview, created_at, updated_at, status, model]
+      properties:
+        thread_id:
+          type: string
+        title:
+          type: string
+        preview:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        status:
+          type: string
+        model:
+          type: string
+    CodexThreadList:
+      type: object
+      required: [threads, truncated]
+      properties:
+        threads:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodexThread"
+        truncated:
+          type: boolean
+    CodexActiveSession:
+      type: object
+      required: [project, thread]
+      properties:
+        project:
+          type: string
+        thread:
+          $ref: "#/components/schemas/CodexThread"
+    CodexActiveSessionList:
+      type: object
+      required: [sessions, truncated]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodexActiveSession"
+        truncated:
+          type: boolean
+    CodexThreadHistory:
+      type: object
+      required: [thread, turns, next_cursor]
+      properties:
+        thread:
+          $ref: "#/components/schemas/CodexThread"
+        turns:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        next_cursor:
+          type: string
+          nullable: true
     CodexDiagnosticContent:
       type: object
       required: [kind, scope, path, content, is_symlink, redacted, truncated, size_bytes, fetched_at]

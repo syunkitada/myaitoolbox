@@ -18,6 +18,9 @@ type ServerInterface interface {
 	// GetBrowserAudit List redacted browser audit events for the current project
 	// (GET /api/browser/audit)
 	GetBrowserAudit(w http.ResponseWriter, r *http.Request, params GetBrowserAuditParams)
+	// ListCodexActiveSessions List active Codex conversations and recently completed conversations across registered projects
+	// (GET /api/codex/active-sessions)
+	ListCodexActiveSessions(w http.ResponseWriter, r *http.Request, params ListCodexActiveSessionsParams)
 	// GetCodexDiagnostics Get read-only Codex CLI diagnostics for the current project
 	// (GET /api/codex/diagnostics)
 	GetCodexDiagnostics(w http.ResponseWriter, r *http.Request)
@@ -27,6 +30,15 @@ type ServerInterface interface {
 	// GetCodexSkillFiles List files in a discovered Codex skill directory
 	// (GET /api/codex/diagnostics/skill-files)
 	GetCodexSkillFiles(w http.ResponseWriter, r *http.Request, params GetCodexSkillFilesParams)
+	// ListCodexThreads List Codex conversations for the current project
+	// (GET /api/codex/threads)
+	ListCodexThreads(w http.ResponseWriter, r *http.Request)
+	// CreateCodexThread Start a Codex conversation for the current project
+	// (POST /api/codex/threads)
+	CreateCodexThread(w http.ResponseWriter, r *http.Request)
+	// GetCodexThreadHistory Read a page of Codex conversation history without resuming it
+	// (GET /api/codex/threads/{id})
+	GetCodexThreadHistory(w http.ResponseWriter, r *http.Request, id string, params GetCodexThreadHistoryParams)
 	// ListFiles List files in the project directory tree
 	// (GET /api/files)
 	ListFiles(w http.ResponseWriter, r *http.Request, params ListFilesParams)
@@ -323,6 +335,39 @@ func (siw *ServerInterfaceWrapper) GetBrowserAudit(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ListCodexActiveSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListCodexActiveSessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCodexActiveSessionsParams
+
+	// ------------- Optional query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "since", r.URL.Query(), &params.Since, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "since"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "since", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCodexActiveSessions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCodexDiagnostics operation middleware
 func (siw *ServerInterfaceWrapper) GetCodexDiagnostics(w http.ResponseWriter, r *http.Request) {
 
@@ -407,6 +452,89 @@ func (siw *ServerInterfaceWrapper) GetCodexSkillFiles(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCodexSkillFiles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCodexThreads operation middleware
+func (siw *ServerInterfaceWrapper) ListCodexThreads(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCodexThreads(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCodexThread operation middleware
+func (siw *ServerInterfaceWrapper) CreateCodexThread(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCodexThread(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCodexThreadHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetCodexThreadHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCodexThreadHistoryParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCodexThreadHistory(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1402,6 +1530,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/{id}/archive", wrapper.ArchiveTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/herdr/overview", wrapper.GetHerdrOverview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/diagnostics", wrapper.GetCodexDiagnostics)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/threads", wrapper.ListCodexThreads)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/codex/threads", wrapper.CreateCodexThread)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/active-sessions", wrapper.ListCodexActiveSessions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/threads/{id}", wrapper.GetCodexThreadHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/diagnostics/content", wrapper.GetCodexDiagnosticContent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/diagnostics/skill-files", wrapper.GetCodexSkillFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/start", wrapper.StartHerdrAgent)

@@ -9,7 +9,8 @@
 | [`ui/README.md`](./ui/README.md) | Radixベースの共通UIプリミティブ。 |
 | [`GraphView/README.md`](./GraphView/README.md) | ファイルリンクグラフのSigma表示。 |
 | [`AppDialogs.tsx`](./AppDialogs.tsx) | アプリ全体で使うダイアログ群。 |
-| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通の右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信と、Tabを指定した一般Agentの起動、実行中・完了・失敗したスクリプトの状態表示・再表示・停止・Dismiss（完了済み履歴は直近20件）を提供し、Agentごとの入力途中Promptを保持し、モバイルではSheetとして表示する。 |
+| [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通の右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信と、Codexモードへの切り替えを提供する。スクリプト実行状態も表示し、モバイルではSheetとして表示する。 |
+| [`CodexChat.tsx`](./CodexChat.tsx) / [`CodexChat.test.tsx`](./CodexChat.test.tsx) | Codex CLI / IDEの会話履歴と状態表示、新規会話、Markdown応答、行番号ジャンプ付きプロジェクト内ファイルリンク、実行詳細、差分、Steer、停止、承認と質問回答、`/compact`を含むコマンドパレットを表示する。メッセージ送信済みの会話はURLとプロジェクトごとのAgentサイドバー状態に保持し、リロード後やプロジェクト切替後のAgentパネル再表示時に復元する。未送信の空会話は接続中だけ保持し、会話一覧には表示しない。初回送信後に選択状態を保存する。会話表示中は左側に同じプロジェクトのセッションをステータスアイコンだけで並べ、タイトルと状態はツールチップで示す。選択・更新できる。入力フォームのコマンドパレット・停止・送信ボタンは右側に縦に並べる。選択中会話の状態ドットを折りたたみサイドバーに表示する。スマートフォンでは会話本文の横はみ出しを抑え、入力欄のフォーカス時に自動拡大されないようにする。 |
 | [`AgentLaunchDialog.tsx`](./AgentLaunchDialog.tsx) | Agent kindとHerdr Tabを指定して一般Agentを起動するモーダル。Tabは既存候補を表示しつつ自由入力できる。 |
 | [`CommitDiffView.tsx`](./CommitDiffView.tsx) / [`CommitDiffView.test.tsx`](./CommitDiffView.test.tsx) | コミット差分表示とそのテスト。 |
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
@@ -19,13 +20,13 @@
 | [`FileTabs.tsx`](./FileTabs.tsx) / [`FileTabs.test.tsx`](./FileTabs.test.tsx) | 最近開いたファイルのタブと、プロジェクト付きお気に入りの追加・削除および横断遷移モーダルとテスト。 |
 | [`FrontmatterForm.tsx`](./FrontmatterForm.tsx) / [`FrontmatterForm.test.tsx`](./FrontmatterForm.test.tsx) | タスクと通常のMarkdownのフロントマター編集フォームとテスト。 |
 | [`GitViewer.tsx`](./GitViewer.tsx) | Git状態・差分画面を埋め込むビュー。 |
-| [`Markdown.tsx`](./Markdown.tsx) / [`Markdown.test.tsx`](./Markdown.test.tsx) | サニタイズ済みMarkdown表示とテスト。 |
+| [`Markdown.tsx`](./Markdown.tsx) / [`Markdown.test.tsx`](./Markdown.test.tsx) | サニタイズ済みMarkdown表示と、呼び出し元で指定できるリンクURL変換。 |
 | [`Mermaid.tsx`](./Mermaid.tsx) | Mermaidダイアグラム描画。 |
 | [`MonacoEditor.tsx`](./MonacoEditor.tsx) | Monacoベースのファイルエディタ。 |
 | [`NewTaskDialog.tsx`](./NewTaskDialog.tsx) / [`NewTaskDialog.test.tsx`](./NewTaskDialog.test.tsx) | agent kindのデフォルトをcodexとし、YAMLヘッダーを除いたテンプレート本文を初期表示・編集できる、通常タスクとcron・file_created・manual task_triggerの作成ダイアログおよびテスト。 |
 | [`RichMarkdown.tsx`](./RichMarkdown.tsx) / [`RichMarkdown.test.tsx`](./RichMarkdown.test.tsx) | ファイルリンク・アウトライン・コードブロック・操作可能なタスクリスト・Mermaid・Vega-Liteを表示し、表示中のファイルペインに応じて内部リンクを開き、モーダル内でText/Jira形式を切り替えられるMarkdownビューアとテスト。 |
 | [`SearchBar.tsx`](./SearchBar.tsx) / [`SearchBar.test.tsx`](./SearchBar.test.tsx) | ファイル検索入力とテスト。 |
-| [`Sidebar.tsx`](./Sidebar.tsx) / [`Sidebar.test.tsx`](./Sidebar.test.tsx) | ワークスペース全体のサイドバー、Agent遷移、Mybox/Herdrフォーカスの折りたたみデバッグ表示。 |
+| [`Sidebar.tsx`](./Sidebar.tsx) / [`Sidebar.test.tsx`](./Sidebar.test.tsx) | ワークスペース全体のサイドバー。プロジェクトごとのgit・Herdr状態と稼働中・未確認Codex件数を表示し、Agents欄にはHerdr Agentと全プロジェクトの稼働中・未確認Codexセッションを並べる。終了セッションはステータスアイコンまたは確認ボタンで確認するまでブラウザーに保存し、タイトルをクリックして会話を開いても残す。折りたたみ時は状態ドットを表示する。Agent遷移、Mybox/Herdrフォーカスの折りたたみデバッグ表示も扱う。 |
 | [`SyntaxHighlighter.tsx`](./SyntaxHighlighter.tsx) / [`SyntaxHighlighter.test.tsx`](./SyntaxHighlighter.test.tsx) | Prismベースのコード表示。ファイル本文ではレビュー用の元行番号を保持し、agent出力では相対ファイルパスをFiles画面へリンクできる。 |
 | [`TaskProgress.tsx`](./TaskProgress.tsx) / [`TaskProgress.test.tsx`](./TaskProgress.test.tsx) | Markdownタスクリストの進捗表示とテスト。 |
 | [`TaskAgentLaunchDialog.tsx`](./TaskAgentLaunchDialog.tsx) | FilesビューアからタスクAgentを起動する種類選択・エラー表示付きモーダル。 |

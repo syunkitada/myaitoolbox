@@ -7,6 +7,7 @@ function Probe({ project, isMobile = false }: { project: string; isMobile?: bool
   return (
     <div>
       <output data-testid="state">{`${state.open}:${state.paneId ?? ''}:${state.displayMode}`}</output>
+      <output data-testid="mode">{state.mode}</output>
       <output data-testid="draft-w1-p1">{state.drafts['w1:p1'] ?? ''}</output>
       <output data-testid="draft-w1-p2">{state.drafts['w1:p2'] ?? ''}</output>
       <button type="button" onClick={() => state.setOpen(true)}>open</button>
@@ -16,6 +17,7 @@ function Probe({ project, isMobile = false }: { project: string; isMobile?: bool
       <button type="button" onClick={() => state.setDraft('w1:p2', 'draft for second agent')}>draft second</button>
       <button type="button" onClick={() => state.setDraft('w1:p1', '')}>clear first draft</button>
       <button type="button" onClick={() => state.setDisplayMode('herdr')}>herdr mode</button>
+      <button type="button" onClick={() => state.setMode('codex')}>codex mode</button>
     </div>
   )
 }
@@ -44,6 +46,18 @@ describe('useAgentSidebarState', () => {
 
     render(<Probe project="demo" />)
     expect(screen.getByTestId('state')).toHaveTextContent('true::herdr')
+  })
+
+  it('persists the selected agent panel mode per project', () => {
+    const view = render(<Probe project="demo" />)
+    expect(screen.getByTestId('mode')).toHaveTextContent('herdr')
+
+    fireEvent.click(screen.getByRole('button', { name: 'codex mode' }))
+    expect(screen.getByTestId('mode')).toHaveTextContent('codex')
+    view.unmount()
+
+    render(<Probe project="demo" />)
+    expect(screen.getByTestId('mode')).toHaveTextContent('codex')
   })
 
   it('persists prompt drafts per project and agent pane', () => {

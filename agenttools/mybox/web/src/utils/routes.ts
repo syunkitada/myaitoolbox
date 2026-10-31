@@ -124,6 +124,14 @@ export function browserWsUrl(sessionId: string): string {
   return `${protocol}://${window.location.host}${base}/api/browser/stream?${params.toString()}`
 }
 
+export function codexThreadWsUrl(threadId: string, project = getProject()): string {
+  const base = getBasePath()
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const params = new URLSearchParams()
+  if (project) params.set('project', project)
+  return `${protocol}://${window.location.host}${base}/api/codex/threads/${encodeURIComponent(threadId)}/stream?${params.toString()}`
+}
+
 // taskIdOf extracts the task id from a task graph node id, which is the task
 // file path without the extension (e.g. "_tasks/20260811_x/task" -> "20260811_x").
 export function taskIdOf(nodeId: string): string {
