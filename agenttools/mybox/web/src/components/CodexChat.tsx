@@ -974,9 +974,9 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
 
   return (
     <div className="codex-chat-conversation flex min-h-0 min-w-0 flex-1 overflow-hidden" data-testid="codex-chat-conversation">
-      <aside className="flex w-16 shrink-0 flex-col border-r" aria-label="Codex sessions" data-testid="codex-session-list">
+      <aside className="flex w-12 shrink-0 flex-col border-r" aria-label="Codex sessions" data-testid="codex-session-list">
         <div className="flex shrink-0 items-center justify-center gap-0.5 border-b px-1 py-2">
-          <div className="flex shrink-0 items-center gap-0.5">
+          <div className="flex shrink-0 flex-col items-center gap-0.5">
             <Button size="icon-xs" variant="ghost" className="cursor-pointer" onClick={() => void loadThreads()} disabled={listLoading} aria-label="セッション状態を更新" title="セッション状態を更新">
               <Loader2 className={cn('size-3.5', listLoading && 'animate-spin')} />
             </Button>
@@ -985,7 +985,7 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
             </Button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-1">
+        <div className="min-h-0 flex-1 overflow-hidden p-1">
           {sessionThreads.map((thread) => {
             const status = thread.thread_id === selectedThread.thread_id ? sessionStatus || thread.status : thread.status
             const isSelected = thread.thread_id === selectedThread.thread_id
