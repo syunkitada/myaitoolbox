@@ -1105,6 +1105,41 @@ paths:
                 $ref: "#/components/schemas/CodexThreadHistory"
         "404":
           description: Conversation not found in the current project
+  /api/codex/threads/{id}/name:
+    patch:
+      operationId: renameCodexThread
+      summary: Rename a Codex conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+      responses:
+        "200":
+          description: Conversation renamed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "404":
+          description: Conversation not found in the current project
   /api/codex/threads/{id}/stream:
     get:
       operationId: streamCodexThread

@@ -39,6 +39,9 @@ type ServerInterface interface {
 	// GetCodexThreadHistory Read a page of Codex conversation history without resuming it
 	// (GET /api/codex/threads/{id})
 	GetCodexThreadHistory(w http.ResponseWriter, r *http.Request, id string, params GetCodexThreadHistoryParams)
+	// RenameCodexThread Rename a Codex conversation
+	// (PATCH /api/codex/threads/{id}/name)
+	RenameCodexThread(w http.ResponseWriter, r *http.Request, id string)
 	// ListFiles List files in the project directory tree
 	// (GET /api/files)
 	ListFiles(w http.ResponseWriter, r *http.Request, params ListFilesParams)
@@ -535,6 +538,32 @@ func (siw *ServerInterfaceWrapper) GetCodexThreadHistory(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCodexThreadHistory(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameCodexThread operation middleware
+func (siw *ServerInterfaceWrapper) RenameCodexThread(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameCodexThread(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1534,6 +1563,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/codex/threads", wrapper.CreateCodexThread)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/active-sessions", wrapper.ListCodexActiveSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/threads/{id}", wrapper.GetCodexThreadHistory)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/codex/threads/{id}/name", wrapper.RenameCodexThread)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/diagnostics/content", wrapper.GetCodexDiagnosticContent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/codex/diagnostics/skill-files", wrapper.GetCodexSkillFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/herdr/agents/start", wrapper.StartHerdrAgent)

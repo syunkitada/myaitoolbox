@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { ArrowLeft, Check, ChevronDown, Keyboard, Loader2, MessageSquarePlus, RefreshCw, Send, Square, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Keyboard, Loader2, MessageSquarePlus, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
 import { api, type CodexThread } from '../api/client'
 import { codexThreadWsUrl, encodePath, getBasePath, projectUrlFor } from '../utils/routes'
 import { Button } from './ui/button'
@@ -8,6 +8,7 @@ import { DiffView } from './DiffView'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet'
 import { cn } from '@/lib/utils'
 import { appendReviewContextToDraft } from '../utils/file-review-comments'
+import { useDialogs } from './AppDialogs'
 
 type JsonObject = Record<string, unknown>
 type CodexTurn = JsonObject & { id: string; status?: string; items?: CodexItem[] }
@@ -524,6 +525,7 @@ export function CodexChat({
   onFilePathClick?: (path: string, line?: number) => void
   onSessionStatusChange?: (status: string | null) => void
 }) {
+  const { prompt } = useDialogs()
   const [threads, setThreads] = useState<CodexThread[]>([])
   const [selectedThread, setSelectedThread] = useState<CodexThread | null>(null)
   const [turns, setTurns] = useState<CodexTurn[]>([])
@@ -534,6 +536,7 @@ export function CodexChat({
   const [historyLoading, setHistoryLoading] = useState(false)
   const [refreshingHistory, setRefreshingHistory] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [renamingThread, setRenamingThread] = useState(false)
   const [replaceEmptyThread, setReplaceEmptyThread] = useState(false)
   const [sending, setSending] = useState(false)
   const [socketConnecting, setSocketConnecting] = useState(false)
@@ -858,7 +861,13 @@ export function CodexChat({
       } else if (message.type === 'notification') {
         const method = string(message.method)
         const params = record(message.params)
-        if (method === 'thread/goal/updated' && string(params.threadId) === thread.thread_id) {
+        if (method === 'thread/name/updated' && string(params.threadId) === thread.thread_id) {
+          const title = string(params.threadName).trim()
+          if (title) {
+            setThreads((current) => current.map((entry) => entry.thread_id === thread.thread_id ? { ...entry, title } : entry))
+            setSelectedThread((current) => current?.thread_id === thread.thread_id ? { ...current, title } : current)
+          }
+        } else if (method === 'thread/goal/updated' && string(params.threadId) === thread.thread_id) {
           const updatedGoal = record(params.goal)
           setGoal(Object.keys(updatedGoal).length > 0 ? updatedGoal : null)
           setGoalDraft(string(updatedGoal.objective))
@@ -1016,6 +1025,25 @@ export function CodexChat({
     setCommandPaletteOpen(false)
     if (sendText(text, false)) rememberRecentCommand(commandId)
   }, [rememberRecentCommand, sendText])
+
+  const renameSelectedThread = useCallback(async () => {
+    if (!selectedThread || renamingThread) return
+    const name = await prompt('Codex会話の名前', selectedThread.title)
+    if (name === null) return
+    const trimmedName = name.trim()
+    if (!trimmedName || trimmedName === selectedThread.title) return
+    setRenamingThread(true)
+    setError(null)
+    try {
+      await api.renameCodexThread(selectedThread.thread_id, trimmedName, project)
+      setThreads((current) => current.map((thread) => thread.thread_id === selectedThread.thread_id ? { ...thread, title: trimmedName } : thread))
+      setSelectedThread((current) => current?.thread_id === selectedThread.thread_id ? { ...current, title: trimmedName } : current)
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : String(renameError))
+    } finally {
+      setRenamingThread(false)
+    }
+  }, [project, prompt, renamingThread, selectedThread])
 
   const compactThread = useCallback(() => {
     const socket = socketRef.current
@@ -1221,6 +1249,9 @@ export function CodexChat({
           <div className="truncate text-xs font-semibold" title={selectedThread.title}>{selectedThread.title || 'New Codex conversation'}</div>
           <div className={cn('text-[10px]', connected ? 'text-green-700 dark:text-green-400' : writerConflict ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>{connected ? `接続中${collaborationMode === 'plan' ? ' · Plan mode' : collaborationMode === 'default' ? ' · Default mode' : ''}` : writerConflict ? '他のCodexが操作中 · 読み取り専用' : historyLoading ? '履歴を読み込み中…' : socketConnecting ? '接続中…' : '切断中'}</div>
         </div>
+        <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => void renameSelectedThread()} disabled={renamingThread} aria-label="会話名を変更" title="会話名を変更">
+          {renamingThread ? <Loader2 className="animate-spin" /> : <Pencil />}
+        </Button>
         {!connected && !historyLoading && <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => void openThread(selectedThread)} aria-label={writerConflict ? 'Codexに再接続（元のCodex終了後）' : 'Codexに再接続'}><RefreshCw /></Button>}
       </div>
       {writerConflict && (

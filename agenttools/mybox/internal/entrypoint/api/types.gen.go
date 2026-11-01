@@ -705,6 +705,11 @@ type GetCodexThreadHistoryParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// RenameCodexThreadJSONBody defines parameters for RenameCodexThread.
+type RenameCodexThreadJSONBody struct {
+	Name string `json:"name"`
+}
+
 // ListFilesParams defines parameters for ListFiles.
 type ListFilesParams struct {
 	// ShowHidden Whether to include hidden files (dotfiles) in the result
@@ -738,6 +743,9 @@ type ListTasksParams struct {
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 	Tag    *string `form:"tag,omitempty" json:"tag,omitempty"`
 }
+
+// RenameCodexThreadJSONRequestBody defines body for RenameCodexThread for application/json ContentType.
+type RenameCodexThreadJSONRequestBody RenameCodexThreadJSONBody
 
 // CreateFileJSONRequestBody defines body for CreateFile for application/json ContentType.
 type CreateFileJSONRequestBody = FilePathRequest

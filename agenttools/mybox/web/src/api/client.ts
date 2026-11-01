@@ -773,6 +773,14 @@ export const api = {
       project,
     ),
 
+  renameCodexThread: (threadId: string, name: string, project?: string) =>
+    request<{ ok: boolean }>(
+      'PATCH',
+      `/api/codex/threads/${encodeURIComponent(threadId)}/name`,
+      { name },
+      project,
+    ),
+
   getCodexDiagnosticContent: (kind: CodexDiagnosticContentKind, path: string, project?: string) =>
     request<CodexDiagnosticContent>(
       'GET',

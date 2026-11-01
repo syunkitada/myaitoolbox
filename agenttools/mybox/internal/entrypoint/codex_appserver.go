@@ -1108,6 +1108,42 @@ func (s *Server) GetCodexThreadHistory(w http.ResponseWriter, r *http.Request, i
 	})
 }
 
+func (s *Server) RenameCodexThread(w http.ResponseWriter, r *http.Request, id string) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	var request struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("invalid Codex conversation name")})
+		return
+	}
+	name := strings.TrimSpace(request.Name)
+	if name == "" || len([]rune(name)) > 100 {
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("Codex conversation name must contain 1 to 100 characters")})
+		return
+	}
+	p, err := s.codexAppServer.ensure(r.Context(), app.Project.Path)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), codexAppServerRequestTimeout)
+	defer cancel()
+	if _, err := readCodexThread(ctx, p, id, app.Project.Path); err != nil {
+		writeError(w, err)
+		return
+	}
+	if _, err := p.request(ctx, "thread/name/set", map[string]string{"threadId": id, "name": name}); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (s *Server) registerCodexAppServerRoutes(e *echo.Echo, basePath string) {
 	e.GET(basePath+"/api/codex/threads/:id/stream", s.streamCodexThread)
 }

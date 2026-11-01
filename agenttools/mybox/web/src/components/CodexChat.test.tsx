@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { api } from '../api/client'
+import { DialogsProvider } from './AppDialogs'
 import { CodexChat } from './CodexChat'
 
 vi.mock('../api/client', () => ({
@@ -21,6 +22,10 @@ const threads = [{
   status: 'idle',
   model: 'gpt-5-codex',
 }]
+
+function renderCodexChat() {
+  return render(<DialogsProvider><CodexChat project="demo" /></DialogsProvider>)
+}
 
 class MockWebSocket {
   static OPEN = 1
@@ -85,7 +90,7 @@ describe('CodexChat', () => {
   })
 
   it('lists project conversations and renders readable Codex history', async () => {
-    render(<CodexChat project="demo" />)
+    renderCodexChat()
 
     fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
 
@@ -96,7 +101,7 @@ describe('CodexChat', () => {
   })
 
   it('shows connection progress and explains a WebSocket failure', async () => {
-    render(<CodexChat project="demo" />)
+    renderCodexChat()
     fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
 
     expect(await screen.findByText('接続中…')).toBeInTheDocument()
@@ -109,7 +114,7 @@ describe('CodexChat', () => {
   })
 
   it('keeps history readable and offers refresh when another Codex owns the thread', async () => {
-    render(<CodexChat project="demo" />)
+    renderCodexChat()
     fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
     expect(await screen.findByText('Update the sidebar')).toBeInTheDocument()
 
@@ -126,7 +131,7 @@ describe('CodexChat', () => {
   })
 
   it('sends a selected quick prompt from the Codex command palette', async () => {
-    render(<CodexChat project="demo" />)
+    renderCodexChat()
     fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
     await screen.findByText(/I will update the/)
 
@@ -149,7 +154,7 @@ describe('CodexChat', () => {
   })
 
   it('compacts the open thread through the Codex app-server command', async () => {
-    render(<CodexChat project="demo" />)
+    renderCodexChat()
     fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
     await screen.findByText(/I will update the/)
 
@@ -165,7 +170,7 @@ describe('CodexChat', () => {
   })
 
   it('starts a new conversation from the Codex command palette', async () => {
-    render(<CodexChat project="demo" />)
+    renderCodexChat()
     fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
     await screen.findByText(/I will update the/)
     fireEvent.click(screen.getByRole('button', { name: 'Codexコマンド' }))
@@ -178,7 +183,7 @@ describe('CodexChat', () => {
   })
 
   it('sends approval responses through the app-server socket', async () => {
-    render(<CodexChat project="demo" />)
+    renderCodexChat()
     fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
     await screen.findByText(/I will update the/)
 

@@ -15,7 +15,7 @@
 | [`cli_test.go`](./cli_test.go) | CLIコマンドのテスト。 |
 | [`codex.go`](./codex.go) | Codex CLIの読み取り専用診断、設定メタデータ、Config・AGENTS.md・Skills本文、Skillディレクトリ一覧、MCP設定の収集。本文取得時のパス検証、Config・AGENTS.md・Skillのシンボリックリンク対応、上限、Config秘匿値マスクも担当する。 |
 | [`codex_test.go`](./codex_test.go) | Codex診断のCLI出力解析、本文取得、Skillディレクトリ一覧、パス検証、秘匿値マスク、部分エラーのHTTPテスト。 |
-| [`codex_appserver.go`](./codex_appserver.go) | ローカルCodex app-serverの起動・JSON-RPC/WebSocket中継、プロジェクト範囲内の読み取り専用履歴、未送信スレッドの購読期限・切断時解放、解除結果が不確かな購読の再試行と再接続前の照合、プロセス終了時の購読状態・該当WebSocket接続解放、全登録プロジェクトの稼働中・指定時刻以降の終了セッションをthread/list走査で取得するAPI、ターン操作と承認応答、Plan/Defaultモード切替とGoalの取得・設定・一時停止・再開・削除、他プロセスの書き込み競合通知。 |
+| [`codex_appserver.go`](./codex_appserver.go) | ローカルCodex app-serverの起動・JSON-RPC/WebSocket中継、プロジェクト範囲内の読み取り専用履歴と会話名変更、未送信スレッドの購読期限・切断時解放、解除結果が不確かな購読の再試行と再接続前の照合、プロセス終了時の購読状態・該当WebSocket接続解放、全登録プロジェクトの稼働中・指定時刻以降の終了セッションをthread/list走査で取得するAPI、ターン操作と承認応答、Plan/Defaultモード切替とGoalの取得・設定・一時停止・再開・削除、他プロセスの書き込み競合通知。 |
 | [`codex_appserver_test.go`](./codex_appserver_test.go) | Codex会話パスのプロジェクト境界、要求の許可リスト、読み取り専用履歴、書き込み競合イベント、JSON-RPC ID、新規スレッド購読と購読解除、承認再試行、会話圧縮操作のテスト。 |
 | [`file_execute.go`](./file_execute.go) | Filesタブからの実行可能ファイル実行とWebSocket出力ストリーム。 |
 | [`file_execute_test.go`](./file_execute_test.go) | Filesタブの実行ストリームの統合テスト。 |
