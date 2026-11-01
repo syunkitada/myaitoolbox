@@ -16,8 +16,11 @@ interface DashboardProps {
   refreshHerdr?: () => void | Promise<void>
   agentSidebarOpen?: boolean
   openAgentPaneId?: string | null
+  agentSidebarMode?: 'herdr' | 'codex'
+  activeCodexDraftThreadId?: string | null
   onOpenAgentPane?: (paneId: string) => void
   onAppendReviewContext?: (paneId: string, context: string) => void
+  onAppendCodexReviewContext?: (threadId: string, context: string) => void
 }
 
 export function Dashboard({
@@ -29,8 +32,11 @@ export function Dashboard({
   refreshHerdr,
   agentSidebarOpen,
   openAgentPaneId,
+  agentSidebarMode,
+  activeCodexDraftThreadId,
   onOpenAgentPane,
   onAppendReviewContext,
+  onAppendCodexReviewContext,
 }: DashboardProps) {
   const params = useParams()
   const { pathname } = useLocation()
@@ -121,8 +127,11 @@ export function Dashboard({
         refreshHerdr={refreshHerdr}
         agentSidebarOpen={agentSidebarOpen}
         openAgentPaneId={openAgentPaneId}
+        agentSidebarMode={agentSidebarMode}
+        activeCodexDraftThreadId={activeCodexDraftThreadId}
         onOpenAgentPane={onOpenAgentPane}
         onAppendReviewContext={onAppendReviewContext}
+        onAppendCodexReviewContext={onAppendCodexReviewContext}
         defaultSelect={(entries) =>
           entries.some((e) => e.kind === 'file' && e.path === 'README.md') ? 'README.md' : undefined
         }

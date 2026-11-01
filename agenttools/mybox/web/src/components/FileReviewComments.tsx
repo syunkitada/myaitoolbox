@@ -25,7 +25,9 @@ interface FileReviewCommentsProps {
   path: string
   sourceText: string
   activeAgentPaneId: string | null
+  activeCodexThreadId?: string | null
   onAppendToAgentDraft?: (paneId: string, text: string) => void
+  onAppendToCodexDraft?: (threadId: string, text: string) => void
   children: ReactNode
 }
 
@@ -218,7 +220,9 @@ function ReviewThreadCard({
   thread,
   sourceText,
   activeAgentPaneId,
+  activeCodexThreadId,
   onAppendToAgentDraft,
+  onAppendToCodexDraft,
   onUpdate,
   onDelete,
   onReply,
@@ -227,7 +231,9 @@ function ReviewThreadCard({
   thread: FileReviewThread
   sourceText: string
   activeAgentPaneId: string | null
+  activeCodexThreadId?: string | null
   onAppendToAgentDraft?: (paneId: string, text: string) => void
+  onAppendToCodexDraft?: (threadId: string, text: string) => void
   onUpdate: (messageId: string, body: string) => void
   onDelete: () => void
   onReply: (body: string) => void
@@ -295,15 +301,19 @@ function ReviewThreadCard({
         <Button
           variant="outline"
           size="xs"
-          disabled={!activeAgentPaneId || !onAppendToAgentDraft}
-          title={activeAgentPaneId ? 'Append this thread to the active agent draft' : 'Open an agent panel to add this thread'}
+          disabled={activeCodexThreadId
+            ? !onAppendToCodexDraft
+            : !activeAgentPaneId || !onAppendToAgentDraft}
+          title={activeCodexThreadId || activeAgentPaneId ? 'Append this thread to the active agent draft' : 'Open an agent panel to add this thread'}
           onClick={() => {
-            if (activeAgentPaneId) onAppendToAgentDraft?.(activeAgentPaneId, formatFileReviewThreadForAgent(thread))
+            const context = formatFileReviewThreadForAgent(thread)
+            if (activeCodexThreadId) onAppendToCodexDraft?.(activeCodexThreadId, context)
+            else if (activeAgentPaneId) onAppendToAgentDraft?.(activeAgentPaneId, context)
           }}
         >
           Add to agent
         </Button>
-        {!activeAgentPaneId && <span className="text-xs text-muted-foreground">Open an agent panel to insert.</span>}
+        {!activeAgentPaneId && !activeCodexThreadId && <span className="text-xs text-muted-foreground">Open an agent panel to insert.</span>}
       </div>
       {replyOpen && (
         <form
@@ -386,7 +396,9 @@ export function FileReviewComments({
   path,
   sourceText,
   activeAgentPaneId,
+  activeCodexThreadId,
   onAppendToAgentDraft,
+  onAppendToCodexDraft,
   children,
 }: FileReviewCommentsProps) {
   const storageKey = fileReviewStorageKey(project, path)
@@ -644,7 +656,9 @@ export function FileReviewComments({
               thread={thread}
               sourceText={sourceText}
               activeAgentPaneId={activeAgentPaneId}
+              activeCodexThreadId={activeCodexThreadId}
               onAppendToAgentDraft={onAppendToAgentDraft}
+              onAppendToCodexDraft={onAppendToCodexDraft}
               onUpdate={(messageId, body) => updateThread(thread.id, (item) => updateFileReviewMessage(item, messageId, body))}
               onReply={(body) => updateThread(thread.id, (item) => replyToFileReviewThread(item, body))}
               onResolve={() => updateThread(thread.id, resolveFileReviewThread)}
@@ -666,7 +680,9 @@ export function FileReviewComments({
               thread={thread}
               sourceText={sourceText}
               activeAgentPaneId={activeAgentPaneId}
+              activeCodexThreadId={activeCodexThreadId}
               onAppendToAgentDraft={onAppendToAgentDraft}
+              onAppendToCodexDraft={onAppendToCodexDraft}
               onUpdate={(messageId, body) => updateThread(thread.id, (item) => updateFileReviewMessage(item, messageId, body))}
               onReply={(body) => updateThread(thread.id, (item) => replyToFileReviewThread(item, body))}
               onResolve={() => updateThread(thread.id, resolveFileReviewThread)}
@@ -728,7 +744,9 @@ export function FileReviewComments({
               thread={thread}
               sourceText={sourceText}
               activeAgentPaneId={activeAgentPaneId}
+              activeCodexThreadId={activeCodexThreadId}
               onAppendToAgentDraft={onAppendToAgentDraft}
+              onAppendToCodexDraft={onAppendToCodexDraft}
               onUpdate={(messageId, body) => updateThread(thread.id, (item) => updateFileReviewMessage(item, messageId, body))}
               onReply={(body) => updateThread(thread.id, (item) => replyToFileReviewThread(item, body))}
               onResolve={() => updateThread(thread.id, resolveFileReviewThread)}

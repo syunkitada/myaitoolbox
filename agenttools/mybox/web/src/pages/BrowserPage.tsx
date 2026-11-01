@@ -174,8 +174,11 @@ interface BrowserPageProps {
   refreshHerdr?: () => void | Promise<void>
   agentSidebarOpen?: boolean
   openAgentPaneId?: string | null
+  agentSidebarMode?: 'herdr' | 'codex'
+  activeCodexDraftThreadId?: string | null
   onOpenAgentPane?: (paneId: string) => void
   onAppendReviewContext?: (paneId: string, context: string) => void
+  onAppendCodexReviewContext?: (threadId: string, context: string) => void
   revealPath?: string
   onRevealPathHandled?: (path: string) => void
 }
@@ -1357,7 +1360,10 @@ interface PaneProps {
   onGitDiffOpenChange?: (open: boolean) => void
   agentSidebarOpen?: boolean
   openAgentPaneId?: string | null
+  agentSidebarMode?: 'herdr' | 'codex'
+  activeCodexDraftThreadId?: string | null
   onAppendReviewContext?: (paneId: string, context: string) => void
+  onAppendCodexReviewContext?: (threadId: string, context: string) => void
   taskAgentPaneId?: string
   taskAgentName?: string
   taskAgentStatus?: string
@@ -1394,7 +1400,10 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   onGitDiffOpenChange,
   agentSidebarOpen,
   openAgentPaneId,
+  agentSidebarMode,
+  activeCodexDraftThreadId,
   onAppendReviewContext,
+  onAppendCodexReviewContext,
   taskAgentPaneId,
   taskAgentName: linkedAgentName,
   taskAgentStatus: linkedAgentStatus,
@@ -1999,8 +2008,10 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       project={getProject()}
       path={fileReviewPath}
       sourceText={content}
-      activeAgentPaneId={agentSidebarOpen ? openAgentPaneId ?? null : null}
+      activeAgentPaneId={agentSidebarOpen && agentSidebarMode !== 'codex' ? openAgentPaneId ?? null : null}
+      activeCodexThreadId={agentSidebarOpen && agentSidebarMode === 'codex' ? activeCodexDraftThreadId ?? null : null}
       onAppendToAgentDraft={onAppendReviewContext}
+      onAppendToCodexDraft={onAppendCodexReviewContext}
     >
       {filePreview}
     </FileReviewComments>
@@ -2752,7 +2763,10 @@ export function BrowserPage({
   refreshHerdr,
   agentSidebarOpen,
   openAgentPaneId,
+  agentSidebarMode,
+  activeCodexDraftThreadId,
   onAppendReviewContext,
+  onAppendCodexReviewContext,
   onOpenAgentPane,
   revealPath,
   onRevealPathHandled,
@@ -3488,7 +3502,10 @@ export function BrowserPage({
         onGitDiffOpenChange={slot === 'main' ? setGitDiffOpen : setReferenceGitDiffOpen}
         agentSidebarOpen={agentSidebarOpen}
         openAgentPaneId={openAgentPaneId}
+        agentSidebarMode={agentSidebarMode}
+        activeCodexDraftThreadId={activeCodexDraftThreadId}
         onAppendReviewContext={onAppendReviewContext}
+        onAppendCodexReviewContext={onAppendCodexReviewContext}
         taskAgentPaneId={taskAgent?.agent?.pane_id}
         taskAgentName={taskAgent?.name}
         taskAgentStatus={taskAgent?.agent?.status}

@@ -15,7 +15,7 @@ Web UIのアプリケーションコードです。ページと再利用コン�
 | [`state/README.md`](./state/README.md) | エクスプローラー、グラフ、ファイル実行の共有状態。 |
 | [`test/README.md`](./test/README.md) | テスト環境の初期化。 |
 | [`utils/README.md`](./utils/README.md) | Markdown、Herdr、レイアウト、パスなどの純粋な補助処理。 |
-| [`App.tsx`](./App.tsx) | ルーティングとアプリケーション全体のレイアウト。 |
+| [`App.tsx`](./App.tsx) | ルーティングとアプリケーション全体のレイアウト。HerdrとCodexの選択中入力下書きへファイルレビュー文脈を渡す。 |
 | [`App.test.tsx`](./App.test.tsx) | アプリケーション全体の git status 自動更新テスト。 |
 | [`globals.css`](./globals.css) | Tailwind/CSS変数を含むグローバルスタイル。 |
 | [`main.tsx`](./main.tsx) | ReactルートとBrowser Routerの起動。 |

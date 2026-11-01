@@ -50,14 +50,15 @@ type codexAppServerManager struct {
 }
 
 type codexThreadSubscription struct {
-	mu           sync.Mutex
-	clients      int
-	subscribed   bool
-	materialized bool
-	expired      bool
-	idleTimer    *time.Timer
-	retryTimer   *time.Timer
-	unknown      bool
+	mu                sync.Mutex
+	clients           int
+	subscribed        bool
+	materialized      bool
+	expired           bool
+	idleTimer         *time.Timer
+	retryTimer        *time.Timer
+	unknown           bool
+	collaborationMode json.RawMessage
 }
 
 type codexThreadSubscriptionKey struct {
@@ -123,15 +124,16 @@ type codexRPCResult struct {
 }
 
 type codexThreadRecord struct {
-	ID             string          `json:"id"`
-	Name           *string         `json:"name"`
-	Preview        string          `json:"preview"`
-	CWD            string          `json:"cwd"`
-	CreatedAt      int64           `json:"createdAt"`
-	UpdatedAt      int64           `json:"updatedAt"`
-	Model          *string         `json:"model"`
-	ParentThreadID *string         `json:"parentThreadId"`
-	Status         json.RawMessage `json:"status"`
+	ID              string          `json:"id"`
+	Name            *string         `json:"name"`
+	Preview         string          `json:"preview"`
+	CWD             string          `json:"cwd"`
+	CreatedAt       int64           `json:"createdAt"`
+	UpdatedAt       int64           `json:"updatedAt"`
+	Model           *string         `json:"model"`
+	ReasoningEffort *string         `json:"reasoningEffort"`
+	ParentThreadID  *string         `json:"parentThreadId"`
+	Status          json.RawMessage `json:"status"`
 }
 
 func newCodexAppServerManager() *codexAppServerManager {
@@ -162,16 +164,16 @@ func (m *codexAppServerManager) threadSubscription(key codexThreadKey, p *codexA
 	return state
 }
 
-func (m *codexAppServerManager) attachThread(ctx context.Context, p *codexAppServerProcess, key codexThreadKey) error {
+func (m *codexAppServerManager) attachThread(ctx context.Context, p *codexAppServerProcess, key codexThreadKey) (json.RawMessage, error) {
 	state := m.threadSubscription(key, p)
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.clients > 0 {
 		state.clients++
-		return nil
+		return append(json.RawMessage(nil), state.collaborationMode...), nil
 	}
 	if state.expired {
-		return errCodexEmptyThreadExpired
+		return nil, errCodexEmptyThreadExpired
 	}
 	if state.idleTimer != nil {
 		state.idleTimer.Stop()
@@ -187,26 +189,33 @@ func (m *codexAppServerManager) attachThread(ctx context.Context, p *codexAppSer
 		// silently remain detached while mybox believes it is subscribed.
 		if _, err := p.request(ctx, "thread/unsubscribe", map[string]string{"threadId": key.thread}); err != nil {
 			m.scheduleSubscriptionRetryLocked(p, key, state)
-			return err
+			return nil, err
 		}
 		state.subscribed = false
 		state.unknown = false
 	}
 	if !state.subscribed {
-		if _, err := p.request(ctx, "thread/resume", map[string]any{"threadId": key.thread, "excludeTurns": true}); err != nil {
+		result, err := p.request(ctx, "thread/resume", map[string]any{"threadId": key.thread, "excludeTurns": true})
+		if err != nil {
 			if isCodexThreadNotResumable(err) {
-				return errCodexEmptyThreadExpired
+				return nil, errCodexEmptyThreadExpired
 			}
-			return err
+			return nil, err
+		}
+		var resumed struct {
+			CollaborationMode json.RawMessage `json:"collaborationMode"`
+		}
+		if json.Unmarshal(result, &resumed) == nil && len(resumed.CollaborationMode) > 0 && string(resumed.CollaborationMode) != "null" {
+			state.collaborationMode = append(json.RawMessage(nil), resumed.CollaborationMode...)
 		}
 		state.subscribed = true
 		state.materialized = true
 	}
 	state.clients = 1
-	return nil
+	return append(json.RawMessage(nil), state.collaborationMode...), nil
 }
 
-func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, key codexThreadKey) {
+func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, key codexThreadKey, collaborationMode json.RawMessage) {
 	select {
 	case <-p.done:
 		return
@@ -233,7 +242,32 @@ func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, ke
 	state.subscribed = true
 	state.materialized = false
 	state.expired = false
+	state.collaborationMode = append(json.RawMessage(nil), collaborationMode...)
 	m.scheduleUnmaterializedThreadExpiryLocked(p, key, state)
+}
+
+func (m *codexAppServerManager) updateCollaborationMode(p *codexAppServerProcess, key codexThreadKey, collaborationMode json.RawMessage) {
+	m.threadSubMu.Lock()
+	state := m.threadSubs[codexThreadSubscriptionKey{thread: key, process: p}]
+	m.threadSubMu.Unlock()
+	if state == nil {
+		return
+	}
+	state.mu.Lock()
+	state.collaborationMode = append(json.RawMessage(nil), collaborationMode...)
+	state.mu.Unlock()
+}
+
+func (m *codexAppServerManager) currentCollaborationMode(p *codexAppServerProcess, key codexThreadKey) json.RawMessage {
+	m.threadSubMu.Lock()
+	state := m.threadSubs[codexThreadSubscriptionKey{thread: key, process: p}]
+	m.threadSubMu.Unlock()
+	if state == nil {
+		return nil
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return append(json.RawMessage(nil), state.collaborationMode...)
 }
 
 func (m *codexAppServerManager) markThreadMaterialized(p *codexAppServerProcess, key codexThreadKey) {
@@ -440,6 +474,10 @@ func (p *codexAppServerProcess) initialize() error {
 				"name":    "mybox",
 				"title":   "mybox",
 				"version": "dev",
+			},
+			"capabilities": map[string]bool{
+				"experimentalApi":    true,
+				"requestAttestation": false,
 			},
 		})
 		if p.initErr == nil {
@@ -986,14 +1024,31 @@ func (s *Server) CreateCodexThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var response struct {
-		Thread codexThreadRecord `json:"thread"`
+		Thread          codexThreadRecord `json:"thread"`
+		Model           string            `json:"model"`
+		ReasoningEffort *string           `json:"reasoningEffort"`
 	}
 	if err := json.Unmarshal(result, &response); err != nil || response.Thread.ID == "" {
 		writeError(w, errors.New("codex app-server returned an invalid thread"))
 		return
 	}
 	key := codexThreadKey{project: app.Project.Name, thread: response.Thread.ID}
-	s.codexAppServer.retainStartedThread(p, key)
+	model := response.Model
+	if model == "" && response.Thread.Model != nil {
+		model = *response.Thread.Model
+	}
+	var collaborationMode json.RawMessage
+	if model != "" {
+		collaborationMode, _ = json.Marshal(map[string]any{
+			"mode": "default",
+			"settings": map[string]any{
+				"model":                  model,
+				"reasoning_effort":       response.ReasoningEffort,
+				"developer_instructions": nil,
+			},
+		})
+	}
+	s.codexAppServer.retainStartedThread(p, key, collaborationMode)
 	writeJSONResponse(w, http.StatusCreated, summarizeCodexThread(response.Thread))
 }
 
@@ -1132,7 +1187,8 @@ func (s *Server) streamCodexThread(c echo.Context) error {
 	}()
 	conn.SetReadLimit(1 << 20)
 	resumeCtx, cancelResume := context.WithTimeout(c.Request().Context(), codexAppServerRequestTimeout)
-	err = s.codexAppServer.attachThread(resumeCtx, p, key)
+	var collaborationMode json.RawMessage
+	collaborationMode, err = s.codexAppServer.attachThread(resumeCtx, p, key)
 	cancelResume()
 	if err != nil {
 		message := map[string]string{"type": "error", "error": err.Error()}
@@ -1146,7 +1202,7 @@ func (s *Server) streamCodexThread(c echo.Context) error {
 		return nil
 	}
 	threadAttached = true
-	client.push(map[string]string{"type": "ready"})
+	client.push(map[string]any{"type": "ready", "collaboration_mode": collaborationMode})
 	for {
 		_, data, readErr := conn.ReadMessage()
 		if readErr != nil {
@@ -1157,12 +1213,15 @@ func (s *Server) streamCodexThread(c echo.Context) error {
 			client.push(map[string]string{"type": "error", "error": "Invalid Codex control message"})
 			continue
 		}
-		if err := s.handleCodexClientMessage(c.Request().Context(), p, key, request); err != nil {
+		result, err := s.handleCodexClientMessageWithResult(c.Request().Context(), p, key, app.Project.Path, request)
+		if err != nil {
 			client.push(map[string]any{"type": "error", "error": err.Error(), "request_id": request.RequestID})
 		} else if request.Type == "prompt" {
 			client.push(map[string]string{"type": "prompt_started"})
 		} else if request.Type == "respond" {
 			client.push(map[string]any{"type": "response", "request_id": request.RequestID})
+		} else {
+			client.push(map[string]any{"type": "control_response", "control": request.Type, "request_id": request.RequestID, "result": result})
 		}
 	}
 }
@@ -1182,23 +1241,31 @@ func isCodexThreadNotResumable(err error) bool {
 type codexClientMessage struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text"`
+	Mode      string          `json:"mode"`
+	Objective string          `json:"objective"`
+	Status    string          `json:"status"`
 	RequestID string          `json:"request_id"`
 	Decision  string          `json:"decision"`
 	Answers   json.RawMessage `json:"answers"`
 }
 
 func (s *Server) handleCodexClientMessage(ctx context.Context, p *codexAppServerProcess, key codexThreadKey, request codexClientMessage) error {
+	_, err := s.handleCodexClientMessageWithResult(ctx, p, key, "", request)
+	return err
+}
+
+func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *codexAppServerProcess, key codexThreadKey, projectDir string, request codexClientMessage) (any, error) {
 	ctx, cancel := context.WithTimeout(ctx, codexAppServerRequestTimeout)
 	defer cancel()
 	switch request.Type {
 	case "prompt":
 		text := strings.TrimSpace(request.Text)
 		if text == "" || len([]rune(text)) > codexAppServerMaxPrompt {
-			return errors.New("prompt must contain between 1 and 10000 characters")
+			return nil, errors.New("prompt must contain between 1 and 10000 characters")
 		}
 		latest, err := latestCodexTurn(ctx, p, key.thread)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		input := []map[string]string{{"type": "text", "text": text}}
 		if latest.Status == "inProgress" {
@@ -1209,24 +1276,120 @@ func (s *Server) handleCodexClientMessage(ctx context.Context, p *codexAppServer
 				s.codexAppServer.markThreadMaterialized(p, key)
 			}
 		}
-		return err
+		return nil, err
 	case "interrupt":
 		latest, err := latestCodexTurn(ctx, p, key.thread)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if latest.ID == "" || latest.Status != "inProgress" {
-			return errors.New("there is no active Codex turn to stop")
+			return nil, errors.New("there is no active Codex turn to stop")
 		}
 		_, err = p.request(ctx, "turn/interrupt", map[string]string{"threadId": key.thread, "turnId": latest.ID})
-		return err
+		return nil, err
 	case "compact":
 		_, err := p.request(ctx, "thread/compact/start", map[string]string{"threadId": key.thread})
-		return err
+		return nil, err
 	case "respond":
-		return s.codexAppServer.resolveServerRequest(key.project, key.thread, request.RequestID, request.Decision, request.Answers)
+		return nil, s.codexAppServer.resolveServerRequest(key.project, key.thread, request.RequestID, request.Decision, request.Answers)
+	case "set_mode":
+		mode := strings.TrimSpace(request.Mode)
+		if mode != "plan" && mode != "default" {
+			return nil, errors.New("Codex mode must be plan or default")
+		}
+		thread, err := readCodexThread(ctx, p, key.thread, projectDir)
+		if err != nil {
+			return nil, err
+		}
+		model := ""
+		if thread.Model != nil {
+			model = strings.TrimSpace(*thread.Model)
+		}
+		if model == "" {
+			var current struct {
+				Settings struct {
+					Model string `json:"model"`
+				} `json:"settings"`
+			}
+			_ = json.Unmarshal(s.codexAppServer.currentCollaborationMode(p, key), &current)
+			model = strings.TrimSpace(current.Settings.Model)
+		}
+		if model == "" {
+			return nil, errors.New("Codex thread model is unavailable")
+		}
+		presetResult, err := p.request(ctx, "collaborationMode/list", map[string]any{})
+		if err != nil {
+			return nil, err
+		}
+		var presets struct {
+			Data []struct {
+				Mode            *string `json:"mode"`
+				Model           *string `json:"model"`
+				ReasoningEffort *string `json:"reasoning_effort"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(presetResult, &presets); err != nil {
+			return nil, errors.New("Codex app-server returned invalid collaboration modes")
+		}
+		var reasoningEffort *string
+		presetFound := false
+		for _, preset := range presets.Data {
+			if preset.Mode == nil || *preset.Mode != mode {
+				continue
+			}
+			if preset.Model != nil && strings.TrimSpace(*preset.Model) != "" {
+				model = strings.TrimSpace(*preset.Model)
+			}
+			reasoningEffort = preset.ReasoningEffort
+			presetFound = true
+			break
+		}
+		if !presetFound {
+			return nil, fmt.Errorf("Codex mode %q is unavailable", mode)
+		}
+		collaborationMode, err := json.Marshal(map[string]any{
+			"mode": mode,
+			"settings": map[string]any{
+				"model":                  model,
+				"reasoning_effort":       reasoningEffort,
+				"developer_instructions": nil,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.request(ctx, "thread/settings/update", map[string]any{"threadId": key.thread, "collaborationMode": json.RawMessage(collaborationMode)}); err != nil {
+			return nil, err
+		}
+		s.codexAppServer.updateCollaborationMode(p, key, collaborationMode)
+		return map[string]any{"mode": mode, "collaboration_mode": json.RawMessage(collaborationMode)}, nil
+	case "goal_get":
+		result, err := p.request(ctx, "thread/goal/get", map[string]string{"threadId": key.thread})
+		return json.RawMessage(result), err
+	case "goal_set":
+		objective := strings.TrimSpace(request.Objective)
+		if objective == "" || len([]rune(objective)) > codexAppServerMaxPrompt {
+			return nil, errors.New("goal must contain between 1 and 10000 characters")
+		}
+		result, err := p.request(ctx, "thread/goal/set", map[string]any{
+			"threadId":  key.thread,
+			"origin":    "user",
+			"objective": objective,
+			"status":    "active",
+		})
+		return json.RawMessage(result), err
+	case "goal_status":
+		status := strings.TrimSpace(request.Status)
+		if status != "active" && status != "paused" {
+			return nil, errors.New("goal status must be active or paused")
+		}
+		result, err := p.request(ctx, "thread/goal/set", map[string]any{"threadId": key.thread, "origin": "user", "status": status})
+		return json.RawMessage(result), err
+	case "goal_clear":
+		result, err := p.request(ctx, "thread/goal/clear", map[string]any{"threadId": key.thread, "origin": "user"})
+		return json.RawMessage(result), err
 	default:
-		return errors.New("unsupported Codex control message")
+		return nil, errors.New("unsupported Codex control message")
 	}
 }
 

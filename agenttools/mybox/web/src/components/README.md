@@ -10,13 +10,13 @@
 | [`GraphView/README.md`](./GraphView/README.md) | ファイルリンクグラフのSigma表示。 |
 | [`AppDialogs.tsx`](./AppDialogs.tsx) | アプリ全体で使うダイアログ群。 |
 | [`AgentSidebar.tsx`](./AgentSidebar.tsx) / [`AgentSidebar.test.tsx`](./AgentSidebar.test.tsx) | プロジェクト共通の右サイドバー。Herdr Agentの一覧・出力・操作・停止・予約送信と、Codexモードへの切り替えを提供する。スクリプト実行状態も表示し、モバイルではSheetとして表示する。開閉ボタンにはHerdrとCodexの代表状態を示すステータスアイコンを表示する。 |
-| [`CodexChat.tsx`](./CodexChat.tsx) / [`CodexChat.test.tsx`](./CodexChat.test.tsx) | Codex CLI / IDEの会話履歴と状態表示、新規会話、Markdown応答、行番号ジャンプ付きプロジェクト内ファイルリンク、実行詳細、差分、Steer、停止、承認と質問回答、`/compact`を含むコマンドパレットを表示する。メッセージ送信済みの会話はURLとプロジェクトごとのAgentサイドバー状態に保持し、リロード後やプロジェクト切替後のAgentパネル再表示時に復元する。未送信の空会話は接続中だけ保持し、会話一覧には表示しない。初回送信後に選択状態を保存する。会話表示中は左側に同じプロジェクトのセッションをステータスアイコンだけで並べ、タイトルと状態はツールチップで示す。選択・更新できる。セッション一覧の代表状態を開閉ボタンと折りたたみサイドバーに表示する。入力フォームのコマンドパレット・停止・送信ボタンは右側に縦に並べる。スマートフォンでは会話本文の横はみ出しを抑え、入力欄のフォーカス時に自動拡大されないようにする。 |
+| [`CodexChat.tsx`](./CodexChat.tsx) / [`CodexChat.test.tsx`](./CodexChat.test.tsx) | Codex CLI / IDEの会話履歴と状態表示、新規会話、Markdown応答、行番号ジャンプ付きプロジェクト内ファイルリンク、実行詳細、差分、Steer、停止、承認と質問回答、Plan/Defaultモード切替、Goal管理、`/compact`を含むコマンドパレットを表示する。Files画面のレビューコメントを選択中会話の入力下書きへ追記する。メッセージ送信済みの会話はURLとプロジェクトごとのAgentサイドバー状態に保持し、リロード後やプロジェクト切替後のAgentパネル再表示時に復元する。未送信の空会話は接続中だけ保持し、会話一覧には表示しない。初回送信後に選択状態を保存する。会話表示中は左側に同じプロジェクトのセッションをステータスアイコンだけで並べ、タイトルと状態はツールチップで示す。選択・更新できる。セッション一覧の代表状態を開閉ボタンと折りたたみサイドバーに表示する。入力フォームのコマンドパレット・停止・送信ボタンは右側に縦に並べる。スマートフォンでは会話本文の横はみ出しを抑え、入力欄のフォーカス時に自動拡大されないようにする。 |
 | [`AgentLaunchDialog.tsx`](./AgentLaunchDialog.tsx) | Agent kindとHerdr Tabを指定して一般Agentを起動するモーダル。Tabは既存候補を表示しつつ自由入力できる。 |
 | [`CommitDiffView.tsx`](./CommitDiffView.tsx) / [`CommitDiffView.test.tsx`](./CommitDiffView.test.tsx) | コミット差分表示とそのテスト。 |
 | [`ContextMenu.tsx`](./ContextMenu.tsx) | ファイル・グラフ操作のコンテキストメニュー。 |
 | [`DiffView.tsx`](./DiffView.tsx) / [`DiffView.test.tsx`](./DiffView.test.tsx) | unified diff表示とそのテスト。 |
 | [`FileExecutionModal.tsx`](./FileExecutionModal.tsx) / [`FileExecutionModal.test.tsx`](./FileExecutionModal.test.tsx) | スクリプト実行中の出力、終了結果、停止、Dismissを表示するモーダルとテスト。 |
-| [`FileReviewComments.tsx`](./FileReviewComments.tsx) / [`FileReviewComments.test.tsx`](./FileReviewComments.test.tsx) | localStorageに保存するファイル・行範囲コメント、返信・解決、Agent下書きへの追記。選択範囲の操作は本文付近または狭い画面の下端に表示し、ファイルコメント操作と未解決件数はスクロール追従ヘッダーに表示する。 |
+| [`FileReviewComments.tsx`](./FileReviewComments.tsx) / [`FileReviewComments.test.tsx`](./FileReviewComments.test.tsx) | localStorageに保存するファイル・行範囲コメント、返信・解決、HerdrまたはCodexの選択中下書きへの追記。選択範囲の操作は本文付近または狭い画面の下端に表示し、ファイルコメント操作と未解決件数はスクロール追従ヘッダーに表示する。 |
 | [`FileTabs.tsx`](./FileTabs.tsx) / [`FileTabs.test.tsx`](./FileTabs.test.tsx) | 最近開いたファイルのタブと、プロジェクト付きお気に入りの追加・削除および横断遷移モーダルとテスト。 |
 | [`FrontmatterForm.tsx`](./FrontmatterForm.tsx) / [`FrontmatterForm.test.tsx`](./FrontmatterForm.test.tsx) | タスクと通常のMarkdownのフロントマター編集フォームとテスト。 |
 | [`GitViewer.tsx`](./GitViewer.tsx) | Git状態・差分画面を埋め込むビュー。 |

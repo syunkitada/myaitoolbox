@@ -7,11 +7,13 @@ import { Markdown } from './Markdown'
 import { DiffView } from './DiffView'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet'
 import { cn } from '@/lib/utils'
+import { appendReviewContextToDraft } from '../utils/file-review-comments'
 
 type JsonObject = Record<string, unknown>
 type CodexTurn = JsonObject & { id: string; status?: string; items?: CodexItem[] }
 type CodexItem = JsonObject & { id?: string; type?: string; text?: string }
 type ApprovalRequest = { request_id: string; method: string; params: JsonObject }
+type ReviewContextAppend = { id: number; threadId: string; context: string }
 
 const CODEX_COMMANDS = [
   { id: 'compact', label: '/compact', kind: 'compact' as const },
@@ -485,10 +487,22 @@ export function CodexThreadStatus({ status, compact = false }: { status: string;
   )
 }
 
-export function CodexChat({ project, requestedThreadId, onThreadSelected, onFilePathClick, onSessionStatusChange }: {
+export function CodexChat({
+  project,
+  requestedThreadId,
+  onThreadSelected,
+  onActiveThreadChange,
+  pendingReviewContextAppend,
+  onReviewContextAppendConsumed,
+  onFilePathClick,
+  onSessionStatusChange,
+}: {
   project: string
   requestedThreadId?: string | null
   onThreadSelected?: (threadId: string | null) => void
+  onActiveThreadChange?: (threadId: string | null) => void
+  pendingReviewContextAppend?: ReviewContextAppend | null
+  onReviewContextAppendConsumed?: (id: number) => void
   onFilePathClick?: (path: string, line?: number) => void
   onSessionStatusChange?: (status: string | null) => void
 }) {
@@ -506,6 +520,11 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
   const [sending, setSending] = useState(false)
   const [socketConnecting, setSocketConnecting] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [goalEditorOpen, setGoalEditorOpen] = useState(false)
+  const [goalDraft, setGoalDraft] = useState('')
+  const [goal, setGoal] = useState<JsonObject | null>(null)
+  const [collaborationMode, setCollaborationMode] = useState<string | null>(null)
+  const [controlBusy, setControlBusy] = useState(false)
   const [connected, setConnected] = useState(false)
   const [writerConflict, setWriterConflict] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -516,6 +535,9 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
   const openSequenceRef = useRef(0)
   const threadListRequestRef = useRef(0)
   const handledRequestedThreadRef = useRef<string | null>(null)
+  const processedReviewContextAppendRef = useRef(0)
+  const controlRequestSequenceRef = useRef(0)
+  const activeThreadIdRef = useRef<string | null>(null)
   const threadHasTurnsRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const scrollToBottomRef = useRef(true)
@@ -620,12 +642,27 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
     }
   }, [turns, pendingRequests.length])
 
+  useEffect(() => {
+    const append = pendingReviewContextAppend
+    if (!append || !selectedThread || append.id <= processedReviewContextAppendRef.current) return
+
+    processedReviewContextAppendRef.current = append.id
+    if (append.threadId === selectedThread.thread_id) {
+      setDraft((current) => appendReviewContextToDraft(current, append.context))
+      requestAnimationFrame(() => composerRef.current?.focus())
+    }
+    onReviewContextAppendConsumed?.(append.id)
+  }, [onReviewContextAppendConsumed, pendingReviewContextAppend, selectedThread])
+
   const openThread = useCallback(async (thread: CodexThread) => {
     const openSequence = ++openSequenceRef.current
     handledRequestedThreadRef.current = thread.thread_id
+    activeThreadIdRef.current = thread.thread_id
+    onActiveThreadChange?.(thread.thread_id)
     onThreadSelected?.(thread.thread_id)
     socketRef.current?.close()
     socketRef.current = null
+    setCommandPaletteOpen(false)
     setSelectedThread(thread)
     setTurns([])
     setPendingRequests([])
@@ -633,6 +670,11 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
     scrollToBottomRef.current = true
     scrollAnchorRef.current = null
     setConnected(false)
+    setCollaborationMode(null)
+    setGoal(null)
+    setGoalDraft('')
+    setGoalEditorOpen(false)
+    setControlBusy(false)
     setSocketConnecting(false)
     setWriterConflict(false)
     setHistoryLoading(true)
@@ -653,6 +695,8 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
       const message = loadError instanceof Error ? loadError.message : String(loadError)
       if (/codex conversation not found/i.test(message)) {
         setSelectedThread(null)
+        activeThreadIdRef.current = null
+        onActiveThreadChange?.(null)
         onThreadSelected?.(null)
         setError(null)
         setHistoryLoading(false)
@@ -678,6 +722,7 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
       if (openSequenceRef.current !== openSequence) return
       setConnected(false)
       setSocketConnecting(false)
+      setControlBusy(false)
       if (!connectionRejected) {
         setError(connectionReady
           ? 'Codexとの接続が切れました。再接続してください。'
@@ -688,6 +733,7 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
       if (openSequenceRef.current !== openSequence) return
       setConnected(false)
       setSocketConnecting(false)
+      setControlBusy(false)
       if (!connectionRejected) setError('Codexとの接続に失敗しました。myboxサーバーとapp-serverを確認して再接続してください。')
     }
     socket.onmessage = (event) => {
@@ -716,6 +762,7 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
         const requestId = string(message.request_id)
         const messageError = string(message.error) || 'Codexとの接続でエラーが発生しました。'
         setError(messageError)
+        if (requestId) setControlBusy(false)
         if (!requestId && !connectionReady) {
           connectionRejected = true
           setSocketConnecting(false)
@@ -731,6 +778,9 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
         setWriterConflict(false)
         setError(null)
         setConnected(true)
+        const mode = string(record(message.collaboration_mode).mode)
+        setCollaborationMode(mode || 'default')
+        socket.send(JSON.stringify({ type: 'goal_get', request_id: `goal-get-${thread.thread_id}` }))
       } else if (message.type === 'prompt_started') {
         if (!threadHasTurnsRef.current) {
           threadHasTurnsRef.current = true
@@ -745,6 +795,20 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
           next.delete(requestId)
           return next
         })
+      } else if (message.type === 'control_response') {
+        const control = string(message.control)
+        const result = record(message.result)
+        setControlBusy(false)
+        if (control === 'set_mode') {
+          setCollaborationMode(string(result.mode) || string(record(result.collaboration_mode).mode) || 'default')
+        } else if (control === 'goal_clear') {
+          setGoal(null)
+          setGoalDraft('')
+        } else if (control.startsWith('goal_') && Object.prototype.hasOwnProperty.call(result, 'goal')) {
+          const nextGoal = record(result.goal)
+          setGoal(Object.keys(nextGoal).length > 0 ? nextGoal : null)
+          setGoalDraft(string(nextGoal.objective))
+        }
       } else if (message.type === 'server_request') {
         const request: ApprovalRequest = {
           request_id: string(message.request_id),
@@ -753,10 +817,23 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
         }
         setPendingRequests((current) => current.some((entry) => entry.request_id === request.request_id) ? current : [...current, request])
       } else if (message.type === 'notification') {
-        setTurns((current) => applyNotification(current, string(message.method), record(message.params)))
+        const method = string(message.method)
+        const params = record(message.params)
+        if (method === 'thread/goal/updated' && string(params.threadId) === thread.thread_id) {
+          const updatedGoal = record(params.goal)
+          setGoal(Object.keys(updatedGoal).length > 0 ? updatedGoal : null)
+          setGoalDraft(string(updatedGoal.objective))
+        } else if (method === 'thread/goal/cleared' && string(params.threadId) === thread.thread_id) {
+          setGoal(null)
+          setGoalDraft('')
+        } else if (method === 'thread/settings/updated' && string(params.threadId) === thread.thread_id) {
+          const mode = string(record(record(params.threadSettings).collaborationMode).mode)
+          if (mode) setCollaborationMode(mode)
+        }
+        setTurns((current) => applyNotification(current, method, params))
       }
     }
-  }, [loadThreads, onThreadSelected, project])
+  }, [loadThreads, onActiveThreadChange, onThreadSelected, project])
 
   useEffect(() => {
     if (!requestedThreadId) {
@@ -778,11 +855,15 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
     void openThread(thread)
   }, [listLoading, openThread, requestedThreadId, threads])
 
-  useEffect(() => () => {
-    openSequenceRef.current += 1
-    socketRef.current?.close()
-    socketRef.current = null
-  }, [])
+  useEffect(() => {
+    if (activeThreadIdRef.current) onActiveThreadChange?.(activeThreadIdRef.current)
+    return () => {
+      openSequenceRef.current += 1
+      socketRef.current?.close()
+      socketRef.current = null
+      onActiveThreadChange?.(null)
+    }
+  }, [onActiveThreadChange])
 
   const createThread = useCallback(async () => {
     if (creating) return
@@ -819,7 +900,61 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
     window.setTimeout(() => setSending(false), 500)
   }, [sending])
 
-  const send = useCallback(() => sendText(draft, true), [draft, sendText])
+  const sendControl = useCallback((type: string, payload: JsonObject = {}) => {
+    const socket = socketRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      setError('Codexとの接続がありません。再接続してから操作してください。')
+      return false
+    }
+    controlRequestSequenceRef.current += 1
+    const requestId = `control-${Date.now()}-${controlRequestSequenceRef.current}`
+    setControlBusy(true)
+    setError(null)
+    socket.send(JSON.stringify({ type, request_id: requestId, ...payload }))
+    return true
+  }, [])
+
+  const changeMode = useCallback((mode: 'plan' | 'default') => {
+    if (sendControl('set_mode', { mode })) setCommandPaletteOpen(false)
+  }, [sendControl])
+
+  const openGoalEditor = useCallback(() => {
+    setGoalDraft(string(goal?.objective))
+    setGoalEditorOpen(true)
+    setCommandPaletteOpen(true)
+    sendControl('goal_get')
+  }, [goal?.objective, sendControl])
+
+  const submitGoal = useCallback(() => {
+    if (sendControl('goal_set', { objective: goalDraft })) setCommandPaletteOpen(false)
+  }, [goalDraft, sendControl])
+
+  const runSlashCommand = useCallback((text: string): boolean => {
+    const command = text.trim()
+    if (command === '/plan' || command === '/default') {
+      setDraft('')
+      changeMode(command.slice(1) as 'plan' | 'default')
+      return true
+    }
+    const goalCommand = command.match(/^\/goal(?:\s+([\s\S]*))?$/)
+    if (!goalCommand) return false
+    const argument = (goalCommand[1] ?? '').trim()
+    setDraft('')
+    if (!argument) {
+      openGoalEditor()
+    } else if (argument === 'pause' || argument === 'resume') {
+      sendControl('goal_status', { status: argument === 'pause' ? 'paused' : 'active' })
+    } else if (argument === 'clear') {
+      sendControl('goal_clear')
+    } else {
+      sendControl('goal_set', { objective: argument })
+    }
+    return true
+  }, [changeMode, openGoalEditor, sendControl])
+
+  const sendComposer = useCallback(() => {
+    if (!runSlashCommand(draft)) sendText(draft, true)
+  }, [draft, runSlashCommand, sendText])
 
   const sendQuickPrompt = useCallback((text: string) => {
     setCommandPaletteOpen(false)
@@ -929,7 +1064,7 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      send()
+      sendComposer()
     }
   }
 
@@ -1022,12 +1157,12 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col" onClick={handleConversationClick}>
       <div className="flex shrink-0 items-center gap-2 border-b px-2 py-2">
-        <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => { openSequenceRef.current += 1; socketRef.current?.close(); socketRef.current = null; setSelectedThread(null); onThreadSelected?.(null); void loadThreads() }} aria-label="会話一覧に戻る">
+        <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => { openSequenceRef.current += 1; socketRef.current?.close(); socketRef.current = null; setSelectedThread(null); activeThreadIdRef.current = null; onActiveThreadChange?.(null); onThreadSelected?.(null); void loadThreads() }} aria-label="会話一覧に戻る">
           <ArrowLeft />
         </Button>
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-semibold" title={selectedThread.title}>{selectedThread.title || 'New Codex conversation'}</div>
-          <div className={cn('text-[10px]', connected ? 'text-green-700 dark:text-green-400' : writerConflict ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>{connected ? '接続中' : writerConflict ? '他のCodexが操作中 · 読み取り専用' : historyLoading ? '履歴を読み込み中…' : socketConnecting ? '接続中…' : '切断中'}</div>
+          <div className={cn('text-[10px]', connected ? 'text-green-700 dark:text-green-400' : writerConflict ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>{connected ? `接続中${collaborationMode === 'plan' ? ' · Plan mode' : collaborationMode === 'default' ? ' · Default mode' : ''}` : writerConflict ? '他のCodexが操作中 · 読み取り専用' : historyLoading ? '履歴を読み込み中…' : socketConnecting ? '接続中…' : '切断中'}</div>
         </div>
         {!connected && !historyLoading && <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => void openThread(selectedThread)} aria-label={writerConflict ? 'Codexに再接続（元のCodex終了後）' : 'Codexに再接続'}><RefreshCw /></Button>}
       </div>
@@ -1089,18 +1224,39 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
               <Keyboard />
             </Button>
             {active && <Button size="icon-sm" variant="ghost" className="shrink-0 cursor-pointer text-destructive" onClick={interrupt} disabled={!connected} aria-label="Codexを停止"><Square /></Button>}
-            <Button size="icon-sm" className="shrink-0 cursor-pointer" onClick={send} disabled={!draft.trim() || !connected || sending} aria-label={active ? 'Codexに追加指示を送信' : 'Codexに送信'} title={active ? 'Steer' : 'Send'}><Send /></Button>
+              <Button size="icon-sm" className="shrink-0 cursor-pointer" onClick={sendComposer} disabled={!draft.trim() || !connected || sending || controlBusy} aria-label={active ? 'Codexに追加指示を送信' : 'Codexに送信'} title={active ? 'Steer' : 'Send'}><Send /></Button>
           </div>
         </div>
         <div className="mt-1 px-1 text-[10px] text-muted-foreground">Enterで送信 · Shift+Enterで改行{active ? ' · 送信内容は実行中のCodexへ追加されます（Steer）' : ''}</div>
       </div>
-      <Sheet open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen}>
+      <Sheet open={commandPaletteOpen} onOpenChange={(open) => { setCommandPaletteOpen(open); if (!open) setGoalEditorOpen(false) }}>
         <SheetContent side="bottom" className="max-h-[80vh] gap-0 overflow-y-auto p-0" data-testid="codex-command-palette">
           <SheetHeader className="border-b px-4 py-3">
-            <SheetTitle>Codex コマンド</SheetTitle>
-            <SheetDescription>クイックプロンプトは会話へ送信し、新しい会話は別スレッドで開始します。</SheetDescription>
+            <SheetTitle>{goalEditorOpen ? 'Codex Goal' : 'Codex コマンド'}</SheetTitle>
+            <SheetDescription>{goalEditorOpen ? 'この会話の長期目標を設定・管理します。' : 'モード切替とクイック操作を選べます。'}</SheetDescription>
           </SheetHeader>
           <div className="flex min-w-0 flex-col gap-4 p-4">
+            {goalEditorOpen ? (
+              <div className="flex flex-col gap-3">
+                <label htmlFor="codex-goal-objective" className="text-xs font-semibold">目標</label>
+                <textarea
+                  id="codex-goal-objective"
+                  value={goalDraft}
+                  onChange={(event) => setGoalDraft(event.target.value)}
+                  placeholder="例: この機能を実装し、必要な確認を終える"
+                  maxLength={10000}
+                  rows={4}
+                  className="min-h-24 resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                />
+                {goal && <p className="text-[11px] text-muted-foreground">状態: {string(goal.status) || 'active'}{typeof goal.tokensUsed === 'number' ? ` · 使用トークン ${goal.tokensUsed}` : ''}</p>}
+                <div className="flex flex-wrap justify-end gap-2">
+                  {goal && <Button size="xs" variant="outline" className="cursor-pointer" disabled={!connected || controlBusy} onClick={() => sendControl('goal_clear')}>Goalを削除</Button>}
+                  {goal && (goal.status === 'active' || goal.status === 'paused') && <Button size="xs" variant="outline" className="cursor-pointer" disabled={!connected || controlBusy} onClick={() => sendControl('goal_status', { status: goal.status === 'paused' ? 'active' : 'paused' })}>{goal.status === 'paused' ? '再開' : '一時停止'}</Button>}
+                  <Button size="xs" className="cursor-pointer" disabled={!connected || controlBusy || !goalDraft.trim()} onClick={submitGoal}>{controlBusy ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}{goal ? '目標を更新' : '目標を設定'}</Button>
+                </div>
+                <Button variant="ghost" size="xs" className="cursor-pointer self-start" onClick={() => setGoalEditorOpen(false)}>コマンド一覧に戻る</Button>
+              </div>
+            ) : <>
             <div className="flex flex-col gap-2">
               <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">会話</p>
               <Button
@@ -1116,6 +1272,15 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
                 {creating ? <Loader2 className="mr-2 size-3 animate-spin" /> : <MessageSquarePlus className="mr-2 size-3" />}
                 新しい会話
               </Button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">モードと目標</p>
+              <div className="grid grid-cols-2 gap-1">
+                <Button variant={collaborationMode === 'plan' ? 'default' : 'outline'} size="xs" className="min-h-8 cursor-pointer justify-start px-2 text-xs" disabled={!connected || controlBusy} onClick={() => changeMode('plan')}>/plan · 計画</Button>
+                <Button variant={collaborationMode === 'default' ? 'default' : 'outline'} size="xs" className="min-h-8 cursor-pointer justify-start px-2 text-xs" disabled={!connected || controlBusy} onClick={() => changeMode('default')}>/default · 通常</Button>
+                <Button variant="outline" size="xs" className="min-h-8 cursor-pointer justify-start px-2 text-xs" disabled={!connected || controlBusy} onClick={openGoalEditor}>/goal · 目標を管理</Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">モードの変更は次のターンから適用されます。入力欄では /goal pause・/goal resume・/goal clear も使えます。</p>
             </div>
             <div className="flex flex-col gap-2">
               <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">クイック操作</p>
@@ -1135,6 +1300,7 @@ export function CodexChat({ project, requestedThreadId, onThreadSelected, onFile
                 ))}
               </div>
             </div>
+            </>}
           </div>
         </SheetContent>
       </Sheet>

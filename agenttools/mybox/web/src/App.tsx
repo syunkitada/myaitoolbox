@@ -66,6 +66,9 @@ export default function App() {
   const herdr = useHerdrOverview(5000, myboxFocusedPaneId)
   const [pendingOpenAgentPaneId, setPendingOpenAgentPaneId] = useState<string | null>(null)
   const [codexFaviconSession, setCodexFaviconSession] = useState<{ project: string; status: string } | null>(null)
+  const [codexDraftTarget, setCodexDraftTarget] = useState<{ project: string; threadId: string } | null>(null)
+  const [codexReviewAppend, setCodexReviewAppend] = useState<{ id: number; project: string; threadId: string; context: string } | null>(null)
+  const codexReviewAppendSequence = useRef(0)
   const codexFaviconStatus = agentSidebar.mode === 'codex' && codexFaviconSession?.project === project
     ? codexFaviconSession.status
     : null
@@ -107,6 +110,27 @@ export default function App() {
     const draft = agentSidebar.drafts[paneId] ?? ''
     agentSidebar.setDraft(paneId, appendReviewContextToDraft(draft, context))
   }, [agentSidebar.drafts, agentSidebar.setDraft])
+
+  const handleCodexDraftTargetChange = useCallback((sessionProject: string, threadId: string | null) => {
+    setCodexDraftTarget((current) => {
+      if (threadId) return { project: sessionProject, threadId }
+      return current?.project === sessionProject ? null : current
+    })
+  }, [])
+
+  const handleAppendCodexReviewContext = useCallback((threadId: string, context: string) => {
+    setCodexReviewAppend({ id: ++codexReviewAppendSequence.current, project, threadId, context })
+  }, [project])
+
+  const handleCodexReviewAppendConsumed = useCallback((id: number) => {
+    setCodexReviewAppend((current) => current?.id === id ? null : current)
+  }, [])
+
+  const activeCodexDraftThreadId = agentSidebar.open
+    && agentSidebar.mode === 'codex'
+    && codexDraftTarget?.project === project
+    ? codexDraftTarget.threadId
+    : null
 
   useEffect(() => {
     if (!pendingOpenAgentPaneId) return
@@ -305,8 +329,11 @@ export default function App() {
                         refreshHerdr={herdr.refresh}
                         agentSidebarOpen={agentSidebar.open}
                         openAgentPaneId={agentSidebar.paneId}
+                        agentSidebarMode={agentSidebar.mode}
+                        activeCodexDraftThreadId={activeCodexDraftThreadId}
                         onOpenAgentPane={handleOpenAgentPane}
                         onAppendReviewContext={handleAppendReviewContext}
+                        onAppendCodexReviewContext={handleAppendCodexReviewContext}
                       />
                     }
                   />
@@ -323,8 +350,11 @@ export default function App() {
                         refreshHerdr={herdr.refresh}
                         agentSidebarOpen={agentSidebar.open}
                         openAgentPaneId={agentSidebar.paneId}
+                        agentSidebarMode={agentSidebar.mode}
+                        activeCodexDraftThreadId={activeCodexDraftThreadId}
                         onOpenAgentPane={handleOpenAgentPane}
                         onAppendReviewContext={handleAppendReviewContext}
+                        onAppendCodexReviewContext={handleAppendCodexReviewContext}
                       />
                     }
                   />
@@ -386,6 +416,9 @@ export default function App() {
           onModeChange={agentSidebar.setMode}
           codexThreadId={agentSidebar.codexThreadId}
           onCodexThreadIdChange={agentSidebar.setCodexThreadId}
+          onCodexActiveThreadChange={handleCodexDraftTargetChange}
+          pendingCodexReviewAppend={codexReviewAppend?.project === project ? codexReviewAppend : null}
+          onCodexReviewAppendConsumed={handleCodexReviewAppendConsumed}
           onCodexSessionStatusChange={setCodexFaviconSession}
           onWidthChange={setAgentSidebarWidth}
           openAgentPaneId={agentSidebar.paneId}

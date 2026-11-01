@@ -53,6 +53,9 @@ interface AgentSidebarProps {
   onModeChange: (mode: AgentSidebarMode) => void
   codexThreadId?: string | null
   onCodexThreadIdChange?: (threadId: string | null) => void
+  onCodexActiveThreadChange?: (project: string, threadId: string | null) => void
+  pendingCodexReviewAppend?: { id: number; threadId: string; context: string } | null
+  onCodexReviewAppendConsumed?: (id: number) => void
   onCodexSessionStatusChange?: (session: { project: string; status: string } | null) => void
   onWidthChange?: (width: number) => void
   openAgentPaneId: string | null
@@ -98,6 +101,9 @@ export function AgentSidebar({
   onModeChange,
   codexThreadId = null,
   onCodexThreadIdChange,
+  onCodexActiveThreadChange,
+  pendingCodexReviewAppend,
+  onCodexReviewAppendConsumed,
   onCodexSessionStatusChange,
   onWidthChange,
   openAgentPaneId,
@@ -144,6 +150,9 @@ export function AgentSidebar({
       return next
     }, { replace: true })
   }, [onCodexThreadIdChange, setSearchParams])
+  const handleCodexActiveThreadChange = useCallback((threadId: string | null) => {
+    onCodexActiveThreadChange?.(project, threadId)
+  }, [onCodexActiveThreadChange, project])
   const displayWidth = useCallback(
     (value: number) => agentSidebarDisplayedWidth(value, viewportWidth),
     [viewportWidth],
@@ -480,6 +489,9 @@ export function AgentSidebar({
             project={project}
             requestedThreadId={codexThreadToRestore}
             onThreadSelected={handleCodexThreadSelected}
+            onActiveThreadChange={handleCodexActiveThreadChange}
+            pendingReviewContextAppend={pendingCodexReviewAppend}
+            onReviewContextAppendConsumed={onCodexReviewAppendConsumed}
             onFilePathClick={onFilePathClick}
             onSessionStatusChange={handleCodexSessionStatusChange}
           />
