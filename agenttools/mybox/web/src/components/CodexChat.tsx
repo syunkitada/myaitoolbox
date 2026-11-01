@@ -16,15 +16,33 @@ type ApprovalRequest = { request_id: string; method: string; params: JsonObject 
 type ReviewContextAppend = { id: number; threadId: string; context: string }
 
 const CODEX_COMMANDS = [
-  { id: 'compact', label: '/compact', kind: 'compact' as const },
-  { id: 'continue', label: '進めて', kind: 'prompt' as const, prompt: '進めて' },
-  { id: 'next-step', label: '次は何をするとよいですか？', kind: 'prompt' as const, prompt: '次は何をするとよいですか？' },
-  { id: 'plan', label: '計画を立てて', kind: 'prompt' as const, prompt: 'まず作業計画を立ててください。実装を始める前に、手順と確認方法を示してください。' },
-  { id: 'status', label: '状況を教えて', kind: 'prompt' as const, prompt: '現在の作業状況と次に行うことを簡潔に教えてください。' },
-  { id: 'self-review', label: 'セルフレビューして', kind: 'prompt' as const, prompt: 'セルフレビューして' },
-  { id: 'retrospective', label: '振り返りをして', kind: 'prompt' as const, prompt: '振り返りをして' },
-  { id: 'commit', label: 'Commitして', kind: 'prompt' as const, prompt: 'Commitして' },
+  { id: 'compact', label: '/compact', shortLabel: '/compact', kind: 'compact' as const },
+  { id: 'continue', label: '進めて', shortLabel: '進めて', kind: 'prompt' as const, prompt: '進めて' },
+  { id: 'next-step', label: '次は何をするとよいですか？', shortLabel: '次を聞く', kind: 'prompt' as const, prompt: '次は何をするとよいですか？' },
+  { id: 'plan', label: '計画を立てて', shortLabel: '計画', kind: 'prompt' as const, prompt: 'まず作業計画を立ててください。実装を始める前に、手順と確認方法を示してください。' },
+  { id: 'status', label: '状況を教えて', shortLabel: '状況', kind: 'prompt' as const, prompt: '現在の作業状況と次に行うことを簡潔に教えてください。' },
+  { id: 'self-review', label: 'セルフレビューして', shortLabel: 'レビュー', kind: 'prompt' as const, prompt: 'セルフレビューして' },
+  { id: 'retrospective', label: '振り返りをして', shortLabel: '振り返り', kind: 'prompt' as const, prompt: '振り返りをして' },
+  { id: 'commit', label: 'Commitして', shortLabel: 'Commit', kind: 'prompt' as const, prompt: 'Commitして' },
 ]
+
+const CODEX_RECENT_COMMAND_LIMIT = 5
+
+function codexRecentCommandsStorageKey(project: string): string {
+  return `mybox.codex.recent-commands.v1:${encodeURIComponent(project)}`
+}
+
+function readCodexRecentCommandIds(project: string): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(codexRecentCommandsStorageKey(project)) ?? '[]')
+    if (!Array.isArray(stored)) return []
+    const validIds = new Set<string>(CODEX_COMMANDS.map((command) => command.id))
+    return [...new Set(stored.filter((id): id is string => typeof id === 'string' && validIds.has(id)))].slice(0, CODEX_RECENT_COMMAND_LIMIT)
+  } catch {
+    return []
+  }
+}
 
 function record(value: unknown): JsonObject {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : {}
@@ -520,6 +538,7 @@ export function CodexChat({
   const [sending, setSending] = useState(false)
   const [socketConnecting, setSocketConnecting] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [recentCommandState, setRecentCommandState] = useState(() => ({ project, ids: readCodexRecentCommandIds(project) }))
   const [goalEditorOpen, setGoalEditorOpen] = useState(false)
   const [goalDraft, setGoalDraft] = useState('')
   const [goal, setGoal] = useState<JsonObject | null>(null)
@@ -543,6 +562,13 @@ export function CodexChat({
   const scrollToBottomRef = useRef(true)
   const scrollAnchorRef = useRef<{ height: number; top: number } | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  const recentCommandIds = recentCommandState.project === project ? recentCommandState.ids : []
+  const recentCommands = useMemo(
+    () => recentCommandIds
+      .map((id) => CODEX_COMMANDS.find((command) => command.id === id))
+      .filter((command): command is (typeof CODEX_COMMANDS)[number] => command !== undefined),
+    [recentCommandIds],
+  )
   const active = useMemo(() => turnIsActive(turns), [turns])
   const sessionStatus = useMemo(() => {
     if (!selectedThread) return null
@@ -565,6 +591,19 @@ export function CodexChat({
   useEffect(() => {
     onSessionStatusChange?.(representativeStatus)
   }, [onSessionStatusChange, representativeStatus])
+
+  useEffect(() => {
+    setRecentCommandState({ project, ids: readCodexRecentCommandIds(project) })
+  }, [project])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || recentCommandState.project !== project) return
+    try {
+      window.localStorage.setItem(codexRecentCommandsStorageKey(project), JSON.stringify(recentCommandState.ids))
+    } catch {
+      // Recent commands remain available for the current component lifetime.
+    }
+  }, [project, recentCommandState])
 
   const loadThreads = useCallback(async (silent = false) => {
     const requestId = ++threadListRequestRef.current
@@ -886,10 +925,21 @@ export function CodexChat({
     void createThread()
   }, [createThread, replaceEmptyThread])
 
-  const sendText = useCallback((text: string, clearDraft: boolean) => {
+  const rememberRecentCommand = useCallback((commandId: string) => {
+    if (!CODEX_COMMANDS.some((command) => command.id === commandId)) return
+    setRecentCommandState((current) => {
+      const currentIds = current.project === project ? current.ids : []
+      return {
+        project,
+        ids: [commandId, ...currentIds.filter((id) => id !== commandId)].slice(0, CODEX_RECENT_COMMAND_LIMIT),
+      }
+    })
+  }, [project])
+
+  const sendText = useCallback((text: string, clearDraft: boolean): boolean => {
     const message = text.trim()
     const socket = socketRef.current
-    if (!message || !socket || socket.readyState !== WebSocket.OPEN || sending) return
+    if (!message || !socket || socket.readyState !== WebSocket.OPEN || sending) return false
     setSending(true)
     setError(null)
     socket.send(JSON.stringify({ type: 'prompt', text: message }))
@@ -898,6 +948,7 @@ export function CodexChat({
       requestAnimationFrame(() => composerRef.current?.focus())
     }
     window.setTimeout(() => setSending(false), 500)
+    return true
   }, [sending])
 
   const sendControl = useCallback((type: string, payload: JsonObject = {}) => {
@@ -953,13 +1004,18 @@ export function CodexChat({
   }, [changeMode, openGoalEditor, sendControl])
 
   const sendComposer = useCallback(() => {
-    if (!runSlashCommand(draft)) sendText(draft, true)
-  }, [draft, runSlashCommand, sendText])
+    if (runSlashCommand(draft)) return
+    const sent = sendText(draft, true)
+    if (sent) {
+      const matchingCommand = CODEX_COMMANDS.find((command) => command.kind === 'prompt' && command.prompt === draft.trim())
+      if (matchingCommand) rememberRecentCommand(matchingCommand.id)
+    }
+  }, [draft, rememberRecentCommand, runSlashCommand, sendText])
 
-  const sendQuickPrompt = useCallback((text: string) => {
+  const sendQuickPrompt = useCallback((text: string, commandId: string) => {
     setCommandPaletteOpen(false)
-    sendText(text, false)
-  }, [sendText])
+    if (sendText(text, false)) rememberRecentCommand(commandId)
+  }, [rememberRecentCommand, sendText])
 
   const compactThread = useCallback(() => {
     const socket = socketRef.current
@@ -968,8 +1024,9 @@ export function CodexChat({
     setSending(true)
     setError(null)
     socket.send(JSON.stringify({ type: 'compact' }))
+    rememberRecentCommand('compact')
     window.setTimeout(() => setSending(false), 500)
-  }, [sending])
+  }, [rememberRecentCommand, sending])
 
   const handleConversationClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
     if (!onFilePathClick || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -1201,6 +1258,46 @@ export function CodexChat({
         </div>
       </div>
       <div className="shrink-0 border-t p-2">
+        <div className="mb-1.5 flex min-w-0 items-center gap-1.5" data-testid="codex-command-strip">
+          <label htmlFor="codex-mode-selector" className="sr-only">Codexモード</label>
+          <select
+            id="codex-mode-selector"
+            aria-label="CodexモードまたはGoal管理"
+            value={goalEditorOpen ? 'goal' : collaborationMode ?? 'default'}
+            onChange={(event) => {
+              if (event.target.value === 'goal') openGoalEditor()
+              else changeMode(event.target.value === 'plan' ? 'plan' : 'default')
+            }}
+            disabled={!connected || controlBusy}
+            className="h-8 w-24 shrink-0 rounded-md border bg-background px-1.5 text-xs"
+            title="Codexモードを切り替え"
+          >
+            <option value="default">通常</option>
+            <option value="plan">Plan</option>
+            <option value="goal">Goal</option>
+          </select>
+          <span className="shrink-0 text-[10px] text-muted-foreground">最近</span>
+          {recentCommands.length > 0 ? (
+            <div className="codex-recent-command-list flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" aria-label="最近使ったコマンド">
+              {recentCommands.map((command) => (
+                <Button
+                  key={command.id}
+                  size="xs"
+                  variant="outline"
+                  className="h-8 shrink-0 cursor-pointer px-2 text-[11px]"
+                  disabled={!connected || sending || controlBusy}
+                  title={command.label}
+                  aria-label={`最近使ったコマンド: ${command.label}`}
+                  onClick={() => command.kind === 'compact' ? compactThread() : sendQuickPrompt(command.prompt, command.id)}
+                >
+                  {command.shortLabel}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">使ったコマンドがここに表示されます</span>
+          )}
+        </div>
         <div className="flex min-w-0 items-stretch gap-2 rounded-xl border bg-background p-1.5 focus-within:ring-2 focus-within:ring-ring/30">
           <textarea
             ref={composerRef}
@@ -1293,7 +1390,7 @@ export function CodexChat({
                     className="min-h-8 min-w-0 cursor-pointer justify-start truncate px-2 text-xs"
                     disabled={!connected || sending}
                     title={command.label}
-                    onClick={() => command.kind === 'compact' ? compactThread() : sendQuickPrompt(command.prompt)}
+                    onClick={() => command.kind === 'compact' ? compactThread() : sendQuickPrompt(command.prompt, command.id)}
                   >
                     {command.label}
                   </Button>

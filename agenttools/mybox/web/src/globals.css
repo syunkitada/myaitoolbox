@@ -376,6 +376,14 @@ pre[class*='language-'] {
   display: none;
 }
 
+.codex-recent-command-list {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.codex-recent-command-list::-webkit-scrollbar {
+  display: none;
+}
+
 @media (max-width: 767px) {
   /* Keep narrow Codex conversations within the mobile sheet and avoid iOS
      Safari's automatic zoom when a form control receives focus. */
