@@ -1105,6 +1105,28 @@ paths:
                 $ref: "#/components/schemas/CodexThreadHistory"
         "404":
           description: Conversation not found in the current project
+    delete:
+      operationId: deleteCodexThread
+      summary: Permanently delete a Codex conversation and its descendants
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Conversation deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "404":
+          description: Conversation not found in the current project
   /api/codex/threads/{id}/name:
     patch:
       operationId: renameCodexThread

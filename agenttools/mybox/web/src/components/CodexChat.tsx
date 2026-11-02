@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { ArrowLeft, Check, ChevronDown, Keyboard, Loader2, MessageSquarePlus, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Keyboard, Loader2, MessageSquarePlus, Pencil, RefreshCw, Send, Square, Trash2, X } from 'lucide-react'
 import { api, type CodexThread } from '../api/client'
 import { codexThreadWsUrl, encodePath, getBasePath, projectUrlFor } from '../utils/routes'
 import { Button } from './ui/button'
@@ -525,7 +525,7 @@ export function CodexChat({
   onFilePathClick?: (path: string, line?: number) => void
   onSessionStatusChange?: (status: string | null) => void
 }) {
-  const { prompt } = useDialogs()
+  const { confirm, prompt } = useDialogs()
   const [threads, setThreads] = useState<CodexThread[]>([])
   const [selectedThread, setSelectedThread] = useState<CodexThread | null>(null)
   const [turns, setTurns] = useState<CodexTurn[]>([])
@@ -537,6 +537,7 @@ export function CodexChat({
   const [refreshingHistory, setRefreshingHistory] = useState(false)
   const [creating, setCreating] = useState(false)
   const [renamingThread, setRenamingThread] = useState(false)
+  const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null)
   const [replaceEmptyThread, setReplaceEmptyThread] = useState(false)
   const [sending, setSending] = useState(false)
   const [socketConnecting, setSocketConnecting] = useState(false)
@@ -627,6 +628,25 @@ export function CodexChat({
       if (!silent && requestId === threadListRequestRef.current) setListLoading(false)
     }
   }, [project])
+
+  const removeDeletedThread = useCallback((threadId: string) => {
+    setThreads((current) => current.filter((thread) => thread.thread_id !== threadId))
+    if (activeThreadIdRef.current !== threadId) {
+      void loadThreads(true)
+      return
+    }
+    openSequenceRef.current += 1
+    socketRef.current?.close()
+    socketRef.current = null
+    activeThreadIdRef.current = null
+    threadHasTurnsRef.current = false
+    setSelectedThread(null)
+    setTurns([])
+    setPendingRequests([])
+    onActiveThreadChange?.(null)
+    onThreadSelected?.(null)
+    void loadThreads(true)
+  }, [loadThreads, onActiveThreadChange, onThreadSelected])
 
   useEffect(() => {
     void loadThreads()
@@ -861,7 +881,10 @@ export function CodexChat({
       } else if (message.type === 'notification') {
         const method = string(message.method)
         const params = record(message.params)
-        if (method === 'thread/name/updated' && string(params.threadId) === thread.thread_id) {
+        if (method === 'thread/deleted') {
+          const deletedThreadId = string(params.threadId)
+          if (deletedThreadId) removeDeletedThread(deletedThreadId)
+        } else if (method === 'thread/name/updated' && string(params.threadId) === thread.thread_id) {
           const title = string(params.threadName).trim()
           if (title) {
             setThreads((current) => current.map((entry) => entry.thread_id === thread.thread_id ? { ...entry, title } : entry))
@@ -881,7 +904,7 @@ export function CodexChat({
         setTurns((current) => applyNotification(current, method, params))
       }
     }
-  }, [loadThreads, onActiveThreadChange, onThreadSelected, project])
+  }, [loadThreads, onActiveThreadChange, onThreadSelected, project, removeDeletedThread])
 
   useEffect(() => {
     if (!requestedThreadId) {
@@ -1045,6 +1068,24 @@ export function CodexChat({
     }
   }, [project, prompt, renamingThread, selectedThread])
 
+  const deleteThread = useCallback(async (thread: CodexThread) => {
+    if (deletingThreadId) return
+    const accepted = await confirm(
+      `「${thread.title || 'New Codex conversation'}」を完全に削除しますか？\nこの操作は取り消せません。派生したCodex会話も削除されます。`,
+    )
+    if (!accepted) return
+    setDeletingThreadId(thread.thread_id)
+    setError(null)
+    try {
+      await api.deleteCodexThread(thread.thread_id, project)
+      removeDeletedThread(thread.thread_id)
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : String(deleteError))
+    } finally {
+      setDeletingThreadId(null)
+    }
+  }, [confirm, deletingThreadId, project, removeDeletedThread])
+
   const compactThread = useCallback(() => {
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN || sending) return
@@ -1178,17 +1219,30 @@ export function CodexChat({
           ) : (
             <div className="flex flex-col gap-1">
               {threads.map((thread) => (
-                <button key={thread.thread_id} type="button" className="flex min-w-0 cursor-pointer flex-col gap-1 rounded-lg border border-transparent px-3 py-2 text-left hover:border-border hover:bg-accent/60" onClick={() => void openThread(thread)}>
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium">{thread.title || 'New Codex conversation'}</span>
-                    <CodexThreadStatus status={thread.status} />
-                  </span>
-                  <span className="line-clamp-2 w-full break-words text-[11px] text-muted-foreground">{thread.preview || 'メッセージなし'}</span>
-                  <span className="flex w-full items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                    <span>{formatUpdatedAt(thread.updated_at)}</span>
-                    <span className="truncate">{thread.model}</span>
-                  </span>
-                </button>
+                <div key={thread.thread_id} className="group flex min-w-0 items-stretch gap-1 rounded-lg border border-transparent hover:border-border hover:bg-accent/60">
+                  <button type="button" className="flex min-w-0 flex-1 cursor-pointer flex-col gap-1 px-3 py-2 text-left" onClick={() => void openThread(thread)}>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium">{thread.title || 'New Codex conversation'}</span>
+                      <CodexThreadStatus status={thread.status} />
+                    </span>
+                    <span className="line-clamp-2 w-full break-words text-[11px] text-muted-foreground">{thread.preview || 'メッセージなし'}</span>
+                    <span className="flex w-full items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                      <span>{formatUpdatedAt(thread.updated_at)}</span>
+                      <span className="truncate">{thread.model}</span>
+                    </span>
+                  </button>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    className="my-1 mr-1 shrink-0 cursor-pointer self-start text-muted-foreground opacity-70 hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                    onClick={() => void deleteThread(thread)}
+                    disabled={deletingThreadId !== null}
+                    aria-label={`会話を削除: ${thread.title || 'New Codex conversation'}`}
+                    title="Codex会話を完全に削除"
+                  >
+                    {deletingThreadId === thread.thread_id ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                  </Button>
+                </div>
               ))}
             </div>
           )}
@@ -1252,6 +1306,9 @@ export function CodexChat({
         <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => void renameSelectedThread()} disabled={renamingThread} aria-label="会話名を変更" title="会話名を変更">
           {renamingThread ? <Loader2 className="animate-spin" /> : <Pencil />}
         </Button>
+        {turns.length > 0 && <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer text-muted-foreground hover:text-destructive" onClick={() => void deleteThread(selectedThread)} disabled={deletingThreadId !== null} aria-label="Codex会話を削除" title="Codex会話を完全に削除">
+          {deletingThreadId === selectedThread.thread_id ? <Loader2 className="animate-spin" /> : <Trash2 />}
+        </Button>}
         {!connected && !historyLoading && <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => void openThread(selectedThread)} aria-label={writerConflict ? 'Codexに再接続（元のCodex終了後）' : 'Codexに再接続'}><RefreshCw /></Button>}
       </div>
       {writerConflict && (

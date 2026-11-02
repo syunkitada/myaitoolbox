@@ -1108,6 +1108,30 @@ func (s *Server) GetCodexThreadHistory(w http.ResponseWriter, r *http.Request, i
 	})
 }
 
+func (s *Server) DeleteCodexThread(w http.ResponseWriter, r *http.Request, id string) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	p, err := s.codexAppServer.ensure(r.Context(), app.Project.Path)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), codexAppServerRequestTimeout)
+	defer cancel()
+	if _, err := readCodexThread(ctx, p, id, app.Project.Path); err != nil {
+		writeError(w, err)
+		return
+	}
+	if _, err := p.request(ctx, "thread/delete", map[string]string{"threadId": id}); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (s *Server) RenameCodexThread(w http.ResponseWriter, r *http.Request, id string) {
 	app, err := s.getApp(r)
 	if err != nil {

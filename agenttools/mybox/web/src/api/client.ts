@@ -773,6 +773,14 @@ export const api = {
       project,
     ),
 
+  deleteCodexThread: (threadId: string, project?: string) =>
+    request<{ ok: boolean }>(
+      'DELETE',
+      `/api/codex/threads/${encodeURIComponent(threadId)}`,
+      undefined,
+      project,
+    ),
+
   renameCodexThread: (threadId: string, name: string, project?: string) =>
     request<{ ok: boolean }>(
       'PATCH',
