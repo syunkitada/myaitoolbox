@@ -11,7 +11,7 @@ import { appendReviewContextToDraft } from '../utils/file-review-comments'
 import { useDialogs } from './AppDialogs'
 
 type JsonObject = Record<string, unknown>
-type CodexTurn = JsonObject & { id: string; status?: string; items?: CodexItem[] }
+type CodexTurn = JsonObject & { id: string; status?: string; error?: unknown; items?: CodexItem[] }
 type CodexItem = JsonObject & { id?: string; type?: string; text?: string }
 type ApprovalRequest = { request_id: string; method: string; params: JsonObject }
 type ReviewContextAppend = { id: number; threadId: string; context: string }
@@ -59,6 +59,15 @@ function stringList(value: unknown): string[] {
 
 function activeStatus(value: unknown): boolean {
   return value === 'inProgress' || value === 'in_progress' || value === 'running'
+}
+
+function turnFailureMessage(turn: CodexTurn): string {
+  const error = record(turn.error)
+  return string(error.message) || string(error.detail) || string(turn.error)
+}
+
+function turnHasAgentMessage(turn: CodexTurn): boolean {
+  return (turn.items ?? []).some((item) => item.type === 'agentMessage' && Boolean(string(item.text) || itemText(item)))
 }
 
 function turnIsActive(turns: CodexTurn[]): boolean {
@@ -1339,6 +1348,17 @@ export function CodexChat({
               <section key={turn.id} className="flex min-w-0 flex-col gap-3" aria-label="Codex turn">
                 {items.map((item, index) => <TurnItem key={item.id || `${turn.id}-${index}`} item={item} transformHref={rewriteCodexLink} />)}
                 {activeStatus(turn.status) && <div className="flex items-center gap-2 text-[11px] text-muted-foreground"><Loader2 className="size-3 animate-spin" />Codexが作業中…</div>}
+                {(turn.status === 'failed' || turn.status === 'interrupted') && (
+                  <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+                    <div className="font-medium">{turn.status === 'failed' ? 'Codexの処理が失敗しました' : 'Codexの処理が中断されました'}</div>
+                    {turnFailureMessage(turn) && <div className="mt-1 whitespace-pre-wrap break-words">{turnFailureMessage(turn)}</div>}
+                  </div>
+                )}
+                {turn.status === 'completed' && !turnHasAgentMessage(turn) && (
+                  <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+                    Codexの処理は完了しましたが、応答メッセージがありません。履歴を更新して状態を確認してください。
+                  </div>
+                )}
               </section>
             )
           })}
