@@ -28,6 +28,7 @@ const CODEX_COMMANDS = [
 ]
 
 const CODEX_RECENT_COMMAND_LIMIT = 5
+const CODEX_RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000]
 
 function codexRecentCommandsStorageKey(project: string): string {
   return `mybox.codex.recent-commands.v1:${encodeURIComponent(project)}`
@@ -550,6 +551,7 @@ export function CodexChat({
   const [replaceEmptyThread, setReplaceEmptyThread] = useState(false)
   const [sending, setSending] = useState(false)
   const [socketConnecting, setSocketConnecting] = useState(false)
+  const [reconnectAttempt, setReconnectAttempt] = useState(0)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [recentCommandState, setRecentCommandState] = useState(() => ({ project, ids: readCodexRecentCommandIds(project) }))
   const [goalEditorOpen, setGoalEditorOpen] = useState(false)
@@ -564,6 +566,8 @@ export function CodexChat({
   const [listTruncated, setListTruncated] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
+  const reconnectTimerRef = useRef<number | null>(null)
+  const reconnectAttemptRef = useRef(0)
   const openSequenceRef = useRef(0)
   const threadListRequestRef = useRef(0)
   const handledRequestedThreadRef = useRef<string | null>(null)
@@ -645,6 +649,10 @@ export function CodexChat({
       return
     }
     openSequenceRef.current += 1
+    if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current)
+    reconnectTimerRef.current = null
+    reconnectAttemptRef.current = 0
+    setReconnectAttempt(0)
     socketRef.current?.close()
     socketRef.current = null
     activeThreadIdRef.current = null
@@ -725,7 +733,15 @@ export function CodexChat({
     onReviewContextAppendConsumed?.(append.id)
   }, [onReviewContextAppendConsumed, pendingReviewContextAppend, selectedThread])
 
-  const openThread = useCallback(async (thread: CodexThread) => {
+  const openThread = useCallback(async (thread: CodexThread, automaticReconnect = false) => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+    if (!automaticReconnect) {
+      reconnectAttemptRef.current = 0
+      setReconnectAttempt(0)
+    }
     const openSequence = ++openSequenceRef.current
     handledRequestedThreadRef.current = thread.thread_id
     activeThreadIdRef.current = thread.thread_id
@@ -735,8 +751,10 @@ export function CodexChat({
     socketRef.current = null
     setCommandPaletteOpen(false)
     setSelectedThread(thread)
-    setTurns([])
-    setPendingRequests([])
+    if (!automaticReconnect) {
+      setTurns([])
+      setPendingRequests([])
+    }
     setNextCursor(null)
     scrollToBottomRef.current = true
     scrollAnchorRef.current = null
@@ -750,16 +768,32 @@ export function CodexChat({
     setWriterConflict(false)
     setHistoryLoading(true)
     setRefreshingHistory(false)
-    setError(null)
-    threadHasTurnsRef.current = false
+    if (!automaticReconnect) setError(null)
+    if (!automaticReconnect) threadHasTurnsRef.current = false
+    const scheduleReconnect = () => {
+      if (reconnectAttemptRef.current >= CODEX_RECONNECT_DELAYS_MS.length) {
+        setError('Codexとの接続を自動で復旧できませんでした。接続先を確認して手動で再接続してください。')
+        setSocketConnecting(false)
+        return
+      }
+      const attempt = reconnectAttemptRef.current + 1
+      reconnectAttemptRef.current = attempt
+      setReconnectAttempt(attempt)
+      setSocketConnecting(true)
+      setError(`Codexとの接続が切れました。自動再接続しています（${attempt}/${CODEX_RECONNECT_DELAYS_MS.length}）。`)
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null
+        void openThread(thread, true)
+      }, CODEX_RECONNECT_DELAYS_MS[attempt - 1])
+    }
     try {
       const history = await api.getCodexThreadHistory(thread.thread_id, { limit: 100 }, project)
       if (openSequenceRef.current !== openSequence) return
       const loadedTurns = history.turns.map((turn) => record(turn) as CodexTurn)
-      threadHasTurnsRef.current = loadedTurns.length > 0
-      onThreadSelected?.(threadHasTurnsRef.current ? thread.thread_id : null)
+      if (!automaticReconnect || loadedTurns.length > 0) threadHasTurnsRef.current = loadedTurns.length > 0
+      if (!automaticReconnect || loadedTurns.length > 0) onThreadSelected?.(thread.thread_id)
       setSelectedThread(history.thread)
-      setTurns(loadedTurns)
+      if (!automaticReconnect || loadedTurns.length > 0) setTurns(loadedTurns)
       setNextCursor(history.next_cursor ?? null)
     } catch (loadError) {
       if (openSequenceRef.current !== openSequence) return
@@ -777,6 +811,7 @@ export function CodexChat({
       }
       setError(message)
       setHistoryLoading(false)
+      if (automaticReconnect) scheduleReconnect()
       return
     }
     if (openSequenceRef.current !== openSequence) return
@@ -795,9 +830,7 @@ export function CodexChat({
       setSocketConnecting(false)
       setControlBusy(false)
       if (!connectionRejected) {
-        setError(connectionReady
-          ? 'Codexとの接続が切れました。再接続してください。'
-          : 'Codexとの接続に失敗しました。myboxサーバーとapp-serverを確認して再接続してください。')
+        scheduleReconnect()
       }
     }
     socket.onerror = () => {
@@ -845,6 +878,8 @@ export function CodexChat({
         })
       } else if (message.type === 'ready') {
         connectionReady = true
+        reconnectAttemptRef.current = 0
+        setReconnectAttempt(0)
         setSocketConnecting(false)
         setWriterConflict(false)
         setError(null)
@@ -939,6 +974,8 @@ export function CodexChat({
     if (activeThreadIdRef.current) onActiveThreadChange?.(activeThreadIdRef.current)
     return () => {
       openSequenceRef.current += 1
+      if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
       socketRef.current?.close()
       socketRef.current = null
       onActiveThreadChange?.(null)
@@ -1305,12 +1342,12 @@ export function CodexChat({
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col" onClick={handleConversationClick}>
       <div className="flex shrink-0 items-center gap-2 border-b px-2 py-2">
-        <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => { openSequenceRef.current += 1; socketRef.current?.close(); socketRef.current = null; setSelectedThread(null); activeThreadIdRef.current = null; onActiveThreadChange?.(null); onThreadSelected?.(null); void loadThreads() }} aria-label="会話一覧に戻る">
+        <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => { openSequenceRef.current += 1; if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; reconnectAttemptRef.current = 0; setReconnectAttempt(0); socketRef.current?.close(); socketRef.current = null; setSelectedThread(null); activeThreadIdRef.current = null; onActiveThreadChange?.(null); onThreadSelected?.(null); void loadThreads() }} aria-label="会話一覧に戻る">
           <ArrowLeft />
         </Button>
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-semibold" title={selectedThread.title}>{selectedThread.title || 'New Codex conversation'}</div>
-          <div className={cn('text-[10px]', connected ? 'text-green-700 dark:text-green-400' : writerConflict ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>{connected ? `接続中${collaborationMode === 'plan' ? ' · Plan mode' : collaborationMode === 'default' ? ' · Default mode' : ''}` : writerConflict ? '他のCodexが操作中 · 読み取り専用' : historyLoading ? '履歴を読み込み中…' : socketConnecting ? '接続中…' : '切断中'}</div>
+          <div className={cn('text-[10px]', connected ? 'text-green-700 dark:text-green-400' : writerConflict ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>{connected ? `接続中${collaborationMode === 'plan' ? ' · Plan mode' : collaborationMode === 'default' ? ' · Default mode' : ''}` : writerConflict ? '他のCodexが操作中 · 読み取り専用' : historyLoading ? '履歴を読み込み中…' : socketConnecting && reconnectAttempt > 0 ? `自動再接続中… (${reconnectAttempt}/${CODEX_RECONNECT_DELAYS_MS.length})` : socketConnecting ? '接続中…' : '切断中'}</div>
         </div>
         <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => void renameSelectedThread()} disabled={renamingThread} aria-label="会話名を変更" title="会話名を変更">
           {renamingThread ? <Loader2 className="animate-spin" /> : <Pencil />}
