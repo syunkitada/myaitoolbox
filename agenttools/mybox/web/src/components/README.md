@@ -21,7 +21,7 @@
 | [`FrontmatterForm.tsx`](./FrontmatterForm.tsx) / [`FrontmatterForm.test.tsx`](./FrontmatterForm.test.tsx) | タスクと通常のMarkdownのフロントマター編集フォームとテスト。 |
 | [`GitViewer.tsx`](./GitViewer.tsx) | Git状態・差分画面を埋め込むビュー。 |
 | [`Markdown.tsx`](./Markdown.tsx) / [`Markdown.test.tsx`](./Markdown.test.tsx) | サニタイズ済みMarkdown表示と、呼び出し元で指定できるリンクURL変換。 |
-| [`Mermaid.tsx`](./Mermaid.tsx) | Mermaidダイアグラム描画。 |
+| [`Mermaid.tsx`](./Mermaid.tsx) / [`Mermaid.test.tsx`](./Mermaid.test.tsx) | Mermaidダイアグラム描画と、スクロール拡大・縮小およびドラッグ移動に対応したモーダル表示とテスト。 |
 | [`MonacoEditor.tsx`](./MonacoEditor.tsx) | Monacoベースのファイルエディタ。 |
 | [`NewTaskDialog.tsx`](./NewTaskDialog.tsx) / [`NewTaskDialog.test.tsx`](./NewTaskDialog.test.tsx) | agent kindのデフォルトをcodexとし、YAMLヘッダーを除いたテンプレート本文を初期表示・編集できる、通常タスクとcron・file_created・manual task_triggerの作成ダイアログおよびテスト。 |
 | [`RichMarkdown.tsx`](./RichMarkdown.tsx) / [`RichMarkdown.test.tsx`](./RichMarkdown.test.tsx) | ファイルリンク・アウトライン・コードブロック・操作可能なタスクリスト・Mermaid・Vega-Liteを表示し、表示中のファイルペインに応じて内部リンクを開き、モーダル内でText/Jira形式を切り替えられるMarkdownビューアとテスト。 |
