@@ -58,7 +58,7 @@ export function Dashboard({
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const persistSelected = (path: string, projectOverride?: string) => {
+  const persistSelected = (path: string, projectOverride?: string, line?: number, plainMode = false) => {
     const project = projectOverride || getProject()
     if (!project) return
     try {
@@ -69,7 +69,12 @@ export function Dashboard({
     } catch {
       // ignore
     }
-    navigate(projectUrlFor(project, `/dashboard/files/${encodePath(path)}`))
+    const params = new URLSearchParams()
+    if (plainMode) params.set('plain', '1')
+    if (line) params.set('line', String(line))
+    const queryString = params.toString()
+    const query = queryString ? `?${queryString}` : ''
+    navigate(projectUrlFor(project, `/dashboard/files/${encodePath(path)}${query}`))
   }
 
   const handleNewTask = () => {

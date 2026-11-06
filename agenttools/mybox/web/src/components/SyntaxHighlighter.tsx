@@ -54,6 +54,7 @@ export interface SyntaxHighlighterProps {
   // Agent sidebar display mode. Omitted callers retain the existing behavior.
   displayMode?: AgentOutputDisplayMode
   linkFilePaths?: boolean
+  showLineNumbers?: boolean
   focusLine?: number
   searchQuery?: string
   onFilePathClick?: (path: string) => void
@@ -67,6 +68,7 @@ export function SyntaxHighlighter({
   cols,
   displayMode,
   linkFilePaths = false,
+  showLineNumbers = false,
   focusLine,
   searchQuery,
   onFilePathClick,
@@ -74,6 +76,7 @@ export function SyntaxHighlighter({
 }: SyntaxHighlighterProps) {
   const displayText = displayMode === 'auto' ? normalizeAgentOutput(text) : text
   const lines = useMemo(() => displayText.split(/\r?\n/), [displayText])
+  const lineNumberWidth = Math.max(3, String(lines.length).length) + 1
   const lineRef = useRef<HTMLPreElement | null>(null)
   const layoutClass = displayMode === 'herdr'
     ? 'w-full min-w-0 max-w-full overflow-x-auto'
@@ -112,9 +115,22 @@ export function SyntaxHighlighter({
               key={lineNumber}
               data-search-line={lineNumber}
               data-review-line={lineNumber + sourceLineOffset}
-              className={lineNumber === focusLine ? 'block rounded bg-yellow-100 px-1 dark:bg-yellow-900/50' : 'block'}
-              dangerouslySetInnerHTML={{ __html: highlightText(line, language, linkFilePaths) || '\u200b' }}
-            />
+              className={`${showLineNumbers ? 'flex min-h-6 items-start' : 'block'} ${lineNumber === focusLine ? 'rounded bg-yellow-100 px-1 dark:bg-yellow-900/50' : ''}`}
+            >
+              {showLineNumbers && (
+                <span
+                  aria-hidden="true"
+                  className="mr-3 shrink-0 select-none text-right text-muted-foreground/70"
+                  style={{ width: `${lineNumberWidth}ch` }}
+                >
+                  {lineNumber}
+                </span>
+              )}
+              <span
+                className={showLineNumbers ? 'min-w-0 flex-1' : undefined}
+                dangerouslySetInnerHTML={{ __html: highlightText(line, language, linkFilePaths) || '\u200b' }}
+              />
+            </span>
           )
         })}
       </code>

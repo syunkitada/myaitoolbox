@@ -38,7 +38,7 @@ import { useDialogs } from '../components/AppDialogs'
 import { useEscapeKey } from '../hooks/use-escape-key'
 import { useFileExecution } from '../state/fileExecution'
 import { loadExplorerExpandedPaths, loadGraphMode, saveExplorerExpandedPaths, saveGraphMode } from '../state/graphViewState'
-import { filesUrl, getProject, htmlPreviewUrl, rawFileUrl } from '../utils/routes'
+import { filesUrl, getProject, rawFileUrl } from '../utils/routes'
 import { copyToClipboard } from '../utils/clipboard'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { DiffView } from '../components/DiffView'
@@ -162,7 +162,7 @@ export interface FileSearchHit {
 interface BrowserPageProps {
   title: string
   selected: string
-  onSelect: (path: string, project?: string) => void
+  onSelect: (path: string, project?: string, line?: number, plainMode?: boolean) => void
   onBack: () => void
   favorites: Favorite[]
   recentFiles: string[]
@@ -1348,7 +1348,7 @@ interface PaneProps {
   onRecentChanged?: (path: string) => void
   onChanged: (revealPath?: string) => void | Promise<void>
   onGitStatusChange: () => void
-  onOpen: (path: string) => void
+  onOpen: (path: string, line?: number, plainMode?: boolean) => void
   onDeleted: (path: string) => void
   onBeforeMove?: (oldPath: string, newPath: string) => Promise<boolean>
   onMoved?: (oldPath: string, newPath: string) => boolean | Promise<boolean> | void
@@ -1374,6 +1374,7 @@ interface PaneProps {
   scrollRef?: RefObject<HTMLDivElement | null>
   paneLabel?: 'Main' | 'Reference'
   focusLine?: number
+  plainMode?: boolean
   onDirtyChange?: (dirty: boolean) => void
   showExplorerToggle?: boolean
 }
@@ -1414,6 +1415,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   scrollRef,
   paneLabel = 'Main',
   focusLine,
+  plainMode = false,
   onDirtyChange,
   showExplorerToggle = true,
 }, ref) {
@@ -1547,9 +1549,8 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   }, [onOpenAgentPane, path, refreshHerdr, startingTaskAgent, taskAgentKind])
 
   const isImage =
-    !isDir && /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(path)
+    !isDir && /\.(png|jpe?g|gif|webp|avif|bmp|ico)$/i.test(path)
   const isPdf = !isDir && /\.pdf$/i.test(path)
-  const isHtml = !isDir && /\.html?$/i.test(path)
   const isUnsupported = !isDir && !isImage && !isPdf && unsupportedMediaTypePath === path
 
   const readmePath = useMemo(() => {
@@ -1656,6 +1657,8 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
 
   const isMarkdown =
     !isUnsupported && (isDir || (entry?.markdown ?? /\.(md|markdown)$/i.test(path)))
+  const plainMarkdownSource = isMarkdown && plainMode
+  const showMarkdownPreview = isMarkdown && !plainMarkdownSource
 
   const fmSplit = useMemo(() => splitFrontmatter(content), [content])
   const metadataPath = readmePath ?? path
@@ -1910,10 +1913,12 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   }
 
   const viewText = useForm ? fmSplit.body : content
-  const taskProgress = isTaskFile ? extractMarkdownTaskProgress(viewText) : null
+  const taskProgress = isTaskFile && !plainMarkdownSource ? extractMarkdownTaskProgress(viewText) : null
   const viewSourceLineOffset = useForm
     ? content.slice(0, Math.max(0, content.length - fmSplit.body.length)).split(/\r?\n/).length - 1
     : 0
+  const previewText = plainMarkdownSource ? content : viewText
+  const previewLineOffset = plainMarkdownSource ? 0 : viewSourceLineOffset
   const activeSearchHit = searchHit?.path === path ? searchHit : null
   const navigationFocusLine = paneLabel === 'Main' ? focusLine : undefined
   const focusedLine = navigationFocusLine ?? activeSearchHit?.line
@@ -1928,7 +1933,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     return persist(raw)
   }
 
-  const filePreview = isMarkdown ? (
+  const filePreview = showMarkdownPreview ? (
     <RichMarkdown
       text={viewText}
       copyText={content}
@@ -1954,26 +1959,6 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
         style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
       />
     </div>
-  ) : isHtml ? (
-    <div className="file-html my-2 w-full">
-      <div className="mb-2 flex justify-end">
-        <a
-          href={htmlPreviewUrl(path)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-        >
-          Open in new tab
-        </a>
-      </div>
-      <iframe
-        src={htmlPreviewUrl(path)}
-        title={`HTML preview: ${baseOf(path)}`}
-        sandbox="allow-scripts"
-        className="w-full rounded-md border bg-muted"
-        style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
-      />
-    </div>
   ) : isUnsupported ? (
     <div className="my-4 flex flex-col items-start gap-3" role="status">
       <p className="text-sm text-muted-foreground">
@@ -1993,12 +1978,13 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     </div>
   ) : (
     <SyntaxHighlighter
-      text={viewText}
+      text={previewText}
       language={languageFromPath(viewFileName ?? path)}
       className="file-raw rounded-md bg-muted p-3"
       focusLine={focusedLine}
       searchQuery={activeSearchHit?.query}
-      sourceLineOffset={viewSourceLineOffset}
+      sourceLineOffset={previewLineOffset}
+      showLineNumbers
     />
   )
 
@@ -2414,7 +2400,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
               {error}
             </div>
           )}
-          {brokenFrontmatter && (
+          {brokenFrontmatter && (!plainMarkdownSource || editing) && (
             <div className={cn('my-2 flex items-start justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700', editing && 'shrink-0')} data-testid="frontmatter-error">
               <div className="min-w-0">
                 <p className="font-semibold">このファイルのYAML front matterを解析できません</p>
@@ -2567,7 +2553,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                       <div className="view-file-name mb-2 text-sm font-semibold text-muted-foreground">{viewFileName}</div>
                     </>
                   )}
-                  {useForm && <FrontmatterSummary data={fmParsed.data} />}
+                  {useForm && !plainMarkdownSource && <FrontmatterSummary data={fmParsed.data} />}
                   {taskProgress && <TaskProgress {...taskProgress} className="my-3" />}
                   {filePreviewWithComments}
                 </CardContent>
@@ -2772,11 +2758,14 @@ export function BrowserPage({
   onRevealPathHandled,
 }: BrowserPageProps) {
   const { confirm3 } = useDialogs()
-  const { search } = useLocation()
+  const { search, hash } = useLocation()
   const { project: routeProject } = useParams<{ project?: string }>()
   const project = routeProject ? decodeURIComponent(routeProject) : getProject()
-  const requestedLine = Number(new URLSearchParams(search).get('line'))
+  const searchParams = new URLSearchParams(search)
+  const hashLine = hash.match(/^#L(\d+)(?:-L?\d+)?$/i)?.[1]
+  const requestedLine = Number(searchParams.get('line') ?? hashLine)
   const focusLine = Number.isSafeInteger(requestedLine) && requestedLine > 0 ? requestedLine : undefined
+  const plainMode = searchParams.get('plain') === '1'
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     () => (project ? loadExplorerExpandedPaths(project) : null) ?? new Set(),
   )
@@ -2792,6 +2781,8 @@ export function BrowserPage({
   const [gitDiffOpen, setGitDiffOpen] = useState(false)
   const [referenceGitDiffOpen, setReferenceGitDiffOpen] = useState(false)
   const [referencePath, setReferencePath] = useState<string | null>(null)
+  const [referenceFocusLine, setReferenceFocusLine] = useState<number | undefined>()
+  const [referencePlainMode, setReferencePlainMode] = useState(false)
   const [mobileViewer, setMobileViewer] = useState<'main' | 'reference'>('main')
   const [mainDirty, setMainDirty] = useState(false)
   const [referenceDirty, setReferenceDirty] = useState(false)
@@ -2928,10 +2919,10 @@ export function BrowserPage({
   )
 
   const handleSelect = useCallback(
-    (p: string, nextSearchHit: FileSearchHit | null = null, project?: string) => {
+    (p: string, nextSearchHit: FileSearchHit | null = null, project?: string, line?: number, nextPlainMode = false) => {
       setSearchHit(nextSearchHit)
-      if (project === undefined) onSelect(p)
-      else onSelect(p, project)
+      if (project === undefined) onSelect(p, undefined, line, nextPlainMode)
+      else onSelect(p, project, line, nextPlainMode)
       if (isMobile) setExplorerOpen(false)
     },
     [isMobile, onSelect],
@@ -2946,9 +2937,15 @@ export function BrowserPage({
   )
 
   const changeReference = useCallback(
-    async (nextPath: string | null) => {
-      if (nextPath === referencePath) return true
+    async (nextPath: string | null, line?: number, nextPlainMode = false) => {
+      if (nextPath === referencePath) {
+        setReferenceFocusLine(line)
+        setReferencePlainMode(nextPlainMode)
+        return true
+      }
       if (referencePath && !(await confirmPaneLeave(referencePaneRef, referenceDirty, referencePath))) return false
+      setReferenceFocusLine(line)
+      setReferencePlainMode(nextPlainMode)
       setReferencePath(nextPath)
       setReferenceGitDiffOpen(false)
       setReferenceDirty(false)
@@ -3490,7 +3487,9 @@ export function BrowserPage({
         onRecentChanged={onRecentChanged}
         onChanged={handleChanged}
         onGitStatusChange={refreshGitStatus}
-        onOpen={slot === 'main' ? handleSelect : (nextPath) => void changeReference(nextPath)}
+        onOpen={slot === 'main'
+          ? (nextPath, line, nextPlainMode) => handleSelect(nextPath, null, undefined, line, nextPlainMode)
+          : (nextPath, line, nextPlainMode) => void changeReference(nextPath, line, nextPlainMode)}
         onDeleted={slot === 'main' ? () => onBack() : handleReferenceDeleted}
         onBeforeMove={slot === 'reference' ? handleBeforeReferencePaneMove : handleBeforeMainPaneMove}
         onMoved={slot === 'reference' ? handleReferenceMoved : handleMainPaneMoved}
@@ -3513,7 +3512,8 @@ export function BrowserPage({
         refreshHerdr={refreshHerdr}
         onOpenGit={setOpenGitDir}
         searchHit={slot === 'main' ? searchHit : null}
-        focusLine={slot === 'main' ? focusLine : undefined}
+        focusLine={slot === 'main' ? focusLine : referenceFocusLine}
+        plainMode={slot === 'main' ? plainMode : referencePlainMode}
         scrollRef={scrollRef}
         paneLabel={slot === 'main' ? 'Main' : 'Reference'}
         onDirtyChange={slot === 'main' ? setMainDirty : setReferenceDirty}

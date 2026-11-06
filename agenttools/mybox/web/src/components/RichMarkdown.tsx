@@ -78,15 +78,42 @@ md.renderer.rules.paragraph_open = (tokens, idx, options, env, self) => {
     : self.renderToken(tokens, idx, options)
 }
 
+function markdownLinkViewOptions(href: string): { line?: number; plain: boolean } {
+  const hashIndex = href.indexOf('#')
+  const beforeHash = hashIndex >= 0 ? href.slice(0, hashIndex) : href
+  const fragment = hashIndex >= 0 ? href.slice(hashIndex + 1) : ''
+  const queryIndex = beforeHash.indexOf('?')
+  const params = new URLSearchParams(queryIndex >= 0 ? beforeHash.slice(queryIndex + 1) : '')
+  const fragmentLine = fragment.match(/^L(\d+)(?:-L?\d+)?$/i)?.[1]
+  const requestedLine = Number(fragmentLine ?? params.get('line'))
+  const line = Number.isSafeInteger(requestedLine) && requestedLine > 0 ? requestedLine : undefined
+  return { line, plain: params.get('plain') === '1' }
+}
+
+function addFileViewQuery(href: string, line: number | undefined, plain: boolean): string {
+  if (!line && !plain) return href
+  const hashIndex = href.indexOf('#')
+  const beforeHash = hashIndex >= 0 ? href.slice(0, hashIndex) : href
+  const fragment = hashIndex >= 0 ? href.slice(hashIndex) : ''
+  const queryIndex = beforeHash.indexOf('?')
+  const pathname = queryIndex >= 0 ? beforeHash.slice(0, queryIndex) : beforeHash
+  const params = new URLSearchParams(queryIndex >= 0 ? beforeHash.slice(queryIndex + 1) : '')
+  if (plain) params.set('plain', '1')
+  if (line) params.set('line', String(line))
+  return `${pathname}?${params.toString()}${fragment}`
+}
+
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   const href = tokens[idx].attrGet('href') ?? ''
   const files = Boolean(env?.linkUrl)
+  const { line, plain } = markdownLinkViewOptions(href)
   const resolved = resolveMarkdownLink(href, env?.relativeTo, env?.preserveExtension, {
     resolveDirectories: files,
     resolveAnyFile: files,
   })
   if (resolved) {
-    tokens[idx].attrSet('href', env?.linkUrl ? env.linkUrl(resolved) : filesUrl(resolved))
+    const fileUrl = env?.linkUrl ? env.linkUrl(resolved) : filesUrl(resolved)
+    tokens[idx].attrSet('href', addFileViewQuery(fileUrl, line, plain))
   }
   return self.renderToken(tokens, idx, options)
 }
@@ -265,7 +292,7 @@ export interface RichMarkdownProps {
   focusLine?: number
   searchQuery?: string
   sourceLineOffset?: number
-  onOpenFile?: (path: string) => void
+  onOpenFile?: (path: string, line?: number, plain?: boolean) => void
 }
 
 interface Segment {
@@ -427,10 +454,7 @@ export function RichMarkdown({
     if (!target) return
     target.scrollIntoView({ behavior: 'smooth', block: 'center' })
     target.classList.add('bg-yellow-100', 'dark:bg-yellow-900/50', 'rounded')
-    const timer = window.setTimeout(() => {
-      target.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/50')
-    }, 2500)
-    return () => window.clearTimeout(timer)
+    return () => target.classList.remove('bg-yellow-100', 'dark:bg-yellow-900/50', 'rounded')
   }, [focusLine, searchQuery, sourceLineOffset, text])
 
   const handleTaskToggle = useCallback((input: HTMLInputElement) => {
@@ -532,7 +556,8 @@ export function RichMarkdown({
             .map((segment) => decodeURIComponent(segment))
             .join('/')
           if (resolved) {
-            onOpenFile(resolved)
+            const viewOptions = markdownLinkViewOptions(url.href)
+            onOpenFile(resolved, viewOptions.line, viewOptions.plain)
             return
           }
         } catch {
