@@ -1,5 +1,9 @@
 # リポジトリガイドライン
 
+## 個別プロジェクトの開発ガイド
+
+- mybox（`agenttools/mybox/`）の開発では、作業開始前に [`agenttools/mybox/AGENTS.md`](./agenttools/mybox/AGENTS.md) を読み、その指示に従う。
+
 ## README.mdの役割
 
 各ディレクトリの `README.md` は、そのディレクトリの目的・使い方・構成を説明する入口です。README.md は、対象ディレクトリ全体と、配下のディレクトリおよびファイルについて説明責任を持ちます。
