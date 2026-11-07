@@ -25,15 +25,17 @@ import (
 )
 
 const (
-	codexAppServerRequestTimeout = 45 * time.Second
-	codexAppServerStartTimeout   = 30 * time.Second
-	codexAppServerMaxLine        = 32 << 20
-	codexAppServerMaxPrompt      = 10000
-	codexThreadPageSize          = 100
-	codexThreadScanLimit         = 5000
-	codexTurnPageSize            = 20
-	codexUnmaterializedThreadTTL = 2 * time.Minute
-	codexSubscriptionRetryDelay  = 2 * time.Second
+	codexAppServerRequestTimeout        = 45 * time.Second
+	codexAppServerStartTimeout          = 30 * time.Second
+	codexAppServerMaxLine               = 32 << 20
+	codexAppServerMaxPrompt             = 10000
+	codexAppServerMaxClientMessageBytes = 1 << 20
+	codexAppServerMaxPlanPromptBytes    = codexAppServerMaxClientMessageBytes
+	codexThreadPageSize                 = 100
+	codexThreadScanLimit                = 5000
+	codexTurnPageSize                   = 20
+	codexUnmaterializedThreadTTL        = 2 * time.Minute
+	codexSubscriptionRetryDelay         = 2 * time.Second
 )
 
 var errCodexEmptyThreadExpired = errors.New("Codex empty conversation is no longer available")
@@ -1245,7 +1247,7 @@ func (s *Server) streamCodexThread(c echo.Context) error {
 			}
 		}
 	}()
-	conn.SetReadLimit(1 << 20)
+	conn.SetReadLimit(codexAppServerMaxClientMessageBytes)
 	resumeCtx, cancelResume := context.WithTimeout(c.Request().Context(), codexAppServerRequestTimeout)
 	var collaborationMode json.RawMessage
 	collaborationMode, err = s.codexAppServer.attachThread(resumeCtx, p, key)
@@ -1276,7 +1278,7 @@ func (s *Server) streamCodexThread(c echo.Context) error {
 		result, err := s.handleCodexClientMessageWithResult(c.Request().Context(), p, key, app.Project.Path, request)
 		if err != nil {
 			client.push(map[string]any{"type": "error", "error": err.Error(), "request_id": request.RequestID})
-		} else if request.Type == "prompt" {
+		} else if request.Type == "prompt" || request.Type == "plan_handoff" {
 			client.push(map[string]string{"type": "prompt_started"})
 		} else if request.Type == "respond" {
 			client.push(map[string]any{"type": "response", "request_id": request.RequestID})
@@ -1318,9 +1320,16 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 	ctx, cancel := context.WithTimeout(ctx, codexAppServerRequestTimeout)
 	defer cancel()
 	switch request.Type {
-	case "prompt":
+	case "prompt", "plan_handoff":
 		text := strings.TrimSpace(request.Text)
-		if text == "" || len([]rune(text)) > codexAppServerMaxPrompt {
+		if request.Type == "plan_handoff" {
+			if text == "" {
+				return nil, errors.New("plan handoff must not be empty")
+			}
+			if len([]byte(text)) > codexAppServerMaxPlanPromptBytes {
+				return nil, errors.New("plan handoff exceeds the 1 MiB message limit")
+			}
+		} else if text == "" || len([]rune(text)) > codexAppServerMaxPrompt {
 			return nil, errors.New("prompt must contain between 1 and 10000 characters")
 		}
 		latest, err := latestCodexTurn(ctx, p, key.thread)

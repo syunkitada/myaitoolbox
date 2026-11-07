@@ -11,10 +11,19 @@ import { appendReviewContextToDraft } from '../utils/file-review-comments'
 import { useDialogs } from './AppDialogs'
 
 type JsonObject = Record<string, unknown>
-type CodexTurn = JsonObject & { id: string; status?: string; error?: unknown; items?: CodexItem[] }
+type CodexTurnPlanStep = { step: string; status?: string }
+type CodexTurn = JsonObject & { id: string; status?: string; error?: unknown; items?: CodexItem[]; plan?: CodexTurnPlanStep[]; planExplanation?: string }
 type CodexItem = JsonObject & { id?: string; type?: string; text?: string }
 type ApprovalRequest = { request_id: string; method: string; params: JsonObject }
 type ReviewContextAppend = { id: number; threadId: string; context: string }
+type PendingInitialPrompt = {
+  threadId: string
+  type: 'plan_handoff'
+  text: string
+  attempted: boolean
+  inFlight: boolean
+  exceedsMessageLimit?: boolean
+}
 
 const CODEX_COMMANDS = [
   { id: 'compact', label: '/compact', shortLabel: '/compact', kind: 'compact' as const },
@@ -29,9 +38,46 @@ const CODEX_COMMANDS = [
 
 const CODEX_RECENT_COMMAND_LIMIT = 5
 const CODEX_RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000]
+const CODEX_MAX_WS_CLIENT_MESSAGE_BYTES = 1 << 20
+const CODEX_PLAN_HANDOFF_TOO_LARGE_ERROR = '計画がWebSocketの送信上限（1 MiB）を超えています。新しい会話へ引き継げないため、元の会話で実装してください。'
+
+function planHandoffPayload(message: Pick<PendingInitialPrompt, 'type' | 'text'>): string | null {
+  const payload = JSON.stringify(message)
+  if (new TextEncoder().encode(payload).byteLength > CODEX_MAX_WS_CLIENT_MESSAGE_BYTES) return null
+  return payload
+}
+
+function sendPlanHandoff(socket: WebSocket, message: Pick<PendingInitialPrompt, 'type' | 'text'>): boolean {
+  const payload = planHandoffPayload(message)
+  if (payload === null) return false
+  socket.send(payload)
+  return true
+}
 
 function codexRecentCommandsStorageKey(project: string): string {
   return `mybox.codex.recent-commands.v1:${encodeURIComponent(project)}`
+}
+
+function dismissedPlanPromptStorageKey(project: string, threadId: string): string {
+  return `mybox.codex.dismissed-plan-prompt.v1:${encodeURIComponent(project)}:${encodeURIComponent(threadId)}`
+}
+
+function readDismissedPlanPromptTurnId(project: string, threadId: string): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage.getItem(dismissedPlanPromptStorageKey(project, threadId))
+  } catch {
+    return null
+  }
+}
+
+function dismissPlanPrompt(project: string, threadId: string, turnId: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(dismissedPlanPromptStorageKey(project, threadId), turnId)
+  } catch {
+    // Keep dismissal for the current render even when browser storage is unavailable.
+  }
 }
 
 function readCodexRecentCommandIds(project: string): string[] {
@@ -67,10 +113,6 @@ function turnFailureMessage(turn: CodexTurn): string {
   return string(error.message) || string(error.detail) || string(turn.error)
 }
 
-function turnHasAgentMessage(turn: CodexTurn): boolean {
-  return (turn.items ?? []).some((item) => item.type === 'agentMessage' && Boolean(string(item.text) || itemText(item)))
-}
-
 function turnIsActive(turns: CodexTurn[]): boolean {
   return turns.some((turn) => activeStatus(turn.status))
 }
@@ -85,6 +127,37 @@ function itemText(item: CodexItem): string {
     if (value.type === 'image') return '[Image attached]'
     return ''
   }).filter(Boolean).join('\n')
+}
+
+function turnHasPlan(turn: CodexTurn): boolean {
+  return (turn.items ?? []).some((item) => item.type === 'plan' && Boolean(string(item.text) || itemText(item)))
+}
+
+const PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX = 'A previous agent produced the plan below to accomplish the user\'s task. Implement the plan in a fresh context. Treat the plan as the source of user intent, re-read files as needed, and carry the work through implementation and verification.'
+
+function turnPlanText(turn: CodexTurn): string {
+  const plans = (turn.items ?? [])
+    .filter((item) => item.type === 'plan')
+    .map((item) => string(item.text) || itemText(item))
+    .filter(Boolean)
+  return plans[plans.length - 1] ?? ''
+}
+
+function turnHasVisibleResult(turn: CodexTurn): boolean {
+  return (turn.items ?? []).some((item) => {
+    const type = string(item.type)
+    if (type === 'userMessage' || type === 'reasoning' || type === 'reasoningSummary') return false
+    if (type === 'agentMessage' || type === 'plan') return Boolean(string(item.text) || itemText(item))
+    return true
+  })
+}
+
+function turnsContainUserPrompt(turns: CodexTurn[], prompt: string): boolean {
+  const expected = prompt.trim()
+  return turns.some((turn) => (turn.items ?? []).some((item) => {
+    if (item.type !== 'userMessage') return false
+    return (string(item.text) || itemText(item)).trim() === expected
+  }))
 }
 
 function itemSummary(item: CodexItem): string {
@@ -222,6 +295,17 @@ function applyNotification(turns: CodexTurn[], method: string, params: JsonObjec
     if (!turnId) return turns
     const current = turns.find((candidate) => candidate.id === turnId) ?? { id: turnId, items: [] }
     return updateTurn(turns, { ...current, status: method === 'turn/started' ? 'inProgress' : string(params.status) || 'completed' })
+  }
+  if (method === 'turn/plan/updated') {
+    if (!turnId) return turns
+    const current = turns.find((candidate) => candidate.id === turnId) ?? { id: turnId, status: 'inProgress', items: [] }
+    const plan = Array.isArray(params.plan)
+      ? params.plan.map((step) => {
+        const value = record(step)
+        return { step: string(value.step), status: string(value.status) }
+      })
+      : []
+    return updateTurn(turns, { ...current, plan, planExplanation: string(params.explanation) })
   }
   const item = record(params.item) as CodexItem
   if (method === 'item/started' || method === 'item/completed') {
@@ -396,8 +480,17 @@ function TurnItem({ item, transformHref }: { item: CodexItem; transformHref?: (h
     return text ? <div className="max-w-[90%] self-end rounded-lg bg-primary/10 px-3 py-2 text-sm break-words whitespace-pre-wrap">{text}</div> : null
   }
   if (type === 'agentMessage') {
-    const text = string(item.text)
+    const text = string(item.text) || itemText(item)
     return text ? <Markdown text={text} className="markdown-body min-w-0 text-sm" transformHref={transformHref} /> : null
+  }
+  if (type === 'plan') {
+    const text = string(item.text) || itemText(item)
+    return text ? (
+      <div className="codex-plan min-w-0 rounded-lg border bg-card px-3 py-2.5" data-testid="codex-plan-item">
+        <div className="mb-2 text-[11px] font-semibold text-muted-foreground">提案された計画</div>
+        <Markdown text={text} className="markdown-body min-w-0 text-sm" transformHref={transformHref} />
+      </div>
+    ) : null
   }
   if (type === 'reasoning' || type === 'reasoningSummary') return null
 
@@ -451,6 +544,31 @@ function TurnItem({ item, transformHref }: { item: CodexItem; transformHref?: (h
       </summary>
       {details && <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words border-t p-2 font-mono text-[11px]">{details}</pre>}
     </details>
+  )
+}
+
+function TurnPlanProgress({ plan, explanation }: { plan: CodexTurnPlanStep[]; explanation?: string }) {
+  if (plan.length === 0) return null
+  return (
+    <div className="rounded-lg border bg-muted/20 px-3 py-2.5 text-xs" data-testid="codex-turn-plan">
+      <div className="font-semibold">作業計画</div>
+      {explanation && <p className="mt-1 text-muted-foreground">{explanation}</p>}
+      <ol className="mt-2 flex flex-col gap-1.5">
+        {plan.map((step, index) => {
+          const status = string(step.status).toLowerCase().replace(/[\s_-]/g, '')
+          const completed = status === 'completed' || status === 'complete'
+          const inProgress = status === 'inprogress' || status === 'running'
+          return (
+            <li key={`${step.step}-${index}`} className="flex min-w-0 items-start gap-2">
+              <span className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center" aria-hidden="true">
+                {completed ? <Check className="size-3 text-green-600" /> : inProgress ? <Loader2 className="size-3 animate-spin text-blue-600" /> : <span className="size-2 rounded-full border border-muted-foreground/50" />}
+              </span>
+              <span className={cn('min-w-0', completed && 'text-muted-foreground')}>{step.step}</span>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
   )
 }
 
@@ -558,6 +676,8 @@ export function CodexChat({
   const [goalDraft, setGoalDraft] = useState('')
   const [goal, setGoal] = useState<JsonObject | null>(null)
   const [collaborationMode, setCollaborationMode] = useState<string | null>(null)
+  const [planPromptTurnId, setPlanPromptTurnId] = useState<string | null>(null)
+  const [initialPromptRetryThreadId, setInitialPromptRetryThreadId] = useState<string | null>(null)
   const [controlBusy, setControlBusy] = useState(false)
   const [connected, setConnected] = useState(false)
   const [writerConflict, setWriterConflict] = useState(false)
@@ -575,6 +695,10 @@ export function CodexChat({
   const controlRequestSequenceRef = useRef(0)
   const activeThreadIdRef = useRef<string | null>(null)
   const threadHasTurnsRef = useRef(false)
+  const turnsRef = useRef<CodexTurn[]>([])
+  const collaborationModeRef = useRef<string | null>(null)
+  const planImplementationPendingRef = useRef<string | null>(null)
+  const pendingInitialPromptRef = useRef<PendingInitialPrompt | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const scrollToBottomRef = useRef(true)
   const scrollAnchorRef = useRef<{ height: number; top: number } | null>(null)
@@ -587,6 +711,15 @@ export function CodexChat({
     [recentCommandIds],
   )
   const active = useMemo(() => turnIsActive(turns), [turns])
+
+  useEffect(() => {
+    turnsRef.current = turns
+  }, [turns])
+
+  useEffect(() => {
+    collaborationModeRef.current = collaborationMode
+  }, [collaborationMode])
+
   const sessionStatus = useMemo(() => {
     if (!selectedThread) return null
     if (pendingRequests.length > 0) return 'blocked'
@@ -657,7 +790,13 @@ export function CodexChat({
     socketRef.current = null
     activeThreadIdRef.current = null
     threadHasTurnsRef.current = false
+    turnsRef.current = []
+    collaborationModeRef.current = null
+    planImplementationPendingRef.current = null
+    pendingInitialPromptRef.current = null
     setSelectedThread(null)
+    setPlanPromptTurnId(null)
+    setInitialPromptRetryThreadId(null)
     setTurns([])
     setPendingRequests([])
     onActiveThreadChange?.(null)
@@ -751,7 +890,11 @@ export function CodexChat({
     socketRef.current = null
     setCommandPaletteOpen(false)
     setSelectedThread(thread)
+    planImplementationPendingRef.current = null
     if (!automaticReconnect) {
+      setPlanPromptTurnId(null)
+      collaborationModeRef.current = null
+      turnsRef.current = []
       setTurns([])
       setPendingRequests([])
     }
@@ -759,7 +902,7 @@ export function CodexChat({
     scrollToBottomRef.current = true
     scrollAnchorRef.current = null
     setConnected(false)
-    setCollaborationMode(null)
+    if (!automaticReconnect) setCollaborationMode(null)
     setGoal(null)
     setGoalDraft('')
     setGoalEditorOpen(false)
@@ -793,7 +936,14 @@ export function CodexChat({
       if (!automaticReconnect || loadedTurns.length > 0) threadHasTurnsRef.current = loadedTurns.length > 0
       if (!automaticReconnect || loadedTurns.length > 0) onThreadSelected?.(thread.thread_id)
       setSelectedThread(history.thread)
-      if (!automaticReconnect || loadedTurns.length > 0) setTurns(loadedTurns)
+      if (!automaticReconnect || loadedTurns.length > 0) {
+        turnsRef.current = loadedTurns
+        setTurns(loadedTurns)
+        if (automaticReconnect && loadedTurns.length > 0) {
+          const latestTurnId = loadedTurns[loadedTurns.length - 1].id
+          setPlanPromptTurnId((current) => current && current !== latestTurnId ? null : current)
+        }
+      }
       setNextCursor(history.next_cursor ?? null)
     } catch (loadError) {
       if (openSequenceRef.current !== openSequence) return
@@ -826,6 +976,8 @@ export function CodexChat({
     }
     socket.onclose = () => {
       if (openSequenceRef.current !== openSequence) return
+      const pendingInitialPrompt = pendingInitialPromptRef.current
+      if (pendingInitialPrompt?.threadId === thread.thread_id) pendingInitialPrompt.inFlight = false
       setConnected(false)
       setSocketConnecting(false)
       setControlBusy(false)
@@ -835,6 +987,8 @@ export function CodexChat({
     }
     socket.onerror = () => {
       if (openSequenceRef.current !== openSequence) return
+      const pendingInitialPrompt = pendingInitialPromptRef.current
+      if (pendingInitialPrompt?.threadId === thread.thread_id) pendingInitialPrompt.inFlight = false
       setConnected(false)
       setSocketConnecting(false)
       setControlBusy(false)
@@ -866,7 +1020,15 @@ export function CodexChat({
         const requestId = string(message.request_id)
         const messageError = string(message.error) || 'Codexとの接続でエラーが発生しました。'
         setError(messageError)
-        if (requestId) setControlBusy(false)
+        if (requestId && planImplementationPendingRef.current === requestId) planImplementationPendingRef.current = null
+        if (!requestId && planImplementationPendingRef.current === 'prompt') {
+          planImplementationPendingRef.current = null
+          setControlBusy(false)
+        } else if (requestId) {
+          setControlBusy(false)
+        }
+        const pendingInitialPrompt = pendingInitialPromptRef.current
+        if (!requestId && pendingInitialPrompt?.threadId === thread.thread_id) pendingInitialPrompt.inFlight = false
         if (!requestId && !connectionReady) {
           connectionRejected = true
           setSocketConnecting(false)
@@ -885,9 +1047,44 @@ export function CodexChat({
         setError(null)
         setConnected(true)
         const mode = string(record(message.collaboration_mode).mode)
-        setCollaborationMode(mode || 'default')
+        const nextMode = mode || 'default'
+        collaborationModeRef.current = nextMode
+        setCollaborationMode(nextMode)
+        const latestTurn = turnsRef.current[turnsRef.current.length - 1]
+        const completedPlan = nextMode === 'plan' && latestTurn?.status === 'completed' && turnHasPlan(latestTurn)
+        const dismissedTurnId = readDismissedPlanPromptTurnId(project, thread.thread_id)
+        setPlanPromptTurnId(completedPlan && latestTurn.id !== dismissedTurnId ? latestTurn.id : null)
         socket.send(JSON.stringify({ type: 'goal_get', request_id: `goal-get-${thread.thread_id}` }))
+        const pendingInitialPrompt = pendingInitialPromptRef.current
+        if (pendingInitialPrompt?.threadId === thread.thread_id) {
+          if (turnsContainUserPrompt(turnsRef.current, pendingInitialPrompt.text)) {
+            pendingInitialPromptRef.current = null
+            setInitialPromptRetryThreadId(null)
+          } else if (!pendingInitialPrompt.attempted && !turnIsActive(turnsRef.current)) {
+            pendingInitialPrompt.attempted = true
+            pendingInitialPrompt.inFlight = sendPlanHandoff(socket, pendingInitialPrompt)
+            pendingInitialPrompt.exceedsMessageLimit = !pendingInitialPrompt.inFlight
+            if (pendingInitialPrompt.inFlight) {
+              setSending(true)
+              window.setTimeout(() => setSending(false), 500)
+            } else {
+              setError(CODEX_PLAN_HANDOFF_TOO_LARGE_ERROR)
+            }
+          } else {
+            pendingInitialPrompt.inFlight = false
+          }
+        }
       } else if (message.type === 'prompt_started') {
+        if (planImplementationPendingRef.current === 'prompt') {
+          planImplementationPendingRef.current = null
+          setControlBusy(false)
+          setPlanPromptTurnId(null)
+        }
+        const pendingInitialPrompt = pendingInitialPromptRef.current
+        if (pendingInitialPrompt?.threadId === thread.thread_id) {
+          pendingInitialPromptRef.current = null
+          setInitialPromptRetryThreadId(null)
+        }
         if (!threadHasTurnsRef.current) {
           threadHasTurnsRef.current = true
           handledRequestedThreadRef.current = thread.thread_id
@@ -903,10 +1100,26 @@ export function CodexChat({
         })
       } else if (message.type === 'control_response') {
         const control = string(message.control)
+        const requestId = string(message.request_id)
         const result = record(message.result)
         setControlBusy(false)
         if (control === 'set_mode') {
-          setCollaborationMode(string(result.mode) || string(record(result.collaboration_mode).mode) || 'default')
+          const nextMode = string(result.mode) || string(record(result.collaboration_mode).mode) || 'default'
+          collaborationModeRef.current = nextMode
+          setCollaborationMode(nextMode)
+          if (planImplementationPendingRef.current && planImplementationPendingRef.current === requestId) {
+            if (socket.readyState === WebSocket.OPEN) {
+              planImplementationPendingRef.current = 'prompt'
+              setControlBusy(true)
+              setSending(true)
+              socket.send(JSON.stringify({ type: 'prompt', text: 'Implement the plan.' }))
+              window.setTimeout(() => setSending(false), 500)
+            } else {
+              planImplementationPendingRef.current = null
+              setControlBusy(false)
+              setError('Codexとの接続がありません。再接続してから計画を実装してください。')
+            }
+          }
         } else if (control === 'goal_clear') {
           setGoal(null)
           setGoalDraft('')
@@ -943,7 +1156,31 @@ export function CodexChat({
           setGoalDraft('')
         } else if (method === 'thread/settings/updated' && string(params.threadId) === thread.thread_id) {
           const mode = string(record(record(params.threadSettings).collaborationMode).mode)
-          if (mode) setCollaborationMode(mode)
+          if (mode) {
+            collaborationModeRef.current = mode
+            setCollaborationMode(mode)
+          }
+        }
+        if (method === 'turn/started') {
+          const startedTurn = record(params.turn)
+          const startedTurnId = string(startedTurn.id) || string(params.turnId)
+          setPlanPromptTurnId((current) => current && current !== startedTurnId ? null : current)
+        }
+        if (method === 'turn/completed') {
+          const completedPayload = record(params.turn)
+          const completedTurnId = string(completedPayload.id) || string(params.turnId)
+          const currentTurn = turnsRef.current.find((candidate) => candidate.id === completedTurnId)
+          const completedTurn = {
+            ...currentTurn,
+            ...completedPayload,
+            id: completedTurnId,
+            items: Array.isArray(completedPayload.items) ? completedPayload.items as CodexItem[] : currentTurn?.items,
+          } as CodexTurn
+          const status = string(completedTurn.status) || string(params.status) || 'completed'
+          if (completedTurnId && status === 'completed' && collaborationModeRef.current === 'plan' && turnHasPlan(completedTurn)) {
+            const dismissedTurnId = readDismissedPlanPromptTurnId(project, thread.thread_id)
+            setPlanPromptTurnId(dismissedTurnId === completedTurnId ? null : completedTurnId)
+          }
         }
         setTurns((current) => applyNotification(current, method, params))
       }
@@ -982,15 +1219,25 @@ export function CodexChat({
     }
   }, [onActiveThreadChange])
 
-  const createThread = useCallback(async () => {
+  const createThread = useCallback(async (initialPrompt?: { type: 'plan_handoff'; text: string }) => {
     if (creating) return
     setCreating(true)
     setError(null)
+    let initialPromptThreadId: string | null = null
     try {
       const thread = await api.createCodexThread(project)
+      if (initialPrompt) {
+        initialPromptThreadId = thread.thread_id
+        pendingInitialPromptRef.current = { threadId: thread.thread_id, ...initialPrompt, attempted: false, inFlight: false }
+        setInitialPromptRetryThreadId(thread.thread_id)
+      }
       setThreads((current) => [thread, ...current.filter((entry) => entry.thread_id !== thread.thread_id)])
       await openThread(thread)
     } catch (createError) {
+      if (initialPromptThreadId && pendingInitialPromptRef.current?.threadId === initialPromptThreadId) {
+        pendingInitialPromptRef.current = null
+        setInitialPromptRetryThreadId(null)
+      }
       setError(createError instanceof Error ? createError.message : String(createError))
     } finally {
       setCreating(false)
@@ -1020,6 +1267,12 @@ export function CodexChat({
     if (!message || !socket || socket.readyState !== WebSocket.OPEN || sending) return false
     setSending(true)
     setError(null)
+    setPlanPromptTurnId(null)
+    const pendingInitialPrompt = pendingInitialPromptRef.current
+    if (pendingInitialPrompt?.threadId === activeThreadIdRef.current) {
+      pendingInitialPromptRef.current = null
+      setInitialPromptRetryThreadId(null)
+    }
     socket.send(JSON.stringify({ type: 'prompt', text: message }))
     if (clearDraft) {
       setDraft('')
@@ -1033,19 +1286,86 @@ export function CodexChat({
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       setError('Codexとの接続がありません。再接続してから操作してください。')
-      return false
+      return null
     }
     controlRequestSequenceRef.current += 1
     const requestId = `control-${Date.now()}-${controlRequestSequenceRef.current}`
     setControlBusy(true)
     setError(null)
     socket.send(JSON.stringify({ type, request_id: requestId, ...payload }))
-    return true
+    return requestId
   }, [])
 
   const changeMode = useCallback((mode: 'plan' | 'default') => {
-    if (sendControl('set_mode', { mode })) setCommandPaletteOpen(false)
+    if (sendControl('set_mode', { mode })) {
+      setPlanPromptTurnId(null)
+      setCommandPaletteOpen(false)
+    }
   }, [sendControl])
+
+  const implementPlan = useCallback((turnId: string) => {
+    const latestTurn = turnsRef.current[turnsRef.current.length - 1]
+    if (
+      planImplementationPendingRef.current
+      || (collaborationModeRef.current !== 'plan' && collaborationModeRef.current !== 'default')
+      || turnIsActive(turnsRef.current)
+      || latestTurn?.id !== turnId
+      || latestTurn.status !== 'completed'
+    ) return
+    if (collaborationModeRef.current === 'plan') {
+      planImplementationPendingRef.current = sendControl('set_mode', { mode: 'default' })
+      return
+    }
+    const socket = socketRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      setError('Codexとの接続がありません。再接続してから計画を実装してください。')
+      return
+    }
+    planImplementationPendingRef.current = 'prompt'
+    setControlBusy(true)
+    setError(null)
+    setSending(true)
+    socket.send(JSON.stringify({ type: 'prompt', text: 'Implement the plan.' }))
+    window.setTimeout(() => setSending(false), 500)
+  }, [sendControl])
+
+  const implementPlanInFreshContext = useCallback((turnId: string) => {
+    const latestTurn = turnsRef.current[turnsRef.current.length - 1]
+    if (creating || turnIsActive(turnsRef.current) || latestTurn?.id !== turnId || latestTurn.status !== 'completed') return
+    const planText = turnPlanText(latestTurn)
+    if (!planText) return
+    const handoff = { type: 'plan_handoff' as const, text: `${PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX}\n\n${planText}` }
+    if (planHandoffPayload(handoff) === null) {
+      setError(CODEX_PLAN_HANDOFF_TOO_LARGE_ERROR)
+      return
+    }
+    void createThread(handoff)
+  }, [createThread, creating])
+
+  const retryInitialPrompt = useCallback(() => {
+    const pending = pendingInitialPromptRef.current
+    const socket = socketRef.current
+    if (
+      !pending
+      || pending.threadId !== activeThreadIdRef.current
+      || pending.inFlight
+      || pending.exceedsMessageLimit
+      || active
+      || !connected
+      || !socket
+      || socket.readyState !== WebSocket.OPEN
+    ) return
+    pending.attempted = true
+    pending.inFlight = sendPlanHandoff(socket, pending)
+    pending.exceedsMessageLimit = !pending.inFlight
+    setError(null)
+    if (pending.inFlight) {
+      setSending(true)
+      window.setTimeout(() => setSending(false), 500)
+    } else {
+      setError(CODEX_PLAN_HANDOFF_TOO_LARGE_ERROR)
+    }
+  }, [active, connected])
 
   const openGoalEditor = useCallback(() => {
     setGoalDraft(string(goal?.objective))
@@ -1384,6 +1704,7 @@ export function CodexChat({
             return (
               <section key={turn.id} className="flex min-w-0 flex-col gap-3" aria-label="Codex turn">
                 {items.map((item, index) => <TurnItem key={item.id || `${turn.id}-${index}`} item={item} transformHref={rewriteCodexLink} />)}
+                {Array.isArray(turn.plan) && <TurnPlanProgress plan={turn.plan} explanation={string(turn.planExplanation)} />}
                 {activeStatus(turn.status) && <div className="flex items-center gap-2 text-[11px] text-muted-foreground"><Loader2 className="size-3 animate-spin" />Codexが作業中…</div>}
                 {(turn.status === 'failed' || turn.status === 'interrupted') && (
                   <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
@@ -1391,14 +1712,60 @@ export function CodexChat({
                     {turnFailureMessage(turn) && <div className="mt-1 whitespace-pre-wrap break-words">{turnFailureMessage(turn)}</div>}
                   </div>
                 )}
-                {turn.status === 'completed' && !turnHasAgentMessage(turn) && (
-                  <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
-                    Codexの処理は完了しましたが、応答メッセージがありません。履歴を更新して状態を確認してください。
+                {turn.status === 'completed' && !turnHasVisibleResult(turn) && (
+                  <div role="status" className="text-[11px] text-muted-foreground">Codexの処理が完了しました。</div>
+                )}
+                {turn.id === planPromptTurnId && turn.status === 'completed' && turnHasPlan(turn) && (
+                  <div role="group" aria-label="計画の実装" className="rounded-lg border bg-card px-3 py-2.5">
+                    <div className="text-xs font-semibold">この計画を実装しますか？</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button size="xs" className="cursor-pointer" onClick={() => implementPlan(turn.id)} disabled={!connected || controlBusy || sending || active || creating || turn.id !== turns[turns.length - 1]?.id}>
+                        {controlBusy ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+                        はい、計画を実装
+                      </Button>
+                      {turnPlanText(turn) && <Button size="xs" variant="outline" className="cursor-pointer" onClick={() => implementPlanInFreshContext(turn.id)} disabled={!connected || controlBusy || sending || active || creating || turn.id !== turns[turns.length - 1]?.id}>
+                        {creating ? <Loader2 className="mr-1 size-3 animate-spin" /> : <MessageSquarePlus className="mr-1 size-3" />}
+                        新しいコンテキストで実装
+                      </Button>}
+                      <Button size="xs" variant="outline" className="cursor-pointer" onClick={() => {
+                        dismissPlanPrompt(project, selectedThread.thread_id, turn.id)
+                        setPlanPromptTurnId(null)
+                      }} disabled={controlBusy}>
+                        いいえ、Planモードのまま
+                      </Button>
+                    </div>
                   </div>
                 )}
               </section>
             )
           })}
+          {initialPromptRetryThreadId === selectedThread.thread_id && (
+            <div role="group" aria-label="計画の送信状態" className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2.5 text-xs">
+              <span className="min-w-0 flex-1 text-muted-foreground">
+                {pendingInitialPromptRef.current?.inFlight || active
+                  ? '計画を新しい会話へ送信しています…'
+                  : pendingInitialPromptRef.current?.exceedsMessageLimit
+                    ? '計画が送信上限を超え、新しい会話へ引き継げませんでした。'
+                    : pendingInitialPromptRef.current?.attempted
+                      ? '計画を新しい会話へ送信できませんでした。再試行できます。'
+                      : '新しい会話へ計画を引き継いでいます…'}
+              </span>
+              {!pendingInitialPromptRef.current?.exceedsMessageLimit && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="cursor-pointer"
+                  onClick={retryInitialPrompt}
+                  disabled={!connected || active || pendingInitialPromptRef.current?.inFlight || !pendingInitialPromptRef.current?.attempted}
+                >
+                  {pendingInitialPromptRef.current?.inFlight || (!pendingInitialPromptRef.current?.attempted && creating)
+                    ? <Loader2 className="mr-1 size-3 animate-spin" />
+                    : null}
+                  再試行
+                </Button>
+              )}
+            </div>
+          )}
           {pendingRequests.map((request) => <ApprovalRequestView key={request.request_id} request={request} busy={busyRequests.has(request.request_id)} onRespond={respond} />)}
         </div>
       </div>
