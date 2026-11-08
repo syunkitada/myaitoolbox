@@ -330,6 +330,45 @@ function applyNotification(turns: CodexTurn[], method: string, params: JsonObjec
   return turns
 }
 
+function mergeTurnSnapshot(current: CodexTurn, snapshot: CodexTurn): CodexTurn {
+  const snapshotItems = snapshot.items ?? []
+  const currentItems = current.items ?? []
+  const currentItemsById = new Map(currentItems.filter((item) => item.id).map((item) => [item.id, item]))
+  const snapshotItemIds = new Set(snapshotItems.map((item) => item.id).filter(Boolean))
+  const terminalStatuses = new Set(['completed', 'failed', 'interrupted', 'cancelled', 'canceled'])
+  const currentStatus = string(current.status)
+  const snapshotStatus = string(snapshot.status)
+  const currentIsTerminal = terminalStatuses.has(currentStatus.toLowerCase())
+  const snapshotIsTerminal = terminalStatuses.has(snapshotStatus.toLowerCase())
+  const items = snapshotItems.map((item) => {
+    const previous = item.id ? currentItemsById.get(item.id) : undefined
+    if (!previous) return item
+    const merged = { ...previous, ...item }
+    if (!snapshotIsTerminal) {
+      if (string(previous.text).length > string(item.text).length) merged.text = previous.text
+      if (string(previous.aggregatedOutput).length > string(item.aggregatedOutput).length) merged.aggregatedOutput = previous.aggregatedOutput
+    }
+    return merged
+  })
+  items.push(...currentItems.filter((item) => !item.id || !snapshotItemIds.has(item.id)))
+
+  return {
+    ...current,
+    ...snapshot,
+    status: currentIsTerminal && !snapshotIsTerminal ? current.status : snapshot.status,
+    items,
+  }
+}
+
+function mergeHistorySnapshot(current: CodexTurn[], snapshot: CodexTurn[]): CodexTurn[] {
+  const turnsById = new Map(current.map((turn) => [turn.id, turn]))
+  for (const turn of snapshot) {
+    const previous = turnsById.get(turn.id)
+    turnsById.set(turn.id, previous ? mergeTurnSnapshot(previous, turn) : turn)
+  }
+  return [...turnsById.values()].sort((left, right) => Number(left.startedAt ?? 0) - Number(right.startedAt ?? 0))
+}
+
 function ApprovalCard({
   request,
   busy,
@@ -690,6 +729,7 @@ export function CodexChat({
   const reconnectAttemptRef = useRef(0)
   const openSequenceRef = useRef(0)
   const threadListRequestRef = useRef(0)
+  const historySyncInFlightRef = useRef(false)
   const handledRequestedThreadRef = useRef<string | null>(null)
   const lastRequestedThreadRef = useRef<string | null>(null)
   const emptyThreadReplacementAttemptedRef = useRef(false)
@@ -777,6 +817,27 @@ export function CodexChat({
     }
   }, [project])
 
+  const syncLatestHistory = useCallback(async () => {
+    if (!selectedThread || historyLoading || historySyncInFlightRef.current) return
+    const threadId = selectedThread.thread_id
+    const openSequence = openSequenceRef.current
+    const turnsAtRequest = turnsRef.current
+    historySyncInFlightRef.current = true
+    try {
+      const history = await api.getCodexThreadHistory(threadId, { limit: 100 }, project)
+      if (openSequenceRef.current !== openSequence || activeThreadIdRef.current !== threadId || turnsRef.current !== turnsAtRequest) return
+      const snapshot = history.turns.map((turn) => record(turn) as CodexTurn)
+      const merged = mergeHistorySnapshot(turnsAtRequest, snapshot)
+      turnsRef.current = merged
+      setTurns(merged)
+      setSelectedThread(history.thread)
+    } catch {
+      // Background synchronization is retried by the next interval or when the tab becomes visible.
+    } finally {
+      historySyncInFlightRef.current = false
+    }
+  }, [historyLoading, project, selectedThread])
+
   const removeDeletedThread = useCallback((threadId: string) => {
     setThreads((current) => current.filter((thread) => thread.thread_id !== threadId))
     if (activeThreadIdRef.current !== threadId) {
@@ -816,7 +877,7 @@ export function CodexChat({
     const refresh = () => {
       if (document.hidden || refreshing) return
       refreshing = true
-      void loadThreads(true).finally(() => { refreshing = false })
+      void Promise.all([loadThreads(true), syncLatestHistory()]).finally(() => { refreshing = false })
     }
     const interval = window.setInterval(refresh, 15000)
     document.addEventListener('visibilitychange', refresh)
@@ -824,7 +885,7 @@ export function CodexChat({
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', refresh)
     }
-  }, [loadThreads, selectedThread])
+  }, [loadThreads, selectedThread, syncLatestHistory])
 
   useEffect(() => {
     let cancelled = false
@@ -1192,7 +1253,11 @@ export function CodexChat({
             setPlanPromptTurnId(dismissedTurnId === completedTurnId ? null : completedTurnId)
           }
         }
-        setTurns((current) => applyNotification(current, method, params))
+        setTurns((current) => {
+          const next = applyNotification(current, method, params)
+          turnsRef.current = next
+          return next
+        })
       }
     }
   }, [loadThreads, onActiveThreadChange, onThreadSelected, project, removeDeletedThread])
@@ -1541,7 +1606,11 @@ export function CodexChat({
       const element = scrollRef.current
       if (element) scrollAnchorRef.current = { height: element.scrollHeight, top: element.scrollTop }
       const older = history.turns.map((turn) => record(turn) as CodexTurn)
-      setTurns((current) => [...older.filter((turn) => !current.some((existing) => existing.id === turn.id)), ...current])
+      setTurns((current) => {
+        const next = [...older.filter((turn) => !current.some((existing) => existing.id === turn.id)), ...current]
+        turnsRef.current = next
+        return next
+      })
       setNextCursor(history.next_cursor ?? null)
     } catch (loadError) {
       if (openSequenceRef.current !== openSequence) return
@@ -1558,7 +1627,9 @@ export function CodexChat({
     try {
       const history = await api.getCodexThreadHistory(selectedThread.thread_id, { limit: 100 }, project)
       if (openSequenceRef.current !== openSequence) return
-      setTurns(history.turns.map((turn) => record(turn) as CodexTurn))
+      const refreshedTurns = history.turns.map((turn) => record(turn) as CodexTurn)
+      turnsRef.current = refreshedTurns
+      setTurns(refreshedTurns)
       setNextCursor(history.next_cursor ?? null)
     } catch (loadError) {
       if (openSequenceRef.current !== openSequence) return

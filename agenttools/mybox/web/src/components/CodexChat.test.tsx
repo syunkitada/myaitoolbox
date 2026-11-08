@@ -120,6 +120,50 @@ describe('CodexChat', () => {
     expect(screen.getByText('切断中')).toBeInTheDocument()
   })
 
+  it('refreshes the open conversation history when the tab becomes visible', async () => {
+    const latestTurn = {
+      id: 'turn-2',
+      status: 'completed',
+      items: [{ id: 'assistant-2', type: 'agentMessage', text: 'The latest response' }],
+    }
+    vi.mocked(api.getCodexThreadHistory)
+      .mockResolvedValueOnce({
+        thread: threads[0],
+        turns: [{
+          id: 'turn-1',
+          status: 'completed',
+          items: [{ id: 'assistant-1', type: 'agentMessage', text: 'An earlier response' }],
+        }],
+        next_cursor: 'older-page-cursor',
+      })
+      .mockResolvedValueOnce({
+        thread: threads[0],
+        turns: [
+          { id: 'turn-1', status: 'completed', items: [{ id: 'assistant-1', type: 'agentMessage', text: 'An earlier response' }] },
+          latestTurn,
+        ],
+        next_cursor: 'updated-first-page-cursor',
+      })
+    renderCodexChat()
+    await selectThread()
+    expect(await screen.findByText('An earlier response')).toBeInTheDocument()
+
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(await screen.findByText('The latest response')).toBeInTheDocument()
+    expect(api.getCodexThreadHistory).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(screen.getByRole('button', { name: '以前の会話を読み込む' }))
+    await waitFor(() => expect(api.getCodexThreadHistory).toHaveBeenNthCalledWith(
+      3,
+      'thread-1',
+      { cursor: 'older-page-cursor', limit: 100 },
+      'demo',
+    ))
+  })
+
   it('keeps history readable and offers refresh when another Codex owns the thread', async () => {
     renderCodexChat()
     await selectThread()
