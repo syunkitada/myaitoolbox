@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import type { ComponentProps } from 'react'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { AgentSidebar } from './AgentSidebar'
 import { DialogsProvider } from './AppDialogs'
 import { api } from '../api/client'
@@ -12,6 +12,7 @@ import { FileExecutionProvider, useFileExecution } from '../state/fileExecution'
 
 vi.mock('../api/client', () => ({
   api: {
+    listProjects: vi.fn().mockResolvedValue([{ name: 'demo', path: '/workspace/demo' }]),
     getHerdrLayouts: vi.fn().mockResolvedValue({ layouts: [] }),
     listCodexThreads: vi.fn().mockResolvedValue({ threads: [], truncated: false }),
     createCodexThread: vi.fn().mockResolvedValue({ thread_id: 'new-codex-thread', title: 'New Codex conversation', preview: '', created_at: 1, updated_at: 1, status: 'idle', model: '' }),
@@ -104,6 +105,7 @@ function AgentSidebarHarness({
 
   return (
     <MemoryRouter initialEntries={initialEntries}>
+      <RouteSearch />
       <DialogsProvider>
         <AgentSidebar
           project="demo"
@@ -129,6 +131,11 @@ function AgentSidebarHarness({
       </DialogsProvider>
     </MemoryRouter>
   )
+}
+
+function RouteSearch() {
+  const location = useLocation()
+  return <output data-testid="route-search">{location.search}</output>
 }
 
 function renderSidebar(
@@ -178,6 +185,88 @@ describe('AgentSidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Herdr' }))
     expect(screen.queryByTestId('codex-chat-history')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Start agent' })).toBeInTheDocument()
+  })
+
+  it('keeps a newly created conversation selected when the URL restores an older thread', async () => {
+    const oldThread = {
+      thread_id: 'old-thread',
+      title: 'Previous conversation',
+      preview: 'old',
+      created_at: 1,
+      updated_at: 1,
+      status: 'idle',
+      model: 'gpt-5-codex',
+    }
+    const newThread = {
+      ...oldThread,
+      thread_id: 'new-thread',
+      title: 'New conversation',
+      preview: '',
+      created_at: 2,
+      updated_at: 2,
+    }
+    const onCodexThreadIdChange = vi.fn()
+    vi.mocked(api.listCodexThreads).mockResolvedValue({ threads: [oldThread], truncated: false })
+    vi.mocked(api.createCodexThread).mockResolvedValue(newThread)
+    vi.mocked(api.getCodexThreadHistory).mockImplementation(async (threadId) => ({
+      thread: threadId === newThread.thread_id ? newThread : oldThread,
+      turns: [],
+      next_cursor: null,
+    }))
+
+    renderSidebar(
+      { mode: 'codex', onCodexThreadIdChange },
+      ['/projects/demo/dashboard?codex_thread=old-thread'],
+    )
+
+    expect(await screen.findByTestId('codex-session-old-thread')).toHaveAttribute('aria-current', 'true')
+    fireEvent.click(screen.getByRole('button', { name: '新しいCodex会話' }))
+
+    await waitFor(() => expect(api.createCodexThread).toHaveBeenCalledWith('demo'))
+    await waitFor(() => expect(onCodexThreadIdChange).toHaveBeenLastCalledWith('new-thread'))
+    await waitFor(() => expect(screen.getByTestId('route-search')).toHaveTextContent('codex_thread=new-thread'))
+    expect(await screen.findByTestId('codex-session-new-thread')).toHaveAttribute('aria-current', 'true')
+    await waitFor(() => expect(onCodexThreadIdChange).toHaveBeenLastCalledWith('new-thread'))
+    expect(api.getCodexThreadHistory).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops automatic thread replacement after one failed retry', async () => {
+    const oldThread = {
+      thread_id: 'old-thread',
+      title: 'Previous conversation',
+      preview: 'old',
+      created_at: 1,
+      updated_at: 1,
+      status: 'idle',
+      model: 'gpt-5-codex',
+    }
+    let createdCount = 0
+    vi.mocked(api.listCodexThreads).mockResolvedValue({ threads: [oldThread], truncated: false })
+    vi.mocked(api.createCodexThread).mockImplementation(async () => ({
+      ...oldThread,
+      thread_id: `new-thread-${++createdCount}`,
+      title: 'New conversation',
+      preview: '',
+      created_at: 2 + createdCount,
+      updated_at: 2 + createdCount,
+    }))
+    vi.mocked(api.getCodexThreadHistory).mockImplementation(async (threadId) => {
+      if (threadId !== oldThread.thread_id) throw new Error('Codex conversation not found')
+      return { thread: oldThread, turns: [], next_cursor: null }
+    })
+
+    renderSidebar(
+      { mode: 'codex', codexThreadId: oldThread.thread_id },
+      ['/projects/demo/dashboard?codex_thread=old-thread'],
+    )
+
+    expect(await screen.findByTestId('codex-session-old-thread')).toHaveAttribute('aria-current', 'true')
+    fireEvent.click(screen.getByRole('button', { name: '新しいCodex会話' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('新しいCodex会話を復旧できませんでした')
+    await waitFor(() => expect(api.createCodexThread).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('route-search')).toHaveTextContent('codex_thread=new-thread-2')
+    expect(api.createCodexThread).toHaveBeenCalledTimes(2)
   })
 
   it('shows only agents belonging to the current project', () => {

@@ -23,8 +23,15 @@ const threads = [{
   model: 'gpt-5-codex',
 }]
 
-function renderCodexChat() {
-  return render(<DialogsProvider><CodexChat project="demo" /></DialogsProvider>)
+function renderCodexChat(onThreadSelected?: (threadId: string | null) => void) {
+  return render(<DialogsProvider><CodexChat project="demo" onThreadSelected={onThreadSelected} /></DialogsProvider>)
+}
+
+async function selectThread(threadId = 'thread-1') {
+  const title = await screen.findByText(threadId === 'thread-1' ? 'Refactor sidebar' : 'New conversation')
+  const button = title.closest('button')
+  if (!button) throw new Error(`Conversation ${threadId} has no selectable button`)
+  fireEvent.click(button)
 }
 
 class MockWebSocket {
@@ -92,7 +99,7 @@ describe('CodexChat', () => {
   it('lists project conversations and renders readable Codex history', async () => {
     renderCodexChat()
 
-    fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
+    await selectThread()
 
     expect(await screen.findByText('Update the sidebar')).toBeInTheDocument()
     expect(screen.getByTestId('codex-chat-conversation').querySelector('.markdown-body')).toHaveTextContent('I will update the sidebar.')
@@ -102,7 +109,7 @@ describe('CodexChat', () => {
 
   it('shows connection progress and explains a WebSocket failure', async () => {
     renderCodexChat()
-    fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
+    await selectThread()
 
     expect(await screen.findByText('接続中…')).toBeInTheDocument()
     await act(async () => {
@@ -115,7 +122,7 @@ describe('CodexChat', () => {
 
   it('keeps history readable and offers refresh when another Codex owns the thread', async () => {
     renderCodexChat()
-    fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
+    await selectThread()
     expect(await screen.findByText('Update the sidebar')).toBeInTheDocument()
 
     await act(async () => {
@@ -132,7 +139,7 @@ describe('CodexChat', () => {
 
   it('sends a selected quick prompt from the Codex command palette', async () => {
     renderCodexChat()
-    fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
+    await selectThread()
     await screen.findByText(/I will update the/)
 
     const socket = MockWebSocket.latest
@@ -155,7 +162,7 @@ describe('CodexChat', () => {
 
   it('compacts the open thread through the Codex app-server command', async () => {
     renderCodexChat()
-    fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
+    await selectThread()
     await screen.findByText(/I will update the/)
 
     const socket = MockWebSocket.latest
@@ -170,21 +177,46 @@ describe('CodexChat', () => {
   })
 
   it('starts a new conversation from the Codex command palette', async () => {
-    renderCodexChat()
-    fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
+    const newThread = {
+      ...threads[0],
+      thread_id: 'thread-2',
+      title: 'New conversation',
+      preview: '',
+      created_at: 1_800_000_200,
+      updated_at: 1_800_000_200,
+    }
+    const onThreadSelected = vi.fn()
+    vi.mocked(api.createCodexThread).mockResolvedValue(newThread)
+    vi.mocked(api.getCodexThreadHistory).mockImplementation(async (threadId) => ({
+      thread: threadId === newThread.thread_id ? newThread : threads[0],
+      turns: threadId === newThread.thread_id ? [] : [{
+        id: 'turn-1',
+        status: 'inProgress',
+        items: [
+          { id: 'user-1', type: 'userMessage', content: [{ type: 'text', text: 'Update the sidebar' }] },
+          { id: 'assistant-1', type: 'agentMessage', text: 'I will update the **sidebar**.' },
+        ],
+      }],
+      next_cursor: null,
+    }))
+    renderCodexChat(onThreadSelected)
+    await selectThread()
     await screen.findByText(/I will update the/)
     fireEvent.click(screen.getByRole('button', { name: 'Codexコマンド' }))
     const palette = await screen.findByTestId('codex-command-palette')
     fireEvent.click(within(palette).getByRole('button', { name: '新しい会話' }))
 
     await waitFor(() => expect(api.createCodexThread).toHaveBeenCalledWith('demo'))
-    await screen.findByTestId('codex-chat-conversation')
+    expect(await screen.findByText('New conversation')).toBeInTheDocument()
+    expect(screen.getByTestId('codex-session-thread-2')).toHaveAttribute('aria-current', 'true')
+    await waitFor(() => expect(onThreadSelected).toHaveBeenLastCalledWith('thread-2'))
+    expect(api.getCodexThreadHistory).toHaveBeenLastCalledWith('thread-2', { limit: 100 }, 'demo')
     await waitFor(() => expect(screen.queryByTestId('codex-command-palette')).not.toBeInTheDocument())
   })
 
   it('sends approval responses through the app-server socket', async () => {
     renderCodexChat()
-    fireEvent.click(await screen.findByRole('button', { name: /Refactor sidebar/ }))
+    await selectThread()
     await screen.findByText(/I will update the/)
 
     const socket = MockWebSocket.latest

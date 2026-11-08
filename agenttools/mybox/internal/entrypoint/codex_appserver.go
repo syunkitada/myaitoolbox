@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -44,6 +45,7 @@ type codexAppServerManager struct {
 	mu              sync.Mutex
 	process         *codexAppServerProcess
 	closed          bool
+	stdioTransport  bool
 	threadSubMu     sync.Mutex
 	threadSubs      map[codexThreadSubscriptionKey]*codexThreadSubscription
 	clientsMu       sync.Mutex
@@ -57,6 +59,7 @@ type codexThreadSubscription struct {
 	subscribed        bool
 	materialized      bool
 	expired           bool
+	startedThread     *codexThreadRecord
 	idleTimer         *time.Timer
 	retryTimer        *time.Timer
 	unknown           bool
@@ -96,7 +99,9 @@ type codexPendingServerRequest struct {
 type codexAppServerProcess struct {
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
+	conn      *websocket.Conn
 	done      chan struct{}
+	doneOnce  sync.Once
 	writeMu   sync.Mutex
 	pendingMu sync.Mutex
 	pending   map[string]chan codexRPCResult
@@ -217,7 +222,7 @@ func (m *codexAppServerManager) attachThread(ctx context.Context, p *codexAppSer
 	return append(json.RawMessage(nil), state.collaborationMode...), nil
 }
 
-func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, key codexThreadKey, collaborationMode json.RawMessage) {
+func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, key codexThreadKey, thread codexThreadRecord, collaborationMode json.RawMessage) {
 	select {
 	case <-p.done:
 		return
@@ -244,8 +249,51 @@ func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, ke
 	state.subscribed = true
 	state.materialized = false
 	state.expired = false
+	state.startedThread = &thread
 	state.collaborationMode = append(json.RawMessage(nil), collaborationMode...)
 	m.scheduleUnmaterializedThreadExpiryLocked(p, key, state)
+}
+
+func (m *codexAppServerManager) startedThread(p *codexAppServerProcess, key codexThreadKey) (codexThreadRecord, bool) {
+	m.threadSubMu.Lock()
+	state := m.threadSubs[codexThreadSubscriptionKey{thread: key, process: p}]
+	m.threadSubMu.Unlock()
+	if state == nil {
+		return codexThreadRecord{}, false
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.materialized || state.expired || state.startedThread == nil {
+		return codexThreadRecord{}, false
+	}
+	return *state.startedThread, true
+}
+
+func (m *codexAppServerManager) unmaterializedThreads(p *codexAppServerProcess, project string) []codexThreadRecord {
+	m.threadSubMu.Lock()
+	states := make([]struct {
+		key   codexThreadKey
+		state *codexThreadSubscription
+	}, 0)
+	for subscriptionKey, state := range m.threadSubs {
+		if subscriptionKey.process == p && subscriptionKey.thread.project == project {
+			states = append(states, struct {
+				key   codexThreadKey
+				state *codexThreadSubscription
+			}{key: subscriptionKey.thread, state: state})
+		}
+	}
+	m.threadSubMu.Unlock()
+
+	threads := make([]codexThreadRecord, 0, len(states))
+	for _, entry := range states {
+		entry.state.mu.Lock()
+		if !entry.state.materialized && !entry.state.expired && entry.state.subscribed && entry.state.startedThread != nil {
+			threads = append(threads, *entry.state.startedThread)
+		}
+		entry.state.mu.Unlock()
+	}
+	return threads
 }
 
 func (m *codexAppServerManager) updateCollaborationMode(p *codexAppServerProcess, key codexThreadKey, collaborationMode json.RawMessage) {
@@ -296,7 +344,7 @@ func (m *codexAppServerManager) detachThread(p *codexAppServerProcess, key codex
 		return
 	}
 	if !state.materialized {
-		m.expireUnmaterializedThreadLocked(p, key, state)
+		m.scheduleUnmaterializedThreadExpiryLocked(p, key, state)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), codexAppServerRequestTimeout)
@@ -433,38 +481,93 @@ func (m *codexAppServerManager) ensure(ctx context.Context, projectDir string) (
 		m.mu.Unlock()
 		return nil, errors.New("codex command not found on the mybox server PATH")
 	}
-	cmd := exec.Command(bin, "app-server", "--listen", "stdio://")
-	cmd.Dir = projectDir
-	cmd.Stderr = io.Discard
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("prepare Codex app-server input: %w", err)
+	var p *codexAppServerProcess
+	var stdout io.Reader
+	if m.stdioTransport {
+		cmd := exec.Command(bin, "app-server", "--listen", "stdio://")
+		cmd.Dir = projectDir
+		cmd.Stderr = io.Discard
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("prepare Codex app-server input: %w", err)
+		}
+		stdout, err = cmd.StdoutPipe()
+		if err != nil {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("prepare Codex app-server output: %w", err)
+		}
+		if err := cmd.Start(); err != nil {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("start Codex app-server: %w", err)
+		}
+		p = &codexAppServerProcess{cmd: cmd, stdin: stdin}
+	} else {
+		socketPath, err := startCodexAppServerDaemon(ctx, bin, projectDir)
+		if err != nil {
+			m.mu.Unlock()
+			return nil, err
+		}
+		conn, err := dialCodexAppServerSocket(ctx, socketPath)
+		if err != nil {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("connect to persistent Codex app-server: %w", err)
+		}
+		p = &codexAppServerProcess{conn: conn}
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("prepare Codex app-server output: %w", err)
-	}
-	if err := cmd.Start(); err != nil {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("start Codex app-server: %w", err)
-	}
-	p := &codexAppServerProcess{
-		cmd:     cmd,
-		stdin:   stdin,
-		done:    make(chan struct{}),
-		pending: make(map[string]chan codexRPCResult),
-		manager: m,
-	}
+	p.done = make(chan struct{})
+	p.pending = make(map[string]chan codexRPCResult)
+	p.manager = m
 	m.process = p
 	m.mu.Unlock()
-	go p.readLoop(stdout)
+	if p.conn != nil {
+		go p.readWebSocketLoop()
+	} else {
+		go p.readLoop(stdout)
+	}
 	if err := p.initialize(); err != nil {
 		p.stop()
 		return nil, err
 	}
 	return p, nil
+}
+
+func startCodexAppServerDaemon(ctx context.Context, bin, projectDir string) (string, error) {
+	startCtx, cancel := context.WithTimeout(ctx, codexAppServerStartTimeout)
+	defer cancel()
+	start := exec.CommandContext(startCtx, bin, "app-server", "daemon", "start")
+	start.Dir = projectDir
+	start.Stdout = io.Discard
+	start.Stderr = io.Discard
+	if err := start.Run(); err != nil {
+		return "", fmt.Errorf("start persistent Codex app-server daemon: %w", err)
+	}
+
+	version := exec.CommandContext(startCtx, bin, "app-server", "daemon", "version")
+	version.Dir = projectDir
+	output, err := version.Output()
+	if err != nil {
+		return "", fmt.Errorf("read Codex app-server daemon status: %w", err)
+	}
+	var status struct {
+		Status     string `json:"status"`
+		SocketPath string `json:"socketPath"`
+	}
+	if err := json.Unmarshal(output, &status); err != nil || status.Status != "running" || strings.TrimSpace(status.SocketPath) == "" {
+		return "", errors.New("codex app-server daemon did not report a running control socket")
+	}
+	return status.SocketPath, nil
+}
+
+func dialCodexAppServerSocket(ctx context.Context, socketPath string) (*websocket.Conn, error) {
+	dialer := websocket.Dialer{
+		HandshakeTimeout: codexAppServerStartTimeout,
+		NetDialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
+		},
+	}
+	conn, _, err := dialer.DialContext(ctx, "ws://localhost/", nil)
+	return conn, err
 }
 
 func (p *codexAppServerProcess) initialize() error {
@@ -536,9 +639,15 @@ func (p *codexAppServerProcess) writeJSON(value any) error {
 		return errors.New("codex app-server exited")
 	default:
 	}
-	data = append(data, '\n')
-	if _, err := p.stdin.Write(data); err != nil {
-		return fmt.Errorf("write to Codex app-server: %w", err)
+	if p.conn != nil {
+		if err := p.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			return fmt.Errorf("write to Codex app-server: %w", err)
+		}
+	} else {
+		data = append(data, '\n')
+		if _, err := p.stdin.Write(data); err != nil {
+			return fmt.Errorf("write to Codex app-server: %w", err)
+		}
 	}
 	return nil
 }
@@ -557,56 +666,92 @@ func (p *codexAppServerProcess) readLoop(stdout io.Reader) {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64<<10), codexAppServerMaxLine)
 	for scanner.Scan() {
-		var message codexRPCMessage
-		if err := json.Unmarshal(scanner.Bytes(), &message); err != nil {
-			continue
-		}
-		if message.Method != "" {
-			if len(message.ID) > 0 {
-				p.manager.handleServerRequest(p, message)
-			} else {
-				p.manager.handleNotification(message)
-			}
-			continue
-		}
-		if len(message.ID) == 0 {
-			continue
-		}
-		key := normalizeCodexRequestID(message.ID)
-		p.pendingMu.Lock()
-		ch := p.pending[key]
-		delete(p.pending, key)
-		p.pendingMu.Unlock()
-		if ch == nil {
-			continue
-		}
-		if message.Error != nil {
-			ch <- codexRPCResult{err: fmt.Errorf("codex app-server: %s", message.Error.Message)}
-		} else {
-			ch <- codexRPCResult{result: message.Result}
-		}
+		p.handleRPCMessage(scanner.Bytes())
 	}
-	if scanner.Err() != nil {
+	if scanner.Err() != nil && p.cmd != nil && p.cmd.Process != nil {
 		_ = p.cmd.Process.Kill()
 	}
-	_ = p.cmd.Wait()
-	close(p.done)
-	p.pendingMu.Lock()
-	for key, ch := range p.pending {
-		delete(p.pending, key)
-		ch <- codexRPCResult{err: errors.New("codex app-server exited")}
+	if p.cmd != nil {
+		_ = p.cmd.Wait()
 	}
+	p.finish()
+}
+
+func (p *codexAppServerProcess) readWebSocketLoop() {
+	for {
+		_, data, err := p.conn.ReadMessage()
+		if err != nil {
+			break
+		}
+		p.handleRPCMessage(data)
+	}
+	p.finish()
+}
+
+func (p *codexAppServerProcess) handleRPCMessage(data []byte) {
+	var message codexRPCMessage
+	if err := json.Unmarshal(data, &message); err != nil {
+		return
+	}
+	if message.Method != "" {
+		if len(message.ID) > 0 {
+			p.manager.handleServerRequest(p, message)
+		} else {
+			p.manager.handleNotification(message)
+		}
+		return
+	}
+	if len(message.ID) == 0 {
+		return
+	}
+	key := normalizeCodexRequestID(message.ID)
+	p.pendingMu.Lock()
+	ch := p.pending[key]
+	delete(p.pending, key)
 	p.pendingMu.Unlock()
-	p.manager.processExited(p)
+	if ch == nil {
+		return
+	}
+	if message.Error != nil {
+		ch <- codexRPCResult{err: fmt.Errorf("codex app-server: %s", message.Error.Message)}
+	} else {
+		ch <- codexRPCResult{result: message.Result}
+	}
+}
+
+func (p *codexAppServerProcess) finish() {
+	p.doneOnce.Do(func() {
+		close(p.done)
+		p.pendingMu.Lock()
+		for key, ch := range p.pending {
+			delete(p.pending, key)
+			ch <- codexRPCResult{err: errors.New("codex app-server exited")}
+		}
+		p.pendingMu.Unlock()
+		p.manager.processExited(p)
+	})
 }
 
 func (p *codexAppServerProcess) stop() {
+	if p.conn != nil {
+		_ = p.conn.Close()
+		select {
+		case <-p.done:
+		case <-time.After(2 * time.Second):
+		}
+		return
+	}
+	if p.stdin == nil {
+		return
+	}
 	_ = p.stdin.Close()
 	select {
 	case <-p.done:
 		return
 	case <-time.After(2 * time.Second):
-		_ = p.cmd.Process.Kill()
+		if p.cmd != nil && p.cmd.Process != nil {
+			_ = p.cmd.Process.Kill()
+		}
 		<-p.done
 	}
 }
@@ -678,6 +823,9 @@ func (m *codexAppServerManager) Close() {
 	m.process = nil
 	m.mu.Unlock()
 	if p != nil {
+		// Close only this control-socket connection. The Codex daemon owns the
+		// app-server and remains available across mybox restarts so active turns
+		// can continue.
 		p.stop()
 	}
 	m.threadSubMu.Lock()
@@ -963,7 +1111,29 @@ func (s *Server) ListCodexThreads(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	threads = mergeStartedCodexThreads(threads, s.codexAppServer.unmaterializedThreads(p, app.Project.Name))
 	writeJSONResponse(w, http.StatusOK, api.CodexThreadList{Threads: threads, Truncated: truncated})
+}
+
+func mergeStartedCodexThreads(threads []api.CodexThread, started []codexThreadRecord) []api.CodexThread {
+	seen := make(map[string]struct{}, len(threads)+len(started))
+	for _, thread := range threads {
+		seen[thread.ThreadId] = struct{}{}
+	}
+	for _, thread := range started {
+		if thread.ID == "" {
+			continue
+		}
+		if _, exists := seen[thread.ID]; exists {
+			continue
+		}
+		threads = append(threads, summarizeCodexThread(thread))
+		seen[thread.ID] = struct{}{}
+	}
+	sort.SliceStable(threads, func(i, j int) bool {
+		return threads[i].UpdatedAt > threads[j].UpdatedAt
+	})
+	return threads
 }
 
 func (s *Server) ListCodexActiveSessions(w http.ResponseWriter, r *http.Request, params api.ListCodexActiveSessionsParams) {
@@ -1034,6 +1204,9 @@ func (s *Server) CreateCodexThread(w http.ResponseWriter, r *http.Request) {
 		writeError(w, errors.New("codex app-server returned an invalid thread"))
 		return
 	}
+	if response.Thread.CWD == "" {
+		response.Thread.CWD = app.Project.Path
+	}
 	key := codexThreadKey{project: app.Project.Name, thread: response.Thread.ID}
 	model := response.Model
 	if model == "" && response.Thread.Model != nil {
@@ -1050,7 +1223,7 @@ func (s *Server) CreateCodexThread(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	}
-	s.codexAppServer.retainStartedThread(p, key, collaborationMode)
+	s.codexAppServer.retainStartedThread(p, key, response.Thread, collaborationMode)
 	writeJSONResponse(w, http.StatusCreated, summarizeCodexThread(response.Thread))
 }
 
@@ -1069,8 +1242,12 @@ func (s *Server) GetCodexThreadHistory(w http.ResponseWriter, r *http.Request, i
 	defer cancel()
 	thread, err := readCodexThread(ctx, p, id, app.Project.Path)
 	if err != nil {
-		writeError(w, err)
-		return
+		started, ok := s.codexAppServer.startedThread(p, codexThreadKey{project: app.Project.Name, thread: id})
+		if !ok || started.ParentThreadID != nil || !codexPathWithinProject(app.Project.Path, started.CWD) {
+			writeError(w, err)
+			return
+		}
+		thread = started
 	}
 	limit := codexTurnPageSize
 	if params.Limit != nil && *params.Limit > 0 {
@@ -1195,7 +1372,10 @@ func (s *Server) streamCodexThread(c echo.Context) error {
 	_, readErr := readCodexThread(readCtx, p, threadID, app.Project.Path)
 	cancelRead()
 	if readErr != nil {
-		return echo.NewHTTPError(http.StatusNotFound, "codex conversation not found in this project")
+		started, ok := s.codexAppServer.startedThread(p, codexThreadKey{project: app.Project.Name, thread: threadID})
+		if !ok || started.ParentThreadID != nil || !codexPathWithinProject(app.Project.Path, started.CWD) {
+			return echo.NewHTTPError(http.StatusNotFound, "codex conversation not found in this project")
+		}
 	}
 	conn, err := terminalUpgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {

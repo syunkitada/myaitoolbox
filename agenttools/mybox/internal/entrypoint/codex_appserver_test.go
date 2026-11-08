@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,80 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+func TestStartCodexAppServerDaemon(t *testing.T) {
+	binDir := t.TempDir()
+	codexPath := filepath.Join(binDir, "codex")
+	script := `#!/bin/sh
+case "$3" in
+  start) exit 0 ;;
+  version) printf '%s\n' '{"status":"running","socketPath":"/tmp/codex-control.sock"}' ;;
+  *) exit 1 ;;
+esac
+`
+	if err := os.WriteFile(codexPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	socketPath, err := startCodexAppServerDaemon(context.Background(), codexPath, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if socketPath != "/tmp/codex-control.sock" {
+		t.Fatalf("daemon socket path = %q, want the path reported by Codex", socketPath)
+	}
+}
+
+func TestDialCodexAppServerSocket(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "app-server.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		_, request, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		var message codexRPCMessage
+		if json.Unmarshal(request, &message) != nil || message.Method != "initialize" {
+			return
+		}
+		_ = conn.WriteJSON(map[string]any{"id": message.ID, "result": map[string]string{"ready": "yes"}})
+	}))
+	server.Listener = listener
+	server.Start()
+	defer server.Close()
+
+	conn, err := dialCodexAppServerSocket(context.Background(), socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := conn.WriteJSON(map[string]any{"id": 1, "method": "initialize", "params": map[string]any{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_, response, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var message codexRPCMessage
+	if err := json.Unmarshal(response, &message); err != nil {
+		t.Fatal(err)
+	}
+	if message.Result == nil || !strings.Contains(string(message.Result), `"ready":"yes"`) {
+		t.Fatalf("unexpected app-server socket response: %s", response)
+	}
+}
 
 func TestCodexPathWithinProject(t *testing.T) {
 	root := t.TempDir()
@@ -90,7 +165,7 @@ func TestIsCodexActiveWriterConflict(t *testing.T) {
 
 func TestGetCodexThreadHistoryDoesNotResumeActiveThread(t *testing.T) {
 	server, app := newTestServer(t)
-	installFakeCodexAppServer(t, app.Project.Path)
+	installFakeCodexAppServer(t, server, app.Project.Path)
 	defer server.Shutdown()
 
 	recorder := httptest.NewRecorder()
@@ -106,7 +181,7 @@ func TestGetCodexThreadHistoryDoesNotResumeActiveThread(t *testing.T) {
 
 func TestCodexThreadStreamReportsWriterConflict(t *testing.T) {
 	server, app := newTestServer(t)
-	installFakeCodexAppServer(t, app.Project.Path)
+	installFakeCodexAppServer(t, server, app.Project.Path)
 	defer server.Shutdown()
 
 	httpServer := httptest.NewServer(server.Handler())
@@ -138,7 +213,7 @@ func TestCodexThreadStreamReportsWriterConflict(t *testing.T) {
 func TestCodexThreadStreamUnsubscribesAfterLastClientDisconnects(t *testing.T) {
 	server, app := newTestServer(t)
 	unsubscribeFile := filepath.Join(t.TempDir(), "unsubscribed.json")
-	installConnectedFakeCodexAppServer(t, app.Project.Path, unsubscribeFile)
+	installConnectedFakeCodexAppServer(t, server, app.Project.Path, unsubscribeFile)
 	defer server.Shutdown()
 
 	httpServer := httptest.NewServer(server.Handler())
@@ -211,7 +286,7 @@ func TestCodexThreadStreamUnsubscribesAfterLastClientDisconnects(t *testing.T) {
 func TestCreateCodexThreadKeepsInitialSubscription(t *testing.T) {
 	server, app := newTestServer(t)
 	unsubscribeFile := filepath.Join(t.TempDir(), "unsubscribed.json")
-	installConnectedFakeCodexAppServer(t, app.Project.Path, unsubscribeFile)
+	installConnectedFakeCodexAppServer(t, server, app.Project.Path, unsubscribeFile)
 	defer server.Shutdown()
 
 	recorder := httptest.NewRecorder()
@@ -225,10 +300,98 @@ func TestCreateCodexThreadKeepsInitialSubscription(t *testing.T) {
 	}
 }
 
-func installFakeCodexAppServer(t *testing.T, projectDir string) {
+func TestGetCodexThreadHistoryUsesStartedThreadBeforeItIsMaterialized(t *testing.T) {
+	server, app := newTestServer(t)
+	installUnmaterializedFakeCodexAppServer(t, server, app.Project.Path)
+	defer server.Shutdown()
+
+	create := httptest.NewRecorder()
+	server.Handler().ServeHTTP(create, httptest.NewRequest(http.MethodPost, "/api/codex/threads", nil))
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create thread status = %d, want %d: %s", create.Code, http.StatusCreated, create.Body.String())
+	}
+
+	history := httptest.NewRecorder()
+	server.Handler().ServeHTTP(history, httptest.NewRequest(http.MethodGet, "/api/codex/threads/thread-new", nil))
+	if history.Code != http.StatusOK {
+		t.Fatalf("history request status = %d, want %d: %s", history.Code, http.StatusOK, history.Body.String())
+	}
+	if !strings.Contains(history.Body.String(), `"thread_id":"thread-new"`) || !strings.Contains(history.Body.String(), `"turns":[]`) {
+		t.Fatalf("history response did not preserve the started empty thread: %s", history.Body.String())
+	}
+}
+
+func TestEmptyCodexThreadCanBeReopenedAfterSwitchingAway(t *testing.T) {
+	server, app := newTestServer(t)
+	installUnmaterializedFakeCodexAppServer(t, server, app.Project.Path)
+	defer server.Shutdown()
+
+	create := httptest.NewRecorder()
+	server.Handler().ServeHTTP(create, httptest.NewRequest(http.MethodPost, "/api/codex/threads", nil))
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create thread status = %d, want %d: %s", create.Code, http.StatusCreated, create.Body.String())
+	}
+
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/api/codex/threads/thread-new/stream"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ready, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(ready), `"type":"ready"`) {
+		t.Fatalf("stream did not attach to the empty thread: %s", ready)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	server.codexAppServer.mu.Lock()
+	p := server.codexAppServer.process
+	server.codexAppServer.mu.Unlock()
+	key := codexThreadKey{project: app.Project.Name, thread: "thread-new"}
+	deadline := time.Now().Add(time.Second)
+	for {
+		state := server.codexAppServer.threadSubscription(key, p)
+		state.mu.Lock()
+		clients := state.clients
+		state.mu.Unlock()
+		if clients == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("WebSocket client did not detach from the empty thread")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	list := httptest.NewRecorder()
+	server.Handler().ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/api/codex/threads", nil))
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"thread_id":"thread-new"`) {
+		t.Fatalf("thread list did not retain the empty thread after switching away: status=%d body=%s", list.Code, list.Body.String())
+	}
+	history := httptest.NewRecorder()
+	server.Handler().ServeHTTP(history, httptest.NewRequest(http.MethodGet, "/api/codex/threads/thread-new", nil))
+	if history.Code != http.StatusOK {
+		t.Fatalf("history request after switching away = %d, want %d: %s", history.Code, http.StatusOK, history.Body.String())
+	}
+}
+
+func installFakeCodexAppServer(t *testing.T, server *Server, projectDir string) {
 	t.Helper()
+	server.codexAppServer.stdioTransport = true
 	binDir := t.TempDir()
 	script := `#!/bin/sh
+if [ "$1" = "app-server" ] && [ "$2" = "daemon" ]; then
+  if [ "$3" = "version" ]; then
+    printf '%s\n' '{"status":"running","socketPath":"/tmp/codex-test.sock"}'
+  fi
+  exit 0
+fi
 while IFS= read -r line; do
   case "$line" in
     *'"method":"initialize"'*)
@@ -382,10 +545,17 @@ func TestHandleCodexClientMessageStartsThreadCompaction(t *testing.T) {
 	}
 }
 
-func installConnectedFakeCodexAppServer(t *testing.T, projectDir, unsubscribeFile string) {
+func installConnectedFakeCodexAppServer(t *testing.T, server *Server, projectDir, unsubscribeFile string) {
 	t.Helper()
+	server.codexAppServer.stdioTransport = true
 	binDir := t.TempDir()
 	script := `#!/bin/sh
+if [ "$1" = "app-server" ] && [ "$2" = "daemon" ]; then
+  if [ "$3" = "version" ]; then
+    printf '%s\n' '{"status":"running","socketPath":"/tmp/codex-test.sock"}'
+  fi
+  exit 0
+fi
 while IFS= read -r line; do
   request_id=$(printf '%s\n' "$line" | sed -E 's/.*"id":([0-9]+).*/\1/')
   case "$line" in
@@ -415,4 +585,44 @@ done
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("MYBOX_TEST_PROJECT", projectDir)
 	t.Setenv("MYBOX_TEST_UNSUBSCRIBE_FILE", unsubscribeFile)
+}
+
+func installUnmaterializedFakeCodexAppServer(t *testing.T, server *Server, projectDir string) {
+	t.Helper()
+	server.codexAppServer.stdioTransport = true
+	binDir := t.TempDir()
+	script := `#!/bin/sh
+if [ "$1" = "app-server" ] && [ "$2" = "daemon" ]; then
+  if [ "$3" = "version" ]; then
+    printf '%s\n' '{"status":"running","socketPath":"/tmp/codex-test.sock"}'
+  fi
+  exit 0
+fi
+while IFS= read -r line; do
+  request_id=$(printf '%s\n' "$line" | sed -E 's/.*"id":([0-9]+).*/\1/')
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '{"id":%s,"result":{}}\n' "$request_id"
+      ;;
+    *'"method":"thread/start"'*)
+      printf '{"id":%s,"result":{"thread":{"id":"thread-new","cwd":"%s","status":{"type":"notLoaded"}}}}\n' "$request_id" "$MYBOX_TEST_PROJECT"
+      ;;
+    *'"method":"thread/read"'*)
+      printf '{"id":%s,"error":{"code":-32600,"message":"thread not materialized yet"}}\n' "$request_id"
+      ;;
+    *'"method":"thread/turns/list"'*)
+      printf '{"id":%s,"error":{"code":-32600,"message":"thread not materialized yet"}}\n' "$request_id"
+      ;;
+    *'"method":"thread/list"'*)
+      printf '{"id":%s,"result":{"data":[],"nextCursor":null}}\n' "$request_id"
+      ;;
+  esac
+done
+`
+	codexPath := filepath.Join(binDir, "codex")
+	if err := os.WriteFile(codexPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("MYBOX_TEST_PROJECT", projectDir)
 }

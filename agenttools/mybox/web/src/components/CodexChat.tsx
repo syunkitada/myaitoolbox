@@ -691,6 +691,8 @@ export function CodexChat({
   const openSequenceRef = useRef(0)
   const threadListRequestRef = useRef(0)
   const handledRequestedThreadRef = useRef<string | null>(null)
+  const lastRequestedThreadRef = useRef<string | null>(null)
+  const emptyThreadReplacementAttemptedRef = useRef(false)
   const processedReviewContextAppendRef = useRef(0)
   const controlRequestSequenceRef = useRef(0)
   const activeThreadIdRef = useRef<string | null>(null)
@@ -952,11 +954,15 @@ export function CodexChat({
         setSelectedThread(null)
         activeThreadIdRef.current = null
         onActiveThreadChange?.(null)
-        onThreadSelected?.(null)
         setError(null)
         setHistoryLoading(false)
         void loadThreads(true)
-        setReplaceEmptyThread(true)
+        if (emptyThreadReplacementAttemptedRef.current) {
+          setError('新しいCodex会話を復旧できませんでした。会話一覧から選び直すか、新しい会話を作成してください。')
+        } else {
+          emptyThreadReplacementAttemptedRef.current = true
+          setReplaceEmptyThread(true)
+        }
         return
       }
       setError(message)
@@ -1013,7 +1019,10 @@ export function CodexChat({
         setSocketConnecting(false)
         if (threadHasTurnsRef.current) {
           setError('Codexの会話を再開できませんでした。履歴を更新して再接続してください。')
+        } else if (emptyThreadReplacementAttemptedRef.current) {
+          setError('新しいCodex会話を復旧できませんでした。会話一覧から選び直すか、新しい会話を作成してください。')
         } else {
+          emptyThreadReplacementAttemptedRef.current = true
           setReplaceEmptyThread(true)
         }
       } else if (message.type === 'error') {
@@ -1046,6 +1055,7 @@ export function CodexChat({
         setWriterConflict(false)
         setError(null)
         setConnected(true)
+        emptyThreadReplacementAttemptedRef.current = false
         const mode = string(record(message.collaboration_mode).mode)
         const nextMode = mode || 'default'
         collaborationModeRef.current = nextMode
@@ -1189,10 +1199,14 @@ export function CodexChat({
 
   useEffect(() => {
     if (!requestedThreadId) {
+      lastRequestedThreadRef.current = null
       handledRequestedThreadRef.current = null
       return
     }
-    if (listLoading || handledRequestedThreadRef.current === requestedThreadId) return
+    if (listLoading || lastRequestedThreadRef.current === requestedThreadId) return
+
+    lastRequestedThreadRef.current = requestedThreadId
+    if (activeThreadIdRef.current === requestedThreadId) return
 
     handledRequestedThreadRef.current = requestedThreadId
     const thread = threads.find((entry) => entry.thread_id === requestedThreadId) ?? {
@@ -1219,8 +1233,9 @@ export function CodexChat({
     }
   }, [onActiveThreadChange])
 
-  const createThread = useCallback(async (initialPrompt?: { type: 'plan_handoff'; text: string }) => {
+  const createThread = useCallback(async (initialPrompt?: { type: 'plan_handoff'; text: string }, automaticReplacement = false) => {
     if (creating) return
+    if (!automaticReplacement) emptyThreadReplacementAttemptedRef.current = false
     setCreating(true)
     setError(null)
     let initialPromptThreadId: string | null = null
@@ -1247,7 +1262,7 @@ export function CodexChat({
   useEffect(() => {
     if (!replaceEmptyThread) return
     setReplaceEmptyThread(false)
-    void createThread()
+    void createThread(undefined, true)
   }, [createThread, replaceEmptyThread])
 
   const rememberRecentCommand = useCallback((commandId: string) => {
