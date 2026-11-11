@@ -1640,7 +1640,7 @@ export function CodexChat({
   }, [project, refreshingHistory, selectedThread])
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault()
       sendComposer()
     }
@@ -1922,7 +1922,7 @@ export function CodexChat({
               <Button size="icon-sm" className="shrink-0 cursor-pointer" onClick={sendComposer} disabled={!draft.trim() || !connected || sending || controlBusy} aria-label={active ? 'Codexに追加指示を送信' : 'Codexに送信'} title={active ? 'Steer' : 'Send'}><Send /></Button>
           </div>
         </div>
-        <div className="mt-1 px-1 text-[10px] text-muted-foreground">Enterで送信 · Shift+Enterで改行{active ? ' · 送信内容は実行中のCodexへ追加されます（Steer）' : ''}</div>
+        <div className="mt-1 px-1 text-[10px] text-muted-foreground">Ctrl+Enterで送信 · Enterで改行{active ? ' · 送信内容は実行中のCodexへ追加されます（Steer）' : ''}</div>
       </div>
       <Sheet open={commandPaletteOpen} onOpenChange={(open) => { setCommandPaletteOpen(open); if (!open) setGoalEditorOpen(false) }}>
         <SheetContent side="bottom" className="max-h-[80vh] gap-0 overflow-y-auto p-0" data-testid="codex-command-palette">

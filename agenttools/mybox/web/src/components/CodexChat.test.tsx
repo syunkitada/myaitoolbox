@@ -181,6 +181,28 @@ describe('CodexChat', () => {
     await waitFor(() => expect(api.getCodexThreadHistory).toHaveBeenCalledTimes(2))
   })
 
+  it('keeps Enter for newlines and submits the composer with Ctrl+Enter', async () => {
+    renderCodexChat()
+    await selectThread()
+    await screen.findByText(/I will update the/)
+
+    const socket = MockWebSocket.latest
+    await act(async () => {
+      socket?.emit({ type: 'ready' })
+    })
+
+    const composer = screen.getByRole('textbox', { name: 'Codexへのメッセージ' })
+    fireEvent.change(composer, { target: { value: 'draft message' } })
+
+    expect(fireEvent.keyDown(composer, { key: 'Enter' })).toBe(true)
+    expect(socket?.sent).not.toContain(JSON.stringify({ type: 'prompt', text: 'draft message' }))
+    expect(composer).toHaveValue('draft message')
+
+    expect(fireEvent.keyDown(composer, { key: 'Enter', ctrlKey: true })).toBe(false)
+    await waitFor(() => expect(socket?.sent).toContain(JSON.stringify({ type: 'prompt', text: 'draft message' })))
+    expect(composer).toHaveValue('')
+  })
+
   it('sends a selected quick prompt from the Codex command palette', async () => {
     renderCodexChat()
     await selectThread()
