@@ -307,14 +307,15 @@ func diskStats() []statDisk {
 		if err := syscall.Statfs(mountPoint, &st); err != nil {
 			continue
 		}
-		key := uint64(st.Frsize) * st.Blocks
+		blockSize := uint64(st.Bsize)
+		key := blockSize * st.Blocks
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		total := uint64(st.Frsize) * st.Blocks
-		free := uint64(st.Frsize) * st.Bfree
-		available := uint64(st.Frsize) * st.Bavail
+		total := blockSize * st.Blocks
+		free := blockSize * st.Bfree
+		available := blockSize * st.Bavail
 		used := uint64(0)
 		if total > free {
 			used = total - free
