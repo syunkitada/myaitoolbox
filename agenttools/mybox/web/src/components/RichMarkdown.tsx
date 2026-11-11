@@ -5,7 +5,13 @@ import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 import { Check, Copy, X } from 'lucide-react'
 import { Prism, hasGrammar } from '../utils/prism-langs'
-import { formatMarkdownForCopy, parseMarkdownTaskItem, resolveMarkdownLink, type MarkdownCopyFormat } from '../utils/markdown'
+import {
+  formatMarkdownForCopy,
+  openExternalLinksInNewTabs,
+  parseMarkdownTaskItem,
+  resolveMarkdownLink,
+  type MarkdownCopyFormat,
+} from '../utils/markdown'
 import { filesUrl, getBasePath } from '../utils/routes'
 import { copyToClipboard } from '../utils/clipboard'
 import { Mermaid } from './Mermaid'
@@ -579,20 +585,18 @@ export function RichMarkdown({
           if (seg.kind === 'vega-lite') {
             return <VegaLite key={i} code={seg.content} relativeTo={relativeTo} dataUrl={dataUrl} />
           }
-          const html = markDeadAnchors(
-            DOMPurify.sanitize(
-              md.render(seg.content, {
-                relativeTo,
-                linkUrl,
-                imageUrl,
-                preserveExtension,
-                taskSource: seg.content,
-                taskLineOffset: seg.lineOffset,
-                lineOffset: seg.sourceLineOffset,
-                taskInteractive: Boolean(onTaskToggle),
-              } satisfies MarkdownRenderEnv),
-            ),
-          )
+          const rendered = md.render(seg.content, {
+            relativeTo,
+            linkUrl,
+            imageUrl,
+            preserveExtension,
+            taskSource: seg.content,
+            taskLineOffset: seg.lineOffset,
+            lineOffset: seg.sourceLineOffset,
+            taskInteractive: Boolean(onTaskToggle),
+          } satisfies MarkdownRenderEnv)
+          const sanitized = DOMPurify.sanitize(rendered)
+          const html = markDeadAnchors(openExternalLinksInNewTabs(sanitized))
           return <div key={i} dangerouslySetInnerHTML={{ __html: html }} />
         })}
       </div>

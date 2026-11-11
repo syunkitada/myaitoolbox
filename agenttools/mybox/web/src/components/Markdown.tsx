@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import DOMPurify from 'dompurify'
 import MarkdownIt from 'markdown-it'
+import { openExternalLinksInNewTabs } from '../utils/markdown'
 
 const md = new MarkdownIt({
   html: true,
@@ -28,7 +29,7 @@ export interface MarkdownProps {
 
 export function Markdown({ text, className, transformHref }: MarkdownProps) {
   const html = useMemo(() => {
-    return DOMPurify.sanitize(md.render(text, { transformHref }))
+    return openExternalLinksInNewTabs(DOMPurify.sanitize(md.render(text, { transformHref })))
   }, [text, transformHref])
   return <div className={className ?? 'markdown-body'} dangerouslySetInnerHTML={{ __html: html }} />
 }

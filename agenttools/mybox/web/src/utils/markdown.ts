@@ -66,6 +66,31 @@ export function buildMarkdown(frontmatter: string, body: string): string {
   return `---\n${trimmed}\n---\n\n${body}`
 }
 
+/** Makes HTTP(S) links to another origin open safely in a new tab. */
+export function openExternalLinksInNewTabs(html: string): string {
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  for (const anchor of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    const href = anchor.getAttribute('href')
+    if (!href) continue
+
+    let url: URL
+    try {
+      url = new URL(href, window.location.href)
+    } catch {
+      continue
+    }
+    const isHttpLink = url.protocol === 'http:' || url.protocol === 'https:'
+    if (!isHttpLink || url.origin === window.location.origin) continue
+
+    anchor.setAttribute('target', '_blank')
+    const rel = new Set(anchor.rel.split(/\s+/).filter(Boolean))
+    rel.add('noopener')
+    rel.add('noreferrer')
+    anchor.rel = Array.from(rel).join(' ')
+  }
+  return document.body.innerHTML
+}
+
 /** Replaces only the body of a frontmatter document, preserving its original formatting. */
 export function replaceMarkdownBody(text: string, body: string): string {
   const prefix = /^[ \t]*---[ \t]*\r?\n[\s\S]*?\r?\n[ \t]*---[ \t]*(?:\r?\n)+/.exec(text)?.[0]
