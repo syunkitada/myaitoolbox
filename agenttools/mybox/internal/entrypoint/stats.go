@@ -289,8 +289,12 @@ func isPseudoFs(device, fsType string) bool {
 
 // diskStats returns filesystem usage for physical mounts.
 func diskStats() []statDisk {
-	var out []statDisk
-	data, err := os.ReadFile("/proc/mounts")
+	return diskStatsFromMountFile("/proc/mounts")
+}
+
+func diskStatsFromMountFile(path string) []statDisk {
+	out := make([]statDisk, 0)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return out
 	}
@@ -336,8 +340,12 @@ func diskStats() []statDisk {
 
 // netStats reads per-interface traffic counters from /proc/net/dev.
 func netStats() []statNet {
-	var out []statNet
-	data, err := os.ReadFile("/proc/net/dev")
+	return netStatsFromProcFile("/proc/net/dev")
+}
+
+func netStatsFromProcFile(path string) []statNet {
+	out := make([]statNet, 0)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return out
 	}

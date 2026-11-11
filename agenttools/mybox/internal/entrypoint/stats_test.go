@@ -3,6 +3,7 @@ package entrypoint
 import (
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,6 +27,8 @@ func TestStatsAPI(t *testing.T) {
 	assert.GreaterOrEqual(t, stats.Swap.Total, uint64(0))
 	assert.Len(t, stats.Processes, 50)
 	assert.Len(t, stats.ProcessesByCPU, 50)
+	assert.NotNil(t, stats.Disks)
+	assert.NotNil(t, stats.Network)
 
 	// The server's own process is always present on the Process tab.
 	require.NotNil(t, stats.SelfProcess)
@@ -33,6 +36,18 @@ func TestStatsAPI(t *testing.T) {
 	assert.NotEmpty(t, stats.SelfProcess.State)
 	assert.NotEmpty(t, stats.SelfProcess.Command)
 	assert.NotNil(t, stats.FocusedProcesses)
+}
+
+func TestDiskStatsReturnsEmptySliceWhenMountTableIsUnavailable(t *testing.T) {
+	got := diskStatsFromMountFile(filepath.Join(t.TempDir(), "missing-mounts"))
+	assert.NotNil(t, got)
+	assert.Empty(t, got)
+}
+
+func TestNetStatsReturnsEmptySliceWhenProcFileIsUnavailable(t *testing.T) {
+	got := netStatsFromProcFile(filepath.Join(t.TempDir(), "missing-net-dev"))
+	assert.NotNil(t, got)
+	assert.Empty(t, got)
 }
 
 func TestDfUsagePctUsesAvailableSpaceForDenominator(t *testing.T) {
