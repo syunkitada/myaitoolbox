@@ -35,7 +35,18 @@ let networkProxyPromise = null
 let networkProxyServer = null
 
 function isTestFixtureURL(rawURL) {
-  return Boolean(testFixtureURL) && rawURL === testFixtureURL
+  if (!testFixtureURL) return false
+  try {
+    const fixture = new URL(testFixtureURL)
+    const candidate = new URL(rawURL)
+    return candidate.origin === fixture.origin
+      && candidate.pathname === fixture.pathname
+      && candidate.search === fixture.search
+      && candidate.username === ''
+      && candidate.password === ''
+  } catch {
+    return false
+  }
 }
 
 async function loadTestFixture() {
@@ -363,6 +374,14 @@ async function perform(session, action, payload) {
     await page.goto(payload.url, { waitUntil: 'domcontentloaded', timeout: 15000 })
     return emitObservation(session)
   }
+  if (action === 'go_back') {
+    await page.goBack({ waitUntil: 'domcontentloaded', timeout: 15000 })
+    return emitObservation(session)
+  }
+  if (action === 'go_forward') {
+    await page.goForward({ waitUntil: 'domcontentloaded', timeout: 15000 })
+    return emitObservation(session)
+  }
   if (action === 'click') {
     const ref = ensureReference(session, payload)
     const locator = page.locator(`[data-mybox-ref="${ref.ref}"]`).first()
@@ -448,12 +467,13 @@ async function command(message) {
   }
   const action = message.command
   const payload = message.payload || {}
-  if (action === 'navigate' && message.actor === 'agent' && session.approvalMode !== 'auto_safe') {
+  if (['navigate', 'go_back', 'go_forward'].includes(action) && message.actor === 'agent' && session.approvalMode !== 'auto_safe') {
     const approvalID = crypto.randomUUID()
     session.pending.set(approvalID, { action, payload })
     session.state = 'approval_pending'
-    sessionEvent(session, 'approval_required', { approval_id: approvalID, action, target: payload.url || 'navigation' })
-    return { status: 'approval_required', approval_id: approvalID, action, target: payload.url || 'navigation', url: session.page.url() }
+    const target = action === 'navigate' ? payload.url || 'navigation' : action === 'go_back' ? 'previous page' : 'next page'
+    sessionEvent(session, 'approval_required', { approval_id: approvalID, action, target })
+    return { status: 'approval_required', approval_id: approvalID, action, target, url: session.page.url() }
   }
   if (action === 'click' || action === 'press') {
     const ref = ensureReference(session, payload)

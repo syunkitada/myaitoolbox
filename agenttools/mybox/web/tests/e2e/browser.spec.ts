@@ -298,6 +298,30 @@ test.describe('embedded browser', () => {
     await expect.poll(() => frame.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
   })
 
+  test('user browser history controls navigate backward and forward', async ({ page }) => {
+    const secondPageURL = 'https://mybox.test/#second'
+    await page.goto(`/projects/${project}/browser`)
+    await page.getByRole('button', { name: 'Start browser' }).click()
+    const session = await waitForSession(page)
+
+    await page.getByLabel('Browser URL').fill(browserFixtureURL)
+    await page.getByTestId('web-browser-page').getByRole('button', { name: 'Go' }).click()
+    await expect.poll(async () => (await getSession(page.request))?.url).toBe(browserFixtureURL)
+
+    await page.getByLabel('Browser URL').fill(secondPageURL)
+    await page.getByTestId('web-browser-page').getByRole('button', { name: 'Go' }).click()
+    await expect.poll(async () => (await getSession(page.request))?.url).toBe(secondPageURL)
+
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect.poll(async () => (await getSession(page.request))?.url).toBe(browserFixtureURL)
+    await expect(page.getByLabel('Browser URL')).toHaveValue(browserFixtureURL)
+
+    await page.getByRole('button', { name: 'Forward' }).click()
+    await expect.poll(async () => (await getSession(page.request))?.url).toBe(secondPageURL)
+    await expect(page.getByLabel('Browser URL')).toHaveValue(secondPageURL)
+    expect(session.owner).toBe('user')
+  })
+
   test('refreshes the live frame after an AI browser action', async ({ page }) => {
     await page.goto(`/projects/${project}/browser`)
     await page.getByRole('button', { name: 'Start browser' }).click()

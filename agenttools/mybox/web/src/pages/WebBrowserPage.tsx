@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, Globe, Hand, ListFilter, RefreshCw, RotateCcw, ShieldAlert, UserRound, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Globe, Hand, ListFilter, RefreshCw, RotateCcw, ShieldAlert, UserRound, X } from 'lucide-react'
 import { api, BrowserApproval, BrowserAuditEvent, BrowserAuditFilters, BrowserAuditResponse, BrowserObservation, BrowserSession } from '../api/client'
 import { browserWsUrl } from '../utils/routes'
 import { Button } from '../components/ui/button'
@@ -205,6 +205,7 @@ export function WebBrowserPage() {
             setApproval(null)
             setError('The approved browser action failed.')
           }
+          if (message.type === 'page' && typeof message.url === 'string') setUrl(message.url)
           if (message.type === 'page' || message.type === 'session' || message.type === 'control' || message.type === 'approval_mode' || message.type === 'approval_approved' || message.type === 'approval_rejected' || message.type === 'approval_failed') {
             setSession((current) => current ? { ...current, state: message.state || current.state, owner: message.owner || current.owner, url: message.url || current.url, title: message.title || current.title, approval_mode: message.approval_mode || current.approval_mode } : current)
           }
@@ -248,7 +249,11 @@ export function WebBrowserPage() {
   const command = async (name: string, payload?: unknown) => {
     if (!session) return
     try {
-      await api.browserCommand(session.id, name, payload)
+      const result = await api.browserCommand<{ url?: string; title?: string }>(session.id, name, payload)
+      if (typeof result?.url === 'string') {
+        setUrl(result.url)
+        setSession((current) => current ? { ...current, url: result.url!, title: result.title ?? current.title } : current)
+      }
       setError(null)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -369,7 +374,9 @@ export function WebBrowserPage() {
           <Card className="flex min-h-0 flex-col overflow-hidden">
             <CardContent className="flex min-h-0 flex-1 flex-col gap-2 p-2">
               <div className="flex gap-2">
-                <Input value={url} onChange={(event) => setUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void navigate() }} aria-label="Browser URL" />
+                <Button variant="outline" size="icon" onClick={() => void command('go_back')} disabled={session.owner !== 'user' || session.state === 'error'} aria-label="Back" title="Back"><ArrowLeft /></Button>
+                <Button variant="outline" size="icon" onClick={() => void command('go_forward')} disabled={session.owner !== 'user' || session.state === 'error'} aria-label="Forward" title="Forward"><ArrowRight /></Button>
+                <Input className="min-w-0 flex-1" value={url} onChange={(event) => setUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void navigate() }} aria-label="Browser URL" />
                 <Button onClick={() => void navigate()} disabled={session.owner !== 'user' || session.state === 'error'}>Go</Button>
                 <Button variant="outline" onClick={() => void observe()} disabled={session.owner !== 'user' || session.state === 'error'}><RefreshCw /></Button>
               </div>

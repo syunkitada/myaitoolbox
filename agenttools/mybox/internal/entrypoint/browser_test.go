@@ -185,6 +185,11 @@ func TestBrowserSessionIDHelpers(t *testing.T) {
 	require.Empty(t, browserSessionID("/api/browser/stream"))
 }
 
+func TestBrowserHistoryCommandsAreRecordedByName(t *testing.T) {
+	require.Equal(t, "go_back", browserAuditCommandName("go_back"))
+	require.Equal(t, "go_forward", browserAuditCommandName("go_forward"))
+}
+
 func TestBrowserStreamReplaysLatestFrameToNewClient(t *testing.T) {
 	session := &browserSession{
 		id:      "session-1",

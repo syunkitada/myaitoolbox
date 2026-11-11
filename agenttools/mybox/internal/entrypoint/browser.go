@@ -299,7 +299,7 @@ func (h *browserSessionHub) auditCommand(session *browserSession, actor, command
 
 func browserAuditCommandName(command string) string {
 	switch command {
-	case "observe", "navigate", "click", "fill", "press", "scroll", "wait", "screenshot", "input", "close_session", "approve_pending", "reject_pending", "set_approval_mode":
+	case "observe", "navigate", "go_back", "go_forward", "click", "fill", "press", "scroll", "wait", "screenshot", "input", "close_session", "approve_pending", "reject_pending", "set_approval_mode":
 		return command
 	default:
 		return "unknown"
