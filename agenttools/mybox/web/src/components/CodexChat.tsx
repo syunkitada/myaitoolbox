@@ -715,6 +715,7 @@ export function CodexChat({
   const [goalDraft, setGoalDraft] = useState('')
   const [goal, setGoal] = useState<JsonObject | null>(null)
   const [collaborationMode, setCollaborationMode] = useState<string | null>(null)
+  const [approvalsReviewer, setApprovalsReviewer] = useState('user')
   const [planPromptTurnId, setPlanPromptTurnId] = useState<string | null>(null)
   const [initialPromptRetryThreadId, setInitialPromptRetryThreadId] = useState<string | null>(null)
   const [controlBusy, setControlBusy] = useState(false)
@@ -1121,6 +1122,8 @@ export function CodexChat({
         const nextMode = mode || 'default'
         collaborationModeRef.current = nextMode
         setCollaborationMode(nextMode)
+        const nextApprovalsReviewer = message.approvals_reviewer === 'auto_review' ? 'auto_review' : 'user'
+        setApprovalsReviewer(nextApprovalsReviewer)
         const latestTurn = turnsRef.current[turnsRef.current.length - 1]
         const completedPlan = nextMode === 'plan' && latestTurn?.status === 'completed' && turnHasPlan(latestTurn)
         const dismissedTurnId = readDismissedPlanPromptTurnId(project, thread.thread_id)
@@ -1191,6 +1194,9 @@ export function CodexChat({
               setError('Codexとの接続がありません。再接続してから計画を実装してください。')
             }
           }
+        } else if (control === 'set_approvals_reviewer') {
+          const nextReviewer = string(result.approvals_reviewer) === 'auto_review' ? 'auto_review' : 'user'
+          setApprovalsReviewer(nextReviewer)
         } else if (control === 'goal_clear') {
           setGoal(null)
           setGoalDraft('')
@@ -1227,9 +1233,13 @@ export function CodexChat({
           setGoalDraft('')
         } else if (method === 'thread/settings/updated' && string(params.threadId) === thread.thread_id) {
           const mode = string(record(record(params.threadSettings).collaborationMode).mode)
+          const reviewer = string(record(params.threadSettings).approvalsReviewer)
           if (mode) {
             collaborationModeRef.current = mode
             setCollaborationMode(mode)
+          }
+          if (reviewer === 'user' || reviewer === 'auto_review') {
+            setApprovalsReviewer(reviewer)
           }
         }
         if (method === 'turn/started') {
@@ -1381,6 +1391,10 @@ export function CodexChat({
       setPlanPromptTurnId(null)
       setCommandPaletteOpen(false)
     }
+  }, [sendControl])
+
+  const changeApprovalsReviewer = useCallback((reviewer: 'user' | 'auto_review') => {
+    sendControl('set_approvals_reviewer', { approvals_reviewer: reviewer })
   }, [sendControl])
 
   const implementPlan = useCallback((turnId: string) => {
@@ -1874,6 +1888,19 @@ export function CodexChat({
             <option value="plan">Plan</option>
             <option value="goal">Goal</option>
           </select>
+          <label htmlFor="codex-approval-reviewer" className="sr-only">承認モード</label>
+          <select
+            id="codex-approval-reviewer"
+            aria-label="承認モード"
+            value={approvalsReviewer}
+            onChange={(event) => changeApprovalsReviewer(event.target.value === 'auto_review' ? 'auto_review' : 'user')}
+            disabled={!connected || controlBusy}
+            className="h-8 w-24 shrink-0 rounded-md border bg-background px-1.5 text-xs"
+            title="Codexの承認要求を自動レビューするか選択"
+          >
+            <option value="user">承認: 手動</option>
+            <option value="auto_review">承認: 自動</option>
+          </select>
           <span className="shrink-0 text-[10px] text-muted-foreground">最近</span>
           {recentCommands.length > 0 ? (
             <div className="codex-recent-command-list flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" aria-label="最近使ったコマンド">
@@ -1975,8 +2002,9 @@ export function CodexChat({
                 <Button variant={collaborationMode === 'default' ? 'default' : 'outline'} size="xs" className="min-h-8 cursor-pointer justify-start px-2 text-xs" disabled={!connected || controlBusy} onClick={() => changeMode('default')}>/default · 通常</Button>
                 <Button variant="outline" size="xs" className="min-h-8 cursor-pointer justify-start px-2 text-xs" disabled={!connected || controlBusy} onClick={openGoalEditor}>/goal · 目標を管理</Button>
               </div>
-              <p className="text-[10px] text-muted-foreground">モードの変更は次のターンから適用されます。入力欄では /goal pause・/goal resume・/goal clear も使えます。</p>
+              <p className="text-[10px] text-muted-foreground">承認モードは会話のCodex設定を変更します。入力欄では /goal pause・/goal resume・/goal clear も使えます。</p>
             </div>
+            <p className="text-[10px] text-muted-foreground">自動レビューはCodexが承認要求を個別に判断します。サンドボックスの範囲は変わらず、ツールへの回答や入力要求は引き続き表示されます。</p>
             <div className="flex flex-col gap-2">
               <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">クイック操作</p>
               <div className="grid grid-cols-2 gap-1" data-testid="codex-command-palette-prompts">

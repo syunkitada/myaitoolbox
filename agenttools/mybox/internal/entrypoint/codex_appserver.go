@@ -64,6 +64,7 @@ type codexThreadSubscription struct {
 	retryTimer        *time.Timer
 	unknown           bool
 	collaborationMode json.RawMessage
+	approvalsReviewer string
 }
 
 type codexThreadSubscriptionKey struct {
@@ -171,16 +172,16 @@ func (m *codexAppServerManager) threadSubscription(key codexThreadKey, p *codexA
 	return state
 }
 
-func (m *codexAppServerManager) attachThread(ctx context.Context, p *codexAppServerProcess, key codexThreadKey) (json.RawMessage, error) {
+func (m *codexAppServerManager) attachThread(ctx context.Context, p *codexAppServerProcess, key codexThreadKey) (json.RawMessage, string, error) {
 	state := m.threadSubscription(key, p)
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.clients > 0 {
 		state.clients++
-		return append(json.RawMessage(nil), state.collaborationMode...), nil
+		return append(json.RawMessage(nil), state.collaborationMode...), state.approvalsReviewer, nil
 	}
 	if state.expired {
-		return nil, errCodexEmptyThreadExpired
+		return nil, "", errCodexEmptyThreadExpired
 	}
 	if state.idleTimer != nil {
 		state.idleTimer.Stop()
@@ -196,7 +197,7 @@ func (m *codexAppServerManager) attachThread(ctx context.Context, p *codexAppSer
 		// silently remain detached while mybox believes it is subscribed.
 		if _, err := p.request(ctx, "thread/unsubscribe", map[string]string{"threadId": key.thread}); err != nil {
 			m.scheduleSubscriptionRetryLocked(p, key, state)
-			return nil, err
+			return nil, "", err
 		}
 		state.subscribed = false
 		state.unknown = false
@@ -205,24 +206,26 @@ func (m *codexAppServerManager) attachThread(ctx context.Context, p *codexAppSer
 		result, err := p.request(ctx, "thread/resume", map[string]any{"threadId": key.thread, "excludeTurns": true})
 		if err != nil {
 			if isCodexThreadNotResumable(err) {
-				return nil, errCodexEmptyThreadExpired
+				return nil, "", errCodexEmptyThreadExpired
 			}
-			return nil, err
+			return nil, "", err
 		}
 		var resumed struct {
 			CollaborationMode json.RawMessage `json:"collaborationMode"`
+			ApprovalsReviewer string          `json:"approvalsReviewer"`
 		}
 		if json.Unmarshal(result, &resumed) == nil && len(resumed.CollaborationMode) > 0 && string(resumed.CollaborationMode) != "null" {
 			state.collaborationMode = append(json.RawMessage(nil), resumed.CollaborationMode...)
 		}
+		state.approvalsReviewer = resumed.ApprovalsReviewer
 		state.subscribed = true
 		state.materialized = true
 	}
 	state.clients = 1
-	return append(json.RawMessage(nil), state.collaborationMode...), nil
+	return append(json.RawMessage(nil), state.collaborationMode...), state.approvalsReviewer, nil
 }
 
-func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, key codexThreadKey, thread codexThreadRecord, collaborationMode json.RawMessage) {
+func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, key codexThreadKey, thread codexThreadRecord, collaborationMode json.RawMessage, approvalsReviewer string) {
 	select {
 	case <-p.done:
 		return
@@ -251,6 +254,7 @@ func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, ke
 	state.expired = false
 	state.startedThread = &thread
 	state.collaborationMode = append(json.RawMessage(nil), collaborationMode...)
+	state.approvalsReviewer = approvalsReviewer
 	m.scheduleUnmaterializedThreadExpiryLocked(p, key, state)
 }
 
@@ -318,6 +322,18 @@ func (m *codexAppServerManager) currentCollaborationMode(p *codexAppServerProces
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	return append(json.RawMessage(nil), state.collaborationMode...)
+}
+
+func (m *codexAppServerManager) updateApprovalsReviewer(p *codexAppServerProcess, key codexThreadKey, reviewer string) {
+	m.threadSubMu.Lock()
+	state := m.threadSubs[codexThreadSubscriptionKey{thread: key, process: p}]
+	m.threadSubMu.Unlock()
+	if state == nil {
+		return
+	}
+	state.mu.Lock()
+	state.approvalsReviewer = reviewer
+	state.mu.Unlock()
 }
 
 func (m *codexAppServerManager) markThreadMaterialized(p *codexAppServerProcess, key codexThreadKey) {
@@ -933,9 +949,35 @@ func (m *codexAppServerManager) handleNotification(message codexRPCMessage) {
 	if threadID == "" {
 		return
 	}
+	if message.Method == "thread/settings/updated" {
+		var params struct {
+			ThreadSettings struct {
+				ApprovalsReviewer string `json:"approvalsReviewer"`
+			} `json:"threadSettings"`
+		}
+		if json.Unmarshal(message.Params, &params) == nil && (params.ThreadSettings.ApprovalsReviewer == "user" || params.ThreadSettings.ApprovalsReviewer == "auto_review") {
+			m.updateApprovalsReviewerForThread(threadID, params.ThreadSettings.ApprovalsReviewer)
+		}
+	}
 	m.broadcastThread(threadID, map[string]any{
 		"type": "notification", "method": message.Method, "params": message.Params,
 	})
+}
+
+func (m *codexAppServerManager) updateApprovalsReviewerForThread(threadID, reviewer string) {
+	m.threadSubMu.Lock()
+	states := make([]*codexThreadSubscription, 0)
+	for key, state := range m.threadSubs {
+		if key.thread.thread == threadID {
+			states = append(states, state)
+		}
+	}
+	m.threadSubMu.Unlock()
+	for _, state := range states {
+		state.mu.Lock()
+		state.approvalsReviewer = reviewer
+		state.mu.Unlock()
+	}
 }
 
 func (m *codexAppServerManager) broadcastThread(threadID string, value any) {
@@ -1196,9 +1238,10 @@ func (s *Server) CreateCodexThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var response struct {
-		Thread          codexThreadRecord `json:"thread"`
-		Model           string            `json:"model"`
-		ReasoningEffort *string           `json:"reasoningEffort"`
+		Thread            codexThreadRecord `json:"thread"`
+		Model             string            `json:"model"`
+		ReasoningEffort   *string           `json:"reasoningEffort"`
+		ApprovalsReviewer string            `json:"approvalsReviewer"`
 	}
 	if err := json.Unmarshal(result, &response); err != nil || response.Thread.ID == "" {
 		writeError(w, errors.New("codex app-server returned an invalid thread"))
@@ -1223,7 +1266,7 @@ func (s *Server) CreateCodexThread(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	}
-	s.codexAppServer.retainStartedThread(p, key, response.Thread, collaborationMode)
+	s.codexAppServer.retainStartedThread(p, key, response.Thread, collaborationMode, response.ApprovalsReviewer)
 	writeJSONResponse(w, http.StatusCreated, summarizeCodexThread(response.Thread))
 }
 
@@ -1430,7 +1473,8 @@ func (s *Server) streamCodexThread(c echo.Context) error {
 	conn.SetReadLimit(codexAppServerMaxClientMessageBytes)
 	resumeCtx, cancelResume := context.WithTimeout(c.Request().Context(), codexAppServerRequestTimeout)
 	var collaborationMode json.RawMessage
-	collaborationMode, err = s.codexAppServer.attachThread(resumeCtx, p, key)
+	var approvalsReviewer string
+	collaborationMode, approvalsReviewer, err = s.codexAppServer.attachThread(resumeCtx, p, key)
 	cancelResume()
 	if err != nil {
 		message := map[string]string{"type": "error", "error": err.Error()}
@@ -1444,7 +1488,7 @@ func (s *Server) streamCodexThread(c echo.Context) error {
 		return nil
 	}
 	threadAttached = true
-	client.push(map[string]any{"type": "ready", "collaboration_mode": collaborationMode})
+	client.push(map[string]any{"type": "ready", "collaboration_mode": collaborationMode, "approvals_reviewer": approvalsReviewer})
 	for {
 		_, data, readErr := conn.ReadMessage()
 		if readErr != nil {
@@ -1481,14 +1525,15 @@ func isCodexThreadNotResumable(err error) bool {
 }
 
 type codexClientMessage struct {
-	Type      string          `json:"type"`
-	Text      string          `json:"text"`
-	Mode      string          `json:"mode"`
-	Objective string          `json:"objective"`
-	Status    string          `json:"status"`
-	RequestID string          `json:"request_id"`
-	Decision  string          `json:"decision"`
-	Answers   json.RawMessage `json:"answers"`
+	Type              string          `json:"type"`
+	Text              string          `json:"text"`
+	Mode              string          `json:"mode"`
+	Objective         string          `json:"objective"`
+	Status            string          `json:"status"`
+	ApprovalsReviewer string          `json:"approvals_reviewer"`
+	RequestID         string          `json:"request_id"`
+	Decision          string          `json:"decision"`
+	Answers           json.RawMessage `json:"answers"`
 }
 
 func (s *Server) handleCodexClientMessage(ctx context.Context, p *codexAppServerProcess, key codexThreadKey, request codexClientMessage) error {
@@ -1612,6 +1657,16 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 		}
 		s.codexAppServer.updateCollaborationMode(p, key, collaborationMode)
 		return map[string]any{"mode": mode, "collaboration_mode": json.RawMessage(collaborationMode)}, nil
+	case "set_approvals_reviewer":
+		reviewer := strings.TrimSpace(request.ApprovalsReviewer)
+		if reviewer != "user" && reviewer != "auto_review" {
+			return nil, errors.New("Codex approval reviewer must be user or auto_review")
+		}
+		if _, err := p.request(ctx, "thread/settings/update", map[string]any{"threadId": key.thread, "approvalsReviewer": reviewer}); err != nil {
+			return nil, err
+		}
+		s.codexAppServer.updateApprovalsReviewer(p, key, reviewer)
+		return map[string]string{"approvals_reviewer": reviewer}, nil
 	case "goal_get":
 		result, err := p.request(ctx, "thread/goal/get", map[string]string{"threadId": key.thread})
 		return json.RawMessage(result), err

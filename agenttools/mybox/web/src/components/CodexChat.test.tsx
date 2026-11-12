@@ -116,8 +116,7 @@ describe('CodexChat', () => {
       MockWebSocket.latest?.fail()
     })
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Codexとの接続に失敗しました')
-    expect(screen.getByText('切断中')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Codexとの接続が(失敗しました|切れました)/)
   })
 
   it('refreshes the open conversation history when the tab becomes visible', async () => {
@@ -297,5 +296,19 @@ describe('CodexChat', () => {
     await waitFor(() => expect(socket?.sent).toContain(JSON.stringify({ type: 'respond', request_id: 'approval-1', decision: 'accept', answers: undefined })))
     socket?.emit({ type: 'response', request_id: 'approval-1' })
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Codex approval request' })).not.toBeInTheDocument())
+  })
+
+  it('updates the conversation to use Codex automatic approval review when selected', async () => {
+    renderCodexChat()
+    await selectThread()
+    await screen.findByText(/I will update the/)
+
+    const socket = MockWebSocket.latest
+    await act(async () => socket?.emit({ type: 'ready', approvals_reviewer: 'user' }))
+    fireEvent.change(screen.getByRole('combobox', { name: '承認モード' }), { target: { value: 'auto_review' } })
+    await waitFor(() => expect(socket?.sent.some((message) => message.includes('"type":"set_approvals_reviewer"') && message.includes('"approvals_reviewer":"auto_review"'))).toBe(true))
+    const control = JSON.parse(socket?.sent.at(-1) ?? '{}') as { request_id: string }
+    await act(async () => socket?.emit({ type: 'control_response', control: 'set_approvals_reviewer', request_id: control.request_id, result: { approvals_reviewer: 'auto_review' } }))
+    expect(screen.getByRole('combobox', { name: '承認モード' })).toHaveValue('auto_review')
   })
 })

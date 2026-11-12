@@ -545,6 +545,61 @@ func TestHandleCodexClientMessageStartsThreadCompaction(t *testing.T) {
 	}
 }
 
+func TestHandleCodexClientMessageSetsAutomaticApprovalReviewer(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
+
+	process := &codexAppServerProcess{
+		stdin:   writer,
+		done:    make(chan struct{}),
+		pending: make(map[string]chan codexRPCResult),
+	}
+	manager := newCodexAppServerManager()
+	key := codexThreadKey{project: "demo", thread: "thread-1"}
+	manager.threadSubscription(key, process)
+	server := &Server{codexAppServer: manager}
+	done := make(chan error, 1)
+	go func() {
+		done <- server.handleCodexClientMessage(context.Background(), process, key, codexClientMessage{Type: "set_approvals_reviewer", ApprovalsReviewer: "auto_review"})
+	}()
+
+	line, err := bufio.NewReader(reader).ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request struct {
+		ID     json.RawMessage `json:"id"`
+		Method string          `json:"method"`
+		Params struct {
+			ThreadID          string `json:"threadId"`
+			ApprovalsReviewer string `json:"approvalsReviewer"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(line, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Method != "thread/settings/update" || request.Params.ThreadID != key.thread || request.Params.ApprovalsReviewer != "auto_review" {
+		t.Fatalf("unexpected approval reviewer update request: %+v", request)
+	}
+	process.pendingMu.Lock()
+	response := process.pending[normalizeCodexRequestID(request.ID)]
+	process.pendingMu.Unlock()
+	if response == nil {
+		t.Fatal("approval reviewer update was not registered as pending")
+	}
+	response <- codexRPCResult{result: json.RawMessage(`{}`)}
+	if err := <-done; err != nil {
+		t.Fatalf("approval reviewer update failed: %v", err)
+	}
+	if manager.threadSubs[codexThreadSubscriptionKey{thread: key, process: process}].approvalsReviewer != "auto_review" {
+		t.Fatal("thread subscription did not retain the selected approval reviewer")
+	}
+}
+
 func installConnectedFakeCodexAppServer(t *testing.T, server *Server, projectDir, unsubscribeFile string) {
 	t.Helper()
 	server.codexAppServer.stdioTransport = true
