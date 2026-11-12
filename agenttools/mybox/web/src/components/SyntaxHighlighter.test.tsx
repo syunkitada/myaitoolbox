@@ -28,12 +28,6 @@ describe('SyntaxHighlighter', () => {
     expect(container.querySelector('pre')).not.toHaveClass('whitespace-pre-wrap', 'break-words')
   })
 
-  it('exposes absolute source line markers for file review comments', () => {
-    const { container } = render(<SyntaxHighlighter text={'first\nsecond'} sourceLineOffset={8} />)
-    expect(container.querySelector('[data-review-line="9"]')).toHaveTextContent('first')
-    expect(container.querySelector('[data-review-line="10"]')).toHaveTextContent('second')
-  })
-
   it('linkifies http and https urls', () => {
     const { container } = render(
       <SyntaxHighlighter text="see https://example.com/a and http://sub.example.org/x" />,

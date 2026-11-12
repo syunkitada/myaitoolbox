@@ -7,7 +7,6 @@
 | パス | 役割 |
 | --- | --- |
 | [`clipboard.ts`](./clipboard.ts) | クリップボードへのコピー。 |
-| [`file-review-comments.ts`](./file-review-comments.ts) / [`file-review-comments.test.ts`](./file-review-comments.test.ts) | Files画面のローカルレビューコメント、行アンカー、Agent向け文脈整形とテスト。 |
 | [`graphCollision.ts`](./graphCollision.ts) / [`graphCollision.test.ts`](./graphCollision.test.ts) | グラフノードの衝突計算とテスト。 |
 | [`herdr-agent-commands.ts`](./herdr-agent-commands.ts) | Herdrエージェントのクイックコマンドと定型プロンプト。 |
 | [`herdr-file-agent.ts`](./herdr-file-agent.ts) / [`herdr-file-agent.test.ts`](./herdr-file-agent.test.ts) | ファイルからエージェントを起動する引数・表示名処理とテスト。 |

@@ -58,7 +58,6 @@ export interface SyntaxHighlighterProps {
   focusLine?: number
   searchQuery?: string
   onFilePathClick?: (path: string) => void
-  sourceLineOffset?: number
 }
 
 export function SyntaxHighlighter({
@@ -72,7 +71,6 @@ export function SyntaxHighlighter({
   focusLine,
   searchQuery,
   onFilePathClick,
-  sourceLineOffset = 0,
 }: SyntaxHighlighterProps) {
   const displayText = displayMode === 'auto' ? normalizeAgentOutput(text) : text
   const lines = useMemo(() => displayText.split(/\r?\n/), [displayText])
@@ -114,7 +112,6 @@ export function SyntaxHighlighter({
             <span
               key={lineNumber}
               data-search-line={lineNumber}
-              data-review-line={lineNumber + sourceLineOffset}
               className={`${showLineNumbers ? 'flex min-h-6 items-start' : 'block'} ${lineNumber === focusLine ? 'rounded bg-yellow-100 px-1 dark:bg-yellow-900/50' : ''}`}
             >
               {showLineNumbers && (

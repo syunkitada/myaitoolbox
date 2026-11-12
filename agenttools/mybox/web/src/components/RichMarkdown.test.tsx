@@ -44,14 +44,11 @@ describe('RichMarkdown', () => {
     }
   })
 
-  it('exposes source line ranges for comment anchoring', () => {
+  it('exposes source lines for file navigation', () => {
     const { container } = renderMd(<RichMarkdown text={'# Header\n\nfirst\ncontinued\n\n```ts\nconst x = 1\n```'} sourceLineOffset={2} />)
     expect(container.querySelector('h1')).toHaveAttribute('data-source-line', '3')
     expect(container.querySelector('p')).toHaveAttribute('data-source-line', '5')
-    expect(container.querySelector('p')).toHaveAttribute('data-source-end-line', '6')
     expect(container.querySelector('.markdown-code-block')).toHaveAttribute('data-source-line', '8')
-    expect(container.querySelector('.markdown-code-block')).toHaveAttribute('data-review-code-line', '9')
-    expect(container.querySelector('.markdown-code-block')).toHaveAttribute('data-source-end-line', '10')
   })
 
   it('resolves anchors to headings containing inline code and underscores', () => {

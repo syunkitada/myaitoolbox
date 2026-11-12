@@ -7,7 +7,6 @@ import { Markdown } from './Markdown'
 import { DiffView } from './DiffView'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet'
 import { cn } from '@/lib/utils'
-import { appendReviewContextToDraft } from '../utils/file-review-comments'
 import { useDialogs } from './AppDialogs'
 
 type JsonObject = Record<string, unknown>
@@ -15,7 +14,6 @@ type CodexTurnPlanStep = { step: string; status?: string }
 type CodexTurn = JsonObject & { id: string; status?: string; error?: unknown; items?: CodexItem[]; plan?: CodexTurnPlanStep[]; planExplanation?: string }
 type CodexItem = JsonObject & { id?: string; type?: string; text?: string }
 type ApprovalRequest = { request_id: string; method: string; params: JsonObject }
-type ReviewContextAppend = { id: number; threadId: string; context: string }
 type PendingInitialPrompt = {
   threadId: string
   type: 'plan_handoff'
@@ -682,18 +680,12 @@ export function CodexChat({
   project,
   requestedThreadId,
   onThreadSelected,
-  onActiveThreadChange,
-  pendingReviewContextAppend,
-  onReviewContextAppendConsumed,
   onFilePathClick,
   onSessionStatusChange,
 }: {
   project: string
   requestedThreadId?: string | null
   onThreadSelected?: (threadId: string | null) => void
-  onActiveThreadChange?: (threadId: string | null) => void
-  pendingReviewContextAppend?: ReviewContextAppend | null
-  onReviewContextAppendConsumed?: (id: number) => void
   onFilePathClick?: (path: string, line?: number) => void
   onSessionStatusChange?: (status: string | null) => void
 }) {
@@ -739,7 +731,6 @@ export function CodexChat({
   const handledRequestedThreadRef = useRef<string | null>(null)
   const lastRequestedThreadRef = useRef<string | null>(null)
   const emptyThreadReplacementAttemptedRef = useRef(false)
-  const processedReviewContextAppendRef = useRef(0)
   const controlRequestSequenceRef = useRef(0)
   const activeThreadIdRef = useRef<string | null>(null)
   const threadHasTurnsRef = useRef(false)
@@ -868,10 +859,9 @@ export function CodexChat({
     setInitialPromptRetryThreadId(null)
     setTurns([])
     setPendingRequests([])
-    onActiveThreadChange?.(null)
     onThreadSelected?.(null)
     void loadThreads(true)
-  }, [loadThreads, onActiveThreadChange, onThreadSelected])
+  }, [loadThreads, onThreadSelected])
 
   useEffect(() => {
     void loadThreads()
@@ -929,18 +919,6 @@ export function CodexChat({
     }
   }, [turns, pendingRequests.length])
 
-  useEffect(() => {
-    const append = pendingReviewContextAppend
-    if (!append || !selectedThread || append.id <= processedReviewContextAppendRef.current) return
-
-    processedReviewContextAppendRef.current = append.id
-    if (append.threadId === selectedThread.thread_id) {
-      setDraft((current) => appendReviewContextToDraft(current, append.context))
-      requestAnimationFrame(() => composerRef.current?.focus())
-    }
-    onReviewContextAppendConsumed?.(append.id)
-  }, [onReviewContextAppendConsumed, pendingReviewContextAppend, selectedThread])
-
   const openThread = useCallback(async (thread: CodexThread, automaticReconnect = false) => {
     if (reconnectTimerRef.current !== null) {
       window.clearTimeout(reconnectTimerRef.current)
@@ -953,7 +931,6 @@ export function CodexChat({
     const openSequence = ++openSequenceRef.current
     handledRequestedThreadRef.current = thread.thread_id
     activeThreadIdRef.current = thread.thread_id
-    onActiveThreadChange?.(thread.thread_id)
     onThreadSelected?.(thread.thread_id)
     socketRef.current?.close()
     socketRef.current = null
@@ -1020,7 +997,6 @@ export function CodexChat({
       if (/codex conversation not found/i.test(message)) {
         setSelectedThread(null)
         activeThreadIdRef.current = null
-        onActiveThreadChange?.(null)
         setError(null)
         setHistoryLoading(false)
         void loadThreads(true)
@@ -1271,7 +1247,7 @@ export function CodexChat({
         })
       }
     }
-  }, [loadThreads, onActiveThreadChange, onThreadSelected, project, removeDeletedThread])
+  }, [loadThreads, onThreadSelected, project, removeDeletedThread])
 
   useEffect(() => {
     if (!requestedThreadId) {
@@ -1298,16 +1274,14 @@ export function CodexChat({
   }, [listLoading, openThread, requestedThreadId, threads])
 
   useEffect(() => {
-    if (activeThreadIdRef.current) onActiveThreadChange?.(activeThreadIdRef.current)
     return () => {
       openSequenceRef.current += 1
       if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current)
       reconnectTimerRef.current = null
       socketRef.current?.close()
       socketRef.current = null
-      onActiveThreadChange?.(null)
     }
-  }, [onActiveThreadChange])
+  }, [])
 
   const createThread = useCallback(async (initialPrompt?: { type: 'plan_handoff'; text: string }, automaticReplacement = false) => {
     if (creating) return
@@ -1763,7 +1737,7 @@ export function CodexChat({
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col" onClick={handleConversationClick}>
       <div className="flex shrink-0 items-center gap-2 border-b px-2 py-2">
-        <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => { openSequenceRef.current += 1; if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; reconnectAttemptRef.current = 0; setReconnectAttempt(0); socketRef.current?.close(); socketRef.current = null; setSelectedThread(null); activeThreadIdRef.current = null; onActiveThreadChange?.(null); onThreadSelected?.(null); void loadThreads() }} aria-label="会話一覧に戻る">
+        <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => { openSequenceRef.current += 1; if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; reconnectAttemptRef.current = 0; setReconnectAttempt(0); socketRef.current?.close(); socketRef.current = null; setSelectedThread(null); activeThreadIdRef.current = null; onThreadSelected?.(null); void loadThreads() }} aria-label="会話一覧に戻る">
           <ArrowLeft />
         </Button>
         <div className="min-w-0 flex-1">

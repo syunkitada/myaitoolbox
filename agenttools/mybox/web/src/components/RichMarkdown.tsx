@@ -44,9 +44,7 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => {
     : `<pre><code>${md.utils.escapeHtml(tokens[idx].content)}</code></pre>\n`
   const lineOffset = (env as MarkdownRenderEnv | undefined)?.lineOffset ?? 0
   const sourceLine = token.map?.[0] === undefined ? '' : ` data-source-line="${lineOffset + token.map[0] + 1}"`
-  const reviewCodeLine = token.map?.[0] === undefined ? '' : ` data-review-code-line="${lineOffset + token.map[0] + 2}"`
-  const sourceEndLine = token.map?.[1] === undefined ? '' : ` data-source-end-line="${lineOffset + token.map[1]}"`
-  return `<div class="markdown-code-block" data-code-block${sourceLine}${reviewCodeLine}${sourceEndLine}><button type="button" class="markdown-code-copy" data-copy-code aria-label="Copy code" title="Copy code">Copy</button>${rendered}</div>\n`
+  return `<div class="markdown-code-block" data-code-block${sourceLine}><button type="button" class="markdown-code-copy" data-copy-code aria-label="Copy code" title="Copy code">Copy</button>${rendered}</div>\n`
 }
 
 interface MarkdownSourceLineEnv {
@@ -57,7 +55,6 @@ function setSourceLine(token: { map?: [number, number] | null; attrSet: (name: s
   if (token.map?.[0] === undefined) return
   const lineOffset = env?.lineOffset ?? 0
   token.attrSet('data-source-line', String(lineOffset + token.map[0] + 1))
-  if (token.map[1] !== undefined) token.attrSet('data-source-end-line', String(lineOffset + token.map[1]))
 }
 
 md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {

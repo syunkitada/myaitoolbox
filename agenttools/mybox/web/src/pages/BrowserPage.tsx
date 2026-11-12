@@ -5,7 +5,6 @@ import { ApiError, Favorite, FileEntry, FileSearchResult, GitDetail, GitFile, He
 import { SearchBar } from '../components/SearchBar'
 import { FileTabs } from '../components/FileTabs'
 import { GraphWorkspace } from '../components/GraphView/GraphWorkspace'
-import { FileReviewComments } from '../components/FileReviewComments'
 import { TASK_AGENT_KIND_STORAGE_KEY, TaskAgentLaunchDialog } from '../components/TaskAgentLaunchDialog'
 import { RichMarkdown, extractOutline } from '../components/RichMarkdown'
 import { TaskProgress } from '../components/TaskProgress'
@@ -174,11 +173,7 @@ interface BrowserPageProps {
   refreshHerdr?: () => void | Promise<void>
   agentSidebarOpen?: boolean
   openAgentPaneId?: string | null
-  agentSidebarMode?: 'herdr' | 'codex'
-  activeCodexDraftThreadId?: string | null
   onOpenAgentPane?: (paneId: string) => void
-  onAppendReviewContext?: (paneId: string, context: string) => void
-  onAppendCodexReviewContext?: (threadId: string, context: string) => void
   revealPath?: string
   onRevealPathHandled?: (path: string) => void
 }
@@ -1360,10 +1355,6 @@ interface PaneProps {
   onGitDiffOpenChange?: (open: boolean) => void
   agentSidebarOpen?: boolean
   openAgentPaneId?: string | null
-  agentSidebarMode?: 'herdr' | 'codex'
-  activeCodexDraftThreadId?: string | null
-  onAppendReviewContext?: (paneId: string, context: string) => void
-  onAppendCodexReviewContext?: (threadId: string, context: string) => void
   taskAgentPaneId?: string
   taskAgentName?: string
   taskAgentStatus?: string
@@ -1401,10 +1392,6 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   onGitDiffOpenChange,
   agentSidebarOpen,
   openAgentPaneId,
-  agentSidebarMode,
-  activeCodexDraftThreadId,
-  onAppendReviewContext,
-  onAppendCodexReviewContext,
   taskAgentPaneId,
   taskAgentName: linkedAgentName,
   taskAgentStatus: linkedAgentStatus,
@@ -1918,14 +1905,11 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     ? content.slice(0, Math.max(0, content.length - fmSplit.body.length)).split(/\r?\n/).length - 1
     : 0
   const previewText = plainMarkdownSource ? content : viewText
-  const previewLineOffset = plainMarkdownSource ? 0 : viewSourceLineOffset
   const activeSearchHit = searchHit?.path === path ? searchHit : null
   const navigationFocusLine = paneLabel === 'Main' ? focusLine : undefined
   const focusedLine = navigationFocusLine ?? activeSearchHit?.line
   const viewRelativeTo = isDir ? readmePath ?? `${path}/` : path
   const viewFileName = isDir && readmePath ? baseOf(readmePath) : null
-  const fileReviewPath = isDir ? readmePath : path
-
   const toggleTask = async (line: number, checked: boolean): Promise<boolean> => {
     const nextBody = setMarkdownTaskChecked(viewText, line, checked)
     if (nextBody === null) return false
@@ -1983,25 +1967,9 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       className="file-raw rounded-md bg-muted p-3"
       focusLine={focusedLine}
       searchQuery={activeSearchHit?.query}
-      sourceLineOffset={previewLineOffset}
       showLineNumbers
     />
   )
-
-  const filePreviewWithComments = fileReviewPath ? (
-    <FileReviewComments
-      key={fileReviewPath}
-      project={getProject()}
-      path={fileReviewPath}
-      sourceText={content}
-      activeAgentPaneId={agentSidebarOpen && agentSidebarMode !== 'codex' ? openAgentPaneId ?? null : null}
-      activeCodexThreadId={agentSidebarOpen && agentSidebarMode === 'codex' ? activeCodexDraftThreadId ?? null : null}
-      onAppendToAgentDraft={onAppendReviewContext}
-      onAppendToCodexDraft={onAppendCodexReviewContext}
-    >
-      {filePreview}
-    </FileReviewComments>
-  ) : filePreview
 
   const diffModified = useMemo(
     () => (useForm ? buildMarkdown(serializeFrontmatter(draftFm), draftBody) : draft),
@@ -2555,7 +2523,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                   )}
                   {useForm && !plainMarkdownSource && <FrontmatterSummary data={fmParsed.data} />}
                   {taskProgress && <TaskProgress {...taskProgress} className="my-3" />}
-                  {filePreviewWithComments}
+                  {filePreview}
                 </CardContent>
               </Card>
               {showGitDiff && (
@@ -2749,10 +2717,6 @@ export function BrowserPage({
   refreshHerdr,
   agentSidebarOpen,
   openAgentPaneId,
-  agentSidebarMode,
-  activeCodexDraftThreadId,
-  onAppendReviewContext,
-  onAppendCodexReviewContext,
   onOpenAgentPane,
   revealPath,
   onRevealPathHandled,
@@ -3501,10 +3465,6 @@ export function BrowserPage({
         onGitDiffOpenChange={slot === 'main' ? setGitDiffOpen : setReferenceGitDiffOpen}
         agentSidebarOpen={agentSidebarOpen}
         openAgentPaneId={openAgentPaneId}
-        agentSidebarMode={agentSidebarMode}
-        activeCodexDraftThreadId={activeCodexDraftThreadId}
-        onAppendReviewContext={onAppendReviewContext}
-        onAppendCodexReviewContext={onAppendCodexReviewContext}
         taskAgentPaneId={taskAgent?.agent?.pane_id}
         taskAgentName={taskAgent?.name}
         taskAgentStatus={taskAgent?.agent?.status}
