@@ -614,6 +614,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
                 <SidebarMenuAction
                   aria-label={`Close project ${p}`}
                   title="Close project"
+                  className="opacity-60 hover:opacity-100"
                   onClick={async (event) => {
                     event.stopPropagation()
                     if (!window.confirm(`Remove project registration for "${p}"?`)) return

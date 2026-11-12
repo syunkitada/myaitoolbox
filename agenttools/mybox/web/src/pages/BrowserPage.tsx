@@ -399,6 +399,7 @@ interface ExplorerProps {
   entries: BrowserEntry[]
   selected: string
   onSelect: (path: string) => void
+  onOpenProject?: (project: string) => void
   title: string
   gitStatus?: Record<string, string>
   onClose?: () => void
@@ -418,7 +419,7 @@ interface ExplorerProps {
   onExpandedPathsChange?: Dispatch<SetStateAction<Set<string>>>
 }
 
-export function Explorer({ entries, selected, onSelect, title, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onBeforePathMove, onPathMoved, onSearchHit, expandedPaths: controlledExpandedPaths, onExpandedPathsChange }: ExplorerProps) {
+export function Explorer({ entries, selected, onSelect, onOpenProject, title, gitStatus, onClose, onMoveFile, onChanged, onError, showHidden, onToggleHidden, onOpenGit, onOpenReference, onLoadDir, onClearSubtree, onBeforePathMove, onPathMoved, onSearchHit, expandedPaths: controlledExpandedPaths, onExpandedPathsChange }: ExplorerProps) {
   const { prompt, confirm, alert, showProgress, hideProgress } = useDialogs()
   const { start: startFileExecution } = useFileExecution()
   const [q, setQ] = useState('')
@@ -597,7 +598,7 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
       const existing = projects.find((entry) => entry.path === path)
       const created = existing ?? await api.createProject(path)
       window.dispatchEvent(new Event('mybox:projects-changed'))
-      onSelect('', created.name)
+      onOpenProject?.(created.name)
     } catch (error) {
       runError(error)
     }
@@ -3550,6 +3551,7 @@ export function BrowserPage({
                     entries={entries}
                     selected={selected}
                     onSelect={handleSelect}
+                    onOpenProject={(projectName) => onSelect('', projectName)}
                     title={title}
                     gitStatus={gitStatus}
                     onClose={onClose}
@@ -3600,6 +3602,7 @@ export function BrowserPage({
                     entries={entries}
                     selected={selected}
                     onSelect={handleSelect}
+                    onOpenProject={(projectName) => onSelect('', projectName)}
                     title={title}
                     gitStatus={gitStatus}
                     onClose={onClose}
