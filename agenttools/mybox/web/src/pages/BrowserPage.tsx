@@ -585,6 +585,24 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
     setCtxMenu(null)
   }
 
+  const openDirectoryAsProject = async () => {
+    if (!ctxMenu || ctxMenu.kind !== 'dir') return
+    const rel = ctxMenu.path
+    setCtxMenu(null)
+    try {
+      const projects = await api.listProjects()
+      const current = projects.find((entry) => entry.name === getProject())
+      if (!current?.path) throw new Error('Could not resolve the current project path.')
+      const path = rel ? `${current.path.replace(/\/+$/, '')}/${rel}` : current.path
+      const existing = projects.find((entry) => entry.path === path)
+      const created = existing ?? await api.createProject(path)
+      window.dispatchEvent(new Event('mybox:projects-changed'))
+      onSelect('', created.name)
+    } catch (error) {
+      runError(error)
+    }
+  }
+
   const openReference = () => {
     if (!ctxMenu) return
     const path = ctxMenu.path
@@ -1144,6 +1162,10 @@ export function Explorer({ entries, selected, onSelect, title, gitStatus, onClos
           <div className="px-2 pt-1 pb-1 text-xs text-muted-foreground select-none">{ctxMenu.path}</div>
           {ctxMenu.kind === 'dir' && (
             <>
+              <button role="menuitem" className="file-action-item" onClick={() => void openDirectoryAsProject()} data-testid="file-open-as-project">
+                <FolderHeart className="size-3.5" />
+                Open as project
+              </button>
               <button role="menuitem" className="file-action-item" onClick={newFileInDir}>
                 <FilePlus className="size-3.5" />
                 New File

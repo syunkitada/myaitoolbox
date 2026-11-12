@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Activity, Bot, Box, Boxes, Check, ChevronDown, Cpu, GitBranch, HardDrive, MemoryStick, MessageSquareText, SquareKanban } from 'lucide-react'
+import { Activity, Bot, Box, Boxes, Check, ChevronDown, Cpu, GitBranch, HardDrive, MemoryStick, MessageSquareText, SquareKanban, X } from 'lucide-react'
 import { api, CodexActiveSession, Meta, Stats } from '../api/client'
 import { clearProject, dirName, encodePath, getProject, projectUrlFor, setProject } from '../utils/routes'
 import type { HerdrAgent, HerdrOverview, ProjectGitStatus } from '../api/client'
@@ -611,6 +611,23 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
                     )}
                   </span>
                 </SidebarMenuButton>
+                <SidebarMenuAction
+                  aria-label={`Close project ${p}`}
+                  title="Close project"
+                  onClick={async (event) => {
+                    event.stopPropagation()
+                    if (!window.confirm(`Remove project registration for "${p}"?`)) return
+                    try {
+                      await api.deleteProject(p)
+                      window.dispatchEvent(new Event('mybox:projects-changed'))
+                      if (p === getProject()) clearProject(navigate)
+                    } catch (error) {
+                      window.alert(error instanceof Error ? error.message : String(error))
+                    }
+                  }}
+                >
+                  <X />
+                </SidebarMenuAction>
               </SidebarMenuItem>
             )
           })}

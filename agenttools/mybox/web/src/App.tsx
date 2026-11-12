@@ -140,6 +140,12 @@ export default function App() {
   }, [refreshMeta, project])
 
   useEffect(() => {
+    const refreshProjects = () => void refreshMeta()
+    window.addEventListener('mybox:projects-changed', refreshProjects)
+    return () => window.removeEventListener('mybox:projects-changed', refreshProjects)
+  }, [refreshMeta])
+
+  useEffect(() => {
     const interval = window.setInterval(() => {
       if (!document.hidden) void refreshGitStatus().catch(() => undefined)
     }, GIT_STATUS_REFRESH_INTERVAL_MS)
