@@ -311,4 +311,35 @@ describe('CodexChat', () => {
     await act(async () => socket?.emit({ type: 'control_response', control: 'set_approvals_reviewer', request_id: control.request_id, result: { approvals_reviewer: 'auto_review' } }))
     expect(screen.getByRole('combobox', { name: '承認モード' })).toHaveValue('auto_review')
   })
+
+  it('preserves and displays the Guardian approval reviewer for an existing conversation', async () => {
+    renderCodexChat()
+    await selectThread()
+    await screen.findByText(/I will update the/)
+
+    const socket = MockWebSocket.latest
+    await act(async () => socket?.emit({ type: 'ready', approvals_reviewer: 'guardian_subagent' }))
+
+    const reviewer = screen.getByRole('combobox', { name: '承認モード' })
+    expect(reviewer).toHaveValue('guardian_subagent')
+    expect(within(reviewer).getByRole('option', { name: '承認: Guardian' })).toBeInTheDocument()
+  })
+
+  it('updates the displayed approval reviewer from a thread settings notification', async () => {
+    renderCodexChat()
+    await selectThread()
+    await screen.findByText(/I will update the/)
+
+    const socket = MockWebSocket.latest
+    await act(async () => {
+      socket?.emit({ type: 'ready', approvals_reviewer: 'user' })
+      socket?.emit({
+        type: 'notification',
+        method: 'thread/settings/updated',
+        params: { threadId: 'thread-1', threadSettings: { approvalsReviewer: 'guardian_subagent' } },
+      })
+    })
+
+    expect(screen.getByRole('combobox', { name: '承認モード' })).toHaveValue('guardian_subagent')
+  })
 })

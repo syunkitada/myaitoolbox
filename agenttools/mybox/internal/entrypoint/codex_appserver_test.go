@@ -545,7 +545,7 @@ func TestHandleCodexClientMessageStartsThreadCompaction(t *testing.T) {
 	}
 }
 
-func TestHandleCodexClientMessageSetsAutomaticApprovalReviewer(t *testing.T) {
+func TestHandleCodexClientMessageSetsGuardianApprovalReviewer(t *testing.T) {
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -564,7 +564,7 @@ func TestHandleCodexClientMessageSetsAutomaticApprovalReviewer(t *testing.T) {
 	server := &Server{codexAppServer: manager}
 	done := make(chan error, 1)
 	go func() {
-		done <- server.handleCodexClientMessage(context.Background(), process, key, codexClientMessage{Type: "set_approvals_reviewer", ApprovalsReviewer: "auto_review"})
+		done <- server.handleCodexClientMessage(context.Background(), process, key, codexClientMessage{Type: "set_approvals_reviewer", ApprovalsReviewer: "guardian_subagent"})
 	}()
 
 	line, err := bufio.NewReader(reader).ReadBytes('\n')
@@ -582,7 +582,7 @@ func TestHandleCodexClientMessageSetsAutomaticApprovalReviewer(t *testing.T) {
 	if err := json.Unmarshal(line, &request); err != nil {
 		t.Fatal(err)
 	}
-	if request.Method != "thread/settings/update" || request.Params.ThreadID != key.thread || request.Params.ApprovalsReviewer != "auto_review" {
+	if request.Method != "thread/settings/update" || request.Params.ThreadID != key.thread || request.Params.ApprovalsReviewer != "guardian_subagent" {
 		t.Fatalf("unexpected approval reviewer update request: %+v", request)
 	}
 	process.pendingMu.Lock()
@@ -595,8 +595,15 @@ func TestHandleCodexClientMessageSetsAutomaticApprovalReviewer(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("approval reviewer update failed: %v", err)
 	}
-	if manager.threadSubs[codexThreadSubscriptionKey{thread: key, process: process}].approvalsReviewer != "auto_review" {
+	if manager.threadSubs[codexThreadSubscriptionKey{thread: key, process: process}].approvalsReviewer != "guardian_subagent" {
 		t.Fatal("thread subscription did not retain the selected approval reviewer")
+	}
+	manager.handleNotification(codexRPCMessage{
+		Method: "thread/settings/updated",
+		Params: json.RawMessage(`{"threadId":"thread-1","threadSettings":{"approvalsReviewer":"auto_review"}}`),
+	})
+	if manager.threadSubs[codexThreadSubscriptionKey{thread: key, process: process}].approvalsReviewer != "auto_review" {
+		t.Fatal("thread settings notification did not refresh the approval reviewer")
 	}
 }
 

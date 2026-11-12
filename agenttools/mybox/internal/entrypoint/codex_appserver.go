@@ -955,13 +955,17 @@ func (m *codexAppServerManager) handleNotification(message codexRPCMessage) {
 				ApprovalsReviewer string `json:"approvalsReviewer"`
 			} `json:"threadSettings"`
 		}
-		if json.Unmarshal(message.Params, &params) == nil && (params.ThreadSettings.ApprovalsReviewer == "user" || params.ThreadSettings.ApprovalsReviewer == "auto_review") {
+		if json.Unmarshal(message.Params, &params) == nil && isCodexApprovalsReviewer(params.ThreadSettings.ApprovalsReviewer) {
 			m.updateApprovalsReviewerForThread(threadID, params.ThreadSettings.ApprovalsReviewer)
 		}
 	}
 	m.broadcastThread(threadID, map[string]any{
 		"type": "notification", "method": message.Method, "params": message.Params,
 	})
+}
+
+func isCodexApprovalsReviewer(reviewer string) bool {
+	return reviewer == "user" || reviewer == "auto_review" || reviewer == "guardian_subagent"
 }
 
 func (m *codexAppServerManager) updateApprovalsReviewerForThread(threadID, reviewer string) {
@@ -1659,8 +1663,8 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 		return map[string]any{"mode": mode, "collaboration_mode": json.RawMessage(collaborationMode)}, nil
 	case "set_approvals_reviewer":
 		reviewer := strings.TrimSpace(request.ApprovalsReviewer)
-		if reviewer != "user" && reviewer != "auto_review" {
-			return nil, errors.New("Codex approval reviewer must be user or auto_review")
+		if !isCodexApprovalsReviewer(reviewer) {
+			return nil, errors.New("unsupported Codex approval reviewer")
 		}
 		if _, err := p.request(ctx, "thread/settings/update", map[string]any{"threadId": key.thread, "approvalsReviewer": reviewer}); err != nil {
 			return nil, err

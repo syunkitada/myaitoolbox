@@ -24,6 +24,11 @@ type PendingInitialPrompt = {
   inFlight: boolean
   exceedsMessageLimit?: boolean
 }
+type CodexApprovalsReviewer = 'user' | 'auto_review' | 'guardian_subagent'
+
+function codexApprovalsReviewer(value: unknown): CodexApprovalsReviewer {
+  return value === 'auto_review' || value === 'guardian_subagent' ? value : 'user'
+}
 
 const CODEX_COMMANDS = [
   { id: 'compact', label: '/compact', shortLabel: '/compact', kind: 'compact' as const },
@@ -715,7 +720,7 @@ export function CodexChat({
   const [goalDraft, setGoalDraft] = useState('')
   const [goal, setGoal] = useState<JsonObject | null>(null)
   const [collaborationMode, setCollaborationMode] = useState<string | null>(null)
-  const [approvalsReviewer, setApprovalsReviewer] = useState('user')
+  const [approvalsReviewer, setApprovalsReviewer] = useState<CodexApprovalsReviewer>('user')
   const [planPromptTurnId, setPlanPromptTurnId] = useState<string | null>(null)
   const [initialPromptRetryThreadId, setInitialPromptRetryThreadId] = useState<string | null>(null)
   const [controlBusy, setControlBusy] = useState(false)
@@ -1122,8 +1127,7 @@ export function CodexChat({
         const nextMode = mode || 'default'
         collaborationModeRef.current = nextMode
         setCollaborationMode(nextMode)
-        const nextApprovalsReviewer = message.approvals_reviewer === 'auto_review' ? 'auto_review' : 'user'
-        setApprovalsReviewer(nextApprovalsReviewer)
+        setApprovalsReviewer(codexApprovalsReviewer(message.approvals_reviewer))
         const latestTurn = turnsRef.current[turnsRef.current.length - 1]
         const completedPlan = nextMode === 'plan' && latestTurn?.status === 'completed' && turnHasPlan(latestTurn)
         const dismissedTurnId = readDismissedPlanPromptTurnId(project, thread.thread_id)
@@ -1195,8 +1199,7 @@ export function CodexChat({
             }
           }
         } else if (control === 'set_approvals_reviewer') {
-          const nextReviewer = string(result.approvals_reviewer) === 'auto_review' ? 'auto_review' : 'user'
-          setApprovalsReviewer(nextReviewer)
+          setApprovalsReviewer(codexApprovalsReviewer(result.approvals_reviewer))
         } else if (control === 'goal_clear') {
           setGoal(null)
           setGoalDraft('')
@@ -1238,9 +1241,7 @@ export function CodexChat({
             collaborationModeRef.current = mode
             setCollaborationMode(mode)
           }
-          if (reviewer === 'user' || reviewer === 'auto_review') {
-            setApprovalsReviewer(reviewer)
-          }
+          if (reviewer === 'user' || reviewer === 'auto_review' || reviewer === 'guardian_subagent') setApprovalsReviewer(reviewer)
         }
         if (method === 'turn/started') {
           const startedTurn = record(params.turn)
@@ -1393,7 +1394,7 @@ export function CodexChat({
     }
   }, [sendControl])
 
-  const changeApprovalsReviewer = useCallback((reviewer: 'user' | 'auto_review') => {
+  const changeApprovalsReviewer = useCallback((reviewer: CodexApprovalsReviewer) => {
     sendControl('set_approvals_reviewer', { approvals_reviewer: reviewer })
   }, [sendControl])
 
@@ -1893,13 +1894,14 @@ export function CodexChat({
             id="codex-approval-reviewer"
             aria-label="承認モード"
             value={approvalsReviewer}
-            onChange={(event) => changeApprovalsReviewer(event.target.value === 'auto_review' ? 'auto_review' : 'user')}
+            onChange={(event) => changeApprovalsReviewer(codexApprovalsReviewer(event.target.value))}
             disabled={!connected || controlBusy}
             className="h-8 w-24 shrink-0 rounded-md border bg-background px-1.5 text-xs"
             title="Codexの承認要求を自動レビューするか選択"
           >
             <option value="user">承認: 手動</option>
             <option value="auto_review">承認: 自動</option>
+            <option value="guardian_subagent">承認: Guardian</option>
           </select>
           <span className="shrink-0 text-[10px] text-muted-foreground">最近</span>
           {recentCommands.length > 0 ? (
