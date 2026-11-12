@@ -150,6 +150,9 @@ type ServerInterface interface {
 	// CreateProject Register a directory as a project
 	// (POST /api/projects)
 	CreateProject(w http.ResponseWriter, r *http.Request)
+	// ListGitRepositories Find Git repositories below the selected project
+	// (GET /api/projects/git-repositories)
+	ListGitRepositories(w http.ResponseWriter, r *http.Request)
 	// GetProjectGitStatus Get git status summary for all projects
 	// (GET /api/projects/git-status)
 	GetProjectGitStatus(w http.ResponseWriter, r *http.Request)
@@ -1187,6 +1190,20 @@ func (siw *ServerInterfaceWrapper) CreateProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListGitRepositories operation middleware
+func (siw *ServerInterfaceWrapper) ListGitRepositories(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGitRepositories(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProjectGitStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetProjectGitStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -1561,6 +1578,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects", wrapper.ListProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/projects", wrapper.CreateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects/paths", wrapper.GetProjectPaths)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects/git-repositories", wrapper.ListGitRepositories)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/projects/{name}", wrapper.DeleteProject)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/projects/reorder", wrapper.ReorderProjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/projects/git-status", wrapper.GetProjectGitStatus)

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
+	"os"
 	"os/exec"
 	pathpkg "path"
 	"path/filepath"
@@ -375,6 +376,48 @@ func (s *Server) GetProjectPaths(w http.ResponseWriter, r *http.Request, params 
 		paths = []string{}
 	}
 	writeJSONResponse(w, http.StatusOK, paths)
+}
+
+func (s *Server) ListGitRepositories(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	root, err := filepath.Abs(app.Project.Path)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	repositories := make([]api.Project, 0)
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if errors.Is(walkErr, os.ErrPermission) {
+				return nil
+			}
+			return walkErr
+		}
+		if path == root {
+			return nil
+		}
+		if entry.Name() == ".git" {
+			if filepath.Dir(path) != root {
+				repositoryPath := filepath.Dir(path)
+				repositories = append(repositories, api.Project{Name: filepath.Base(repositoryPath), Path: repositoryPath})
+			}
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		return nil
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	sort.Slice(repositories, func(i, j int) bool { return repositories[i].Path < repositories[j].Path })
+	writeJSONResponse(w, http.StatusOK, repositories)
 }
 
 func (s *Server) GetProjectGitStatus(w http.ResponseWriter, r *http.Request) {

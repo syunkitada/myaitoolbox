@@ -1,7 +1,7 @@
 import { ReactNode, MouseEvent as ReactMouseEvent, RefObject, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useBlocker, useLocation, useParams } from 'react-router-dom'
-import { ApiError, Favorite, FileEntry, FileSearchResult, GitDetail, GitFile, HerdrOverview, TaskStatus, TaskTriggerRun, api } from '../api/client'
+import { ApiError, Favorite, FileEntry, FileSearchResult, GitDetail, GitFile, HerdrOverview, Project, TaskStatus, TaskTriggerRun, api } from '../api/client'
 import { SearchBar } from '../components/SearchBar'
 import { FileTabs } from '../components/FileTabs'
 import { GraphWorkspace } from '../components/GraphView/GraphWorkspace'
@@ -423,8 +423,12 @@ export function Explorer({ entries, selected, onSelect, onOpenProject, title, gi
   const { prompt, confirm, alert, showProgress, hideProgress } = useDialogs()
   const { start: startFileExecution } = useFileExecution()
   const [q, setQ] = useState('')
-  const [searchMode, setSearchMode] = useState<'name' | 'text'>('name')
+  const [searchMode, setSearchMode] = useState<'name' | 'text' | 'git'>('name')
   const [textResults, setTextResults] = useState<FileSearchResult[]>([])
+  const [gitProjects, setGitProjects] = useState<Project[]>([])
+  const [gitProjectRoot, setGitProjectRoot] = useState('')
+  const [gitProjectsLoading, setGitProjectsLoading] = useState(false)
+  const [gitProjectsError, setGitProjectsError] = useState<string | null>(null)
   const [textSearchQuery, setTextSearchQuery] = useState('')
   const [textSearchTotal, setTextSearchTotal] = useState(0)
   const [textSearchTruncated, setTextSearchTruncated] = useState(false)
@@ -789,7 +793,43 @@ export function Explorer({ entries, selected, onSelect, onOpenProject, title, gi
     return () => window.clearTimeout(timer)
   }, [q, runTextSearch, searchMode])
 
-  const selectSearchMode = (mode: 'name' | 'text') => {
+  useEffect(() => {
+    if (searchMode !== 'git') return
+    let cancelled = false
+    setGitProjectsLoading(true)
+    setGitProjectsError(null)
+    void Promise.all([api.listGitRepositories(), api.listProjects()])
+      .then(([projects, registeredProjects]) => {
+        if (cancelled) return
+        setGitProjects(projects)
+        setGitProjectRoot(registeredProjects.find((project) => project.name === getProject())?.path ?? '')
+      })
+      .catch((error) => {
+        if (!cancelled) setGitProjectsError(error instanceof Error ? error.message : String(error))
+      })
+      .finally(() => {
+        if (!cancelled) setGitProjectsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [searchMode])
+
+  const openGitProject = async (project: Project) => {
+    try {
+      const projects = await api.listProjects()
+      const existingPath = projects.find((entry) => entry.path === project.path)
+      const conflictingName = projects.find((entry) => entry.name === project.name && entry.path !== project.path)
+      if (!existingPath && conflictingName) {
+        throw new Error(`A different project named "${project.name}" is already registered.`)
+      }
+      const opened = existingPath ?? await api.createProject(project.path)
+      window.dispatchEvent(new Event('mybox:projects-changed'))
+      onOpenProject?.(opened.name)
+    } catch (error) {
+      runError(error)
+    }
+  }
+
+  const selectSearchMode = (mode: 'name' | 'text' | 'git') => {
     setSearchMode(mode)
     if (mode === 'name') {
       ++searchRequest.current
@@ -809,6 +849,26 @@ export function Explorer({ entries, selected, onSelect, onOpenProject, title, gi
         !needle || e.path.toLowerCase().includes(needle),
     )
   }, [entries, q])
+
+  const filteredGitProjects = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    const root = gitProjectRoot.replaceAll('\\', '/').replace(/\/+$/, '')
+    return gitProjects.filter((project) => {
+      const path = project.path.replaceAll('\\', '/')
+      const relativePath = root && path.toLowerCase().startsWith(`${root.toLowerCase()}/`)
+        ? path.slice(root.length + 1)
+        : path
+      return !needle || relativePath.toLowerCase().includes(needle)
+    })
+  }, [gitProjectRoot, gitProjects, q])
+
+  const relativeGitProjectPath = (project: Project) => {
+    const root = gitProjectRoot.replaceAll('\\', '/').replace(/\/+$/, '')
+    const path = project.path.replaceAll('\\', '/')
+    return root && path.toLowerCase().startsWith(`${root.toLowerCase()}/`)
+      ? path.slice(root.length + 1)
+      : path
+  }
 
   const tree = useMemo(() => buildTree(entries, gitStatus ?? {}), [entries, gitStatus])
 
@@ -1079,15 +1139,54 @@ export function Explorer({ entries, selected, onSelect, onOpenProject, title, gi
             <Search />
             Text
           </Button>
+          <Button
+            type="button"
+            variant={searchMode === 'git' ? 'secondary' : 'ghost'}
+            size="xs"
+            className="cursor-pointer"
+            aria-pressed={searchMode === 'git'}
+            onClick={() => selectSearchMode('git')}
+          >
+            <GitBranch />
+            Git
+          </Button>
         </div>
         <SearchBar
           value={q}
           onChange={setQ}
           onSubmit={submitSearch}
-          placeholder={searchMode === 'text' ? 'Search file contents…' : 'Search file names…'}
+          placeholder={searchMode === 'text' ? 'Search file contents…' : searchMode === 'git' ? 'Search Git projects…' : 'Search file names…'}
         />
       </div>
-      {entries.length === 0 ? (
+      {searchMode === 'git' ? (
+        <div className="flex min-h-0 flex-col gap-2">
+          {gitProjectsLoading && <p className="text-sm text-muted-foreground">Loading Git projects…</p>}
+          {gitProjectsError && <p className="text-sm text-destructive">{gitProjectsError}</p>}
+          {!gitProjectsLoading && !gitProjectsError && filteredGitProjects.length > 0 && (
+            <ul className="file-list m-0 flex list-none flex-col gap-1 p-0">
+              {filteredGitProjects.map((project) => {
+                const relativePath = relativeGitProjectPath(project)
+                return (
+                <li key={project.path}>
+                  <button
+                    type="button"
+                    className="flex min-w-0 w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+                    onClick={() => void openGitProject(project)}
+                    title={relativePath}
+                  >
+                    <GitBranch className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{relativePath}</span>
+                  </button>
+                </li>
+                )
+              })}
+            </ul>
+          )}
+          {!gitProjectsLoading && !gitProjectsError && filteredGitProjects.length === 0 && (
+            <p className="text-sm text-muted-foreground">No Git projects found.</p>
+          )}
+        </div>
+      ) : entries.length === 0 ? (
         <p className="muted text-sm text-muted-foreground">No files yet.</p>
       ) : searchMode === 'text' && filtering ? (
         <div className="flex min-h-0 flex-col gap-2">

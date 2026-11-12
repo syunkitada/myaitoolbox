@@ -56,6 +56,19 @@ paths:
                 type: array
                 items:
                   type: string
+  /api/projects/git-repositories:
+    get:
+      operationId: listGitRepositories
+      summary: Find Git repositories below the selected project
+      responses:
+        "200":
+          description: discovered Git repositories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
   /api/projects/{name}:
     delete:
       operationId: deleteProject

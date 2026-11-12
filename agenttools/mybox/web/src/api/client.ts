@@ -637,6 +637,8 @@ export const api = {
 
   listProjects: () => request<Project[]>('GET', '/api/projects'),
 
+  listGitRepositories: () => request<Project[]>('GET', '/api/projects/git-repositories'),
+
   createProject: (path: string) => request<Project>('POST', '/api/projects', { path }),
 
   deleteProject: (name: string) =>
