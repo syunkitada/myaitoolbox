@@ -10,6 +10,7 @@ AIエージェント向けのツール、Go製のMCP実装、個人ワークス�
 - `mymcpserve`: 複数のMCPサーバ実装を束ねて起動するランタイム
 - `mybox`: ローカルプロジェクトのタスク・ファイル・Git・AIエージェントなどを一元管理するワークスペースツール
 - `myntfy`: 保存済みtopicでntfy通知を送受信するCLI
+- `myherdr`: Codex向けのHerdr session、SSH運用skill、ローカルブラウザー端末を提供するCLI
 
 設計・構成の参考資料は [`docs/`](./docs/) に、リポジトリ全体の運用スクリプトは [`scripts/`](./scripts/) にあります。
 
@@ -52,7 +53,7 @@ myboxを運用するには、次の実行環境・ツールを用意します。
 | パス | 役割 |
 | --- | --- |
 | [`AGENTS.md`](./AGENTS.md) | リポジトリ全体のREADME整備と作業に関するガイドライン。 |
-| [`agenttools/`](./agenttools/) | `mymcp`、`mymcpserve`、`mybox`などのエージェント関連ツール。 |
+| [`agenttools/`](./agenttools/) | `mymcp`、`mymcpserve`、`mybox`、`myherdr`などのエージェント関連ツール。 |
 | [`docs/`](./docs/) | Goプロジェクトで共有する設計・構成・技術スタックの参考資料。 |
 | [`inbox/`](./inbox/) | 作業中の検証環境、提案、メモ。READMEは必須ではない領域。 |
 | [`scripts/`](./scripts/) | mybox、Tailscale、myntfyの運用補助スクリプト。 |

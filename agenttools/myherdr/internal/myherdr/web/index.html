@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>myherdr terminal</title>
+    <link rel="stylesheet" href="/assets/vendor/xterm.css">
+    <link rel="stylesheet" href="/assets/style.css">
+    <script defer src="/assets/vendor/xterm.js"></script>
+    <script defer src="/assets/vendor/addon-fit.js"></script>
+    <script defer src="/assets/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">MYHERDR</p>
+        <h1>Herdr terminal</h1>
+      </div>
+      <p id="connection-state" class="connection-state" role="status">準備中</p>
+    </header>
+
+    <main>
+      <section id="message-panel" class="message-panel" aria-live="polite">
+        <p id="message-title" class="message-title">セッションを確認しています</p>
+        <p id="message-detail" class="message-detail">Herdr の既存 pane を検索しています。</p>
+      </section>
+
+      <section id="pane-picker" class="pane-picker" hidden>
+        <h2>接続する pane を選択</h2>
+        <p class="muted">pane やセッションは作成しません。読み取り専用接続は制御権を取得しません。</p>
+        <div id="pane-list" class="pane-list"></div>
+      </section>
+
+      <section id="terminal-panel" class="terminal-panel" hidden>
+        <div class="terminal-toolbar">
+          <div>
+            <p id="terminal-target" class="terminal-target"></p>
+            <p id="terminal-mode" class="muted"></p>
+          </div>
+          <button id="back-button" type="button" class="secondary-button">pane 選択へ戻る</button>
+        </div>
+        <div id="terminal" class="terminal"></div>
+      </section>
+    </main>
+
+    <footer>
+      <p>このローカル URL は端末入力権限を渡します。信頼できるローカルユーザーだけに共有してください。</p>
+    </footer>
+  </body>
+</html>

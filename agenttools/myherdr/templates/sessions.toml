@@ -1,0 +1,6 @@
+# URL 名ごとに SSH host とリモート Herdr session を対応させます。
+# host は同じプロジェクトの .myherdr/ssh-hosts.md にも記載してください。
+
+[sessions.remote-codex]
+host = "devbox"
+herdr_session = "codex-project"

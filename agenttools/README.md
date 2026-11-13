@@ -11,3 +11,4 @@ AIエージェントやMCPを利用するためのツール群をまとめたデ
 | [`mybox/`](./mybox/) | ローカルプロジェクトのタスク・ファイル・Git・AIエージェントなどを管理するワークスペースツール。 |
 | [`mygit/`](./mygit/) | Git repositoryをmanifestとlockfileで管理する仕様・ツール。詳細は `mygit/docs/README.md` を参照。 |
 | [`myntfy/`](./myntfy/) | 保存済みtopicでntfy通知を送受信するCLI。 |
+| [`myherdr/`](./myherdr/) | プロジェクト別Herdr session、Codex skill、ブラウザー端末を提供するCLI。 |
