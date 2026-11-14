@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { ArrowLeft, Check, ChevronDown, Keyboard, Loader2, MessageSquarePlus, Pencil, RefreshCw, Send, Square, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, Keyboard, Loader2, MessageCircleQuestion, MessageSquarePlus, Pencil, RefreshCw, Send, Square, Trash2, X } from 'lucide-react'
 import { api, type CodexThread } from '../api/client'
 import { codexThreadWsUrl, encodePath, getBasePath, projectUrlFor } from '../utils/routes'
 import { Button } from './ui/button'
@@ -621,7 +621,7 @@ function formatUpdatedAt(value: number): string {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
 }
 
-type CodexThreadStatusKind = 'working' | 'blocked' | 'idle' | 'done' | 'unknown'
+type CodexThreadStatusKind = 'working' | 'input' | 'blocked' | 'idle' | 'done' | 'unknown'
 
 function codexThreadStatus(status: string): { kind: CodexThreadStatusKind; label: string } {
   const normalized = status.trim().toLowerCase().replace(/[\s_-]/g, '')
@@ -630,6 +630,10 @@ function codexThreadStatus(status: string): { kind: CodexThreadStatusKind; label
     case 'inprogress':
     case 'running':
       return { kind: 'working', label: '作業中' }
+    case 'input':
+    case 'waitingonuserinput':
+    case 'needsinput':
+      return { kind: 'input', label: '入力待ち' }
     case 'blocked':
     case 'waitingonapproval':
     case 'needsapproval':
@@ -658,6 +662,7 @@ export function CodexThreadStatus({ status, compact = false }: { status: string;
   const display = codexThreadStatus(status)
   const dotClass = {
     working: 'bg-blue-500',
+    input: 'bg-amber-500',
     blocked: 'bg-red-500',
     idle: 'bg-emerald-500',
     done: 'bg-violet-500',
@@ -670,7 +675,11 @@ export function CodexThreadStatus({ status, compact = false }: { status: string;
       title={`セッション状態: ${display.label}`}
       className={cn('inline-flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground', compact && 'size-8 justify-center')}
     >
-      <span aria-hidden="true" className={cn('rounded-full', compact ? 'size-3' : 'size-2', dotClass, display.kind === 'working' && 'animate-pulse')} />
+      {display.kind === 'input' ? (
+        <MessageCircleQuestion aria-hidden="true" className={cn(compact ? 'size-4' : 'size-3.5', 'text-amber-600 dark:text-amber-400')} />
+      ) : (
+        <span aria-hidden="true" className={cn('rounded-full', compact ? 'size-3' : 'size-2', dotClass, display.kind === 'working' && 'animate-pulse')} />
+      )}
       {!compact && display.label}
     </span>
   )
@@ -682,12 +691,14 @@ export function CodexChat({
   onThreadSelected,
   onFilePathClick,
   onSessionStatusChange,
+  onSelectedSessionStatusChange,
 }: {
   project: string
   requestedThreadId?: string | null
   onThreadSelected?: (threadId: string | null) => void
   onFilePathClick?: (path: string, line?: number) => void
   onSessionStatusChange?: (status: string | null) => void
+  onSelectedSessionStatusChange?: (session: { threadId: string; status: string } | null) => void
 }) {
   const { confirm, prompt } = useDialogs()
   const [threads, setThreads] = useState<CodexThread[]>([])
@@ -761,16 +772,17 @@ export function CodexChat({
 
   const sessionStatus = useMemo(() => {
     if (!selectedThread) return null
+    if (pendingRequests.some((request) => request.method === 'item/tool/requestUserInput')) return 'input'
     if (pendingRequests.length > 0) return 'blocked'
     if (active) return 'active'
     const latestTurn = turns[turns.length - 1]
     return string(latestTurn?.status) || selectedThread.status
-  }, [active, pendingRequests.length, selectedThread, turns])
+  }, [active, pendingRequests, selectedThread, turns])
   const representativeStatus = useMemo(() => {
     const statuses = new Map(threads.map((thread) => [thread.thread_id, thread.status] as const))
     if (selectedThread) statuses.set(selectedThread.thread_id, sessionStatus || selectedThread.status)
     const values = [...statuses.values()]
-    for (const kind of ['blocked', 'done', 'working', 'idle', 'unknown'] as const) {
+    for (const kind of ['input', 'blocked', 'done', 'working', 'idle', 'unknown'] as const) {
       const representative = values.find((status) => codexThreadStatus(status).kind === kind)
       if (representative) return representative
     }
@@ -780,6 +792,10 @@ export function CodexChat({
   useEffect(() => {
     onSessionStatusChange?.(representativeStatus)
   }, [onSessionStatusChange, representativeStatus])
+
+  useEffect(() => {
+    onSelectedSessionStatusChange?.(selectedThread ? { threadId: selectedThread.thread_id, status: sessionStatus || selectedThread.status } : null)
+  }, [onSelectedSessionStatusChange, selectedThread, sessionStatus])
 
   useEffect(() => {
     setRecentCommandState({ project, ids: readCodexRecentCommandIds(project) })

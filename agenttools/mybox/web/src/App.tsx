@@ -65,9 +65,15 @@ export default function App() {
   const herdr = useHerdrOverview(5000, myboxFocusedPaneId)
   const [pendingOpenAgentPaneId, setPendingOpenAgentPaneId] = useState<string | null>(null)
   const [codexFaviconSession, setCodexFaviconSession] = useState<{ project: string; status: string } | null>(null)
-  const codexFaviconStatus = agentSidebar.mode === 'codex' && codexFaviconSession?.project === project
-    ? codexFaviconSession.status
-    : null
+  const [codexSelectedSessionStatus, setCodexSelectedSessionStatus] = useState<{ project: string; threadId: string; status: string } | null>(null)
+  const selectedCodexInputWait = agentSidebar.mode === 'codex'
+    && codexSelectedSessionStatus?.project === project
+    && codexSelectedSessionStatus.status === 'input'
+  const codexFaviconStatus = selectedCodexInputWait
+    ? 'input'
+    : agentSidebar.mode === 'codex' && codexFaviconSession?.project === project
+      ? codexFaviconSession.status
+      : null
   const agentStatus = summarizeAgentStatuses(projectAgentsFor(herdr.overview, project), codexFaviconStatus)
   useAgentFavicon(herdr.overview, codexFaviconStatus)
 
@@ -219,6 +225,7 @@ export default function App() {
         myboxFocusedPaneId={myboxFocusedPaneId}
         agentSidebarOpen={agentSidebar.open}
         onOpenCodexSession={handleOpenCodexSession}
+        codexSelectedSessionStatus={selectedCodexInputWait ? codexSelectedSessionStatus : null}
       />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
@@ -385,6 +392,7 @@ export default function App() {
           codexThreadId={agentSidebar.codexThreadId}
           onCodexThreadIdChange={agentSidebar.setCodexThreadId}
           onCodexSessionStatusChange={setCodexFaviconSession}
+          onCodexSelectedSessionStatusChange={setCodexSelectedSessionStatus}
           onWidthChange={setAgentSidebarWidth}
           openAgentPaneId={agentSidebar.paneId}
           drafts={agentSidebar.drafts}

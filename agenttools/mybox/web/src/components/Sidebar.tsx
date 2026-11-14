@@ -30,6 +30,7 @@ interface SidebarProps {
   myboxFocusedPaneId?: string | null
   agentSidebarOpen?: boolean
   onOpenCodexSession?: (project: string, threadId: string) => void
+  codexSelectedSessionStatus?: { project: string; threadId: string; status: string } | null
 }
 
 const STATS_REFRESH_INTERVAL_MS = 5000
@@ -94,6 +95,9 @@ function isActiveCodexSession(status: string): boolean {
     'active',
     'inprogress',
     'running',
+    'input',
+    'waitingonuserinput',
+    'needsinput',
     'blocked',
     'waitingonapproval',
     'needsapproval',
@@ -101,7 +105,7 @@ function isActiveCodexSession(status: string): boolean {
   ].includes(normalized)
 }
 
-function useActiveCodexSessions(projects: string[]): {
+function useActiveCodexSessions(projects: string[], selectedStatus: { project: string; threadId: string; status: string } | null): {
   sessions: CodexSidebarSession[]
   acknowledge: (project: string, threadId: string) => void
 } {
@@ -147,9 +151,14 @@ function useActiveCodexSessions(projects: string[]): {
         const since = Math.max(0, (current.lastPolledAt || requestStartedAt) - 2)
         const result = await api.listActiveCodexSessions(since)
         if (cancelled) return
-        const active = result.sessions.filter(({ thread }) => isActiveCodexSession(thread.status))
+        const sessions = result.sessions.map((session) => (
+          selectedStatus?.project === session.project && selectedStatus.threadId === session.thread.thread_id
+            ? { ...session, thread: { ...session.thread, status: selectedStatus.status } }
+            : session
+        ))
+        const active = sessions.filter(({ thread }) => isActiveCodexSession(thread.status))
         const activeKeys = new Set(active.map(codexSessionKey))
-        const terminal = result.sessions.filter(({ thread }) => !isActiveCodexSession(thread.status))
+        const terminal = sessions.filter(({ thread }) => !isActiveCodexSession(thread.status))
         const terminalKeys = new Set(terminal.map(codexSessionKey))
         updateSidebarState((current) => {
           const previousActiveByKey = new Map(current.active.map((session) => [codexSessionKey(session), session]))
@@ -214,7 +223,7 @@ function useActiveCodexSessions(projects: string[]): {
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [projectKey, updateSidebarState])
+  }, [projectKey, selectedStatus?.project, selectedStatus?.threadId, selectedStatus?.status, updateSidebarState])
 
   const sessions: CodexSidebarSession[] = [
     ...sidebarState.active.map((session) => ({ ...session, unconfirmed: false })),
@@ -448,13 +457,19 @@ function SidebarFocusDebug({
   )
 }
 
-export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId = null, agentSidebarOpen = false, onOpenCodexSession }: SidebarProps) {
+export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId = null, agentSidebarOpen = false, onOpenCodexSession, codexSelectedSessionStatus = null }: SidebarProps) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { setOpenMobile, state } = useSidebar()
   const collapsed = state === 'collapsed'
   const sidebarStats = useSidebarStats()
-  const codexSidebarSessions = useActiveCodexSessions(meta?.projects ?? [])
+  const codexSidebarSessions = useActiveCodexSessions(meta?.projects ?? [], codexSelectedSessionStatus)
+  const sessionsWithSelectedStatus = codexSidebarSessions.sessions.map((session) => (
+    codexSelectedSessionStatus?.project === session.project
+    && codexSelectedSessionStatus.threadId === session.thread.thread_id
+      ? { ...session, thread: { ...session.thread, status: codexSelectedSessionStatus.status } }
+      : session
+  ))
   const agentNavigationRequestRef = useRef(0)
 
   const handleNav = () => {
@@ -677,7 +692,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
               </SidebarMenuItem>
             )
           })}
-          {codexSidebarSessions.sessions.map(({ project: sessionProject, thread, unconfirmed }) => (
+          {sessionsWithSelectedStatus.map(({ project: sessionProject, thread, unconfirmed }) => (
             <SidebarMenuItem key={`${sessionProject}:${thread.thread_id}`}>
               <SidebarMenuButton
                 onClick={(event) => {

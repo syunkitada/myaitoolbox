@@ -4,6 +4,7 @@ export type AgentStatus = 'working' | 'blocked' | 'idle' | 'done' | string
 
 export const AGENT_STATUS_CLASSES: Record<string, string> = {
   working: 'bg-blue-500',
+  input: 'bg-amber-500',
   blocked: 'bg-red-500',
   idle: 'bg-emerald-500',
   done: 'bg-violet-500',

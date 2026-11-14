@@ -5,6 +5,7 @@ import { normalizeAgentStatus } from '../utils/agent-sidebar-status'
 // Hex values mirror AGENT_STATUS_CLASSES in components/herdr-status.tsx.
 const STATUS_COLORS: Record<string, string> = {
   working: '#3b82f6',
+  input: '#f59e0b',
   blocked: '#ef4444',
   idle: '#10b981',
   done: '#8b5cf6',
@@ -13,7 +14,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 // Attention order mirrors herdr's state rollup: the workspace rolls up to the
 // most urgent pane state (blocked > done > working > idle > unknown).
-const STATUS_PRIORITY = ['blocked', 'done', 'working', 'idle', 'unknown']
+const STATUS_PRIORITY = ['input', 'blocked', 'done', 'working', 'idle', 'unknown']
 
 const FAVICON_SELECTOR = 'link[rel="icon"]'
 

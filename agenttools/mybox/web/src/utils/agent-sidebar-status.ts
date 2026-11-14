@@ -1,6 +1,6 @@
 import type { HerdrAgent, HerdrOverview } from '../api/client'
 
-const STATUS_PRIORITY = ['blocked', 'done', 'working', 'idle', 'unknown']
+const STATUS_PRIORITY = ['input', 'blocked', 'done', 'working', 'idle', 'unknown']
 
 export function normalizeAgentStatus(status: string): string {
   switch (status.trim().toLowerCase().replace(/[\s_-]/g, '')) {
@@ -9,6 +9,10 @@ export function normalizeAgentStatus(status: string): string {
     case 'inprogress':
     case 'running':
       return 'working'
+    case 'input':
+    case 'waitingonuserinput':
+    case 'needsinput':
+      return 'input'
     case 'blocked':
     case 'waitingonapproval':
     case 'needsapproval':
