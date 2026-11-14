@@ -29,7 +29,7 @@ const (
 	codexAppServerRequestTimeout        = 45 * time.Second
 	codexAppServerStartTimeout          = 30 * time.Second
 	codexAppServerMaxLine               = 32 << 20
-	codexAppServerMaxPrompt             = 10000
+	codexAppServerMaxGoal               = 10000
 	codexAppServerMaxClientMessageBytes = 1 << 20
 	codexAppServerMaxPlanPromptBytes    = codexAppServerMaxClientMessageBytes
 	codexThreadPageSize                 = 100
@@ -1558,8 +1558,8 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 			if len([]byte(text)) > codexAppServerMaxPlanPromptBytes {
 				return nil, errors.New("plan handoff exceeds the 1 MiB message limit")
 			}
-		} else if text == "" || len([]rune(text)) > codexAppServerMaxPrompt {
-			return nil, errors.New("prompt must contain between 1 and 10000 characters")
+		} else if text == "" {
+			return nil, errors.New("prompt must not be empty")
 		}
 		latest, err := latestCodexTurn(ctx, p, key.thread)
 		if err != nil {
@@ -1676,7 +1676,7 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 		return json.RawMessage(result), err
 	case "goal_set":
 		objective := strings.TrimSpace(request.Objective)
-		if objective == "" || len([]rune(objective)) > codexAppServerMaxPrompt {
+		if objective == "" || len([]rune(objective)) > codexAppServerMaxGoal {
 			return nil, errors.New("goal must contain between 1 and 10000 characters")
 		}
 		result, err := p.request(ctx, "thread/goal/set", map[string]any{
