@@ -54,7 +54,7 @@ interface AgentSidebarProps {
   codexThreadId?: string | null
   onCodexThreadIdChange?: (threadId: string | null) => void
   onCodexSessionStatusChange?: (session: { project: string; status: string } | null) => void
-  onCodexSelectedSessionStatusChange?: (session: { project: string; threadId: string; status: string } | null) => void
+  onCodexSelectedSessionStatusChange?: (session: { project: string; threadId: string; status: string }) => void
   onWidthChange?: (width: number) => void
   openAgentPaneId: string | null
   drafts: Record<string, string>
@@ -166,16 +166,15 @@ export function AgentSidebar({
   }, [onCodexSessionStatusChange, project])
 
   const handleCodexSelectedSessionStatusChange = useCallback((session: { threadId: string; status: string } | null) => {
-    onCodexSelectedSessionStatusChange?.(session ? { project, ...session } : null)
+    if (session) onCodexSelectedSessionStatusChange?.({ project, ...session })
   }, [onCodexSelectedSessionStatusChange, project])
 
   useEffect(() => {
     if (mode !== 'codex') {
       setCodexSessionStatus(null)
       onCodexSessionStatusChange?.(null)
-      onCodexSelectedSessionStatusChange?.(null)
     }
-  }, [mode, onCodexSessionStatusChange, onCodexSelectedSessionStatusChange])
+  }, [mode, onCodexSessionStatusChange])
 
   useEffect(() => {
     if (!requestedCodexThreadId) return
