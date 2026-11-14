@@ -30,7 +30,7 @@ interface SidebarProps {
   myboxFocusedPaneId?: string | null
   agentSidebarOpen?: boolean
   onOpenCodexSession?: (project: string, threadId: string) => void
-  codexAttentionStatuses?: Record<string, string>
+  onCodexAttentionStatusChange?: (status: string | null) => void
 }
 
 const STATS_REFRESH_INTERVAL_MS = 5000
@@ -105,7 +105,7 @@ function isActiveCodexSession(status: string): boolean {
   ].includes(normalized)
 }
 
-function useActiveCodexSessions(projects: string[], attentionStatuses: Record<string, string>): {
+function useActiveCodexSessions(projects: string[]): {
   sessions: CodexSidebarSession[]
   acknowledge: (project: string, threadId: string) => void
 } {
@@ -151,12 +151,7 @@ function useActiveCodexSessions(projects: string[], attentionStatuses: Record<st
         const since = Math.max(0, (current.lastPolledAt || requestStartedAt) - 2)
         const result = await api.listActiveCodexSessions(since)
         if (cancelled) return
-        const sessions = result.sessions.map((session) => {
-          const status = attentionStatuses[`${session.project}\0${session.thread.thread_id}`]
-          return status
-            ? { ...session, thread: { ...session.thread, status } }
-            : session
-        })
+        const sessions = result.sessions
         const active = sessions.filter(({ thread }) => isActiveCodexSession(thread.status))
         const activeKeys = new Set(active.map(codexSessionKey))
         const terminal = sessions.filter(({ thread }) => !isActiveCodexSession(thread.status))
@@ -224,7 +219,7 @@ function useActiveCodexSessions(projects: string[], attentionStatuses: Record<st
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [projectKey, attentionStatuses, updateSidebarState])
+  }, [projectKey, updateSidebarState])
 
   const sessions: CodexSidebarSession[] = [
     ...sidebarState.active.map((session) => ({ ...session, unconfirmed: false })),
@@ -458,18 +453,18 @@ function SidebarFocusDebug({
   )
 }
 
-export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId = null, agentSidebarOpen = false, onOpenCodexSession, codexAttentionStatuses = {} }: SidebarProps) {
+export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId = null, agentSidebarOpen = false, onOpenCodexSession, onCodexAttentionStatusChange }: SidebarProps) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { setOpenMobile, state } = useSidebar()
   const collapsed = state === 'collapsed'
   const sidebarStats = useSidebarStats()
-  const codexSidebarSessions = useActiveCodexSessions(meta?.projects ?? [], codexAttentionStatuses)
-  const sessionsWithSelectedStatus = codexSidebarSessions.sessions.map((session) => (
-    codexAttentionStatuses[`${session.project}\0${session.thread.thread_id}`]
-      ? { ...session, thread: { ...session.thread, status: codexAttentionStatuses[`${session.project}\0${session.thread.thread_id}`] } }
-      : session
-  ))
+  const codexSidebarSessions = useActiveCodexSessions(meta?.projects ?? [])
+  useEffect(() => {
+    const statuses = codexSidebarSessions.sessions.map(({ thread }) => thread.status)
+    const attentionStatus = statuses.includes('blocked') ? 'blocked' : statuses.includes('input') ? 'input' : null
+    onCodexAttentionStatusChange?.(attentionStatus)
+  }, [codexSidebarSessions.sessions, onCodexAttentionStatusChange])
   const agentNavigationRequestRef = useRef(0)
 
   const handleNav = () => {
@@ -692,7 +687,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
               </SidebarMenuItem>
             )
           })}
-          {sessionsWithSelectedStatus.map(({ project: sessionProject, thread, unconfirmed }) => (
+          {codexSidebarSessions.sessions.map(({ project: sessionProject, thread, unconfirmed }) => (
             <SidebarMenuItem key={`${sessionProject}:${thread.thread_id}`}>
               <SidebarMenuButton
                 onClick={(event) => {

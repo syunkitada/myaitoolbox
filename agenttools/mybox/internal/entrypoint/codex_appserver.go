@@ -51,6 +51,7 @@ type codexAppServerManager struct {
 	clientsMu       sync.Mutex
 	clients         map[codexThreadKey]map[*codexStreamClient]struct{}
 	pendingRequests map[string]codexPendingServerRequest
+	monitorSlots    chan struct{}
 }
 
 type codexThreadSubscription struct {
@@ -63,6 +64,8 @@ type codexThreadSubscription struct {
 	idleTimer         *time.Timer
 	retryTimer        *time.Timer
 	unknown           bool
+	monitored         bool
+	monitoring        bool
 	collaborationMode json.RawMessage
 	approvalsReviewer string
 }
@@ -149,6 +152,7 @@ func newCodexAppServerManager() *codexAppServerManager {
 		threadSubs:      make(map[codexThreadSubscriptionKey]*codexThreadSubscription),
 		clients:         make(map[codexThreadKey]map[*codexStreamClient]struct{}),
 		pendingRequests: make(map[string]codexPendingServerRequest),
+		monitorSlots:    make(chan struct{}, 32),
 	}
 }
 
@@ -223,6 +227,142 @@ func (m *codexAppServerManager) attachThread(ctx context.Context, p *codexAppSer
 	}
 	state.clients = 1
 	return append(json.RawMessage(nil), state.collaborationMode...), state.approvalsReviewer, nil
+}
+
+func (m *codexAppServerManager) scheduleThreadMonitor(p *codexAppServerProcess, key codexThreadKey) {
+	select {
+	case m.monitorSlots <- struct{}{}:
+	default:
+		return
+	}
+	state := m.threadSubscription(key, p)
+	state.mu.Lock()
+	if state.monitored || state.monitoring || state.expired {
+		state.mu.Unlock()
+		<-m.monitorSlots
+		return
+	}
+	state.monitoring = true
+	state.mu.Unlock()
+	go func() {
+		defer func() {
+			<-m.monitorSlots
+			state.mu.Lock()
+			state.monitoring = false
+			state.mu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := m.monitorThread(ctx, p, key); err != nil && !isCodexActiveWriterConflict(err) {
+			log.Printf("mybox: failed to monitor active Codex thread %s: %v", key.thread, err)
+		}
+	}()
+}
+
+func (m *codexAppServerManager) monitorThread(ctx context.Context, p *codexAppServerProcess, key codexThreadKey) error {
+	state := m.threadSubscription(key, p)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.monitored || state.expired {
+		return nil
+	}
+	select {
+	case <-p.done:
+		return errors.New("Codex app-server is not running")
+	default:
+	}
+	if state.unknown {
+		if _, err := p.request(ctx, "thread/unsubscribe", map[string]string{"threadId": key.thread}); err != nil {
+			return err
+		}
+		state.subscribed = false
+		state.unknown = false
+	}
+	if !state.subscribed {
+		result, err := p.request(ctx, "thread/resume", map[string]any{"threadId": key.thread, "excludeTurns": true})
+		if err != nil {
+			return err
+		}
+		var resumed struct {
+			CollaborationMode json.RawMessage `json:"collaborationMode"`
+			ApprovalsReviewer string          `json:"approvalsReviewer"`
+		}
+		if json.Unmarshal(result, &resumed) == nil && len(resumed.CollaborationMode) > 0 && string(resumed.CollaborationMode) != "null" {
+			state.collaborationMode = append(json.RawMessage(nil), resumed.CollaborationMode...)
+		}
+		state.approvalsReviewer = resumed.ApprovalsReviewer
+		state.subscribed = true
+		state.materialized = true
+	}
+	state.monitored = true
+	return nil
+}
+
+func (m *codexAppServerManager) stopThreadMonitor(p *codexAppServerProcess, key codexThreadKey) {
+	m.threadSubMu.Lock()
+	state := m.threadSubs[codexThreadSubscriptionKey{thread: key, process: p}]
+	m.threadSubMu.Unlock()
+	if state == nil {
+		return
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if !state.monitored {
+		return
+	}
+	state.monitored = false
+	if state.clients > 0 {
+		return
+	}
+	if !state.subscribed {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), codexAppServerRequestTimeout)
+	defer cancel()
+	if _, err := p.request(ctx, "thread/unsubscribe", map[string]string{"threadId": key.thread}); err != nil {
+		log.Printf("mybox: failed to unsubscribe inactive Codex thread %s: %v", key.thread, err)
+		state.unknown = true
+		m.scheduleSubscriptionRetryLocked(p, key, state)
+		return
+	}
+	state.subscribed = false
+	state.unknown = false
+}
+
+func (m *codexAppServerManager) pendingStatus(project, thread string) string {
+	m.clientsMu.Lock()
+	defer m.clientsMu.Unlock()
+	status := ""
+	for _, request := range m.pendingRequests {
+		if request.project != project || request.thread != thread {
+			continue
+		}
+		if request.method == "item/tool/requestUserInput" {
+			status = "input"
+		} else {
+			return "blocked"
+		}
+	}
+	return status
+}
+
+func (m *codexAppServerManager) pendingStatuses(project string) map[string]string {
+	m.clientsMu.Lock()
+	defer m.clientsMu.Unlock()
+	statuses := make(map[string]string)
+	for _, request := range m.pendingRequests {
+		if request.project != project {
+			continue
+		}
+		if request.method == "item/tool/requestUserInput" {
+			if statuses[request.thread] == "" {
+				statuses[request.thread] = "input"
+			}
+		} else {
+			statuses[request.thread] = "blocked"
+		}
+	}
+	return statuses
 }
 
 func (m *codexAppServerManager) retainStartedThread(p *codexAppServerProcess, key codexThreadKey, thread codexThreadRecord, collaborationMode json.RawMessage, approvalsReviewer string) {
@@ -356,7 +496,7 @@ func (m *codexAppServerManager) detachThread(p *codexAppServerProcess, key codex
 		return
 	}
 	state.clients--
-	if state.clients > 0 || !state.subscribed {
+	if state.clients > 0 || state.monitored || !state.subscribed {
 		return
 	}
 	if !state.materialized {
@@ -824,6 +964,8 @@ func (m *codexAppServerManager) processExited(p *codexAppServerProcess) {
 		}
 		state.subscribed = false
 		state.unknown = false
+		state.monitored = false
+		state.monitoring = false
 		state.expired = true
 		state.mu.Unlock()
 	}
@@ -962,6 +1104,26 @@ func (m *codexAppServerManager) handleNotification(message codexRPCMessage) {
 	m.broadcastThread(threadID, map[string]any{
 		"type": "notification", "method": message.Method, "params": message.Params,
 	})
+	if message.Method == "turn/completed" {
+		go m.stopMonitorsForThread(threadID)
+	}
+}
+
+func (m *codexAppServerManager) stopMonitorsForThread(threadID string) {
+	m.threadSubMu.Lock()
+	keys := make([]codexThreadSubscriptionKey, 0)
+	for subscriptionKey := range m.threadSubs {
+		if subscriptionKey.thread.thread == threadID {
+			keys = append(keys, subscriptionKey)
+		}
+	}
+	m.threadSubMu.Unlock()
+	for _, subscriptionKey := range keys {
+		key := subscriptionKey.thread
+		if m.pendingStatus(key.project, key.thread) == "" {
+			m.stopThreadMonitor(subscriptionKey.process, key)
+		}
+	}
 }
 
 func isCodexApprovalsReviewer(reviewer string) bool {
@@ -1033,12 +1195,24 @@ func (m *codexAppServerManager) handleServerRequest(p *codexAppServerProcess, me
 			break
 		}
 	}
+	m.clientsMu.Unlock()
+	if project == "" {
+		m.threadSubMu.Lock()
+		for subscriptionKey := range m.threadSubs {
+			if subscriptionKey.process == p && subscriptionKey.thread.thread == threadID {
+				project = subscriptionKey.thread.project
+				break
+			}
+		}
+		m.threadSubMu.Unlock()
+	}
 	if project != "" {
+		m.clientsMu.Lock()
 		m.pendingRequests[key] = codexPendingServerRequest{
 			id: message.ID, method: message.Method, project: project, thread: threadID, params: message.Params, process: p,
 		}
+		m.clientsMu.Unlock()
 	}
-	m.clientsMu.Unlock()
 	if project == "" {
 		_ = p.writeServerResponse(message.ID, nil, &codexRPCError{Code: -32601, Message: "no mybox client is attached to this Codex request"})
 		return
@@ -1158,6 +1332,12 @@ func (s *Server) ListCodexThreads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	threads = mergeStartedCodexThreads(threads, s.codexAppServer.unmaterializedThreads(p, app.Project.Name))
+	statuses := s.codexAppServer.pendingStatuses(app.Project.Name)
+	for index := range threads {
+		if status := statuses[threads[index].ThreadId]; status != "" {
+			threads[index].Status = status
+		}
+	}
 	writeJSONResponse(w, http.StatusOK, api.CodexThreadList{Threads: threads, Truncated: truncated})
 }
 
@@ -1219,6 +1399,17 @@ func (s *Server) ListCodexActiveSessions(w http.ResponseWriter, r *http.Request,
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	for index := range sessions {
+		key := codexThreadKey{project: sessions[index].Project, thread: sessions[index].Thread.ThreadId}
+		if isCodexActiveStatus(sessions[index].Thread.Status) {
+			s.codexAppServer.scheduleThreadMonitor(p, key)
+		} else {
+			go s.codexAppServer.stopThreadMonitor(p, key)
+		}
+		if status := s.codexAppServer.pendingStatus(key.project, key.thread); status != "" {
+			sessions[index].Thread.Status = status
+		}
 	}
 	writeJSONResponse(w, http.StatusOK, api.CodexActiveSessionList{Sessions: sessions, Truncated: truncated})
 }

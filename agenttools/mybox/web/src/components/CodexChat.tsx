@@ -691,14 +691,12 @@ export function CodexChat({
   onThreadSelected,
   onFilePathClick,
   onSessionStatusChange,
-  onSelectedSessionStatusChange,
 }: {
   project: string
   requestedThreadId?: string | null
   onThreadSelected?: (threadId: string | null) => void
   onFilePathClick?: (path: string, line?: number) => void
   onSessionStatusChange?: (status: string | null) => void
-  onSelectedSessionStatusChange?: (session: { threadId: string; status: string }) => void
 }) {
   const { confirm, prompt } = useDialogs()
   const [threads, setThreads] = useState<CodexThread[]>([])
@@ -792,10 +790,6 @@ export function CodexChat({
   useEffect(() => {
     onSessionStatusChange?.(representativeStatus)
   }, [onSessionStatusChange, representativeStatus])
-
-  useEffect(() => {
-    if (selectedThread) onSelectedSessionStatusChange?.({ threadId: selectedThread.thread_id, status: sessionStatus || selectedThread.status })
-  }, [onSelectedSessionStatusChange, selectedThread, sessionStatus])
 
   useEffect(() => {
     setRecentCommandState({ project, ids: readCodexRecentCommandIds(project) })

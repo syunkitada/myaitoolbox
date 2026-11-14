@@ -65,30 +65,13 @@ export default function App() {
   const herdr = useHerdrOverview(5000, myboxFocusedPaneId)
   const [pendingOpenAgentPaneId, setPendingOpenAgentPaneId] = useState<string | null>(null)
   const [codexFaviconSession, setCodexFaviconSession] = useState<{ project: string; status: string } | null>(null)
-  const [codexAttentionStatuses, setCodexAttentionStatuses] = useState<Record<string, string>>({})
-  const codexAttentionValues = Object.values(codexAttentionStatuses)
-  const codexAttentionStatus = codexAttentionValues.includes('blocked')
-    ? 'blocked'
-    : codexAttentionValues.includes('input') ? 'input' : null
+  const [codexAttentionStatus, setCodexAttentionStatus] = useState<string | null>(null)
   const codexFaviconStatus = codexAttentionStatus ?? (agentSidebar.mode === 'codex' && codexFaviconSession?.project === project
     ? codexFaviconSession.status
     : null)
   const agentStatus = summarizeAgentStatuses(projectAgentsFor(herdr.overview, project), codexFaviconStatus)
   useAgentFavicon(herdr.overview, codexFaviconStatus)
 
-  const handleCodexSelectedSessionStatusChange = useCallback((session: { project: string; threadId: string; status: string }) => {
-    const key = `${session.project}\0${session.threadId}`
-    setCodexAttentionStatuses((current) => {
-      if (session.status === 'input' || session.status === 'blocked') {
-        if (current[key] === session.status) return current
-        return { ...current, [key]: session.status }
-      }
-      if (!(key in current)) return current
-      const next = { ...current }
-      delete next[key]
-      return next
-    })
-  }, [])
 
   const handleAgentSidebarFocusChange = useCallback((paneId: string | null) => {
     setAgentSidebarFocusedPaneId(paneId)
@@ -238,7 +221,7 @@ export default function App() {
         myboxFocusedPaneId={myboxFocusedPaneId}
         agentSidebarOpen={agentSidebar.open}
         onOpenCodexSession={handleOpenCodexSession}
-        codexAttentionStatuses={codexAttentionStatuses}
+        onCodexAttentionStatusChange={setCodexAttentionStatus}
       />
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
@@ -405,7 +388,6 @@ export default function App() {
           codexThreadId={agentSidebar.codexThreadId}
           onCodexThreadIdChange={agentSidebar.setCodexThreadId}
           onCodexSessionStatusChange={setCodexFaviconSession}
-          onCodexSelectedSessionStatusChange={handleCodexSelectedSessionStatusChange}
           onWidthChange={setAgentSidebarWidth}
           openAgentPaneId={agentSidebar.paneId}
           drafts={agentSidebar.drafts}

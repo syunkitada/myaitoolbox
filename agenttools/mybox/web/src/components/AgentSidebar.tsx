@@ -54,7 +54,6 @@ interface AgentSidebarProps {
   codexThreadId?: string | null
   onCodexThreadIdChange?: (threadId: string | null) => void
   onCodexSessionStatusChange?: (session: { project: string; status: string } | null) => void
-  onCodexSelectedSessionStatusChange?: (session: { project: string; threadId: string; status: string }) => void
   onWidthChange?: (width: number) => void
   openAgentPaneId: string | null
   drafts: Record<string, string>
@@ -100,7 +99,6 @@ export function AgentSidebar({
   codexThreadId = null,
   onCodexThreadIdChange,
   onCodexSessionStatusChange,
-  onCodexSelectedSessionStatusChange,
   onWidthChange,
   openAgentPaneId,
   drafts,
@@ -164,10 +162,6 @@ export function AgentSidebar({
     setCodexSessionStatus(session)
     onCodexSessionStatusChange?.(session)
   }, [onCodexSessionStatusChange, project])
-
-  const handleCodexSelectedSessionStatusChange = useCallback((session: { threadId: string; status: string } | null) => {
-    if (session) onCodexSelectedSessionStatusChange?.({ project, ...session })
-  }, [onCodexSelectedSessionStatusChange, project])
 
   useEffect(() => {
     if (mode !== 'codex') {
@@ -488,7 +482,6 @@ export function AgentSidebar({
             onThreadSelected={handleCodexThreadSelected}
             onFilePathClick={onFilePathClick}
             onSessionStatusChange={handleCodexSessionStatusChange}
-            onSelectedSessionStatusChange={handleCodexSelectedSessionStatusChange}
           />
           {executionRuns && <div className="max-h-48 shrink-0 overflow-y-auto border-t px-3 py-2">{executionRuns}</div>}
         </div>
