@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
-import { projectAgentsFor } from '../utils/agent-sidebar-status'
+import { highestPriorityAgentStatus, normalizeAgentStatus, projectAgentsFor } from '../utils/agent-sidebar-status'
 import { CodexThreadStatus } from './CodexChat'
 
 interface SidebarProps {
@@ -46,6 +46,7 @@ interface CodexSidebarState {
 
 interface CodexSidebarSession extends CodexActiveSession {
   unconfirmed: boolean
+  stale: boolean
 }
 
 function codexSessionKey(session: CodexActiveSession): string {
@@ -110,6 +111,12 @@ function useActiveCodexSessions(projects: string[]): {
   acknowledge: (project: string, threadId: string) => void
 } {
   const [sidebarState, setSidebarState] = useState<CodexSidebarState>(loadCodexSidebarState)
+  const [staleSessionKeys, setStaleSessionKeys] = useState<string[]>(() => {
+    const stale = sidebarState.active.length > 0
+      && (sidebarState.lastPolledAt === 0
+        || Date.now() / 1000 - sidebarState.lastPolledAt > CODEX_SESSIONS_REFRESH_INTERVAL_MS / 1000)
+    return stale ? sidebarState.active.map(codexSessionKey) : []
+  })
   const sidebarStateRef = useRef(sidebarState)
   const projectKey = projects.join('\0')
 
@@ -154,6 +161,13 @@ function useActiveCodexSessions(projects: string[]): {
         const sessions = result.sessions
         const active = sessions.filter(({ thread }) => isActiveCodexSession(thread.status))
         const activeKeys = new Set(active.map(codexSessionKey))
+        const returnedKeys = new Set(sessions.map(codexSessionKey))
+        const staleKeys = result.truncated
+          ? sidebarStateRef.current.active
+            .map(codexSessionKey)
+            .filter((key) => !returnedKeys.has(key))
+          : []
+        setStaleSessionKeys(staleKeys)
         const terminal = sessions.filter(({ thread }) => !isActiveCodexSession(thread.status))
         const terminalKeys = new Set(terminal.map(codexSessionKey))
         updateSidebarState((current) => {
@@ -201,6 +215,7 @@ function useActiveCodexSessions(projects: string[]): {
         })
       } catch {
         // Keep the latest known statuses when app-server polling is temporarily unavailable.
+        if (!cancelled) setStaleSessionKeys(sidebarStateRef.current.active.map(codexSessionKey))
       } finally {
         loading = false
       }
@@ -222,8 +237,12 @@ function useActiveCodexSessions(projects: string[]): {
   }, [projectKey, updateSidebarState])
 
   const sessions: CodexSidebarSession[] = [
-    ...sidebarState.active.map((session) => ({ ...session, unconfirmed: false })),
-    ...sidebarState.pending.map((session) => ({ ...session, unconfirmed: true })),
+    ...sidebarState.active.map((session) => ({
+      ...session,
+      unconfirmed: false,
+      stale: staleSessionKeys.includes(codexSessionKey(session)),
+    })),
+    ...sidebarState.pending.map((session) => ({ ...session, unconfirmed: true, stale: false })),
   ]
   return { sessions, acknowledge }
 }
@@ -462,7 +481,9 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
   const codexSidebarSessions = useActiveCodexSessions(meta?.projects ?? [])
   useEffect(() => {
     const statuses = codexSidebarSessions.sessions.map(({ thread }) => thread.status)
-    const attentionStatus = statuses.includes('blocked') ? 'blocked' : statuses.includes('input') ? 'input' : null
+    const attentionStatuses = statuses.filter((status) => ['blocked', 'input'].includes(normalizeAgentStatus(status)))
+    const highestAttentionStatus = highestPriorityAgentStatus(attentionStatuses)
+    const attentionStatus = attentionStatuses.length > 0 ? highestAttentionStatus : null
     onCodexAttentionStatusChange?.(attentionStatus)
   }, [codexSidebarSessions.sessions, onCodexAttentionStatusChange])
   const agentNavigationRequestRef = useRef(0)
@@ -687,7 +708,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
               </SidebarMenuItem>
             )
           })}
-          {codexSidebarSessions.sessions.map(({ project: sessionProject, thread, unconfirmed }) => (
+          {codexSidebarSessions.sessions.map(({ project: sessionProject, thread, unconfirmed, stale }) => (
             <SidebarMenuItem key={`${sessionProject}:${thread.thread_id}`}>
               <SidebarMenuButton
                 onClick={(event) => {
@@ -698,7 +719,7 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
                   handleNav()
                   onOpenCodexSession?.(sessionProject, thread.thread_id)
                 }}
-                tooltip={`${sessionProject} · ${thread.title || 'Codex conversation'} · ${unconfirmed ? '完了・未確認' : thread.status}`}
+                tooltip={`${sessionProject} · ${thread.title || 'Codex conversation'} · ${unconfirmed ? '完了・未確認' : thread.status}${stale ? ' · 状態の更新に失敗（表示は古い可能性があります）' : ''}`}
                 className={`sidebar-agent-row cursor-pointer ${collapsed ? 'group-data-[collapsible=icon]:p-0!' : ''}`}
                 data-testid={`sidebar-codex-agent-${sessionProject}-${thread.thread_id}`}
               >
@@ -718,6 +739,9 @@ export function AppSidebar({ meta, project, herdr, gitStatus, myboxFocusedPaneId
                         <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">未確認</span>
                       </span>
                     ) : <CodexThreadStatus status={thread.status} />}
+                    {stale && (
+                      <span className="shrink-0 text-[10px] font-medium text-amber-600 dark:text-amber-400">更新失敗</span>
+                    )}
                   </span>
                 )}
               </SidebarMenuButton>

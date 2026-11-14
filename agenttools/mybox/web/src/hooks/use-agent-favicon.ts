@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { HerdrOverview } from '../api/client'
-import { normalizeAgentStatus } from '../utils/agent-sidebar-status'
+import { highestPriorityAgentStatus, normalizeAgentStatus } from '../utils/agent-sidebar-status'
 
 // Hex values mirror AGENT_STATUS_CLASSES in components/herdr-status.tsx.
 const STATUS_COLORS: Record<string, string> = {
@@ -12,10 +12,6 @@ const STATUS_COLORS: Record<string, string> = {
   unknown: '#a1a1aa',
 }
 
-// Attention order mirrors herdr's state rollup: the workspace rolls up to the
-// most urgent pane state (blocked > done > working > idle > unknown).
-const STATUS_PRIORITY = ['input', 'blocked', 'done', 'working', 'idle', 'unknown']
-
 const FAVICON_SELECTOR = 'link[rel="icon"]'
 
 // aggregateAgentStatus reduces the overview's agent statuses to a single
@@ -24,10 +20,7 @@ const FAVICON_SELECTOR = 'link[rel="icon"]'
 export function aggregateAgentStatus(overview: HerdrOverview | null | undefined, codexStatus?: string | null): string {
   const statuses = (overview?.available ? overview.agents : []).map((a) => normalizeAgentStatus(a.status || 'unknown'))
   if (codexStatus) statuses.push(normalizeAgentStatus(codexStatus))
-  for (const status of STATUS_PRIORITY) {
-    if (statuses.includes(status)) return status
-  }
-  return 'unknown'
+  return highestPriorityAgentStatus(statuses)
 }
 
 // renderStatusIcon draws the status dot as a PNG data URL. Returns null when

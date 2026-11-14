@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppSidebar } from './Sidebar'
@@ -7,6 +7,7 @@ import { SidebarProvider } from './ui/sidebar'
 const mocks = vi.hoisted(() => ({
   getStats: vi.fn(),
   listFiles: vi.fn(),
+  listActiveCodexSessions: vi.fn(),
 }))
 
 vi.mock('../api/client', () => ({ api: mocks }))
@@ -70,11 +71,48 @@ describe('AppSidebar agent navigation', () => {
       memory: { usage_percent: 0, used: 0, total: 0 },
       disks: [],
     })
+    mocks.listActiveCodexSessions.mockResolvedValue({ sessions: [], truncated: false })
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    window.localStorage.removeItem('mybox.codex.sidebar-sessions.v1')
     window.history.replaceState({}, '', '/')
+  })
+
+  it('marks only carried-over sessions as potentially stale when results are truncated', async () => {
+    const thread = (threadId: string, status: string) => ({
+      thread_id: threadId,
+      title: threadId,
+      preview: '',
+      created_at: 1,
+      updated_at: 1,
+      status,
+      model: '',
+    })
+    window.localStorage.setItem('mybox.codex.sidebar-sessions.v1', JSON.stringify({
+      active: [{ project: 'demo', thread: thread('carried-over', 'running') }],
+      pending: [],
+      acknowledged: [],
+      lastPolledAt: Math.floor(Date.now() / 1000),
+    }))
+    mocks.listActiveCodexSessions.mockResolvedValue({
+      sessions: [{ project: 'demo', thread: thread('returned', 'waiting_on_approval') }],
+      truncated: true,
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/projects/demo/dashboard']}>
+        <SidebarProvider>
+          <AppSidebar meta={meta} project="demo" herdr={herdr} gitStatus={{}} />
+        </SidebarProvider>
+      </MemoryRouter>,
+    )
+
+    const carriedOver = await screen.findByTestId('sidebar-codex-agent-demo-carried-over')
+    const returned = await screen.findByTestId('sidebar-codex-agent-demo-returned')
+    expect(within(carriedOver).getByText('更新失敗')).toBeInTheDocument()
+    expect(within(returned).queryByText('更新失敗')).not.toBeInTheDocument()
   })
 
   it('does not let a slower file-agent lookup override a later agent click', async () => {

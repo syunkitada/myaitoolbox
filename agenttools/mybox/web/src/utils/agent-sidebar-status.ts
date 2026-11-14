@@ -1,6 +1,6 @@
 import type { HerdrAgent, HerdrOverview } from '../api/client'
 
-const STATUS_PRIORITY = ['input', 'blocked', 'done', 'working', 'idle', 'unknown']
+export const STATUS_PRIORITY = ['blocked', 'input', 'done', 'working', 'idle', 'unknown'] as const
 
 export function normalizeAgentStatus(status: string): string {
   switch (status.trim().toLowerCase().replace(/[\s_-]/g, '')) {
@@ -32,6 +32,11 @@ export function normalizeAgentStatus(status: string): string {
   }
 }
 
+export function highestPriorityAgentStatus(statuses: readonly string[]): string {
+  const normalized = new Set(statuses.map(normalizeAgentStatus))
+  return STATUS_PRIORITY.find((status) => normalized.has(status)) ?? 'unknown'
+}
+
 export interface AgentStatusSummary {
   status: string
   label: string
@@ -53,12 +58,18 @@ export function summarizeAgentStatuses(agents: readonly Pick<HerdrAgent, 'status
   if (agents.length === 0 && !codexDisplayStatus) return { status: 'unknown', label: 'Agents: no agents' }
 
   const counts = new Map<string, number>()
-  for (const agent of agents) counts.set(agent.status, (counts.get(agent.status) ?? 0) + 1)
+  for (const agent of agents) {
+    const status = normalizeAgentStatus(agent.status)
+    counts.set(status, (counts.get(status) ?? 0) + 1)
+  }
 
-  const status = STATUS_PRIORITY.find((candidate) => counts.has(candidate) || candidate === codexDisplayStatus) ?? 'unknown'
+  const status = highestPriorityAgentStatus([
+    ...[...counts.keys()],
+    ...(codexDisplayStatus ? [codexDisplayStatus] : []),
+  ])
   const orderedStatuses = [
     ...STATUS_PRIORITY,
-    ...[...counts.keys()].filter((candidate) => !STATUS_PRIORITY.includes(candidate)).sort(),
+    ...[...counts.keys()].filter((candidate) => !(STATUS_PRIORITY as readonly string[]).includes(candidate)).sort(),
   ]
   const details = orderedStatuses
     .filter((candidate) => counts.has(candidate))

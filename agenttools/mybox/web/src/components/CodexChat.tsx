@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { ArrowLeft, Check, ChevronDown, Keyboard, Loader2, MessageCircleQuestion, MessageSquarePlus, Pencil, RefreshCw, Send, Square, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, CirclePause, CircleX, Keyboard, Loader2, MessageCircleQuestion, MessageSquarePlus, Pencil, RefreshCw, Send, Square, Trash2, X } from 'lucide-react'
 import { api, type CodexThread } from '../api/client'
 import { codexThreadWsUrl, encodePath, getBasePath, projectUrlFor } from '../utils/routes'
 import { Button } from './ui/button'
@@ -621,7 +621,7 @@ function formatUpdatedAt(value: number): string {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
 }
 
-type CodexThreadStatusKind = 'working' | 'input' | 'blocked' | 'idle' | 'done' | 'unknown'
+type CodexThreadStatusKind = 'working' | 'input' | 'blocked' | 'error' | 'interrupted' | 'idle' | 'done' | 'unknown'
 
 function codexThreadStatus(status: string): { kind: CodexThreadStatusKind; label: string } {
   const normalized = status.trim().toLowerCase().replace(/[\s_-]/g, '')
@@ -648,11 +648,11 @@ function codexThreadStatus(status: string): { kind: CodexThreadStatusKind; label
     case 'systemerror':
     case 'failed':
     case 'error':
-      return { kind: 'blocked', label: 'エラー' }
+      return { kind: 'error', label: 'エラー' }
     case 'interrupted':
     case 'cancelled':
     case 'canceled':
-      return { kind: 'unknown', label: '中断' }
+      return { kind: 'interrupted', label: '中断' }
     default:
       return { kind: 'unknown', label: status.trim() || '状態不明' }
   }
@@ -664,6 +664,8 @@ export function CodexThreadStatus({ status, compact = false }: { status: string;
     working: 'bg-blue-500',
     input: 'bg-amber-500',
     blocked: 'bg-red-500',
+    error: 'bg-red-500',
+    interrupted: 'bg-zinc-500',
     idle: 'bg-emerald-500',
     done: 'bg-violet-500',
     unknown: 'bg-zinc-400',
@@ -677,6 +679,10 @@ export function CodexThreadStatus({ status, compact = false }: { status: string;
     >
       {display.kind === 'input' ? (
         <MessageCircleQuestion aria-hidden="true" className={cn(compact ? 'size-4' : 'size-3.5', 'text-amber-600 dark:text-amber-400')} />
+      ) : display.kind === 'error' ? (
+        <CircleX aria-hidden="true" className={cn(compact ? 'size-4' : 'size-3.5', 'text-red-600 dark:text-red-400')} />
+      ) : display.kind === 'interrupted' ? (
+        <CirclePause aria-hidden="true" className={cn(compact ? 'size-4' : 'size-3.5', 'text-zinc-500')} />
       ) : (
         <span aria-hidden="true" className={cn('rounded-full', compact ? 'size-3' : 'size-2', dotClass, display.kind === 'working' && 'animate-pulse')} />
       )}
@@ -780,7 +786,7 @@ export function CodexChat({
     const statuses = new Map(threads.map((thread) => [thread.thread_id, thread.status] as const))
     if (selectedThread) statuses.set(selectedThread.thread_id, sessionStatus || selectedThread.status)
     const values = [...statuses.values()]
-    for (const kind of ['input', 'blocked', 'done', 'working', 'idle', 'unknown'] as const) {
+    for (const kind of ['blocked', 'error', 'input', 'done', 'working', 'idle', 'interrupted', 'unknown'] as const) {
       const representative = values.find((status) => codexThreadStatus(status).kind === kind)
       if (representative) return representative
     }
