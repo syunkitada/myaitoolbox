@@ -24,7 +24,7 @@ import { GitViewer } from '../components/GitViewer'
 import { TagBadge, StatusBadge } from '../components/badges'
 import { StatusDot } from '../components/herdr-status'
 import { Badge } from '../components/ui/badge'
-import { Archive, ArrowLeftRight, Bot, ChevronDown, Check, Copy, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, FolderPlus, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
+import { Archive, ArrowLeftRight, Bot, ChevronDown, Check, Copy, ExternalLink, Eye, EyeOff, FileDiff, FilePlus, FolderHeart, FolderPlus, GitBranch, ListPlus, ListTree, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Search, Star, Tag, Terminal, Text, Trash2, Upload, X } from 'lucide-react'
 import { cn, hasCRLF, normalizeLineEndings } from '@/lib/utils'
 import { dispatchNavAction } from '@/lib/nav-actions'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -37,7 +37,7 @@ import { useDialogs } from '../components/AppDialogs'
 import { useEscapeKey } from '../hooks/use-escape-key'
 import { useFileExecution } from '../state/fileExecution'
 import { loadExplorerExpandedPaths, loadGraphMode, saveExplorerExpandedPaths, saveGraphMode } from '../state/graphViewState'
-import { filesUrl, getProject, rawFileUrl } from '../utils/routes'
+import { filesUrl, getProject, htmlPreviewUrl, rawFileUrl } from '../utils/routes'
 import { copyToClipboard } from '../utils/clipboard'
 import { SyntaxHighlighter } from '../components/SyntaxHighlighter'
 import { DiffView } from '../components/DiffView'
@@ -1660,6 +1660,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   const isImage =
     !isDir && /\.(png|jpe?g|gif|webp|avif|bmp|ico)$/i.test(path)
   const isPdf = !isDir && /\.pdf$/i.test(path)
+  const isHtml = !isDir && /\.html?$/i.test(path)
   const isUnsupported = !isDir && !isImage && !isPdf && unsupportedMediaTypePath === path
 
   const readmePath = useMemo(() => {
@@ -1896,6 +1897,25 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
     void copyToClipboard(path).catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }
 
+  const openHtmlPreview = () => {
+    const previewWindow = window.open('about:blank', '_blank')
+    if (!previewWindow) return
+
+    previewWindow.opener = null
+    const previewDocument = previewWindow.document
+    previewDocument.title = `HTML preview: ${baseOf(path)}`
+    previewDocument.documentElement.style.height = '100%'
+    previewDocument.body.style.height = '100%'
+    previewDocument.body.style.margin = '0'
+
+    const frame = previewDocument.createElement('iframe')
+    frame.title = `HTML preview: ${baseOf(path)}`
+    frame.setAttribute('sandbox', 'allow-scripts')
+    frame.style.cssText = 'display:block;width:100%;height:100%;border:0'
+    frame.src = htmlPreviewUrl(path)
+    previewDocument.body.replaceChildren(frame)
+  }
+
   const copyFileContents = () => {
     void copyToClipboard(content)
       .then(() => {
@@ -2061,6 +2081,16 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
       <iframe
         src={rawFileUrl(path)}
         title={`PDF preview: ${baseOf(path)}`}
+        className="w-full rounded-md border bg-muted"
+        style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
+      />
+    </div>
+  ) : isHtml ? (
+    <div className="file-html my-2 w-full">
+      <iframe
+        src={htmlPreviewUrl(path)}
+        title={`HTML preview: ${baseOf(path)}`}
+        sandbox="allow-scripts"
         className="w-full rounded-md border bg-muted"
         style={{ height: 'min(80vh, 800px)', minHeight: 420 }}
       />
@@ -2482,6 +2512,18 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
                     Edit
                   </Button>
                 )
+              )}
+              {!editing && isHtml && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label="Open HTML in a new tab"
+                  title="Open HTML in a new tab"
+                  onClick={openHtmlPreview}
+                >
+                  <ExternalLink aria-hidden="true" />
+                  <span className="hidden sm:inline">Open in new tab</span>
+                </Button>
               )}
             </div>
           </div>
