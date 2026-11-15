@@ -254,7 +254,7 @@ describe('Files graph view integration', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Open guide from graph' }))
-    expect(onSelect).toHaveBeenCalledWith('docs/guide.md')
+    expect(onSelect.mock.calls[0]?.[0]).toBe('docs/guide.md')
     expect(screen.getByTestId('files-viewer-region')).toBeVisible()
     expect(screen.getByTestId('graph-view-region')).not.toBeVisible()
   })
@@ -348,23 +348,32 @@ describe('BrowserPage file reveal', () => {
     const onSelect = vi.fn()
     const onRevealPathHandled = vi.fn()
 
+    const router = createMemoryRouter(
+      [{
+        path: '/projects/:project/dashboard/files/*',
+        element: (
+          <BrowserPage
+            title="Files"
+            selected=""
+            onSelect={onSelect}
+            onBack={vi.fn()}
+            favorites={[]}
+            recentFiles={[]}
+            refreshMeta={vi.fn().mockResolvedValue(undefined)}
+            revealPath={path}
+            onRevealPathHandled={onRevealPathHandled}
+          />
+        ),
+      }],
+      { initialEntries: ['/projects/test/dashboard/files'] },
+    )
     render(
       <DialogsProvider>
-        <BrowserPage
-          title="Files"
-          selected=""
-          onSelect={onSelect}
-          onBack={vi.fn()}
-          favorites={[]}
-          recentFiles={[]}
-          refreshMeta={vi.fn().mockResolvedValue(undefined)}
-          revealPath={path}
-          onRevealPathHandled={onRevealPathHandled}
-        />
+        <RouterProvider router={router} />
       </DialogsProvider>,
     )
 
-    await waitFor(() => expect(onSelect).toHaveBeenCalledWith(path))
+    await waitFor(() => expect(onSelect.mock.calls[0]?.[0]).toBe(path))
     expect(list).toHaveBeenCalledWith({ path: '', showHidden: true })
     expect(list).toHaveBeenCalledWith({ path: '_task_triggers', showHidden: true })
     expect(list).toHaveBeenCalledWith({ path: '_task_triggers/daily-report', showHidden: true })
@@ -1874,6 +1883,6 @@ describe('task actions in file viewer', () => {
     fireEvent.click(await screen.findByTestId('app-dialog-ok'))
 
     await waitFor(() => expect(archive).toHaveBeenCalledWith('20260927_demo'))
-    expect(onSelect).toHaveBeenCalledWith('')
+    expect(onSelect.mock.calls[0]?.[0]).toBe('')
   })
 })

@@ -90,7 +90,7 @@ describe('RichMarkdown', () => {
 
     fireEvent.click(container.querySelector('a')!)
 
-    expect(onOpenFile).toHaveBeenCalledWith('docs/guide')
+    expect(onOpenFile.mock.calls[0]?.[0]).toBe('docs/guide')
   })
 
   it('keeps the .md extension on file links in files mode', () => {
