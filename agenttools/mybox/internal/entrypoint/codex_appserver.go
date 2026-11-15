@@ -37,9 +37,10 @@ const (
 	codexTurnPageSize                   = 20
 	codexUnmaterializedThreadTTL        = 2 * time.Minute
 	codexSubscriptionRetryDelay         = 2 * time.Second
+	codexDefaultApprovalsReviewer       = "guardian_subagent"
 )
 
-var errCodexEmptyThreadExpired = errors.New("Codex empty conversation is no longer available")
+var errCodexEmptyThreadExpired = errors.New("codex empty conversation is no longer available")
 
 type codexAppServerManager struct {
 	mu              sync.Mutex
@@ -268,7 +269,7 @@ func (m *codexAppServerManager) monitorThread(ctx context.Context, p *codexAppSe
 	}
 	select {
 	case <-p.done:
-		return errors.New("Codex app-server is not running")
+		return errors.New("codex app-server is not running")
 	default:
 	}
 	if state.unknown {
@@ -1427,7 +1428,10 @@ func (s *Server) CreateCodexThread(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), codexAppServerRequestTimeout)
 	defer cancel()
-	result, err := p.request(ctx, "thread/start", map[string]any{"cwd": app.Project.Path})
+	result, err := p.request(ctx, "thread/start", map[string]any{
+		"cwd":               app.Project.Path,
+		"approvalsReviewer": codexDefaultApprovalsReviewer,
+	})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1564,7 +1568,7 @@ func (s *Server) RenameCodexThread(w http.ResponseWriter, r *http.Request, id st
 	}
 	name := strings.TrimSpace(request.Name)
 	if name == "" || len([]rune(name)) > 100 {
-		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("Codex conversation name must contain 1 to 100 characters")})
+		writeError(w, &httpError{status: http.StatusBadRequest, err: errors.New("codex conversation name must contain 1 to 100 characters")})
 		return
 	}
 	p, err := s.codexAppServer.ensure(r.Context(), app.Project.Path)
@@ -1784,7 +1788,7 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 	case "set_mode":
 		mode := strings.TrimSpace(request.Mode)
 		if mode != "plan" && mode != "default" {
-			return nil, errors.New("Codex mode must be plan or default")
+			return nil, errors.New("codex mode must be plan or default")
 		}
 		thread, err := readCodexThread(ctx, p, key.thread, projectDir)
 		if err != nil {
@@ -1804,7 +1808,7 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 			model = strings.TrimSpace(current.Settings.Model)
 		}
 		if model == "" {
-			return nil, errors.New("Codex thread model is unavailable")
+			return nil, errors.New("codex thread model is unavailable")
 		}
 		presetResult, err := p.request(ctx, "collaborationMode/list", map[string]any{})
 		if err != nil {
@@ -1818,7 +1822,7 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(presetResult, &presets); err != nil {
-			return nil, errors.New("Codex app-server returned invalid collaboration modes")
+			return nil, errors.New("codex app-server returned invalid collaboration modes")
 		}
 		var reasoningEffort *string
 		presetFound := false
@@ -1834,7 +1838,7 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 			break
 		}
 		if !presetFound {
-			return nil, fmt.Errorf("Codex mode %q is unavailable", mode)
+			return nil, fmt.Errorf("codex mode %q is unavailable", mode)
 		}
 		collaborationMode, err := json.Marshal(map[string]any{
 			"mode": mode,

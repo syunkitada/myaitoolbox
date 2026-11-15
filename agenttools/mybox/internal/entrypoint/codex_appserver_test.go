@@ -283,7 +283,7 @@ func TestCodexThreadStreamUnsubscribesAfterLastClientDisconnects(t *testing.T) {
 	t.Fatal("app-server did not receive thread/unsubscribe after the client disconnected")
 }
 
-func TestCreateCodexThreadKeepsInitialSubscription(t *testing.T) {
+func TestCreateCodexThreadUsesGuardianReviewerAndKeepsInitialSubscription(t *testing.T) {
 	server, app := newTestServer(t)
 	unsubscribeFile := filepath.Join(t.TempDir(), "unsubscribed.json")
 	installConnectedFakeCodexAppServer(t, server, app.Project.Path, unsubscribeFile)
@@ -297,6 +297,32 @@ func TestCreateCodexThreadKeepsInitialSubscription(t *testing.T) {
 	}
 	if _, err := os.Stat(unsubscribeFile); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("new thread subscription was released before its first message: %v", err)
+	}
+
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/api/codex/threads/thread-1/stream"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	_, message, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ready struct {
+		Type              string `json:"type"`
+		ApprovalsReviewer string `json:"approvals_reviewer"`
+	}
+	if err := json.Unmarshal(message, &ready); err != nil {
+		t.Fatal(err)
+	}
+	if ready.Type != "ready" || ready.ApprovalsReviewer != codexDefaultApprovalsReviewer {
+		t.Fatalf("new thread ready event = %+v, want reviewer %q; message: %s", ready, codexDefaultApprovalsReviewer, message)
 	}
 }
 
@@ -628,7 +654,14 @@ while IFS= read -r line; do
       printf '{"id":%s,"result":{"thread":{"id":"thread-1","cwd":"%s","status":{"type":"notLoaded"}}}}\n' "$request_id" "$MYBOX_TEST_PROJECT"
       ;;
     *'"method":"thread/start"'*)
-      printf '{"id":%s,"result":{"thread":{"id":"thread-1","cwd":"%s","status":{"type":"notLoaded"}}}}\n' "$request_id" "$MYBOX_TEST_PROJECT"
+      case "$line" in
+        *'"approvalsReviewer":"guardian_subagent"'*)
+          printf '{"id":%s,"result":{"thread":{"id":"thread-1","cwd":"%s","status":{"type":"notLoaded"}},"approvalsReviewer":"guardian_subagent"}}\n' "$request_id" "$MYBOX_TEST_PROJECT"
+          ;;
+        *)
+          printf '{"id":%s,"result":{"thread":{"id":"thread-1","cwd":"%s","status":{"type":"notLoaded"}},"approvalsReviewer":"user"}}\n' "$request_id" "$MYBOX_TEST_PROJECT"
+          ;;
+      esac
       ;;
     *'"method":"thread/resume"'*)
       printf '{"id":%s,"result":{"thread":{"id":"thread-1"}}}\n' "$request_id"

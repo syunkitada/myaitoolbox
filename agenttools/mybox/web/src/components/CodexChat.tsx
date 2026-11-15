@@ -727,7 +727,7 @@ export function CodexChat({
   const [goalDraft, setGoalDraft] = useState('')
   const [goal, setGoal] = useState<JsonObject | null>(null)
   const [collaborationMode, setCollaborationMode] = useState<string | null>(null)
-  const [approvalsReviewer, setApprovalsReviewer] = useState<CodexApprovalsReviewer>('user')
+  const [approvalsReviewer, setApprovalsReviewer] = useState<CodexApprovalsReviewer>('guardian_subagent')
   const [planPromptTurnId, setPlanPromptTurnId] = useState<string | null>(null)
   const [initialPromptRetryThreadId, setInitialPromptRetryThreadId] = useState<string | null>(null)
   const [controlBusy, setControlBusy] = useState(false)
