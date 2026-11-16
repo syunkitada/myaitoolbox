@@ -1010,7 +1010,10 @@ export function CodexChat({
     } catch (loadError) {
       if (openSequenceRef.current !== openSequence) return
       const message = loadError instanceof Error ? loadError.message : String(loadError)
-      if (/codex conversation not found/i.test(message)) {
+      const isNotFound = loadError instanceof Error
+        && 'status' in loadError
+        && loadError.status === 404
+      if (isNotFound && /codex conversation not found/i.test(message)) {
         setSelectedThread(null)
         activeThreadIdRef.current = null
         setError(null)

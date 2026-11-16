@@ -1971,13 +1971,17 @@ func readCodexThread(ctx context.Context, p *codexAppServerProcess, threadID, pr
 	}
 	result, err := p.request(ctx, "thread/read", map[string]any{"threadId": threadID, "includeTurns": false})
 	if err != nil {
-		return codexThreadRecord{}, &httpError{status: http.StatusNotFound, err: errors.New("codex conversation not found")}
+		// A failed app-server request does not prove that the conversation is
+		// missing. Preserve the error so transient failures (including timeouts
+		// and process exits) become server errors instead of a false 404. The UI
+		// treats 404 as a signal to replace the conversation with a new one.
+		return codexThreadRecord{}, fmt.Errorf("codex app-server failed to read conversation: %w", err)
 	}
 	var response struct {
 		Thread codexThreadRecord `json:"thread"`
 	}
 	if err := json.Unmarshal(result, &response); err != nil || response.Thread.ID == "" {
-		return codexThreadRecord{}, &httpError{status: http.StatusNotFound, err: errors.New("codex conversation not found")}
+		return codexThreadRecord{}, errors.New("codex app-server returned an invalid conversation")
 	}
 	if response.Thread.ParentThreadID != nil || !codexPathWithinProject(projectDir, response.Thread.CWD) {
 		return codexThreadRecord{}, &httpError{status: http.StatusNotFound, err: errors.New("codex conversation not found in this project")}

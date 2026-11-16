@@ -251,7 +251,9 @@ describe('AgentSidebar', () => {
       updated_at: 2 + createdCount,
     }))
     vi.mocked(api.getCodexThreadHistory).mockImplementation(async (threadId) => {
-      if (threadId !== oldThread.thread_id) throw new Error('Codex conversation not found')
+      if (threadId !== oldThread.thread_id) {
+        throw Object.assign(new Error('Codex conversation not found'), { status: 404 })
+      }
       return { thread: oldThread, turns: [], next_cursor: null }
     })
 
