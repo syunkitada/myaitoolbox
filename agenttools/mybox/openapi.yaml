@@ -1638,7 +1638,7 @@ components:
           type: string
         url:
           type: string
-          description: Public HTTPS URL for user-created sessions. Agent-created sessions must start at about:blank and use the approval-gated browser navigate command.
+          description: Public HTTP or HTTPS URL for user-created sessions. Local and private network targets are blocked except for the user-selected mybox Files page and its narrowly scoped same-project Codex conversation API. Agent-created sessions must start at about:blank and use the approval-gated browser navigate command.
     BrowserCommandRequest:
       type: object
       required: [command]

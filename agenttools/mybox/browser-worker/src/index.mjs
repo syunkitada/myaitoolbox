@@ -17,6 +17,10 @@ const testFixtureURL = process.env.MYBOX_BROWSER_TEST_FIXTURE_URL?.trim() || ''
 const testFixturePath = process.env.MYBOX_BROWSER_TEST_FIXTURE_FILE?.trim() || ''
 const viewport = { width: 1280, height: 800 }
 const maxObservationText = 20000
+const localMyboxOrigin = 'http://127.0.0.1:1111'
+const localMyboxEntryPath = '/projects/autohotkey/dashboard/files/macos/karabiner/README.md'
+const localMyboxCodexCreatePath = '/api/codex/threads'
+const localMyboxCodexStreamPath = /^\/api\/codex\/threads\/([A-Za-z0-9_-]+)\/stream$/
 
 if (Boolean(testFixtureURL) !== Boolean(testFixturePath)) {
   throw new Error('MYBOX_BROWSER_TEST_FIXTURE_URL and MYBOX_BROWSER_TEST_FIXTURE_FILE must be configured together')
@@ -47,6 +51,120 @@ function isTestFixtureURL(rawURL) {
   } catch {
     return false
   }
+}
+
+function isLocalMyboxOrigin(rawURL) {
+  try {
+    const parsed = new URL(rawURL)
+    return parsed.origin === localMyboxOrigin && !parsed.username && !parsed.password
+  } catch {
+    return false
+  }
+}
+
+function isLocalMyboxEntryURL(rawURL) {
+  try {
+    const parsed = new URL(rawURL)
+    const query = Array.from(parsed.searchParams.entries())
+    const allowedQuery = query.length === 0
+      || (query.length === 1 && query[0][0] === 'codex_thread' && /^[A-Za-z0-9_-]+$/.test(query[0][1]))
+    return parsed.origin === localMyboxOrigin
+      && parsed.pathname === localMyboxEntryPath
+      && allowedQuery
+      && parsed.hash === ''
+      && !parsed.username
+      && !parsed.password
+  } catch {
+    return false
+  }
+}
+
+function isLocalMyboxReadRequest(rawURL, method) {
+  return ['GET', 'HEAD'].includes(String(method).toUpperCase()) && isLocalMyboxOrigin(rawURL)
+}
+
+function localMyboxProject(rawURL) {
+  try {
+    const parsed = new URL(rawURL)
+    if (!isLocalMyboxOrigin(parsed.toString())) return ''
+    const match = parsed.pathname.match(/^\/projects\/([^/]+)(?:\/|$)/)
+    return match ? decodeURIComponent(match[1]) : ''
+  } catch {
+    return ''
+  }
+}
+
+function localMyboxPageProject(request, session) {
+  try {
+    const page = request.frame().page()
+    if (page !== session.page) return ''
+    return localMyboxProject(page.mainFrame().url())
+  } catch {
+    return ''
+  }
+}
+
+// Permit only the create call made by the current mybox project page; all other
+// non-read requests to loopback remain blocked by the network route.
+function isAllowedLocalMyboxCodexCreateRequest(request, session) {
+  if (request.method().toUpperCase() !== 'POST' || request.isNavigationRequest()) return false
+  if (!['fetch', 'xhr'].includes(request.resourceType())) return false
+  if (request.postData() !== '{}') return false
+  try {
+    const parsed = new URL(request.url())
+    if (parsed.origin !== localMyboxOrigin || parsed.pathname !== localMyboxCodexCreatePath || parsed.search || parsed.hash) return false
+    const headers = request.headers()
+    if (!/^application\/json(?:\s*;|$)/i.test(headers['content-type'] || '')) return false
+    if (headers.origin && headers.origin !== localMyboxOrigin) return false
+    const project = localMyboxPageProject(request, session)
+    return Boolean(project) && headers['x-project'] === project
+  } catch {
+    return false
+  }
+}
+
+function isAllowedLocalMyboxRequest(request, session) {
+  if (isAllowedLocalMyboxCodexCreateRequest(request, session)) return true
+  if (!isLocalMyboxReadRequest(request.url(), request.method())) return false
+  try {
+    const frame = request.frame()
+    const page = frame.page()
+    const mainFrame = page.mainFrame()
+    if (page !== session.page) return false
+    if (request.isNavigationRequest()) {
+      if (frame !== mainFrame) return false
+      return (session.allowLocalMyboxNavigation && isLocalMyboxEntryURL(request.url()))
+        || isLocalMyboxOrigin(mainFrame.url())
+    }
+    return isLocalMyboxOrigin(mainFrame.url())
+  } catch {
+    return false
+  }
+}
+
+function isAllowedLocalMyboxCodexStream(rawURL, session) {
+  try {
+    const parsed = new URL(rawURL)
+    const match = parsed.pathname.match(localMyboxCodexStreamPath)
+    const pages = session.context.pages()
+    const page = session.page
+    if (parsed.protocol !== 'ws:' || parsed.hostname !== '127.0.0.1' || parsed.port !== '1111') return false
+    if (parsed.username || parsed.password || parsed.hash || !match) return false
+    if (pages.length !== 1 || pages[0] !== page) return false
+    const mainFrameURL = page.mainFrame().url()
+    const project = localMyboxProject(mainFrameURL)
+    const query = Array.from(parsed.searchParams.entries())
+    if (!project || query.length !== 1 || query[0][0] !== 'project' || query[0][1] !== project) return false
+    return new URL(mainFrameURL).searchParams.get('codex_thread') === match[1]
+  } catch {
+    return false
+  }
+}
+
+function forwardWebSocket(route) {
+  const server = route.connectToServer()
+  route.onMessage((message) => server.send(message))
+  server.onMessage((message) => route.send(message))
 }
 
 async function loadTestFixture() {
@@ -93,16 +211,16 @@ function isPrivateIPv6(address) {
   return false
 }
 
-async function resolvePublicHTTPS(rawURL, allowBlank = false) {
+async function resolvePublicURL(rawURL, allowBlank = false) {
   if (allowBlank && rawURL === 'about:blank') return
   if (isTestFixtureURL(rawURL)) return
   let parsed
   try {
     parsed = new URL(rawURL)
   } catch {
-    throw new Error('URL must be a valid public HTTPS URL')
+    throw new Error('URL must be a valid public HTTP, HTTPS, or WSS URL')
   }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'wss:') throw new Error('only public HTTPS or WSS URLs are allowed')
+  if (!['http:', 'https:', 'wss:'].includes(parsed.protocol)) throw new Error('only public HTTP, HTTPS, or WSS URLs are allowed')
   if (parsed.username || parsed.password) throw new Error('URL credentials are not allowed')
   const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase()
   if (!hostname || hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
@@ -120,16 +238,67 @@ async function resolvePublicHTTPS(rawURL, allowBlank = false) {
   return hostname
 }
 
-async function assertPublicHTTPS(rawURL, allowBlank = false) {
-  await resolvePublicHTTPS(rawURL, allowBlank)
+async function assertPublicURL(rawURL, allowBlank = false) {
+  await resolvePublicURL(rawURL, allowBlank)
+}
+
+async function assertAllowedBrowserURL(rawURL, allowBlank = false) {
+  if (isLocalMyboxEntryURL(rawURL)) return
+  await assertPublicURL(rawURL, allowBlank)
+}
+
+function stripHopByHopHeaders(headers) {
+  const result = { ...headers }
+  for (const token of String(result.connection || '').split(',')) {
+    const name = token.trim().toLowerCase()
+    if (name) delete result[name]
+  }
+  for (const name of ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade']) {
+    delete result[name]
+  }
+  return result
 }
 
 async function ensureNetworkProxy() {
   if (networkProxyPromise) return networkProxyPromise
   networkProxyPromise = new Promise((resolve, reject) => {
-    const proxy = http.createServer((request, response) => {
-      response.writeHead(403, { 'content-type': 'text/plain' })
-      response.end('only HTTPS CONNECT is allowed')
+    const proxy = http.createServer(async (request, response) => {
+      let target
+      let address
+      try {
+        target = new URL(request.url)
+        if (target.protocol !== 'http:') throw new Error('only public HTTP proxy requests are allowed')
+        address = await resolvePublicURL(target.toString())
+        if (!address) throw new Error('target address is unavailable')
+      } catch {
+        response.writeHead(403, { 'content-type': 'text/plain' })
+        response.end('request blocked')
+        return
+      }
+
+      const headers = stripHopByHopHeaders(request.headers)
+      headers.host = target.host
+      const upstream = http.request({
+        host: address,
+        port: Number(target.port || 80),
+        method: request.method,
+        path: `${target.pathname}${target.search}`,
+        headers,
+      }, (upstreamResponse) => {
+        const responseHeaders = stripHopByHopHeaders(upstreamResponse.headers)
+        response.writeHead(upstreamResponse.statusCode || 502, responseHeaders)
+        upstreamResponse.pipe(response)
+      })
+      upstream.once('error', () => {
+        if (response.headersSent) {
+          response.destroy()
+          return
+        }
+        response.writeHead(502, { 'content-type': 'text/plain' })
+        response.end('upstream request failed')
+      })
+      request.once('aborted', () => upstream.destroy())
+      request.pipe(upstream)
     })
     proxy.on('connect', async (request, clientSocket, head) => {
       let target
@@ -139,7 +308,7 @@ async function ensureNetworkProxy() {
         target = new URL(`https://${request.url}`)
         if (target.protocol !== 'https:') throw new Error('only HTTPS CONNECT is allowed')
         targetPort = Number(target.port || 443)
-        address = await resolvePublicHTTPS(target.toString())
+        address = await resolvePublicURL(target.toString())
         if (!address) throw new Error('target address is unavailable')
       } catch {
         clientSocket.destroy()
@@ -283,7 +452,8 @@ async function attachPage(session, page) {
 
 async function createSession(message) {
   const initialURL = message.payload?.initial_url || 'about:blank'
-  await assertPublicHTTPS(initialURL, true)
+  if (isLocalMyboxEntryURL(initialURL) && message.payload.owner !== 'user') throw new Error('local mybox page navigation is user-only')
+  await assertAllowedBrowserURL(initialURL, true)
   const fixtureBody = await loadTestFixture()
   const networkProxy = await ensureNetworkProxy()
   let context
@@ -295,7 +465,9 @@ async function createSession(message) {
       deviceScaleFactor: 1,
       acceptDownloads: false,
       serviceWorkers: 'block',
-      proxy: { server: networkProxy.url },
+      // Loopback traffic must pass the context routes below; only public traffic
+      // should use the network proxy.
+      proxy: { server: networkProxy.url, bypass: '127.0.0.1' },
     })
     session = {
       id: message.session_id,
@@ -310,6 +482,7 @@ async function createSession(message) {
       pending: new Map(),
       owner: message.payload.owner || 'agent',
       approvalMode: 'manual',
+      allowLocalMyboxNavigation: false,
       state: 'starting',
       url: initialURL,
       title: '',
@@ -325,7 +498,15 @@ async function createSession(message) {
           await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixtureBody })
           return
         }
-        await assertPublicHTTPS(requestURL, true)
+        if (isAllowedLocalMyboxCodexCreateRequest(route.request(), session)) {
+          await route.continue()
+          return
+        }
+        if (isAllowedLocalMyboxRequest(route.request(), session)) {
+          await route.continue()
+          return
+        }
+        await assertPublicURL(requestURL, true)
         await route.continue()
       } catch {
         await route.abort('blockedbyclient')
@@ -333,15 +514,26 @@ async function createSession(message) {
     })
     await context.routeWebSocket('**/*', async (route) => {
       try {
-        await assertPublicHTTPS(route.url())
+        if (isAllowedLocalMyboxCodexStream(route.url(), session)) {
+          forwardWebSocket(route)
+          return
+        }
+        await assertPublicURL(route.url())
         await route.connectToServer()
       } catch {
-        await route.close({ code: 1008, reason: 'private or non-HTTPS WebSocket target' })
+        await route.close({ code: 1008, reason: 'private or non-WSS WebSocket target' })
       }
     })
     const page = context.pages()[0] || await context.newPage()
     await attachPage(session, page)
-    if (initialURL !== 'about:blank') await page.goto(initialURL, { waitUntil: 'domcontentloaded', timeout: 15000 })
+    if (initialURL !== 'about:blank') {
+      session.allowLocalMyboxNavigation = session.owner === 'user' && isLocalMyboxEntryURL(initialURL)
+      try {
+        await page.goto(initialURL, { waitUntil: 'domcontentloaded', timeout: 15000 })
+      } finally {
+        session.allowLocalMyboxNavigation = false
+      }
+    }
     session.state = session.owner === 'user' ? 'user_control' : 'running'
     session.url = page.url()
     session.title = await page.title().catch(() => '')
@@ -365,13 +557,20 @@ async function closeSession(session) {
   }
 }
 
-async function perform(session, action, payload) {
+async function perform(session, action, payload, actor = 'agent') {
   const page = session.page
   if (!page) throw new Error('browser page is not ready')
   if (action === 'observe') return emitObservation(session)
   if (action === 'navigate') {
-    await assertPublicHTTPS(payload.url)
-    await page.goto(payload.url, { waitUntil: 'domcontentloaded', timeout: 15000 })
+    const localMyboxEntry = isLocalMyboxEntryURL(payload.url)
+    if (localMyboxEntry && actor !== 'user') throw new Error('local mybox page navigation is user-only')
+    await assertAllowedBrowserURL(payload.url)
+    session.allowLocalMyboxNavigation = localMyboxEntry && actor === 'user'
+    try {
+      await page.goto(payload.url, { waitUntil: 'domcontentloaded', timeout: 15000 })
+    } finally {
+      session.allowLocalMyboxNavigation = false
+    }
     return emitObservation(session)
   }
   if (action === 'go_back') {
@@ -450,7 +649,7 @@ async function command(message) {
       return { ok: true, rejected: true }
     }
     try {
-      const data = await perform(session, pending.action, pending.payload)
+      const data = await perform(session, pending.action, pending.payload, 'user')
       if (pending.action !== 'screenshot') await publishCurrentFrame(session)
       session.state = session.owner === 'user' ? 'user_control' : 'running'
       sessionEvent(session, 'approval_approved', { approval_id: approvalID })
@@ -467,7 +666,9 @@ async function command(message) {
   }
   const action = message.command
   const payload = message.payload || {}
-  if (['navigate', 'go_back', 'go_forward'].includes(action) && message.actor === 'agent' && session.approvalMode !== 'auto_safe') {
+  if (['navigate', 'go_back', 'go_forward'].includes(action)
+    && message.actor === 'agent'
+    && (session.approvalMode !== 'auto_safe' || (action === 'navigate' && isLocalMyboxEntryURL(payload.url)))) {
     const approvalID = crypto.randomUUID()
     session.pending.set(approvalID, { action, payload })
     session.state = 'approval_pending'
@@ -485,7 +686,7 @@ async function command(message) {
       return { status: 'approval_required', approval_id: approvalID, action, target: ref.text || ref.ref, url: session.page.url() }
     }
   }
-  const data = await perform(session, action, payload)
+  const data = await perform(session, action, payload, message.actor)
   if (action !== 'screenshot') await publishCurrentFrame(session)
   return data
 }

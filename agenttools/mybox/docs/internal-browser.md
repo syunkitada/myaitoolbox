@@ -4,7 +4,7 @@
 
 ## 利用者向け
 
-- Browser画面からpublic HTTPSのページを開き、映像表示、ユーザー操作、AI操作の承認を行います。
+- Browser画面からpublic HTTPまたはHTTPSのページを開き、映像表示、ユーザー操作、AI操作の承認を行います。HTTP通信は暗号化されないため、機密情報にはHTTPSを使ってください。
 - 承認モードは`manual`が既定です。ユーザーが選択した`auto_safe`では、ページ移動やworkerが低リスクと判定する一部操作を自動承認します。
 - 送信、購入、削除などの操作や機密フィールドへの入力は自動承認されません。ユーザーはセッション中に制御を引き取れます。
 - worker異常終了時はセッションがerrorになり、UIから明示的に再起動します。プロファイルは保持されますが、セッションや操作は自動復元されず、承認モードはmanualに戻ります。
@@ -13,7 +13,7 @@
 
 Go側の`browserSessionHub`がプロジェクトセッション、worker数、アイドル終了、制御権、承認、監査を管理します。Node.js workerはloopbackで待ち受け、ランダムBearer tokenでGoプロセスからのWebSocket接続を認証します。workerはChromium persistent contextをプロジェクト別プロファイルで起動します。
 
-初期版の遷移先はpublic HTTPSに限定されます。localhost、プライベートネットワーク、HTTPは拒否されます。Service Workerとページ内WebSocketは無効化またはURL検査され、Chromiumの外向きHTTPS通信はworkerのloopback proxyを通ります。
+遷移先はpublic HTTPまたはHTTPSに限られ、localhostとプライベートネットワークは拒否されます。ただし、ユーザーが指定したmybox Filesページ`http://127.0.0.1:1111/projects/autohotkey/dashboard/files/macos/karabiner/README.md`は利用できます。同ページからは同一originのGET/HEAD、表示中のprojectに対する空のJSONを使ったCodex会話作成POST、選択中threadのCodex会話WebSocketだけを許可します。他のloopback宛て、書き込みHTTPメソッド、WebSocket接続は引き続き拒否されます。HTTP通信は暗号化されません。Service Workerは無効化され、ページ内WebSocketは公開WSSまたは上記のCodex会話WebSocketに限られます。public HTTP通信はworkerのloopback proxyでURLとDNS解決先を検査して転送し、指定したmybox loopback通信はcontext routeのallowlistを通過した後に直接接続します。public HTTPS通信はCONNECT proxyを通して検査済みIPへ接続します。
 
 ## 承認と監査
 

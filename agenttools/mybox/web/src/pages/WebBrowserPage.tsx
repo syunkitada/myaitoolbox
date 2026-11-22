@@ -365,7 +365,7 @@ export function WebBrowserPage() {
         <Card className="max-w-2xl">
           <CardHeader><CardTitle>Start a project browser</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-            <p>AI and the user share one persistent browser profile per project. The initial version only permits public HTTPS pages.</p>
+            <p>AI and the user share one persistent browser profile per project. Public HTTP and HTTPS pages are allowed; local and private network targets are blocked except for the user opened mybox Files page and its limited Codex conversation API. HTTP traffic is unencrypted.</p>
             <Button variant="outline" className="w-fit" onClick={() => void api.resetBrowserProfile().then(() => refreshSession()).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))}><RotateCcw /> Reset profile</Button>
           </CardContent>
         </Card>
