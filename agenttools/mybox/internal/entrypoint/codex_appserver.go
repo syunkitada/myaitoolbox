@@ -41,6 +41,7 @@ const (
 )
 
 var errCodexEmptyThreadExpired = errors.New("codex empty conversation is no longer available")
+var errCodexConversationNotInProject = errors.New("codex conversation not found in this project")
 
 type codexAppServerManager struct {
 	mu              sync.Mutex
@@ -1543,8 +1544,19 @@ func (s *Server) DeleteCodexThread(w http.ResponseWriter, r *http.Request, id st
 	ctx, cancel := context.WithTimeout(r.Context(), codexAppServerRequestTimeout)
 	defer cancel()
 	if _, err := readCodexThread(ctx, p, id, app.Project.Path); err != nil {
-		writeError(w, err)
-		return
+		if !errors.Is(err, errCodexConversationNotInProject) {
+			writeError(w, err)
+			return
+		}
+		belongsToProject, err := s.codexAppServer.threadBelongsToProject(ctx, p, app.Project.Name, app.Project.Path, id)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		if !belongsToProject {
+			writeError(w, &httpError{status: http.StatusNotFound, err: errCodexConversationNotInProject})
+			return
+		}
 	}
 	if _, err := p.request(ctx, "thread/delete", map[string]string{"threadId": id}); err != nil {
 		writeError(w, err)
@@ -1965,6 +1977,49 @@ func listCodexProjectThreads(ctx context.Context, p *codexAppServerProcess, proj
 	}
 }
 
+func (m *codexAppServerManager) threadBelongsToProject(ctx context.Context, p *codexAppServerProcess, project, projectDir, threadID string) (bool, error) {
+	key := codexThreadKey{project: project, thread: threadID}
+	if started, ok := m.startedThread(p, key); ok {
+		return started.ID == threadID && started.ParentThreadID == nil && codexPathWithinProject(projectDir, started.CWD), nil
+	}
+	return codexProjectThreadIsListed(ctx, p, projectDir, threadID)
+}
+
+func codexProjectThreadIsListed(ctx context.Context, p *codexAppServerProcess, projectDir, threadID string) (bool, error) {
+	cursor := ""
+	scanned := 0
+	for {
+		params := map[string]any{"limit": codexThreadPageSize, "sortKey": "updated_at", "sortDirection": "desc", "archived": false}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		result, err := p.request(ctx, "thread/list", params)
+		if err != nil {
+			return false, err
+		}
+		var page struct {
+			Data       []codexThreadRecord `json:"data"`
+			NextCursor *string             `json:"nextCursor"`
+		}
+		if err := json.Unmarshal(result, &page); err != nil {
+			return false, errors.New("codex app-server returned invalid thread list")
+		}
+		for _, thread := range page.Data {
+			scanned++
+			if thread.ID == threadID {
+				return thread.ParentThreadID == nil && codexPathWithinProject(projectDir, thread.CWD), nil
+			}
+		}
+		if page.NextCursor == nil || *page.NextCursor == "" {
+			return false, nil
+		}
+		if scanned >= codexThreadScanLimit {
+			return false, nil
+		}
+		cursor = *page.NextCursor
+	}
+}
+
 func readCodexThread(ctx context.Context, p *codexAppServerProcess, threadID, projectDir string) (codexThreadRecord, error) {
 	if strings.TrimSpace(threadID) == "" || len(threadID) > 128 {
 		return codexThreadRecord{}, &httpError{status: http.StatusBadRequest, err: errors.New("invalid Codex thread id")}
@@ -1984,7 +2039,7 @@ func readCodexThread(ctx context.Context, p *codexAppServerProcess, threadID, pr
 		return codexThreadRecord{}, errors.New("codex app-server returned an invalid conversation")
 	}
 	if response.Thread.ParentThreadID != nil || !codexPathWithinProject(projectDir, response.Thread.CWD) {
-		return codexThreadRecord{}, &httpError{status: http.StatusNotFound, err: errors.New("codex conversation not found in this project")}
+		return codexThreadRecord{}, &httpError{status: http.StatusNotFound, err: errCodexConversationNotInProject}
 	}
 	return response.Thread, nil
 }
