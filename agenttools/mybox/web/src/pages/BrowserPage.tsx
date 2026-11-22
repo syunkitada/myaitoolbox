@@ -63,6 +63,7 @@ const REFERENCE_WIDTH_STORAGE_KEY = 'mybox_files_reference_width'
 const SHOW_HIDDEN_STORAGE_KEY = 'files_show_hidden'
 const DEFAULT_EXPLORER_WIDTH = 280
 const DEFAULT_DETAILS_WIDTH = 384
+const MAX_REFERENCE_WIDTH = 1200
 const LINKED_TASK_MOVE_ERROR = 'A file-agent task directory must remain under _tasks with a valid directory name.'
 
 interface LinkedMoveResult {
@@ -1579,7 +1580,7 @@ const Pane = forwardRef<PaneHandle, PaneProps>(function Pane({
   const [outlineOpen, setOutlineOpen] = useState<boolean>(() => {
     const saved = window.localStorage.getItem(outlineStorageKey)
     if (saved !== null) return saved === '1'
-    return window.innerWidth >= 768
+    return false
   })
   const outlineBeforeAgentRef = useRef<boolean | null>(null)
   const {
@@ -2939,7 +2940,7 @@ export function BrowserPage({
     storageKey: REFERENCE_WIDTH_STORAGE_KEY,
     defaultWidth: 420,
     minWidth: 280,
-    maxWidth: 720,
+    maxWidth: MAX_REFERENCE_WIDTH,
     handleSide: 'left',
   })
 
@@ -3832,7 +3833,7 @@ export function BrowserPage({
                   aria-label="Resize reference pane"
                   aria-orientation="vertical"
                   aria-valuemin={280}
-                  aria-valuemax={720}
+                  aria-valuemax={MAX_REFERENCE_WIDTH}
                   aria-valuenow={referenceWidth}
                   tabIndex={0}
                   className={cn(
