@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { useDialogs } from './AppDialogs'
 
 type JsonObject = Record<string, unknown>
+const CODEX_IMAGE_MESSAGE_LIMIT_BYTES = 10 * 1024 * 1024
 type CodexTurnPlanStep = { step: string; status?: string }
 type CodexTurn = JsonObject & { id: string; status?: string; error?: unknown; items?: CodexItem[]; plan?: CodexTurnPlanStep[]; planExplanation?: string }
 type CodexItem = JsonObject & { id?: string; type?: string; text?: string }
@@ -41,8 +42,8 @@ const CODEX_COMMANDS = [
 
 const CODEX_RECENT_COMMAND_LIMIT = 5
 const CODEX_RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000]
-const CODEX_MAX_WS_CLIENT_MESSAGE_BYTES = 1 << 20
-const CODEX_PLAN_HANDOFF_TOO_LARGE_ERROR = '計画がWebSocketの送信上限（1 MiB）を超えています。新しい会話へ引き継げないため、元の会話で実装してください。'
+const CODEX_MAX_WS_CLIENT_MESSAGE_BYTES = 10 * 1024 * 1024
+const CODEX_PLAN_HANDOFF_TOO_LARGE_ERROR = '計画がWebSocketの送信上限（10 MiB）を超えています。新しい会話へ引き継げないため、元の会話で実装してください。'
 
 function planHandoffPayload(message: Pick<PendingInitialPrompt, 'type' | 'text'>): string | null {
   const payload = JSON.stringify(message)
@@ -711,6 +712,11 @@ export function CodexChat({
   const [pendingRequests, setPendingRequests] = useState<ApprovalRequest[]>([])
   const [busyRequests, setBusyRequests] = useState<Set<string>>(() => new Set())
   const [draft, setDraft] = useState('')
+  const [imageAttachments, setImageAttachments] = useState<Array<{ id: string; data: string; name: string }>>([])
+  const attachmentMessageBytes = new TextEncoder().encode(JSON.stringify({ type: 'prompt', text: draft.trim(), images: imageAttachments.map(({ data }) => data) })).byteLength
+  const attachmentWarning = attachmentMessageBytes > CODEX_IMAGE_MESSAGE_LIMIT_BYTES
+    ? '送信メッセージが10 MiBを超えています。画像を減らすか小さくしてください。'
+    : null
   const [listLoading, setListLoading] = useState(true)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [refreshingHistory, setRefreshingHistory] = useState(false)
@@ -1350,7 +1356,9 @@ export function CodexChat({
   const sendText = useCallback((text: string, clearDraft: boolean): boolean => {
     const message = text.trim()
     const socket = socketRef.current
-    if (!message || !socket || socket.readyState !== WebSocket.OPEN || sending) return false
+    const messageBytes = new TextEncoder().encode(JSON.stringify({ type: 'prompt', text: message, images: imageAttachments.map(({ data }) => data) })).byteLength
+    if (messageBytes > CODEX_IMAGE_MESSAGE_LIMIT_BYTES) return false
+    if ((!message && imageAttachments.length === 0) || !socket || socket.readyState !== WebSocket.OPEN || sending) return false
     setSending(true)
     setError(null)
     setPlanPromptTurnId(null)
@@ -1360,14 +1368,17 @@ export function CodexChat({
       pendingInitialPromptRef.current = null
       setInitialPromptRetryThreadId(null)
     }
-    socket.send(JSON.stringify({ type: 'prompt', text: message }))
+    const payload: { type: string; text: string; images?: string[] } = { type: 'prompt', text: message }
+    if (imageAttachments.length > 0) payload.images = imageAttachments.map(({ data }) => data)
+    socket.send(JSON.stringify(payload))
     if (clearDraft) {
       setDraft('')
+      setImageAttachments([])
       requestAnimationFrame(() => composerRef.current?.focus())
     }
     window.setTimeout(() => setSending(false), 500)
     return true
-  }, [sending])
+  }, [imageAttachments, sending])
 
   const sendControl = useCallback((type: string, payload: JsonObject = {}) => {
     const socket = socketRef.current
@@ -1998,11 +2009,25 @@ export function CodexChat({
             <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">使ったコマンドがここに表示されます</span>
           )}
         </div>
-        <div className="flex min-w-0 items-stretch gap-2 rounded-xl border bg-background p-1.5 focus-within:ring-2 focus-within:ring-ring/30">
+        <div className="flex min-w-0 flex-col gap-2 rounded-xl border bg-background p-1.5 focus-within:ring-2 focus-within:ring-ring/30">
+          {imageAttachments.length > 0 && <div className="flex flex-wrap gap-2">{imageAttachments.map((image) => <div key={image.id} className="relative"><img src={image.data} alt={image.name} className="h-16 w-16 rounded border object-cover" /><button type="button" aria-label="画像を削除" onClick={() => setImageAttachments((items) => items.filter((item) => item.id !== image.id))} className="absolute -right-1 -top-1 rounded-full bg-background px-1">×</button></div>)}</div>}
+          <div className="flex min-w-0 items-stretch gap-2">
           <textarea
             ref={composerRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
+            onPaste={(event) => {
+              const items = Array.from(event.clipboardData.items).filter((item) => item.type.startsWith('image/'))
+              if (items.length === 0) return
+              event.preventDefault()
+              items.forEach((item) => {
+                const file = item.getAsFile()
+                if (!file) return
+                const reader = new FileReader()
+                reader.onload = () => { if (typeof reader.result === 'string') setImageAttachments((current) => [...current, { id: crypto.randomUUID(), data: reader.result as string, name: file.name || 'pasted-image' }]) }
+                reader.readAsDataURL(file)
+              })
+            }}
             onKeyDown={onComposerKeyDown}
             placeholder={active ? 'Codexに追加の指示を送信…' : 'Codexにメッセージ…'}
             className="max-h-36 min-h-9 min-w-0 flex-1 resize-y bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
@@ -2021,9 +2046,11 @@ export function CodexChat({
               <Keyboard />
             </Button>
             {active && <Button size="icon-sm" variant="ghost" className="shrink-0 cursor-pointer text-destructive" onClick={interrupt} disabled={!connected} aria-label="Codexを停止"><Square /></Button>}
-              <Button size="icon-sm" className="shrink-0 cursor-pointer" onClick={sendComposer} disabled={!draft.trim() || !connected || sending || controlBusy} aria-label={active ? 'Codexに追加指示を送信' : 'Codexに送信'} title={active ? 'Steer' : 'Send'}><Send /></Button>
+              <Button size="icon-sm" className="shrink-0 cursor-pointer" onClick={sendComposer} disabled={(!draft.trim() && imageAttachments.length === 0) || !connected || sending || controlBusy} aria-label={active ? 'Codexに追加指示を送信' : 'Codexに送信'} title={active ? 'Steer' : 'Send'}><Send /></Button>
+          </div>
           </div>
         </div>
+        {attachmentWarning && <p role="alert" className="mt-1 px-1 text-xs text-destructive">{attachmentWarning}</p>}
         <div className="mt-1 px-1 text-[10px] text-muted-foreground">Ctrl+Enterで送信 · Enterで改行 · 入力欄の先頭で↑、履歴表示中に↑↓で同じ会話の送信済みプロンプトを移動{active ? ' · 送信内容は実行中のCodexへ追加されます（Steer）' : ''}</div>
       </div>
       <Sheet open={commandPaletteOpen} onOpenChange={(open) => { setCommandPaletteOpen(open); if (!open) setGoalEditorOpen(false) }}>

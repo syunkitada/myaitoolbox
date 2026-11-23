@@ -31,7 +31,7 @@ const (
 	codexAppServerStartTimeout          = 30 * time.Second
 	codexAppServerMaxLine               = 32 << 20
 	codexAppServerMaxGoal               = 10000
-	codexAppServerMaxClientMessageBytes = 1 << 20
+	codexAppServerMaxClientMessageBytes = 10 << 20
 	codexAppServerMaxPlanPromptBytes    = codexAppServerMaxClientMessageBytes
 	codexThreadPageSize                 = 100
 	codexThreadScanLimit                = 5000
@@ -1739,6 +1739,7 @@ func isCodexThreadNotResumable(err error) bool {
 type codexClientMessage struct {
 	Type              string          `json:"type"`
 	Text              string          `json:"text"`
+	Images            []string        `json:"images"`
 	Mode              string          `json:"mode"`
 	Objective         string          `json:"objective"`
 	Status            string          `json:"status"`
@@ -1764,16 +1765,25 @@ func (s *Server) handleCodexClientMessageWithResult(ctx context.Context, p *code
 				return nil, errors.New("plan handoff must not be empty")
 			}
 			if len([]byte(text)) > codexAppServerMaxPlanPromptBytes {
-				return nil, errors.New("plan handoff exceeds the 1 MiB message limit")
+				return nil, errors.New("plan handoff exceeds the 10 MiB message limit")
 			}
-		} else if text == "" {
+		} else if text == "" && len(request.Images) == 0 {
 			return nil, errors.New("prompt must not be empty")
 		}
 		latest, err := latestCodexTurn(ctx, p, key.thread)
 		if err != nil {
 			return nil, err
 		}
-		input := []map[string]string{{"type": "text", "text": text}}
+		input := make([]map[string]string, 0, 1+len(request.Images))
+		if text != "" {
+			input = append(input, map[string]string{"type": "text", "text": text})
+		}
+		for _, image := range request.Images {
+			if !strings.HasPrefix(image, "data:image/") {
+				return nil, errors.New("image must be an image data URL")
+			}
+			input = append(input, map[string]string{"type": "image", "url": image})
+		}
 		if latest.Status == "inProgress" {
 			_, err = p.request(ctx, "turn/steer", map[string]any{"threadId": key.thread, "expectedTurnId": latest.ID, "input": input})
 		} else {
