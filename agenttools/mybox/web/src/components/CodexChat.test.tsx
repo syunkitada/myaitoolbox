@@ -74,6 +74,7 @@ class MockWebSocket {
 describe('CodexChat', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    MockWebSocket.latest = undefined
     vi.mocked(api.listProjects).mockResolvedValue([{ name: 'demo', path: '/workspace/demo' }])
     vi.mocked(api.listCodexThreads).mockResolvedValue({ threads, truncated: false })
     vi.mocked(api.createCodexThread).mockResolvedValue(threads[0])
@@ -117,6 +118,39 @@ describe('CodexChat', () => {
     })
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/Codexとの接続が(失敗しました|切れました)/)
+  })
+
+  it('requires an explicit action to create a replacement for an unavailable empty conversation', async () => {
+    const newThread = {
+      ...threads[0],
+      thread_id: 'thread-2',
+      title: 'New conversation',
+      preview: '',
+      created_at: 1_800_000_200,
+      updated_at: 1_800_000_200,
+    }
+    vi.mocked(api.createCodexThread).mockResolvedValue(newThread)
+    vi.mocked(api.getCodexThreadHistory).mockImplementation(async (threadId) => ({
+      thread: threadId === newThread.thread_id ? newThread : threads[0],
+      turns: [],
+      next_cursor: null,
+    }))
+    renderCodexChat()
+    await selectThread()
+    expect(await screen.findByText('接続中…')).toBeInTheDocument()
+
+    const socket = MockWebSocket.latest
+    await act(async () => {
+      socket?.emit({ type: 'empty_thread_unavailable' })
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('この空の会話は再開できません')
+    expect(api.createCodexThread).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '新しい会話を作成' }))
+
+    await waitFor(() => expect(api.createCodexThread).toHaveBeenCalledWith('demo'))
+    expect(await screen.findByTestId('codex-session-thread-2')).toHaveAttribute('aria-current', 'true')
+    expect(api.createCodexThread).toHaveBeenCalledTimes(1)
   })
 
   it('refreshes the open conversation history when the tab becomes visible', async () => {

@@ -230,7 +230,7 @@ describe('AgentSidebar', () => {
     expect(api.getCodexThreadHistory).toHaveBeenCalledTimes(2)
   })
 
-  it('stops automatic thread replacement after one failed retry', async () => {
+  it('requires an explicit action to replace an unavailable restored conversation', async () => {
     const oldThread = {
       thread_id: 'old-thread',
       title: 'Previous conversation',
@@ -240,21 +240,20 @@ describe('AgentSidebar', () => {
       status: 'idle',
       model: 'gpt-5-codex',
     }
-    let createdCount = 0
-    vi.mocked(api.listCodexThreads).mockResolvedValue({ threads: [oldThread], truncated: false })
-    vi.mocked(api.createCodexThread).mockImplementation(async () => ({
+    const newThread = {
       ...oldThread,
-      thread_id: `new-thread-${++createdCount}`,
+      thread_id: 'new-thread',
       title: 'New conversation',
       preview: '',
-      created_at: 2 + createdCount,
-      updated_at: 2 + createdCount,
-    }))
+      created_at: 2,
+      updated_at: 2,
+    }
+    vi.mocked(api.listCodexThreads).mockResolvedValue({ threads: [oldThread], truncated: false })
+    vi.mocked(api.createCodexThread).mockResolvedValue(newThread)
     vi.mocked(api.getCodexThreadHistory).mockImplementation(async (threadId) => {
-      if (threadId !== oldThread.thread_id) {
-        throw Object.assign(new Error('Codex conversation not found'), { status: 404 })
-      }
-      return { thread: oldThread, turns: [], next_cursor: null }
+      if (threadId === oldThread.thread_id) throw Object.assign(new Error('Codex conversation not found'), { status: 404 })
+      if (threadId === newThread.thread_id) return { thread: newThread, turns: [], next_cursor: null }
+      throw new Error(`Unexpected conversation ${threadId}`)
     })
 
     renderSidebar(
@@ -262,13 +261,15 @@ describe('AgentSidebar', () => {
       ['/projects/demo/dashboard?codex_thread=old-thread'],
     )
 
-    expect(await screen.findByTestId('codex-session-old-thread')).toHaveAttribute('aria-current', 'true')
-    fireEvent.click(screen.getByRole('button', { name: '新しいCodex会話' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('このCodex会話を開けません')
+    const createButton = await screen.findByRole('button', { name: '新しい会話を作成' })
+    expect(api.createCodexThread).not.toHaveBeenCalled()
+    fireEvent.click(createButton)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('新しいCodex会話を復旧できませんでした')
-    await waitFor(() => expect(api.createCodexThread).toHaveBeenCalledTimes(2))
-    expect(screen.getByTestId('route-search')).toHaveTextContent('codex_thread=new-thread-2')
-    expect(api.createCodexThread).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(api.createCodexThread).toHaveBeenCalledWith('demo'))
+    expect(await screen.findByText('New conversation')).toBeInTheDocument()
+    expect(screen.getByTestId('route-search')).toHaveTextContent('codex_thread=new-thread')
+    expect(api.createCodexThread).toHaveBeenCalledTimes(1)
   })
 
   it('shows only agents belonging to the current project', () => {

@@ -717,7 +717,7 @@ export function CodexChat({
   const [creating, setCreating] = useState(false)
   const [renamingThread, setRenamingThread] = useState(false)
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null)
-  const [replaceEmptyThread, setReplaceEmptyThread] = useState(false)
+  const [conversationUnavailable, setConversationUnavailable] = useState(false)
   const [sending, setSending] = useState(false)
   const [socketConnecting, setSocketConnecting] = useState(false)
   const [reconnectAttempt, setReconnectAttempt] = useState(0)
@@ -745,7 +745,6 @@ export function CodexChat({
   const historySyncInFlightRef = useRef(false)
   const handledRequestedThreadRef = useRef<string | null>(null)
   const lastRequestedThreadRef = useRef<string | null>(null)
-  const emptyThreadReplacementAttemptedRef = useRef(false)
   const controlRequestSequenceRef = useRef(0)
   const activeThreadIdRef = useRef<string | null>(null)
   const threadHasTurnsRef = useRef(false)
@@ -943,6 +942,7 @@ export function CodexChat({
     if (!automaticReconnect) {
       reconnectAttemptRef.current = 0
       setReconnectAttempt(0)
+      setConversationUnavailable(false)
     }
     const openSequence = ++openSequenceRef.current
     handledRequestedThreadRef.current = thread.thread_id
@@ -1016,15 +1016,11 @@ export function CodexChat({
       if (isNotFound && /codex conversation not found/i.test(message)) {
         setSelectedThread(null)
         activeThreadIdRef.current = null
-        setError(null)
+        onThreadSelected?.(null)
+        setConversationUnavailable(true)
+        setError('このCodex会話を開けません。会話一覧から選び直すか、新しい会話を作成してください。')
         setHistoryLoading(false)
         void loadThreads(true)
-        if (emptyThreadReplacementAttemptedRef.current) {
-          setError('新しいCodex会話を復旧できませんでした。会話一覧から選び直すか、新しい会話を作成してください。')
-        } else {
-          emptyThreadReplacementAttemptedRef.current = true
-          setReplaceEmptyThread(true)
-        }
         return
       }
       setError(message)
@@ -1081,11 +1077,9 @@ export function CodexChat({
         setSocketConnecting(false)
         if (threadHasTurnsRef.current) {
           setError('Codexの会話を再開できませんでした。履歴を更新して再接続してください。')
-        } else if (emptyThreadReplacementAttemptedRef.current) {
-          setError('新しいCodex会話を復旧できませんでした。会話一覧から選び直すか、新しい会話を作成してください。')
         } else {
-          emptyThreadReplacementAttemptedRef.current = true
-          setReplaceEmptyThread(true)
+          setConversationUnavailable(true)
+          setError('この空の会話は再開できません。新しい会話を作成する場合は、左側の＋ボタンを押してください。')
         }
       } else if (message.type === 'error') {
         const requestId = string(message.request_id)
@@ -1117,7 +1111,6 @@ export function CodexChat({
         setWriterConflict(false)
         setError(null)
         setConnected(true)
-        emptyThreadReplacementAttemptedRef.current = false
         const mode = string(record(message.collaboration_mode).mode)
         const nextMode = mode || 'default'
         collaborationModeRef.current = nextMode
@@ -1302,11 +1295,11 @@ export function CodexChat({
     }
   }, [])
 
-  const createThread = useCallback(async (initialPrompt?: { type: 'plan_handoff'; text: string }, automaticReplacement = false) => {
+  const createThread = useCallback(async (initialPrompt?: { type: 'plan_handoff'; text: string }) => {
     if (creating) return
-    if (!automaticReplacement) emptyThreadReplacementAttemptedRef.current = false
     setCreating(true)
     setError(null)
+    setConversationUnavailable(false)
     let initialPromptThreadId: string | null = null
     try {
       const thread = await api.createCodexThread(project)
@@ -1327,12 +1320,6 @@ export function CodexChat({
       setCreating(false)
     }
   }, [creating, openThread, project])
-
-  useEffect(() => {
-    if (!replaceEmptyThread) return
-    setReplaceEmptyThread(false)
-    void createThread(undefined, true)
-  }, [createThread, replaceEmptyThread])
 
   const rememberRecentCommand = useCallback((commandId: string) => {
     if (!CODEX_COMMANDS.some((command) => command.id === commandId)) return
@@ -1670,7 +1657,10 @@ export function CodexChat({
             <Loader2 className={cn('size-3.5', listLoading && 'animate-spin')} />
           </Button>
         </div>
-        {error && <div role="alert" className="m-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+        {error && <div role="alert" className="m-3 flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+          <span className="min-w-0 flex-1">{error}</span>
+          {conversationUnavailable && <Button size="xs" variant="outline" className="shrink-0 cursor-pointer" onClick={() => void createThread()} disabled={creating}>新しい会話を作成</Button>}
+        </div>}
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {listLoading && threads.length === 0 ? (
             <div className="flex items-center justify-center gap-2 py-8 text-xs text-muted-foreground"><Loader2 className="size-4 animate-spin" />会話を読み込み中…</div>
@@ -1780,7 +1770,10 @@ export function CodexChat({
           </Button>
         </div>
       )}
-      {error && !writerConflict && <div role="alert" className="mx-2 mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+      {error && !writerConflict && <div role="alert" className="mx-2 mt-2 flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+        <span className="min-w-0 flex-1">{error}</span>
+        {conversationUnavailable && <Button size="xs" variant="outline" className="shrink-0 cursor-pointer" onClick={() => void createThread()} disabled={creating}>新しい会話を作成</Button>}
+      </div>}
       <div
         ref={scrollRef}
         className="codex-chat-history min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3"
