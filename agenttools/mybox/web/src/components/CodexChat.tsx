@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { ArrowLeft, Check, ChevronDown, CirclePause, CircleX, Keyboard, Loader2, MessageCircleQuestion, MessageSquarePlus, Pencil, RefreshCw, Send, Square, Trash2, X } from 'lucide-react'
-import { api, type CodexThread } from '../api/client'
+import { api, type CodexSkill, type CodexThread } from '../api/client'
 import { codexThreadWsUrl, encodePath, getBasePath, projectUrlFor } from '../utils/routes'
 import { Button } from './ui/button'
 import { Markdown } from './Markdown'
@@ -712,6 +712,9 @@ export function CodexChat({
   const [pendingRequests, setPendingRequests] = useState<ApprovalRequest[]>([])
   const [busyRequests, setBusyRequests] = useState<Set<string>>(() => new Set())
   const [draft, setDraft] = useState('')
+  const [codexSkills, setCodexSkills] = useState<CodexSkill[]>([])
+  const [skillQuery, setSkillQuery] = useState<{ start: number; end: number; query: string } | null>(null)
+  const [selectedSkillIndex, setSelectedSkillIndex] = useState(0)
   const [imageAttachments, setImageAttachments] = useState<Array<{ id: string; data: string; name: string }>>([])
   const attachmentMessageBytes = new TextEncoder().encode(JSON.stringify({ type: 'prompt', text: draft.trim(), images: imageAttachments.map(({ data }) => data) })).byteLength
   const attachmentWarning = attachmentMessageBytes > CODEX_IMAGE_MESSAGE_LIMIT_BYTES
@@ -777,6 +780,11 @@ export function CodexChat({
       .filter((command): command is (typeof CODEX_COMMANDS)[number] => command !== undefined),
     [recentCommandIds],
   )
+  const skillSuggestions = useMemo(() => {
+    if (!skillQuery) return []
+    const query = skillQuery.query.toLocaleLowerCase()
+    return codexSkills.filter((skill) => skill.status === 'available' && skill.name.toLocaleLowerCase().startsWith(query))
+  }, [codexSkills, skillQuery])
   const active = useMemo(() => turnIsActive(turns), [turns])
   const promptHistory = useMemo(
     () => turns.flatMap((turn) => (turn.items ?? [])
@@ -819,6 +827,17 @@ export function CodexChat({
 
   useEffect(() => {
     setRecentCommandState({ project, ids: readCodexRecentCommandIds(project) })
+  }, [project])
+
+  useEffect(() => {
+    let current = true
+    setCodexSkills([])
+    void api.getCodexDiagnostics(project).then((diagnostics) => {
+      if (current) setCodexSkills(diagnostics.skills)
+    }).catch(() => {
+      if (current) setCodexSkills([])
+    })
+    return () => { current = false }
   }, [project])
 
   useEffect(() => {
@@ -1663,7 +1682,60 @@ export function CodexChat({
     }
   }, [project, refreshingHistory, selectedThread])
 
+  const updateComposerDraft = (value: string, cursor: number) => {
+    setDraft(value)
+    const beforeCursor = value.slice(0, cursor)
+    const match = beforeCursor.match(/(?:^|\s)\$([A-Za-z0-9_-]*)$/)
+    if (!match) {
+      setSkillQuery(null)
+      setSelectedSkillIndex(0)
+      return
+    }
+    const query = match[1]
+    const start = cursor - query.length - 1
+    setSkillQuery({ start, end: cursor, query })
+    setSelectedSkillIndex(0)
+  }
+
+  const selectSkillSuggestion = (skill: CodexSkill) => {
+    if (!skillQuery) return
+    const insertion = `$${skill.name}`
+    const nextDraft = `${draft.slice(0, skillQuery.start)}${insertion}${draft.slice(skillQuery.end)}`
+    const cursor = skillQuery.start + insertion.length
+    setDraft(nextDraft)
+    setSkillQuery(null)
+    setSelectedSkillIndex(0)
+    requestAnimationFrame(() => {
+      const composer = composerRef.current
+      if (!composer) return
+      composer.focus()
+      composer.setSelectionRange(cursor, cursor)
+    })
+  }
+
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (skillQuery && skillSuggestions.length > 0) {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Home' || event.key === 'End') {
+        setSkillQuery(null)
+        setSelectedSkillIndex(0)
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        setSelectedSkillIndex((index) => (index + delta + skillSuggestions.length) % skillSuggestions.length)
+        return
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault()
+        selectSkillSuggestion(skillSuggestions[selectedSkillIndex] ?? skillSuggestions[0])
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setSkillQuery(null)
+        return
+      }
+    }
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault()
       sendComposer()
@@ -2011,12 +2083,15 @@ export function CodexChat({
         </div>
         <div className="flex min-w-0 flex-col gap-2 rounded-xl border bg-background p-1.5 focus-within:ring-2 focus-within:ring-ring/30">
           {imageAttachments.length > 0 && <div className="flex flex-wrap gap-2">{imageAttachments.map((image) => <div key={image.id} className="relative"><img src={image.data} alt={image.name} className="h-16 w-16 rounded border object-cover" /><button type="button" aria-label="画像を削除" onClick={() => setImageAttachments((items) => items.filter((item) => item.id !== image.id))} className="absolute -right-1 -top-1 rounded-full bg-background px-1">×</button></div>)}</div>}
+          {skillQuery && skillSuggestions.length > 0 && <div role="listbox" aria-label="Agent Skill候補" className="max-h-48 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">{skillSuggestions.map((skill, index) => <button key={`${skill.scope}:${skill.path}`} type="button" role="option" aria-selected={index === selectedSkillIndex} className={cn('flex w-full flex-col items-start rounded px-2 py-1.5 text-left text-xs', index === selectedSkillIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60')} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setSelectedSkillIndex(index)} onClick={() => selectSkillSuggestion(skill)}><span className="font-medium">${skill.name}</span><span className="line-clamp-2 text-muted-foreground">{skill.description}</span></button>)}</div>}
           <div className="flex min-w-0 items-stretch gap-2">
           <textarea
             ref={composerRef}
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => updateComposerDraft(event.target.value, event.currentTarget.selectionStart)}
+            onClick={(event) => updateComposerDraft(draft, event.currentTarget.selectionStart)}
             onPaste={(event) => {
+              setSkillQuery(null)
               const items = Array.from(event.clipboardData.items).filter((item) => item.type.startsWith('image/'))
               if (items.length === 0) return
               event.preventDefault()
