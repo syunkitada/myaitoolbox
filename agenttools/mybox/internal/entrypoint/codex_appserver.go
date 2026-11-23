@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -2065,7 +2066,57 @@ func codexPathWithinProject(projectDir, candidate string) bool {
 		return false
 	}
 	rel, err := filepath.Rel(root, path)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+	if err != nil {
+		return false
+	}
+	if rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+		return true
+	}
+
+	caseVariantRoot, possibleCaseVariant := codexCaseInsensitivePathPrefix(root, path)
+	if !possibleCaseVariant {
+		return false
+	}
+
+	// Some case-insensitive filesystems preserve the caller's spelling when
+	// resolving symlinks. filepath.Rel is case-sensitive on Linux, so compare the
+	// matching path components by filesystem identity before rejecting them.
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		return false
+	}
+	caseVariantInfo, err := os.Stat(caseVariantRoot)
+	return err == nil && os.SameFile(rootInfo, caseVariantInfo)
+}
+
+func codexCaseInsensitivePathPrefix(root, path string) (string, bool) {
+	rootVolume := filepath.VolumeName(root)
+	pathVolume := filepath.VolumeName(path)
+	if !strings.EqualFold(rootVolume, pathVolume) {
+		return "", false
+	}
+	rootComponents := codexPathComponents(strings.TrimPrefix(root, rootVolume))
+	pathComponents := codexPathComponents(strings.TrimPrefix(path, pathVolume))
+	if len(pathComponents) < len(rootComponents) {
+		return "", false
+	}
+	for index, component := range rootComponents {
+		if !strings.EqualFold(component, pathComponents[index]) {
+			return "", false
+		}
+	}
+
+	candidateRoot := path
+	for suffixLength := len(pathComponents) - len(rootComponents); suffixLength > 0; suffixLength-- {
+		candidateRoot = filepath.Dir(candidateRoot)
+	}
+	return candidateRoot, true
+}
+
+func codexPathComponents(path string) []string {
+	return strings.FieldsFunc(filepath.Clean(path), func(character rune) bool {
+		return character == rune(filepath.Separator)
+	})
 }
 
 type codexProjectRoot struct {

@@ -120,6 +120,54 @@ func TestCodexPathWithinProject(t *testing.T) {
 	}
 }
 
+func TestCodexPathWithinProjectCaseInsensitiveFilesystemAlias(t *testing.T) {
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "MixedCaseProject")
+	if err := os.Mkdir(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(projectDir, "nested")
+	if err := os.Mkdir(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	caseVariant := filepath.Join(root, strings.ToLower(filepath.Base(projectDir)))
+	projectInfo, err := os.Stat(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	variantInfo, err := os.Stat(caseVariant)
+	if err != nil || !os.SameFile(projectInfo, variantInfo) {
+		t.Skip("temporary directory is on a case-sensitive filesystem")
+	}
+
+	if !codexPathWithinProject(projectDir, caseVariant) {
+		t.Fatal("case-only alias of the project directory should be within the project")
+	}
+	if !codexPathWithinProject(projectDir, filepath.Join(caseVariant, "nested")) {
+		t.Fatal("nested path through a case-only alias should be within the project")
+	}
+}
+
+func TestCodexPathWithinProjectRejectsCaseDistinctSibling(t *testing.T) {
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, "MixedCaseProject")
+	sibling := filepath.Join(parent, "mixedcaseproject")
+	if err := os.Mkdir(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(sibling, 0o755); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			t.Skip("filesystem does not allow case-distinct sibling directories")
+		}
+		t.Fatal(err)
+	}
+
+	if codexPathWithinProject(projectDir, sibling) {
+		t.Fatal("case-distinct sibling directory should not be within the project")
+	}
+}
+
 func TestSupportedCodexServerRequest(t *testing.T) {
 	for _, method := range []string{
 		"item/commandExecution/requestApproval",
