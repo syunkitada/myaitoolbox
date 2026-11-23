@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { ArrowLeft, Check, ChevronDown, CirclePause, CircleX, Keyboard, Loader2, MessageCircleQuestion, MessageSquarePlus, Pencil, RefreshCw, Send, Square, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Bell, BellOff, Check, ChevronDown, CirclePause, CircleX, Keyboard, Loader2, MessageCircleQuestion, MessageSquarePlus, Pencil, RefreshCw, Send, Square, Trash2, X } from 'lucide-react'
 import { api, type CodexSkill, type CodexThread } from '../api/client'
 import { codexThreadWsUrl, encodePath, getBasePath, projectUrlFor } from '../utils/routes'
 import { Button } from './ui/button'
@@ -41,6 +41,7 @@ const CODEX_COMMANDS = [
 ]
 
 const CODEX_RECENT_COMMAND_LIMIT = 5
+const CODEX_NOTIFICATIONS_STORAGE_KEY = 'mybox.codex.notifications.enabled.v1'
 const CODEX_RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000]
 const CODEX_MAX_WS_CLIENT_MESSAGE_BYTES = 10 * 1024 * 1024
 const CODEX_PLAN_HANDOFF_TOO_LARGE_ERROR = '計画がWebSocketの送信上限（10 MiB）を超えています。新しい会話へ引き継げないため、元の会話で実装してください。'
@@ -93,6 +94,37 @@ function readCodexRecentCommandIds(project: string): string[] {
     return [...new Set(stored.filter((id): id is string => typeof id === 'string' && validIds.has(id)))].slice(0, CODEX_RECENT_COMMAND_LIMIT)
   } catch {
     return []
+  }
+}
+
+function readCodexNotificationsEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(CODEX_NOTIFICATIONS_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function writeCodexNotificationsEnabled(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(CODEX_NOTIFICATIONS_STORAGE_KEY, String(enabled))
+  } catch {
+    // Keep the setting for the current render when browser storage is unavailable.
+  }
+}
+
+function codexTurnNotificationStatus(status: string): 'completed' | 'interrupted' | null {
+  switch (status.trim().toLowerCase().replace(/[\s_-]/g, '')) {
+    case 'completed':
+    case 'complete':
+    case 'done':
+      return 'completed'
+    case 'interrupted':
+    case 'cancelled':
+    case 'canceled':
+      return 'interrupted'
+    default:
+      return null
   }
 }
 
@@ -741,6 +773,7 @@ export function CodexChat({
   const [initialPromptRetryThreadId, setInitialPromptRetryThreadId] = useState<string | null>(null)
   const [controlBusy, setControlBusy] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [codexNotificationsEnabled, setCodexNotificationsEnabled] = useState(readCodexNotificationsEnabled)
   const [writerConflict, setWriterConflict] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [projectRoot, setProjectRoot] = useState('')
@@ -758,6 +791,7 @@ export function CodexChat({
   const activeThreadIdRef = useRef<string | null>(null)
   const threadHasTurnsRef = useRef(false)
   const turnsRef = useRef<CodexTurn[]>([])
+  const notifiedTurnIdsRef = useRef(new Set<string>())
   const collaborationModeRef = useRef<string | null>(null)
   const planImplementationPendingRef = useRef<string | null>(null)
   const pendingInitialPromptRef = useRef<PendingInitialPrompt | null>(null)
@@ -1287,6 +1321,30 @@ export function CodexChat({
             items: Array.isArray(completedPayload.items) ? completedPayload.items as CodexItem[] : currentTurn?.items,
           } as CodexTurn
           const status = string(completedTurn.status) || string(params.status) || 'completed'
+          const notificationStatus = codexTurnNotificationStatus(status)
+          if (
+            notificationStatus
+            && completedTurnId
+            && !notifiedTurnIdsRef.current.has(completedTurnId)
+          ) {
+            notifiedTurnIdsRef.current.add(completedTurnId)
+            if (
+              codexNotificationsEnabled
+              && typeof Notification !== 'undefined'
+              && Notification.permission === 'granted'
+              && document.hidden
+            ) {
+              const notification = new Notification(
+                notificationStatus === 'completed' ? 'Codexの作業が完了しました' : 'Codexの作業が中断されました',
+                { body: `${thread.title || 'Codex会話'} · ${project}` },
+              )
+              notification.onclick = () => {
+                window.focus()
+                onThreadSelected?.(thread.thread_id)
+                notification.close()
+              }
+            }
+          }
           if (completedTurnId && status === 'completed' && collaborationModeRef.current === 'plan' && turnHasPlan(completedTurn)) {
             const dismissedTurnId = readDismissedPlanPromptTurnId(project, thread.thread_id)
             setPlanPromptTurnId(dismissedTurnId === completedTurnId ? null : completedTurnId)
@@ -1299,7 +1357,7 @@ export function CodexChat({
         })
       }
     }
-  }, [loadThreads, onThreadSelected, project, removeDeletedThread])
+  }, [codexNotificationsEnabled, loadThreads, onThreadSelected, project, removeDeletedThread, selectedThread?.title])
 
   useEffect(() => {
     if (!requestedThreadId) {
@@ -1423,6 +1481,21 @@ export function CodexChat({
   const changeApprovalsReviewer = useCallback((reviewer: CodexApprovalsReviewer) => {
     sendControl('set_approvals_reviewer', { approvals_reviewer: reviewer })
   }, [sendControl])
+
+  const toggleCodexNotifications = useCallback(async () => {
+    if (codexNotificationsEnabled) {
+      setCodexNotificationsEnabled(false)
+      writeCodexNotificationsEnabled(false)
+      return
+    }
+    if (typeof Notification === 'undefined') return
+    const permission = Notification.permission === 'default'
+      ? await Notification.requestPermission()
+      : Notification.permission
+    const enabled = permission === 'granted'
+    setCodexNotificationsEnabled(enabled)
+    writeCodexNotificationsEnabled(enabled)
+  }, [codexNotificationsEnabled])
 
   const implementPlan = useCallback((turnId: string) => {
     const latestTurn = turnsRef.current[turnsRef.current.length - 1]
@@ -1819,6 +1892,17 @@ export function CodexChat({
             <div className="text-xs font-semibold">Codex の会話</div>
             <div className="truncate text-[10px] text-muted-foreground">このプロジェクトのCodex CLI / IDE会話を表示</div>
           </div>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            className="shrink-0 cursor-pointer"
+            onClick={() => void toggleCodexNotifications()}
+            disabled={typeof Notification === 'undefined' || (!codexNotificationsEnabled && Notification.permission === 'denied')}
+            aria-label={codexNotificationsEnabled ? 'デスクトップ通知を無効化' : 'デスクトップ通知を有効化'}
+            title={typeof Notification === 'undefined' ? 'このブラウザーはデスクトップ通知に対応していません' : 'Codexのデスクトップ通知'}
+          >
+            {codexNotificationsEnabled ? <Bell /> : <BellOff />}
+          </Button>
           <Button size="xs" className="shrink-0 cursor-pointer" onClick={() => void createThread()} disabled={creating} aria-label="新しいCodex会話">
             {creating ? <Loader2 className="mr-1 size-3 animate-spin" /> : <MessageSquarePlus className="mr-1 size-3" />}
             新規
@@ -1923,6 +2007,21 @@ export function CodexChat({
           <div className="truncate text-xs font-semibold" title={selectedThread.title}>{selectedThread.title || 'New Codex conversation'}</div>
           <div className={cn('text-[10px]', connected ? 'text-green-700 dark:text-green-400' : writerConflict ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>{connected ? `接続中${collaborationMode === 'plan' ? ' · Plan mode' : collaborationMode === 'default' ? ' · Default mode' : ''}` : writerConflict ? '他のCodexが操作中 · 読み取り専用' : historyLoading ? '履歴を読み込み中…' : socketConnecting && reconnectAttempt > 0 ? `自動再接続中… (${reconnectAttempt}/${CODEX_RECONNECT_DELAYS_MS.length})` : socketConnecting ? '接続中…' : '切断中'}</div>
         </div>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          className="shrink-0 cursor-pointer"
+          onClick={() => void toggleCodexNotifications()}
+          disabled={typeof Notification === 'undefined' || (!codexNotificationsEnabled && Notification.permission === 'denied')}
+          aria-label={codexNotificationsEnabled ? 'デスクトップ通知を無効化' : 'デスクトップ通知を有効化'}
+          title={typeof Notification === 'undefined'
+            ? 'このブラウザーはデスクトップ通知に対応していません'
+            : Notification.permission === 'denied'
+              ? '通知はブラウザーの設定で許可してください'
+              : codexNotificationsEnabled ? 'デスクトップ通知を無効化' : 'デスクトップ通知を有効化'}
+        >
+          {codexNotificationsEnabled ? <Bell /> : <BellOff />}
+        </Button>
         <Button size="icon-xs" variant="ghost" className="shrink-0 cursor-pointer" onClick={() => void renameSelectedThread()} disabled={renamingThread} aria-label="会話名を変更" title="会話名を変更">
           {renamingThread ? <Loader2 className="animate-spin" /> : <Pencil />}
         </Button>

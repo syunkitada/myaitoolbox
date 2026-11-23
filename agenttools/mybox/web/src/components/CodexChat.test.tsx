@@ -10,6 +10,7 @@ vi.mock('../api/client', () => ({
     listCodexThreads: vi.fn(),
     createCodexThread: vi.fn(),
     getCodexThreadHistory: vi.fn(),
+    getCodexDiagnostics: vi.fn(),
   },
 }))
 
@@ -74,6 +75,7 @@ class MockWebSocket {
 describe('CodexChat', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.removeItem('mybox.codex.notifications.enabled.v1')
     MockWebSocket.latest = undefined
     vi.mocked(api.listProjects).mockResolvedValue([{ name: 'demo', path: '/workspace/demo' }])
     vi.mocked(api.listCodexThreads).mockResolvedValue({ threads, truncated: false })
@@ -90,11 +92,13 @@ describe('CodexChat', () => {
       }],
       next_cursor: null,
     })
+    vi.mocked(api.getCodexDiagnostics).mockResolvedValue({ skills: [] } as never)
     vi.stubGlobal('WebSocket', MockWebSocket)
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
   })
 
   it('lists project conversations and renders readable Codex history', async () => {
@@ -118,6 +122,57 @@ describe('CodexChat', () => {
     })
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/Codexとの接続が(失敗しました|切れました)/)
+  })
+
+  it('notifies once for completed and interrupted turns when notifications are enabled and the tab is hidden', async () => {
+    const notificationInstances: Array<{ title: string; options?: NotificationOptions; onclick: (() => void) | null }> = []
+    class MockNotification {
+      static permission: NotificationPermission = 'granted'
+      onclick: (() => void) | null = null
+      constructor(public title: string, public options?: NotificationOptions) { notificationInstances.push(this) }
+      close() {}
+    }
+    vi.stubGlobal('Notification', MockNotification)
+    Object.defineProperty(window, 'Notification', { configurable: true, value: MockNotification })
+    localStorage.setItem('mybox.codex.notifications.enabled.v1', 'true')
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    const secondThread = { ...threads[0], thread_id: 'thread-2', title: 'Another task' }
+    vi.mocked(api.listCodexThreads).mockResolvedValue({ threads: [...threads, secondThread], truncated: false })
+    renderCodexChat()
+    await selectThread()
+    await waitFor(() => expect(MockWebSocket.latest).toBeDefined())
+
+    await act(async () => {
+      MockWebSocket.latest?.emit({ type: 'notification', method: 'turn/completed', params: { turn: { id: 'turn-done', status: 'completed' } } })
+      MockWebSocket.latest?.emit({ type: 'notification', method: 'turn/completed', params: { turn: { id: 'turn-done', status: 'completed' } } })
+      MockWebSocket.latest?.emit({ type: 'notification', method: 'turn/completed', params: { turn: { id: 'turn-stop', status: 'interrupted' } } })
+    })
+
+    expect(notificationInstances).toHaveLength(2)
+    expect(notificationInstances.map(({ title }) => title)).toEqual(['Codexの作業が完了しました', 'Codexの作業が中断されました'])
+    expect(notificationInstances[0].options?.body).toContain('Refactor sidebar')
+    const focus = vi.spyOn(window, 'focus').mockImplementation(() => {})
+    notificationInstances[0].onclick?.()
+    expect(focus).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByTestId('codex-session-thread-2'))
+    await waitFor(() => expect(screen.getByTestId('codex-session-thread-2')).toHaveAttribute('aria-current', 'true'))
+    notificationInstances[0].onclick?.()
+    await waitFor(() => expect(screen.getByTestId('codex-session-thread-1')).toHaveAttribute('aria-current', 'true'))
+  })
+
+  it('requests notification permission from the enable button', async () => {
+    const requestPermission = vi.fn().mockResolvedValue('granted')
+    class MockNotification {
+      static permission: NotificationPermission = 'default'
+      static requestPermission = requestPermission
+    }
+    vi.stubGlobal('Notification', MockNotification)
+    Object.defineProperty(window, 'Notification', { configurable: true, value: MockNotification })
+    renderCodexChat()
+    const button = await screen.findByLabelText('デスクトップ通知を有効化')
+    fireEvent.click(button)
+    await waitFor(() => expect(requestPermission).toHaveBeenCalledOnce())
+    await waitFor(() => expect(localStorage.getItem('mybox.codex.notifications.enabled.v1')).toBe('true'))
   })
 
   it('requires an explicit action to create a replacement for an unavailable empty conversation', async () => {

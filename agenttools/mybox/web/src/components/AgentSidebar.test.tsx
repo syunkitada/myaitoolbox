@@ -17,6 +17,7 @@ vi.mock('../api/client', () => ({
     listCodexThreads: vi.fn().mockResolvedValue({ threads: [], truncated: false }),
     createCodexThread: vi.fn().mockResolvedValue({ thread_id: 'new-codex-thread', title: 'New Codex conversation', preview: '', created_at: 1, updated_at: 1, status: 'idle', model: '' }),
     getCodexThreadHistory: vi.fn().mockResolvedValue({ thread: {}, turns: [], next_cursor: null }),
+    getCodexDiagnostics: vi.fn().mockResolvedValue({ skills: [] }),
     getHerdrAgentKinds: vi.fn().mockResolvedValue({ kinds: ['claude', 'codex', 'opencode'] }),
     focusHerdrAgent: vi.fn().mockResolvedValue({ ok: true }),
     readHerdrAgent: vi.fn().mockResolvedValue({ output: 'hello' }),
