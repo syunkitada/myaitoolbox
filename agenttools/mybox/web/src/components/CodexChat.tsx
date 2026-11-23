@@ -756,6 +756,14 @@ export function CodexChat({
   const scrollToBottomRef = useRef(true)
   const scrollAnchorRef = useRef<{ height: number; top: number } | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  const promptHistoryNavigationRef = useRef<{
+    threadId: string
+    prompts: string[]
+    index: number
+    draft: string
+    selectionStart: number
+    selectionEnd: number
+  } | null>(null)
   const recentCommandIds = recentCommandState.project === project ? recentCommandState.ids : []
   const recentCommands = useMemo(
     () => recentCommandIds
@@ -764,6 +772,13 @@ export function CodexChat({
     [recentCommandIds],
   )
   const active = useMemo(() => turnIsActive(turns), [turns])
+  const promptHistory = useMemo(
+    () => turns.flatMap((turn) => (turn.items ?? [])
+      .filter((item) => item.type === 'userMessage')
+      .map((item) => (string(item.text) || itemText(item)).trim())
+      .filter(Boolean)),
+    [turns],
+  )
 
   useEffect(() => {
     turnsRef.current = turns
@@ -1339,6 +1354,7 @@ export function CodexChat({
     setSending(true)
     setError(null)
     setPlanPromptTurnId(null)
+    promptHistoryNavigationRef.current = null
     const pendingInitialPrompt = pendingInitialPromptRef.current
     if (pendingInitialPrompt?.threadId === activeThreadIdRef.current) {
       pendingInitialPromptRef.current = null
@@ -1456,6 +1472,7 @@ export function CodexChat({
   const runSlashCommand = useCallback((text: string): boolean => {
     const command = text.trim()
     if (command === '/plan' || command === '/default') {
+      promptHistoryNavigationRef.current = null
       setDraft('')
       changeMode(command.slice(1) as 'plan' | 'default')
       return true
@@ -1463,6 +1480,7 @@ export function CodexChat({
     const goalCommand = command.match(/^\/goal(?:\s+([\s\S]*))?$/)
     if (!goalCommand) return false
     const argument = (goalCommand[1] ?? '').trim()
+    promptHistoryNavigationRef.current = null
     setDraft('')
     if (!argument) {
       openGoalEditor()
@@ -1638,7 +1656,76 @@ export function CodexChat({
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault()
       sendComposer()
+      return
     }
+
+    if ((event.key !== 'ArrowUp' && event.key !== 'ArrowDown') || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+
+    const threadId = selectedThread?.thread_id
+    if (!threadId) return
+
+    const textarea = event.currentTarget
+    const atStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0
+    const atEnd = textarea.selectionStart === draft.length && textarea.selectionEnd === draft.length
+    let navigation = promptHistoryNavigationRef.current
+    if (navigation?.threadId !== threadId) {
+      navigation = null
+      promptHistoryNavigationRef.current = null
+    }
+
+    if (event.key === 'ArrowUp') {
+      if (draft && !atStart && !(navigation && atEnd)) return
+      if (!navigation) {
+        const prompts = [...promptHistory].reverse()
+        if (prompts.length === 0) return
+        navigation = {
+          threadId,
+          prompts,
+          index: -1,
+          draft,
+          selectionStart: textarea.selectionStart,
+          selectionEnd: textarea.selectionEnd,
+        }
+        promptHistoryNavigationRef.current = navigation
+      }
+      event.preventDefault()
+      navigation.index = Math.min(navigation.index + 1, navigation.prompts.length - 1)
+      const prompt = navigation.prompts[navigation.index]
+      setDraft(prompt)
+      requestAnimationFrame(() => {
+        const composer = composerRef.current
+        if (!composer) return
+        composer.focus()
+        composer.setSelectionRange(prompt.length, prompt.length)
+      })
+      return
+    }
+
+    if (!navigation || !atEnd) return
+    event.preventDefault()
+    if (navigation.index === 0) {
+      const previousDraft = navigation.draft
+      const selectionStart = navigation.selectionStart
+      const selectionEnd = navigation.selectionEnd
+      promptHistoryNavigationRef.current = null
+      setDraft(previousDraft)
+      requestAnimationFrame(() => {
+        const composer = composerRef.current
+        if (!composer) return
+        composer.focus()
+        composer.setSelectionRange(selectionStart, selectionEnd)
+      })
+      return
+    }
+    navigation.index -= 1
+    const prompt = navigation.prompts[navigation.index]
+    setDraft(prompt)
+    requestAnimationFrame(() => {
+      const composer = composerRef.current
+      if (!composer) return
+      composer.focus()
+      composer.setSelectionRange(prompt.length, prompt.length)
+    })
   }
 
   if (!selectedThread) {
@@ -1937,7 +2024,7 @@ export function CodexChat({
               <Button size="icon-sm" className="shrink-0 cursor-pointer" onClick={sendComposer} disabled={!draft.trim() || !connected || sending || controlBusy} aria-label={active ? 'Codexに追加指示を送信' : 'Codexに送信'} title={active ? 'Steer' : 'Send'}><Send /></Button>
           </div>
         </div>
-        <div className="mt-1 px-1 text-[10px] text-muted-foreground">Ctrl+Enterで送信 · Enterで改行{active ? ' · 送信内容は実行中のCodexへ追加されます（Steer）' : ''}</div>
+        <div className="mt-1 px-1 text-[10px] text-muted-foreground">Ctrl+Enterで送信 · Enterで改行 · 入力欄の先頭で↑、履歴表示中に↑↓で同じ会話の送信済みプロンプトを移動{active ? ' · 送信内容は実行中のCodexへ追加されます（Steer）' : ''}</div>
       </div>
       <Sheet open={commandPaletteOpen} onOpenChange={(open) => { setCommandPaletteOpen(open); if (!open) setGoalEditorOpen(false) }}>
         <SheetContent side="bottom" className="max-h-[80vh] gap-0 overflow-y-auto p-0" data-testid="codex-command-palette">
