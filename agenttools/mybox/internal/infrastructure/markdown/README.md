@@ -12,6 +12,6 @@
 | [`frontmatter_test.go`](./frontmatter_test.go) | フロントマターとタスク雛形のテスト。 |
 | [`prompt_repository.go`](./prompt_repository.go) | プロジェクト・既定プロジェクト・組み込みプロンプトの探索と変数展開。 |
 | [`prompt_repository_test.go`](./prompt_repository_test.go) | プロンプトの上書き、フォールバック、変数展開のテスト。 |
-| [`task_repository.go`](./task_repository.go) | `_tasks/<id>/task.md` のタスク保存、検索、`_archives/tasks/<id>/` へのアーカイブ。 |
+| [`task_repository.go`](./task_repository.go) | `_tasks/<id>/task.md` のタスク保存、検索、`_archives/_tasks/<id>/` へのアーカイブ。旧アーカイブ配置も参照します。 |
 | [`task_repository_test.go`](./task_repository_test.go) | タスクのCRUD、アーカイブ、旧パスを無視する動作のテスト。 |
 | [`template.go`](./template.go) | タスク雛形の探索、Go template描画、YAML値のクォート。 |

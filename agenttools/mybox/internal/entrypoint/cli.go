@@ -626,9 +626,13 @@ func taskFilePath(app *App, id string) (string, error) {
 	if _, err := os.Stat(active); err == nil {
 		return active, nil
 	}
-	archived := filepath.Join(app.Project.Path, "_archives", "tasks", id, "task.md")
-	if _, err := os.Stat(archived); err == nil {
-		return archived, nil
+	for _, archivedDir := range []string{"_archives/_tasks", "_archives/tasks"} {
+		archived := filepath.Join(app.Project.Path, archivedDir, id, "task.md")
+		if _, err := os.Stat(archived); err == nil {
+			return archived, nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
 	}
 	return "", fmt.Errorf("%w: task %s", domain.ErrNotFound, id)
 }

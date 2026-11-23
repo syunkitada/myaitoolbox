@@ -314,7 +314,12 @@ func (u *TaskUseCase) moveTaskPath(ctx context.Context, oldID, newID string, arc
 	}
 	base := "_tasks"
 	if archived {
-		base = "_archives/tasks"
+		for _, archiveBase := range []string{"_archives/_tasks", "_archives/tasks"} {
+			if err := u.State.MovePath(ctx, archiveBase+"/"+oldID, archiveBase+"/"+newID, u.Project); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	return u.State.MovePath(ctx, base+"/"+oldID, base+"/"+newID, u.Project)
 }

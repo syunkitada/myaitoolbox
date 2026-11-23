@@ -233,7 +233,7 @@ mybox serve --project proj --base-path /mybox
 ```
 myproject/
 ├── _archives/
-│   └── tasks/
+│   └── _tasks/
 ├── _tasks/
 │   └── 20260802_design-the-login-flow/
 │       └── task.md          # フロントマターで status / due / pending_* / tags 等を保持。title はディレクトリ名から導出
@@ -254,8 +254,8 @@ myproject/
 - タスク名には日本語などのUnicode文字を使用できます。タスクAgentの内部名はHerdrの制約に合わせてASCII化し、日本語を含むタスク同士の衝突を避ける決定的な識別子を使います。
 - Herdrのタブ名にはタスクディレクトリ名を表示します。タブ名を変更するとタスクディレクトリ（タスクID）とAgent内部名も変更されます。
 - タスクのメタデータはフロントマター、Markdown ファイル同士の関連付けは通常の Markdown リンクで記述します。
-- myboxが管理する領域であることを示すため、タスクは `_tasks/`、アーカイブは `_archives/tasks/` に保存されます。
-- 完了後はアーカイブして `_archives/tasks/<id>/` へ移動できます（`task archive`）。
+- myboxが管理する領域であることを示すため、タスクは `_tasks/`、アーカイブは `_archives/_tasks/` に保存されます。
+- 完了後はアーカイブして `_archives/_tasks/<id>/` へ移動できます（`task archive`）。
 
 ### テンプレート
 

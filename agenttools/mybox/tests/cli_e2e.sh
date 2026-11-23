@@ -54,7 +54,7 @@ case "$second_front" in *"task_kind"*) fail "no task_kind in frontmatter";; *) o
 second_list="$("$BIN" task list --project proj)"
 case "$second_list" in *review-pr-123*) ok "task listed";; *) fail "task listed";; esac
 "$BIN" task archive --project proj "$second_id" >/dev/null
-[ -f "$PROJ/_archives/tasks/$second_id/task.md" ] && ok "task archived" || fail "task archived"
+[ -f "$PROJ/_archives/_tasks/$second_id/task.md" ] && ok "task archived" || fail "task archived"
 active_second="$("$BIN" task list --project proj)"
 case "$active_second" in *review-pr-123*) fail "archived task hidden";; *) ok "archived task hidden";; esac
 

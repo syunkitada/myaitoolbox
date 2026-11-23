@@ -153,9 +153,9 @@ func TestTaskRepositoryArchiveRemovesTmpDir(t *testing.T) {
 
 	_, err := os.Stat(filepath.Join(root, "_tasks", "20260802_cleanup", "tmp"))
 	assert.True(t, os.IsNotExist(err))
-	_, err = os.Stat(filepath.Join(root, "_archives", "tasks", "20260802_cleanup", "tmp"))
+	_, err = os.Stat(filepath.Join(root, "_archives", "_tasks", "20260802_cleanup", "tmp"))
 	assert.True(t, os.IsNotExist(err))
-	_, err = os.Stat(filepath.Join(root, "_archives", "tasks", "20260802_cleanup", "task.md"))
+	_, err = os.Stat(filepath.Join(root, "_archives", "_tasks", "20260802_cleanup", "task.md"))
 	require.NoError(t, err)
 }
 
@@ -168,7 +168,7 @@ func TestTaskRepositoryArchiveWithoutTmpDir(t *testing.T) {
 
 	require.NoError(t, repo.Archive(ctx, "20260802_no-tmp"))
 
-	_, err := os.Stat(filepath.Join(root, "_archives", "tasks", "20260802_no-tmp", "task.md"))
+	_, err := os.Stat(filepath.Join(root, "_archives", "_tasks", "20260802_no-tmp", "task.md"))
 	require.NoError(t, err)
 }
 
@@ -184,7 +184,7 @@ func TestTaskRepositoryArchiveStagesOnlyTaskPaths(t *testing.T) {
 	require.NoError(t, repo.Archive(context.Background(), id))
 
 	staged := runGitForTest(t, root, "diff", "--cached", "--name-status", "--no-renames")
-	assert.Contains(t, staged, "_archives/tasks/"+id+"/task.md")
+	assert.Contains(t, staged, "_archives/_tasks/"+id+"/task.md")
 	assert.NotContains(t, staged, "unrelated.md")
 	status := runGitForTest(t, root, "status", "--porcelain")
 	assert.Contains(t, status, "?? unrelated.md")
@@ -205,7 +205,7 @@ func TestTaskRepositoryArchiveStagesTrackedTaskDeletion(t *testing.T) {
 
 	staged := runGitForTest(t, root, "diff", "--cached", "--name-status", "--no-renames")
 	assert.Contains(t, staged, "_tasks/"+id+"/task.md")
-	assert.Contains(t, staged, "_archives/tasks/"+id+"/task.md")
+	assert.Contains(t, staged, "_archives/_tasks/"+id+"/task.md")
 	assert.NotContains(t, staged, "unrelated.md")
 	status := runGitForTest(t, root, "status", "--porcelain")
 	assert.Contains(t, status, "?? unrelated.md")

@@ -116,11 +116,36 @@ func (r *TaskRepository) Find(ctx context.Context, id string) (*domain.Task, err
 	if _, err := os.Stat(active); err == nil {
 		return r.readTask(filepath.Join(r.root, "_tasks", id), id, false)
 	}
-	archived := filepath.Join(r.root, "_archives", "tasks", id, "task.md")
-	if _, err := os.Stat(archived); err == nil {
-		return r.readTask(filepath.Join(r.root, "_archives", "tasks", id), id, true)
+	for _, dir := range r.archivedTaskDirs(id) {
+		archived := filepath.Join(dir, "task.md")
+		if _, err := os.Stat(archived); err == nil {
+			return r.readTask(dir, id, true)
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
 	}
 	return nil, fmt.Errorf("%w: task %s", domain.ErrNotFound, id)
+}
+
+// archivedTaskDirs lists the current archive layout first, followed by the
+// previous layout so projects archived by older mybox versions remain usable.
+func (r *TaskRepository) archivedTaskDirs(id string) []string {
+	return []string{
+		filepath.Join(r.root, "_archives", "_tasks", id),
+		filepath.Join(r.root, "_archives", "tasks", id),
+	}
+}
+
+func (r *TaskRepository) existingArchivedTaskDir(id string) (string, error) {
+	dirs := r.archivedTaskDirs(id)
+	for _, dir := range dirs {
+		if _, err := os.Stat(filepath.Join(dir, "task.md")); err == nil {
+			return dir, nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+	}
+	return dirs[0], nil
 }
 
 func (r *TaskRepository) Create(ctx context.Context, id string, content string) error {
@@ -131,11 +156,12 @@ func (r *TaskRepository) Create(ctx context.Context, id string, content string) 
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, id)
 	}
-	archivedDir := filepath.Join(r.root, "_archives", "tasks", id)
-	if _, err := os.Stat(archivedDir); err == nil {
-		return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, id)
-	} else if !os.IsNotExist(err) {
-		return err
+	for _, archivedDir := range r.archivedTaskDirs(id) {
+		if _, err := os.Stat(archivedDir); err == nil {
+			return fmt.Errorf("%w: %s", domain.ErrAlreadyExists, id)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
 	}
 	content, err := removeDeprecatedTaskMetadata(content)
 	if err != nil {
@@ -162,17 +188,27 @@ func (r *TaskRepository) Rename(ctx context.Context, oldID string, newID string)
 
 	src := filepath.Join(r.root, "_tasks", oldID)
 	if _, err := os.Stat(src); os.IsNotExist(err) {
-		src = filepath.Join(r.root, "_archives", "tasks", oldID)
-	}
-	if _, err := os.Stat(src); err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("%w: task %s", domain.ErrNotFound, oldID)
-		}
+		src = ""
+	} else if err != nil {
 		return err
+	}
+	if src == "" {
+		for _, dir := range r.archivedTaskDirs(oldID) {
+			if _, err := os.Stat(dir); err == nil {
+				src = dir
+				break
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	if src == "" {
+		return fmt.Errorf("%w: task %s", domain.ErrNotFound, oldID)
 	}
 
 	for _, parent := range []string{
 		filepath.Join(r.root, "_tasks"),
+		filepath.Join(r.root, "_archives", "_tasks"),
 		filepath.Join(r.root, "_archives", "tasks"),
 	} {
 		target := filepath.Join(parent, newID)
@@ -228,7 +264,11 @@ func (r *TaskRepository) Update(ctx context.Context, task domain.Task) error {
 	}
 	path := filepath.Join(r.root, "_tasks", task.ID, "task.md")
 	if task.Archived {
-		path = filepath.Join(r.root, "_archives", "tasks", task.ID, "task.md")
+		archivedDir, err := r.existingArchivedTaskDir(task.ID)
+		if err != nil {
+			return err
+		}
+		path = filepath.Join(archivedDir, "task.md")
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -285,7 +325,7 @@ func (r *TaskRepository) Archive(ctx context.Context, id string) error {
 	if err := removeTaskTmpDir(src); err != nil {
 		return err
 	}
-	dst := filepath.Join(r.root, "_archives", "tasks", id)
+	dst := filepath.Join(r.root, "_archives", "_tasks", id)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
@@ -326,9 +366,7 @@ func (r *TaskRepository) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	regular := filepath.Join(r.root, "_tasks", id)
-	archivedRegular := filepath.Join(r.root, "_archives", "tasks", id)
-
-	targets := []string{regular, archivedRegular}
+	targets := append([]string{regular}, r.archivedTaskDirs(id)...)
 	var target string
 	for _, t := range targets {
 		if _, err := os.Stat(t); err == nil {
