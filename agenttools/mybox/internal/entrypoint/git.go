@@ -151,6 +151,7 @@ func (s *Server) registerGitRoutes(e *echo.Echo, basePath string) {
 	wrap(http.MethodGet, "/api/git/file-diff", s.GetGitFileDiff)
 	wrap(http.MethodGet, "/api/git/log", s.GetGitLog)
 	wrap(http.MethodGet, "/api/git/diff", s.GetGitCommitDiff)
+	wrap(http.MethodGet, "/api/git/main-diff", s.GetGitMainDiff)
 	wrap(http.MethodGet, "/api/git/branches", s.GetGitBranches)
 	wrap(http.MethodPost, "/api/git/checkout", s.PostGitCheckout)
 	wrap(http.MethodPost, "/api/git/delete-branch", s.PostGitDeleteBranch)
@@ -602,6 +603,46 @@ func (s *Server) GetGitCommitDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, fmt.Errorf("failed to get diff for %s: %w", commitRef, err))
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, gitCommitDiffResult{Diff: out})
+}
+
+// GetGitMainDiff returns the committed changes on the current branch since it
+// diverged from the locally available origin/main tracking ref.
+func (s *Server) GetGitMainDiff(w http.ResponseWriter, r *http.Request) {
+	app, err := s.getApp(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	dir, err := s.gitScope(r, app)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !lockGitOperations(w, r) {
+		return
+	}
+	defer gitOpsMu.release()
+
+	baseRef := "refs/remotes/origin/main"
+	if _, err := runGit(dir, "rev-parse", "--verify", baseRef+"^{commit}"); err != nil {
+		writeError(w, fmt.Errorf("remote tracking branch origin/main is unavailable; fetch the remote first: %w", err))
+		return
+	}
+	mergeBase, err := runGit(dir, "merge-base", baseRef, "HEAD")
+	if err != nil {
+		writeError(w, fmt.Errorf("failed to find merge base with origin/main: %w", err))
+		return
+	}
+	args := []string{"diff", strings.TrimSpace(mergeBase) + "..HEAD"}
+	if r.URL.Query().Get("path") != "" && dir != app.Project.Path {
+		args = append(args, "--", ".")
+	}
+	out, err := runGit(dir, args...)
+	if err != nil {
+		writeError(w, fmt.Errorf("failed to get diff against origin/main: %w", err))
 		return
 	}
 	writeJSONResponse(w, http.StatusOK, gitCommitDiffResult{Diff: out})

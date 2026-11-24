@@ -38,7 +38,7 @@ const EXPLORER_WIDTH_STORAGE_KEY = 'mybox_git_explorer_width'
 const LOG_PAGE_SIZE = 30
 const DEFAULT_EXPLORER_WIDTH = 280
 
-type GitViewMode = 'working-tree' | 'log'
+type GitViewMode = 'working-tree' | 'log' | 'main-diff'
 
 interface GitWorkspaceProps {
   refreshMeta: () => Promise<void>
@@ -108,6 +108,9 @@ function ModeToggle({ mode, onChange }: { mode: GitViewMode; onChange: (m: GitVi
       >
         <History />
         Log
+      </Button>
+      <Button variant={mode === 'main-diff' ? 'secondary' : 'ghost'} size="sm" onClick={() => onChange('main-diff')} aria-pressed={mode === 'main-diff'} data-testid="git-mode-main-diff">
+        vs main
       </Button>
     </div>
   )
@@ -464,6 +467,8 @@ function SimpleTreeList({
           onSelect={onSelectCommit}
           onLoadMore={onLoadMore}
         />
+      ) : mode === 'main-diff' ? (
+        <p className="px-1 py-2 text-xs text-muted-foreground">Committed changes on this branch since it diverged from origin/main.</p>
       ) : !hasChanges ? (
         <div className="flex flex-col items-start gap-2 p-2 text-sm text-muted-foreground">
           <CheckCircle2 className="size-5 text-green-600" />
@@ -778,6 +783,9 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
   const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null)
   const [commitDiff, setCommitDiff] = useState<string | null>(null)
   const [commitDiffLoading, setCommitDiffLoading] = useState(false)
+  const [mainDiff, setMainDiff] = useState<string | null>(null)
+  const [mainDiffLoading, setMainDiffLoading] = useState(false)
+  const [mainDiffError, setMainDiffError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [editorContent, setEditorContent] = useState('')
   const [editorOriginal, setEditorOriginal] = useState('')
@@ -858,12 +866,26 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
     }
   }, [selectedCommitHash, scope])
 
+  useEffect(() => {
+    if (mode !== 'main-diff') return
+    let cancelled = false
+    setMainDiffLoading(true)
+    setMainDiffError(null)
+    api.getGitMainDiff(scope)
+      .then((res) => { if (!cancelled) setMainDiff(res.diff) })
+      .catch((e) => { if (!cancelled) setMainDiffError(e instanceof Error ? e.message : String(e)) })
+      .finally(() => { if (!cancelled) setMainDiffLoading(false) })
+    return () => { cancelled = true }
+  }, [mode, scope])
+
   const handleModeChange = useCallback(
     async (m: GitViewMode) => {
       if (m === mode) return
       if (editing && editorDirty && !(await confirm('There are unsaved changes in the editor. Discard them?'))) return
       setMode(m)
       resetEditor()
+      setMainDiff(null)
+      setMainDiffError(null)
       if (m === 'log') {
         setLogEntries([])
         setLogHasMore(true)
@@ -1513,7 +1535,15 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
                 </div>
                 <Card className="gap-0 p-4">
                   <CardContent className="px-0 py-0">
-                    {mode === 'log' ? (
+                    {mode === 'main-diff' ? (
+                      mainDiffLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground"><RefreshCw className="size-4 animate-spin" />Loading diff…</div>
+                      ) : mainDiffError ? (
+                        <div className="py-8 text-center text-sm text-red-600" data-testid="git-main-diff-error">{mainDiffError}</div>
+                      ) : (
+                        <CommitDiffView diff={mainDiff ?? ''} />
+                      )
+                    ) : mode === 'log' ? (
                       commitDiffLoading ? (
                         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
                           <RefreshCw className="size-4 animate-spin" />
