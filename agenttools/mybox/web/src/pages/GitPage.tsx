@@ -22,6 +22,7 @@ import {
 import { GitBranch as GitBranchInfo, GitDetail, GitFile, GitLogEntry, GitResult, api } from '../api/client'
 import { Button } from '../components/ui/button'
 import { Textarea } from '../components/ui/textarea'
+import { Input } from '../components/ui/input'
 import { Card, CardContent } from '../components/ui/card'
 import { Sheet, SheetContent } from '../components/ui/sheet'
 import { DiffView } from '../components/DiffView'
@@ -110,7 +111,7 @@ function ModeToggle({ mode, onChange }: { mode: GitViewMode; onChange: (m: GitVi
         Log
       </Button>
       <Button variant={mode === 'main-diff' ? 'secondary' : 'ghost'} size="sm" onClick={() => onChange('main-diff')} aria-pressed={mode === 'main-diff'} data-testid="git-mode-main-diff">
-        vs main
+        Compare
       </Button>
     </div>
   )
@@ -385,6 +386,9 @@ function SimpleTreeList({
   onLoadMore,
   branches,
   branchesLoading,
+  compareRefInput,
+  onCompareRefInputChange,
+  onCompareRef,
   currentBranch,
   onCheckout,
   onNewBranch,
@@ -410,6 +414,9 @@ function SimpleTreeList({
   onLoadMore: () => void
   branches: GitBranchInfo[]
   branchesLoading: boolean
+  compareRefInput: string
+  onCompareRefInputChange: (value: string) => void
+  onCompareRef: () => void
   currentBranch: string
   onCheckout: (branch: string) => void
   onNewBranch: () => void
@@ -468,7 +475,25 @@ function SimpleTreeList({
           onLoadMore={onLoadMore}
         />
       ) : mode === 'main-diff' ? (
-        <p className="px-1 py-2 text-xs text-muted-foreground">Committed changes on this branch since it diverged from origin/main.</p>
+        <div className="space-y-2 px-1 py-2">
+          <label htmlFor="git-compare-ref" className="text-xs text-muted-foreground">Compare with branch</label>
+          <Input
+            id="git-compare-ref"
+            value={compareRefInput}
+            onChange={(event) => onCompareRefInputChange(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Enter') onCompareRef() }}
+            placeholder="origin default branch"
+            list="git-compare-refs"
+            data-testid="git-compare-ref"
+          />
+          <datalist id="git-compare-refs">
+            {branches.flatMap((branch) => [branch.name, branch.upstream].filter((name): name is string => Boolean(name)))
+              .filter((name, index, names) => names.indexOf(name) === index)
+              .map((name) => <option key={name} value={name} />)}
+          </datalist>
+          <Button size="sm" variant="outline" onClick={onCompareRef}>Compare</Button>
+          <p className="text-xs text-muted-foreground">Leave blank to use origin&apos;s default branch. Only committed changes since the branches diverged are shown.</p>
+        </div>
       ) : !hasChanges ? (
         <div className="flex flex-col items-start gap-2 p-2 text-sm text-muted-foreground">
           <CheckCircle2 className="size-5 text-green-600" />
@@ -786,6 +811,8 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
   const [mainDiff, setMainDiff] = useState<string | null>(null)
   const [mainDiffLoading, setMainDiffLoading] = useState(false)
   const [mainDiffError, setMainDiffError] = useState<string | null>(null)
+  const [compareRefInput, setCompareRefInput] = useState('')
+  const [compareRef, setCompareRef] = useState('')
   const [editing, setEditing] = useState(false)
   const [editorContent, setEditorContent] = useState('')
   const [editorOriginal, setEditorOriginal] = useState('')
@@ -871,12 +898,12 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
     let cancelled = false
     setMainDiffLoading(true)
     setMainDiffError(null)
-    api.getGitMainDiff(scope)
+    api.getGitMainDiff(scope, compareRef || undefined)
       .then((res) => { if (!cancelled) setMainDiff(res.diff) })
       .catch((e) => { if (!cancelled) setMainDiffError(e instanceof Error ? e.message : String(e)) })
       .finally(() => { if (!cancelled) setMainDiffLoading(false) })
     return () => { cancelled = true }
-  }, [mode, scope])
+  }, [compareRef, mode, scope])
 
   const handleModeChange = useCallback(
     async (m: GitViewMode) => {
@@ -886,6 +913,7 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
       resetEditor()
       setMainDiff(null)
       setMainDiffError(null)
+      if (m === 'main-diff') setCompareRef(compareRefInput.trim())
       if (m === 'log') {
         setLogEntries([])
         setLogHasMore(true)
@@ -896,7 +924,7 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
         setCommitDiff(null)
       }
     },
-    [confirm, editorDirty, editing, mode, resetEditor],
+    [compareRefInput, confirm, editorDirty, editing, mode, resetEditor],
   )
 
   const handleSelectCommit = useCallback((e: GitLogEntry) => {
@@ -1281,6 +1309,9 @@ export function GitWorkspace({ refreshMeta, scope, embedded }: GitWorkspaceProps
       scope={scope}
       branches={branches}
       branchesLoading={branchesLoading}
+      compareRefInput={compareRefInput}
+      onCompareRefInputChange={setCompareRefInput}
+      onCompareRef={() => setCompareRef(compareRefInput.trim())}
       currentBranch={currentBranch}
       onCheckout={handleCheckout}
       onNewBranch={handleNewBranch}

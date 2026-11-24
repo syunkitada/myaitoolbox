@@ -608,8 +608,8 @@ func (s *Server) GetGitCommitDiff(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, gitCommitDiffResult{Diff: out})
 }
 
-// GetGitMainDiff returns the committed changes on the current branch since it
-// diverged from the locally available origin/main tracking ref.
+// GetGitMainDiff returns committed changes on the current branch since it
+// diverged from the selected ref or origin's default branch.
 func (s *Server) GetGitMainDiff(w http.ResponseWriter, r *http.Request) {
 	app, err := s.getApp(r)
 	if err != nil {
@@ -626,14 +626,27 @@ func (s *Server) GetGitMainDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	defer gitOpsMu.release()
 
-	baseRef := "refs/remotes/origin/main"
-	if _, err := runGit(dir, "rev-parse", "--verify", baseRef+"^{commit}"); err != nil {
-		writeError(w, fmt.Errorf("remote tracking branch origin/main is unavailable; fetch the remote first: %w", err))
+	baseRef := strings.TrimSpace(r.URL.Query().Get("base"))
+	if baseRef == "" {
+		baseRef, err = runGit(dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+		if err != nil || strings.TrimSpace(baseRef) == "" {
+			writeError(w, errors.New("origin default branch is unavailable; set origin/HEAD or specify a branch"))
+			return
+		}
+		baseRef = strings.TrimSpace(baseRef)
+	} else {
+		if _, err := runGit(dir, "check-ref-format", "--branch", baseRef); err != nil {
+			writeError(w, fmt.Errorf("invalid comparison branch: %w", err))
+			return
+		}
+	}
+	if _, err := runGit(dir, "rev-parse", "--verify", "--end-of-options", baseRef+"^{commit}"); err != nil {
+		writeError(w, fmt.Errorf("comparison branch %q is unavailable: %w", baseRef, err))
 		return
 	}
 	mergeBase, err := runGit(dir, "merge-base", baseRef, "HEAD")
 	if err != nil {
-		writeError(w, fmt.Errorf("failed to find merge base with origin/main: %w", err))
+		writeError(w, fmt.Errorf("failed to find merge base with %s: %w", baseRef, err))
 		return
 	}
 	args := []string{"diff", strings.TrimSpace(mergeBase) + "..HEAD"}
@@ -642,7 +655,7 @@ func (s *Server) GetGitMainDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := runGit(dir, args...)
 	if err != nil {
-		writeError(w, fmt.Errorf("failed to get diff against origin/main: %w", err))
+		writeError(w, fmt.Errorf("failed to get diff against %s: %w", baseRef, err))
 		return
 	}
 	writeJSONResponse(w, http.StatusOK, gitCommitDiffResult{Diff: out})

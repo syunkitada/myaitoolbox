@@ -1006,8 +1006,8 @@ export const api = {
     request<GitLogResult>('GET', '/api/git/log' + qs({ path: scope, offset, count })),
   getGitCommitDiff: (scope: string | undefined, ref: string) =>
     request<GitCommitDiff>('GET', '/api/git/diff' + qs({ path: scope, ref })),
-  getGitMainDiff: (scope?: string) =>
-    request<GitCommitDiff>('GET', '/api/git/main-diff' + qs({ path: scope })),
+  getGitMainDiff: (scope?: string, base?: string) =>
+    request<GitCommitDiff>('GET', '/api/git/main-diff' + qs({ path: scope, base })),
   getGitBranches: (scope?: string) =>
     request<GitBranchesResult>('GET', '/api/git/branches' + qs({ path: scope })),
   gitCheckout: (scope: string | undefined, branch: string, create?: boolean, startPoint?: string) =>
